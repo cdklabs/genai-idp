@@ -44,6 +44,15 @@
     },
     {
       "path": "packages/@cdklabs/genai-idp-sagemaker-udop-processor"
+    },
+    {
+      "path": "samples/sample-bda-lending"
+    },
+    {
+      "path": "samples/sample-bedrock"
+    },
+    {
+      "path": "samples/sample-sagemaker-udop-rvl-cdip"
     }
   ]
 }

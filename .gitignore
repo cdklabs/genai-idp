@@ -56,5 +56,6 @@ packages/@cdklabs/genai-idp-sagemaker-udop-processor/test/integ/.tmp/
 !/.nvmrc
 .venv/
 .*.md
+!/.github/workflows/docs.yml
 !/.projenrc.ts
 !/.github/workflows/release.yml

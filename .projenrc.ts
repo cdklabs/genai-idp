@@ -1,7 +1,10 @@
 import { yarn } from "cdklabs-projen-project-types";
 import { Stability } from "projen/lib/cdk";
 import { ReleasableCommits, TextFile } from "projen";
+import { GitHub } from "projen/lib/github";
+import { JobPermission } from "projen/lib/github/workflows-model";
 import { AwsCdkTypeScriptWorkspace } from "./projenrc/awscdk-typescript-workspace";
+import { AwsCdkTypeScriptWorkspaceApp } from "./projenrc/awscdk-workspace-app-ts";
 import { ProjenStruct, Struct } from "@mrgrain/jsii-struct-builder";
 import path from "path";
 
@@ -402,9 +405,133 @@ p3BundleTask.spawn(idpPattern3.addTask(`bundle:schema`, {
 
 buildPackages.exec(`yarn workspace ${idpPattern3.name} build`);
 
+
+new AwsCdkTypeScriptWorkspaceApp({
+  parent: rootProject,
+  private: true,
+  stability,
+  authorName: "AWS",
+  authorEmail: "aws-cdk-dev@amazon.com",
+  name: "sample-bda-lending",
+  workspaceScope: "samples",
+  repository: "https://github.com/cdklabs/genai-idp",
+  devDeps: [...idpDeps],
+  deps: [...idpDeps, idpPattern1, genaiIdp, '@types/aws-lambda', '@aws-sdk/client-bedrock-agent'],
+  prettier: true,
+  jest: true,
+  cdkVersion: CDK_VERSION,
+  constructsVersion: CONSTRUCTS_VERSION,
+});
+
+new AwsCdkTypeScriptWorkspaceApp({
+  parent: rootProject,
+  private: true,
+  stability,
+  authorName: "AWS",
+  authorEmail: "aws-cdk-dev@amazon.com",
+  name: "sample-bedrock",
+  workspaceScope: "samples",
+  repository: "https://github.com/cdklabs/genai-idp",
+  devDeps: [...idpDeps],
+  deps: [...idpDeps, idpPattern2, genaiIdp],
+  prettier: true,
+  jest: true,
+  cdkVersion: CDK_VERSION,
+  constructsVersion: CONSTRUCTS_VERSION,
+});
+
+const sample3App = new AwsCdkTypeScriptWorkspaceApp({
+  parent: rootProject,
+  private: true,
+  stability,
+  authorName: "AWS",
+  authorEmail: "aws-cdk-dev@amazon.com",
+  name: "sample-sagemaker-udop-rvl-cdip",
+  workspaceScope: "samples",
+  repository: "https://github.com/cdklabs/genai-idp",
+  devDeps: [...idpDeps, '@types/aws-lambda', '@aws-sdk/client-sagemaker'],
+  deps: [...idpDeps, idpPattern3, genaiIdp],
+  prettier: true,
+  jest: true,
+  cdkVersion: CDK_VERSION,
+  constructsVersion: CONSTRUCTS_VERSION,
+});
+
+sample3App.eslint?.allowDevDeps(
+  "src/lambda-fns/sagemaker_train_is_complete/index.ts",
+);
+
 new TextFile(rootProject, '.nvmrc', {
   lines: ['22']
 });
 
-rootProject.gitignore.addPatterns('.venv/', '.*.md')
+rootProject.gitignore.addPatterns('.venv/', '.*.md');
+
+const gh = GitHub.of(rootProject);
+
+if (gh) {
+  const docsWfl = gh.addWorkflow('docs');
+
+  docsWfl.on({
+    push: { branches: ['main'] },
+    pullRequest: { branches: ['main'] },
+    workflowDispatch: {}
+  });
+
+  docsWfl.addJob('build', {
+    runsOn: ['ubuntu-latest'],
+    permissions: {
+      contents: JobPermission.READ,
+      pages: JobPermission.WRITE,
+      idToken: JobPermission.WRITE
+    },
+    steps: [
+      {
+        uses: 'actions/checkout@v4',
+        with: { fetchDepth: 0 }
+      },
+      {
+        name: 'Setup Python',
+        uses: 'actions/setup-python@v4',
+        with: { 'python-version': '3.x' }
+      },
+      {
+        name: 'Install dependencies',
+        run: 'pip install -r docs/requirements.txt'
+      },
+      {
+        name: 'Build documentation',
+        run: 'cd docs && mkdocs build --strict'
+      },
+      {
+        name: 'Upload Pages artifact',
+        uses: 'actions/upload-pages-artifact@v3',
+        with: { path: 'docs/site' }
+      }
+    ]
+  });
+
+  docsWfl.addJob('deploy', {
+    if: "github.ref == 'refs/heads/main'",
+    environment: {
+      name: 'github-pages',
+      url: '${{ steps.deployment.outputs.page_url }}'
+    },
+    runsOn: ['ubuntu-latest'],
+    needs: ['build'],
+    permissions: {
+      contents: JobPermission.READ,
+      pages: JobPermission.WRITE,
+      idToken: JobPermission.WRITE
+    },
+    steps: [
+      {
+        name: 'Deploy to GitHub Pages',
+        id: 'deployment',
+        uses: 'actions/deploy-pages@v4'
+      }
+    ]
+  });
+}
+
 rootProject.synth();

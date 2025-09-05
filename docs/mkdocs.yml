@@ -1,8 +1,8 @@
 site_name: GenAI IDP Accelerator for AWS CDK
 site_description: GenAI Intelligent Document Processing for AWS CDK
-repo_name: genaiic-idp-accelerator-cdk
-repo_url: https://gitlab.aws.dev/rpawlasz/genaiic-idp-accelerator-cdk
-site_url: https://gitlab.aws.dev/rpawlasz/genaiic-idp-accelerator-cdk
+repo_name: cdklabs/genai-idp
+repo_url: https://github.com/cdklabs/genai-idp
+site_url: https://cdklabs.github.io/genai-idp
 copyright: Copyright &copy; 2025 Amazon Web Services, Inc. or its affiliates.
 use_directory_urls: false
 docs_dir: content
