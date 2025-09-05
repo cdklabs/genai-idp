@@ -21,7 +21,7 @@ theme:
   # custom_dir: overrides
   logo: assets/images/aws-logo.png
   icon:
-    repo: fontawesome/brands/git-alt
+    repo: fontawesome/brands/github
   favicon: assets/images/logo.png
   palette:
     - media: "(prefers-color-scheme)"
