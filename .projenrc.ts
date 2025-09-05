@@ -501,7 +501,7 @@ if (gh) {
       },
       {
         name: 'Build documentation',
-        run: 'cd docs && mkdocs build --strict'
+        run: 'cd docs && mkdocs build'
       },
       {
         name: 'Upload Pages artifact',

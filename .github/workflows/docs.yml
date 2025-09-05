@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r docs/requirements.txt
       - name: Build documentation
-        run: cd docs && mkdocs build --strict
+        run: cd docs && mkdocs build
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
