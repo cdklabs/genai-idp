@@ -1,0 +1,4239 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfies CDK NAG AwsSolutionsChecks with proper suppressions 1`] = `
+{
+  "Metadata": {
+    "cdk_nag": {
+      "rules_to_suppress": [
+        {
+          "id": "AwsSolutions-IAM4",
+          "reason": "AWS managed policies are used for service roles as recommended by AWS best practices for Bedrock Data Automation",
+        },
+        {
+          "id": "AwsSolutions-IAM5",
+          "reason": "Wildcard permissions are required for Bedrock Data Automation service to access S3 buckets and objects dynamically",
+        },
+        {
+          "id": "AwsSolutions-L1",
+          "reason": "Lambda functions use supported Python runtime version as required by the IDP framework",
+        },
+        {
+          "id": "AwsSolutions-SF1",
+          "reason": "Step Functions logging is configured appropriately for the BDA processing workflow",
+        },
+        {
+          "id": "AwsSolutions-SF2",
+          "reason": "Step Functions X-Ray tracing is configured based on operational requirements",
+        },
+        {
+          "id": "AwsSolutions-SQS3",
+          "reason": "SQS dead letter queue is configured for the BDA processing workflow",
+        },
+        {
+          "id": "AwsSolutions-SQS4",
+          "reason": "SQS queue encryption is configured appropriately for the processing workflow",
+        },
+        {
+          "id": "AwsSolutions-S1",
+          "reason": "S3 bucket access logging is configured based on operational requirements for BDA processing",
+        },
+        {
+          "id": "AwsSolutions-S2",
+          "reason": "S3 bucket public access is blocked by default in the BDA processor configuration",
+        },
+        {
+          "id": "AwsSolutions-S10",
+          "reason": "S3 bucket SSL requests are enforced through bucket policies in the BDA processor",
+        },
+        {
+          "id": "AwsSolutions-DDB3",
+          "reason": "DynamoDB point-in-time recovery is configured based on data retention requirements",
+        },
+        {
+          "id": "AwsSolutions-KMS5",
+          "reason": "KMS key rotation is configured based on security requirements for the BDA processing workflow",
+        },
+      ],
+    },
+  },
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "BdaProcessorBDACompletionFunction3D936373": {
+      "DependsOn": [
+        "BdaProcessorBDACompletionFunctionServiceRoleDefaultPolicy20DC71CB",
+        "BdaProcessorBDACompletionFunctionServiceRole86377C38",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "ff85e277a7ba73d63814eafa1f8bff8fbabfebc9cb95e528647b67bd31087e9d.zip",
+        },
+        "DeadLetterConfig": {
+          "TargetArn": {
+            "Fn::GetAtt": [
+              "BdaProcessorBDACompletionFunctionDLQ5BAC2BBD",
+              "Arn",
+            ],
+          },
+        },
+        "Environment": {
+          "Variables": {
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerd7517139DE3E71C4",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BdaProcessorBDACompletionFunctionLogGroupED285C59",
+          },
+        },
+        "MemorySize": 4096,
+        "Role": {
+          "Fn::GetAtt": [
+            "BdaProcessorBDACompletionFunctionServiceRole86377C38",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BdaProcessorBDACompletionFunctionDLQ5BAC2BBD": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "KmsMasterKeyId": {
+          "Fn::GetAtt": [
+            "BdaProcessorBDACompletionFunctionDLQKey06B1FB23",
+            "Arn",
+          ],
+        },
+        "MessageRetentionPeriod": 345600,
+        "VisibilityTimeout": 30,
+      },
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "BdaProcessorBDACompletionFunctionDLQKey06B1FB23": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "Description": "Created by TestStack/BdaProcessor/BDACompletionFunctionDLQ",
+        "KeyPolicy": {
+          "Statement": [
+            {
+              "Action": "kms:*",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":iam::",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":root",
+                    ],
+                  ],
+                },
+              },
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::KMS::Key",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorBDACompletionFunctionLogGroupED285C59": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorBDACompletionFunctionServiceRole86377C38": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BdaProcessorBDACompletionFunctionServiceRoleDefaultPolicy20DC71CB": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sqs:SendMessage",
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "BdaProcessorBDACompletionFunctionDLQ5BAC2BBD",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "states:SendTaskSuccess",
+                "states:SendTaskFailure",
+                "states:SendTaskHeartbeat",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Ref": "BdaProcessorDocumentProcessingStateMachine8ACF3653",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BdaProcessorBDACompletionFunctionServiceRoleDefaultPolicy20DC71CB",
+        "Roles": [
+          {
+            "Ref": "BdaProcessorBDACompletionFunctionServiceRole86377C38",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BdaProcessorBDAEventRule7FA82C96": {
+      "Properties": {
+        "EventPattern": {
+          "detail-type": [
+            "Bedrock Data Automation Job Succeeded",
+            "Bedrock Data Automation Job Failed With Client Error",
+            "Bedrock Data Automation Job Failed With Service Error",
+          ],
+          "source": [
+            "aws.bedrock",
+          ],
+        },
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "BdaProcessorBDACompletionFunction3D936373",
+                "Arn",
+              ],
+            },
+            "Id": "Target0",
+            "RetryPolicy": {
+              "MaximumEventAgeInSeconds": 7200,
+              "MaximumRetryAttempts": 3,
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Events::Rule",
+    },
+    "BdaProcessorBDAEventRuleAllowEventRuleTestStackBdaProcessorBDACompletionFunctionF0280D9874E508A6": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "BdaProcessorBDACompletionFunction3D936373",
+            "Arn",
+          ],
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "BdaProcessorBDAEventRule7FA82C96",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::Lambda::Permission",
+    },
+    "BdaProcessorBDAMetadataTableAC922B53": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "execution_id",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "record_number",
+            "AttributeType": "N",
+          },
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "execution_id",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "record_number",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": 5,
+          "WriteCapacityUnits": 5,
+        },
+        "TimeToLiveSpecification": {
+          "AttributeName": "ExpiresAfter",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorDocumentProcessingStateMachine8ACF3653": {
+      "DeletionPolicy": "Delete",
+      "DependsOn": [
+        "BdaProcessorDocumentProcessingStateMachineRoleDefaultPolicy13601258",
+        "BdaProcessorDocumentProcessingStateMachineRole9898E6B6",
+      ],
+      "Properties": {
+        "DefinitionS3Location": {
+          "Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "Key": "6f400e16576a4834266053847361c68a1f16c1a722379d2576c6d2ba258f17c4.json",
+        },
+        "DefinitionSubstitutions": {
+          "BDAProjectArn": "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
+          "EnableHITL": "false",
+          "HITLStatusUpdateFunctionArn": {
+            "Fn::GetAtt": [
+              "BdaProcessorHITLStatusUpdateFunctionF9483151",
+              "Arn",
+            ],
+          },
+          "HITLWaitFunctionArn": {
+            "Fn::GetAtt": [
+              "BdaProcessorHITLWaitFunctionD3181EC6",
+              "Arn",
+            ],
+          },
+          "InvokeBDALambdaArn": {
+            "Fn::GetAtt": [
+              "BdaProcessorInvokeBDAFunction7EE55476",
+              "Arn",
+            ],
+          },
+          "OutputBucket": {
+            "Ref": "OutputBucket7114EB27",
+          },
+          "ProcessResultsLambdaArn": {
+            "Fn::GetAtt": [
+              "BdaProcessorProcessResultsFunction0B4EF43D",
+              "Arn",
+            ],
+          },
+          "SageMakerA2IReviewPortalURL": "",
+          "SummarizationLambdaArn": {
+            "Fn::GetAtt": [
+              "BdaProcessorSummarizationFunctionCCB37C38",
+              "Arn",
+            ],
+          },
+          "WorkingBucket": {
+            "Ref": "WorkingBucketAF106285",
+          },
+        },
+        "LoggingConfiguration": {
+          "Destinations": [
+            {
+              "CloudWatchLogsLogGroup": {
+                "LogGroupArn": {
+                  "Fn::GetAtt": [
+                    "BdaProcessorStateMachineLogGroupA6BD51AE",
+                    "Arn",
+                  ],
+                },
+              },
+            },
+          ],
+          "IncludeExecutionData": true,
+          "Level": "ALL",
+        },
+        "RoleArn": {
+          "Fn::GetAtt": [
+            "BdaProcessorDocumentProcessingStateMachineRole9898E6B6",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::StepFunctions::StateMachine",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "BdaProcessorDocumentProcessingStateMachineRole9898E6B6": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "states.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BdaProcessorDocumentProcessingStateMachineRoleDefaultPolicy13601258": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "logs:CreateLogDelivery",
+                "logs:GetLogDelivery",
+                "logs:UpdateLogDelivery",
+                "logs:DeleteLogDelivery",
+                "logs:ListLogDeliveries",
+                "logs:PutResourcePolicy",
+                "logs:DescribeResourcePolicies",
+                "logs:DescribeLogGroups",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BdaProcessorInvokeBDAFunction7EE55476",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BdaProcessorInvokeBDAFunction7EE55476",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BdaProcessorProcessResultsFunction0B4EF43D",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BdaProcessorProcessResultsFunction0B4EF43D",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BdaProcessorSummarizationFunctionCCB37C38",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BdaProcessorSummarizationFunctionCCB37C38",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BdaProcessorHITLWaitFunctionD3181EC6",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BdaProcessorHITLWaitFunctionD3181EC6",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BdaProcessorHITLStatusUpdateFunctionF9483151",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BdaProcessorHITLStatusUpdateFunctionF9483151",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BdaProcessorDocumentProcessingStateMachineRoleDefaultPolicy13601258",
+        "Roles": [
+          {
+            "Ref": "BdaProcessorDocumentProcessingStateMachineRole9898E6B6",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BdaProcessorHITLEventRuleAllowEventRuleTestStackBdaProcessorHITLProcessFunction96F597024CF30244": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "BdaProcessorHITLProcessFunctionF2F3BA46",
+            "Arn",
+          ],
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "BdaProcessorHITLEventRuleCD8D6503",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::Lambda::Permission",
+    },
+    "BdaProcessorHITLEventRuleCD8D6503": {
+      "Properties": {
+        "EventPattern": {
+          "detail": {
+            "humanLoopStatus": [
+              "Completed",
+            ],
+          },
+          "detail-type": [
+            "SageMaker A2I HumanLoop Status Change",
+          ],
+          "source": [
+            "aws.sagemaker",
+          ],
+        },
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "BdaProcessorHITLProcessFunctionF2F3BA46",
+                "Arn",
+              ],
+            },
+            "Id": "Target0",
+            "RetryPolicy": {
+              "MaximumEventAgeInSeconds": 7200,
+              "MaximumRetryAttempts": 3,
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Events::Rule",
+    },
+    "BdaProcessorHITLProcessFunctionF2F3BA46": {
+      "DependsOn": [
+        "BdaProcessorHITLProcessFunctionServiceRoleDefaultPolicy676159B7",
+        "BdaProcessorHITLProcessFunctionServiceRoleFA099804",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "8b589928dbc088ad9f06a2c7244a18457623f1c55e41101a76a7b9f6c10ddc33.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "DYNAMODB_TABLE": {
+              "Ref": "BdaProcessorBDAMetadataTableAC922B53",
+            },
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerd7517139DE3E71C4",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BdaProcessorHITLProcessFunctionLogGroup58218A7C",
+          },
+        },
+        "MemorySize": 512,
+        "Role": {
+          "Fn::GetAtt": [
+            "BdaProcessorHITLProcessFunctionServiceRoleFA099804",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 300,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BdaProcessorHITLProcessFunctionLogGroup58218A7C": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorHITLProcessFunctionServiceRoleDefaultPolicy676159B7": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BdaProcessorBDAMetadataTableAC922B53",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InputBucket3BF8630A",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "InputBucket3BF8630A",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "WorkingBucketAF106285",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "WorkingBucketAF106285",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "OutputBucket7114EB27",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "OutputBucket7114EB27",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "states:SendTaskSuccess",
+                "states:SendTaskFailure",
+                "states:SendTaskHeartbeat",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Ref": "BdaProcessorDocumentProcessingStateMachine8ACF3653",
+              },
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BdaProcessorHITLProcessFunctionServiceRoleDefaultPolicy676159B7",
+        "Roles": [
+          {
+            "Ref": "BdaProcessorHITLProcessFunctionServiceRoleFA099804",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BdaProcessorHITLProcessFunctionServiceRoleFA099804": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BdaProcessorHITLStatusUpdateFunctionF9483151": {
+      "DependsOn": [
+        "BdaProcessorHITLStatusUpdateFunctionServiceRoleDefaultPolicyAD976189",
+        "BdaProcessorHITLStatusUpdateFunctionServiceRole2EF6D280",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "0a04ca935f3685559b4ac0bfa3f8167e9d6d0e5b9afec54e7a3b23a2122aae39.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BdaProcessorHITLStatusUpdateFunctionLogGroup05E6FBA8",
+          },
+        },
+        "MemorySize": 256,
+        "Role": {
+          "Fn::GetAtt": [
+            "BdaProcessorHITLStatusUpdateFunctionServiceRole2EF6D280",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 300,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BdaProcessorHITLStatusUpdateFunctionLogGroup05E6FBA8": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorHITLStatusUpdateFunctionServiceRole2EF6D280": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BdaProcessorHITLStatusUpdateFunctionServiceRoleDefaultPolicyAD976189": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "OutputBucket7114EB27",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "OutputBucket7114EB27",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "dynamodb:*",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BdaProcessorHITLStatusUpdateFunctionServiceRoleDefaultPolicyAD976189",
+        "Roles": [
+          {
+            "Ref": "BdaProcessorHITLStatusUpdateFunctionServiceRole2EF6D280",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BdaProcessorHITLWaitFunctionD3181EC6": {
+      "DependsOn": [
+        "BdaProcessorHITLWaitFunctionServiceRoleDefaultPolicyE4BEA09A",
+        "BdaProcessorHITLWaitFunctionServiceRole1AA8E239",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "9fd31e67af2722039547215a73c77c87157510ab527d757244a9e9ae1c0caada.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "DYNAMODB_TABLE": {
+              "Ref": "BdaProcessorBDAMetadataTableAC922B53",
+            },
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "SAGEMAKER_A2I_REVIEW_PORTAL_URL": "",
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "WorkingBucketAF106285",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerd7517139DE3E71C4",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BdaProcessorHITLWaitFunctionLogGroupB2E28C5F",
+          },
+        },
+        "MemorySize": 256,
+        "Role": {
+          "Fn::GetAtt": [
+            "BdaProcessorHITLWaitFunctionServiceRole1AA8E239",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BdaProcessorHITLWaitFunctionLogGroupB2E28C5F": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorHITLWaitFunctionServiceRole1AA8E239": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BdaProcessorHITLWaitFunctionServiceRoleDefaultPolicyE4BEA09A": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "WorkingBucketAF106285",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "WorkingBucketAF106285",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "dynamodb:*",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BdaProcessorBDAMetadataTableAC922B53",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BdaProcessorHITLWaitFunctionServiceRoleDefaultPolicyE4BEA09A",
+        "Roles": [
+          {
+            "Ref": "BdaProcessorHITLWaitFunctionServiceRole1AA8E239",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BdaProcessorInvokeBDAFunction7EE55476": {
+      "DependsOn": [
+        "BdaProcessorInvokeBDAFunctionServiceRoleDefaultPolicyA7A1DB27",
+        "BdaProcessorInvokeBDAFunctionServiceRoleC03B54B6",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "dd355df955973c055fb64918b3db6d7feac1c29e4c241f1e30edc0e3a9283a12.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerd7517139DE3E71C4",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BdaProcessorInvokeBDAFunctionLogGroupE50E8843",
+          },
+        },
+        "MemorySize": 4096,
+        "Role": {
+          "Fn::GetAtt": [
+            "BdaProcessorInvokeBDAFunctionServiceRoleC03B54B6",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BdaProcessorInvokeBDAFunctionLogGroupE50E8843": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorInvokeBDAFunctionServiceRoleC03B54B6": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BdaProcessorInvokeBDAFunctionServiceRoleDefaultPolicyA7A1DB27": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InputBucket3BF8630A",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "InputBucket3BF8630A",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "WorkingBucketAF106285",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "WorkingBucketAF106285",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "OutputBucket7114EB27",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "OutputBucket7114EB27",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "dynamodb:*",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": "bedrock:InvokeDataAutomationAsync",
+              "Effect": "Allow",
+              "Resource": "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BdaProcessorInvokeBDAFunctionServiceRoleDefaultPolicyA7A1DB27",
+        "Roles": [
+          {
+            "Ref": "BdaProcessorInvokeBDAFunctionServiceRoleC03B54B6",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BdaProcessorProcessResultsFunction0B4EF43D": {
+      "DependsOn": [
+        "BdaProcessorProcessResultsFunctionServiceRoleDefaultPolicy960F58DA",
+        "BdaProcessorProcessResultsFunctionServiceRole11640BCB",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "45779bce375fc66e2db05f00ae321b434b7b55b7c4974f503856ad49bf24f621.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "BDA_PROJECT_ARN": "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "EnvironmentConfigurationTableFFC21CA7",
+            },
+            "DB_NAME": {
+              "Ref": "BdaProcessorBDAMetadataTableAC922B53",
+            },
+            "DOCUMENT_TRACKING_MODE": "dynamodb",
+            "ENABLE_HITL": "false",
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "SAGEMAKER_A2I_REVIEW_PORTAL_URL": "",
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "WorkingBucketAF106285",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BdaProcessorProcessResultsFunctionLogGroupCC665C39",
+          },
+        },
+        "MemorySize": 4096,
+        "Role": {
+          "Fn::GetAtt": [
+            "BdaProcessorProcessResultsFunctionServiceRole11640BCB",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BdaProcessorProcessResultsFunctionLogGroupCC665C39": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorProcessResultsFunctionServiceRole11640BCB": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BdaProcessorProcessResultsFunctionServiceRoleDefaultPolicy960F58DA": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentConfigurationTableFFC21CA7",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BdaProcessorBDAMetadataTableAC922B53",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InputBucket3BF8630A",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "InputBucket3BF8630A",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "OutputBucket7114EB27",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "OutputBucket7114EB27",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "WorkingBucketAF106285",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "WorkingBucketAF106285",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": "sagemaker:StartHumanLoop",
+              "Effect": "Allow",
+              "Resource": "arn:aws:sagemaker:*:*:flow-definition/*",
+            },
+            {
+              "Action": [
+                "ssm:GetParameter",
+                "ssm:PutParameter",
+                "ssm:GetParametersByPath",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "bedrock:GetDataAutomationProject",
+                "bedrock:ListDataAutomationProjects",
+                "bedrock:GetBlueprint",
+                "bedrock:GetBlueprintRecommendation",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BdaProcessorProcessResultsFunctionServiceRoleDefaultPolicy960F58DA",
+        "Roles": [
+          {
+            "Ref": "BdaProcessorProcessResultsFunctionServiceRole11640BCB",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BdaProcessorQueueProcessor93975A8C": {
+      "DependsOn": [
+        "BdaProcessorQueueProcessorServiceRoleDefaultPolicyD060D3C5",
+        "BdaProcessorQueueProcessorServiceRole3AC1A4C9",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "045ad3de7bed3dcce2cec7277dcd77658b979783e404d81c2ec4688824e05984.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "CONCURRENCY_TABLE": {
+              "Ref": "EnvironmentConcurrencyTableE6976F31",
+            },
+            "DOCUMENT_TRACKING_MODE": "dynamodb",
+            "LOG_LEVEL": "INFO",
+            "MAX_CONCURRENT": "100",
+            "STATE_MACHINE_ARN": {
+              "Ref": "BdaProcessorDocumentProcessingStateMachine8ACF3653",
+            },
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BdaProcessorQueueProcessorLogGroupC894BB27",
+          },
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "BdaProcessorQueueProcessorServiceRole3AC1A4C9",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 30,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BdaProcessorQueueProcessorLogGroupC894BB27": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorQueueProcessorServiceRole3AC1A4C9": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BdaProcessorQueueProcessorServiceRoleDefaultPolicyD060D3C5": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "states:StartExecution",
+              "Effect": "Allow",
+              "Resource": {
+                "Ref": "BdaProcessorDocumentProcessingStateMachine8ACF3653",
+              },
+            },
+            {
+              "Action": "dynamodb:*",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": "dynamodb:*",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentConcurrencyTableE6976F31",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:ChangeMessageVisibility",
+                "sqs:GetQueueUrl",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentDocumentQueue95D3B000",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BdaProcessorQueueProcessorServiceRoleDefaultPolicyD060D3C5",
+        "Roles": [
+          {
+            "Ref": "BdaProcessorQueueProcessorServiceRole3AC1A4C9",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BdaProcessorQueueProcessorSqsEventSourceTestStackEnvironmentDocumentQueueD1170CFD3CCDF452": {
+      "Properties": {
+        "BatchSize": 50,
+        "EventSourceArn": {
+          "Fn::GetAtt": [
+            "EnvironmentDocumentQueue95D3B000",
+            "Arn",
+          ],
+        },
+        "FunctionName": {
+          "Ref": "BdaProcessorQueueProcessor93975A8C",
+        },
+        "FunctionResponseTypes": [
+          "ReportBatchItemFailures",
+        ],
+        "MaximumBatchingWindowInSeconds": 1,
+      },
+      "Type": "AWS::Lambda::EventSourceMapping",
+    },
+    "BdaProcessorS3EventRule66AADDB5": {
+      "Properties": {
+        "EventPattern": {
+          "detail": {
+            "bucket": {
+              "name": [
+                {
+                  "Ref": "InputBucket3BF8630A",
+                },
+              ],
+            },
+          },
+          "detail-type": [
+            "Object Created",
+          ],
+          "source": [
+            "aws.s3",
+          ],
+        },
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "EnvironmentQueueSender29E9D2B0",
+                "Arn",
+              ],
+            },
+            "Id": "Target0",
+          },
+        ],
+      },
+      "Type": "AWS::Events::Rule",
+    },
+    "BdaProcessorS3EventRuleAllowEventRuleTestStackEnvironmentQueueSender04E00E39A04B0EE0": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "EnvironmentQueueSender29E9D2B0",
+            "Arn",
+          ],
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "BdaProcessorS3EventRule66AADDB5",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::Lambda::Permission",
+    },
+    "BdaProcessorStateMachineLogGroupA6BD51AE": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorSummarizationFunctionCCB37C38": {
+      "DependsOn": [
+        "BdaProcessorSummarizationFunctionServiceRoleDefaultPolicy89DEDBCB",
+        "BdaProcessorSummarizationFunctionServiceRoleA24C2B7F",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "b77ccaae7492fc256a645bf69ebed8dfae4fa0f230491c649b09936e4a1ca15b.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "EnvironmentConfigurationTableFFC21CA7",
+            },
+            "DOCUMENT_TRACKING_MODE": "dynamodb",
+            "GUARDRAIL_ID_AND_VERSION": "",
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "WorkingBucketAF106285",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer953afc69DFEF593D",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BdaProcessorSummarizationFunctionLogGroup208F7FB6",
+          },
+        },
+        "MemorySize": 4096,
+        "Role": {
+          "Fn::GetAtt": [
+            "BdaProcessorSummarizationFunctionServiceRoleA24C2B7F",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BdaProcessorSummarizationFunctionLogGroup208F7FB6": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BdaProcessorSummarizationFunctionServiceRoleA24C2B7F": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BdaProcessorSummarizationFunctionServiceRoleDefaultPolicy89DEDBCB": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InputBucket3BF8630A",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "InputBucket3BF8630A",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "OutputBucket7114EB27",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "OutputBucket7114EB27",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "WorkingBucketAF106285",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "WorkingBucketAF106285",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentConfigurationTableFFC21CA7",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "bedrock:InvokeModel*",
+                "bedrock:GetFoundationModel",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition",
+                    },
+                    ":bedrock:*::foundation-model/amazon.nova-premier-v1:0",
+                  ],
+                ],
+              },
+            },
+            {
+              "Action": [
+                "bedrock:GetInferenceProfile",
+                "bedrock:InvokeModel*",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition",
+                    },
+                    ":bedrock:",
+                    {
+                      "Ref": "AWS::Region",
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId",
+                    },
+                    ":inference-profile/us.amazon.nova-premier-v1:0",
+                  ],
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BdaProcessorSummarizationFunctionServiceRoleDefaultPolicy89DEDBCB",
+        "Roles": [
+          {
+            "Ref": "BdaProcessorSummarizationFunctionServiceRoleA24C2B7F",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BdaProcessorUpdateDefaultConfig8B898984": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "ConfigurationTable": {
+          "Ref": "EnvironmentConfigurationTableFFC21CA7",
+        },
+        "Default": {
+          "assessment": {
+            "default_confidence_threshold": "0.8",
+          },
+          "evaluation": {
+            "llm_method": {
+              "max_tokens": "4096",
+              "model": "us.anthropic.claude-3-haiku-20240307-v1:0",
+              "system_prompt": "You are an evaluator that helps determine if the predicted and expected values match for document attribute extraction. You will consider the context and meaning rather than just exact string matching.",
+              "task_prompt": "I need to evaluate attribute extraction for a document of class: {DOCUMENT_CLASS}.
+
+For the attribute named "{ATTRIBUTE_NAME}" described as "{ATTRIBUTE_DESCRIPTION}":
+- Expected value: {EXPECTED_VALUE}
+- Actual value: {ACTUAL_VALUE}
+
+Do these values match in meaning, taking into account formatting differences, word order, abbreviations, and semantic equivalence?
+Provide your assessment as a JSON with three fields:
+- "match": boolean (true if they match, false if not)
+- "score": number between 0 and 1 representing the confidence/similarity score
+- "reason": brief explanation of your decision
+
+Respond ONLY with the JSON and nothing else. Here's the exact format:
+{
+  "match": true or false,
+  "score": 0.0 to 1.0,
+  "reason": "Your explanation here"
+}",
+              "temperature": "0.0",
+              "top_k": "5",
+              "top_p": "0.1",
+            },
+          },
+          "notes": "Processing configuration in BDA project.",
+          "pricing": [
+            {
+              "name": "bda/documents-custom",
+              "units": [
+                {
+                  "name": "pages",
+                  "price": "0.04",
+                },
+              ],
+            },
+            {
+              "name": "bda/documents-standard",
+              "units": [
+                {
+                  "name": "pages",
+                  "price": "0.01",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.amazon.nova-lite-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "6.0E-8",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "2.4E-7",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "1.5E-8",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "6.0E-8",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.amazon.nova-pro-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "8.0E-7",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "3.2E-6",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "2.0E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "8.0E-7",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.amazon.nova-premier-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "2.5E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.25E-5",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.anthropic.claude-3-haiku-20240307-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "2.5E-7",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.25E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "8.0E-7",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "4.0E-6",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "8.0E-8",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "1.0E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "3.0E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.5E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "3.0E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "3.75E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "3.0E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.5E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "3.0E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "3.75E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "3.0E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.5E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "3.0E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "3.75E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.anthropic.claude-opus-4-20250514-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "1.5E-5",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "7.5E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "1.5E-6",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "1.875E-5",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.anthropic.claude-opus-4-1-20250805-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "1.5E-5",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "7.5E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "1.5E-6",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "1.875E-5",
+                },
+              ],
+            },
+          ],
+          "summarization": {
+            "enabled": true,
+            "max_tokens": "4096",
+            "model": "us.amazon.nova-premier-v1:0",
+            "system_prompt": "You are a document summarization expert who can analyze and summarize documents from various domains including medical, financial, legal, and general business documents. Your task is to create a summary that captures the key information, main points, and important details from the document. Your output must be in valid JSON format. \\nSummarization Style: Balanced\\\\nCreate a balanced summary that provides a moderate level of detail. Include the main points and key supporting information, while maintaining the document's overall structure. Aim for a comprehensive yet concise summary.\\n Your output MUST be in valid JSON format with markdown content. You MUST strictly adhere to the output format specified in the instructions.",
+            "task_prompt": "<document_ocr_data>
+{DOCUMENT_TEXT}
+</document_ocr_data>
+Analyze the provided document (<document_ocr_data>) and create a comprehensive summary.
+CRITICAL INSTRUCTION: You MUST return your response as valid JSON with the EXACT structure shown at the end of these instructions. Do not include any explanations, notes, or text outside of the JSON structure.
+Create a summary that captures the essential information from the document. Your summary should:
+1. Extract key information, main points, and important details
+2. Maintain the original document's organizational structure where appropriate
+3. Preserve important facts, figures, dates, and entities
+4. Reduce the length while retaining all critical information
+5. Use markdown formatting for better readability (headings, lists, emphasis, etc.)
+6. Cite all relevant facts from the source document using inline citations in the format [Cite-X, Page-Y] where X is a sequential citation number and Y is the page number
+7. Format citations as markdown links that reference the full citation list at the bottom of the summary
+  Example: [[Cite-1, Page-3]](#cite-1-page-3)
+
+8. At the end of the summary, include a "References" section that lists all citations with their exact text from the source document in the format:
+  [Cite-X, Page-Y]: Exact text from the document
+
+Output Format:
+You MUST return ONLY valid JSON with the following structure and nothing else:
+\`\`\`json {
+  "summary": "A comprehensive summary in markdown format with inline citations linked to a references section at the bottom"
+} \`\`\`
+Do not include any text, explanations, or notes outside of this JSON structure. The JSON must be properly formatted and parseable.",
+            "temperature": "0.0",
+            "top_k": "5",
+            "top_p": "0.1",
+          },
+        },
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "EnvironmentUpdateConfigurationFunctionD5138FA8",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::CloudFormation::CustomResource",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "BdaProcessorUpdateSchemaConfigEF52D2CF": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "ConfigurationTable": {
+          "Ref": "EnvironmentConfigurationTableFFC21CA7",
+        },
+        "Schema": {
+          "properties": {
+            "assessment": {
+              "order": 4,
+              "properties": {
+                "default_confidence_threshold": {
+                  "description": "HITL Confidence Threshold (0.0-1.0) - Documents with confidence below this threshold will be sent for Human In The Loop review",
+                  "maximum": 1,
+                  "minimum": 0,
+                  "order": 1,
+                  "type": "number",
+                },
+              },
+              "sectionLabel": "Assessment & HITL Configuration",
+              "type": "object",
+            },
+            "classes": {
+              "columns": 2,
+              "itemLabel": "Class",
+              "items": {
+                "properties": {
+                  "attributes": {
+                    "itemLabel": "Attribute",
+                    "items": {
+                      "columns": 2,
+                      "properties": {
+                        "attributeType": {
+                          "description": "Type of attribute",
+                          "enum": [
+                            "simple",
+                            "group",
+                            "list",
+                          ],
+                          "order": 2,
+                          "type": "string",
+                        },
+                        "confidence_threshold": {
+                          "dependsOn": {
+                            "field": "attributeType",
+                            "value": "simple",
+                          },
+                          "description": "Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.",
+                          "maximum": 1,
+                          "minimum": 0,
+                          "order": 6,
+                          "type": "number",
+                        },
+                        "description": {
+                          "description": "Attribute description",
+                          "order": 1,
+                          "type": "string",
+                        },
+                        "evaluation_method": {
+                          "dependsOn": {
+                            "field": "attributeType",
+                            "value": "simple",
+                          },
+                          "description": "Evaluation Method",
+                          "enum": [
+                            "",
+                            "LLM",
+                            "SEMANTIC",
+                            "FUZZY",
+                            "NUMERIC_EXACT",
+                            "EXACT",
+                          ],
+                          "order": 3,
+                          "type": "string",
+                        },
+                        "evaluation_threshold": {
+                          "dependsOn": {
+                            "field": "evaluation_method",
+                            "values": [
+                              "SEMANTIC",
+                              "FUZZY",
+                            ],
+                          },
+                          "description": "Evaluation Threshold - used for SEMANTIC, and FUZZY methods",
+                          "maximum": 1,
+                          "minimum": 0,
+                          "order": 5,
+                          "type": "number",
+                        },
+                        "groupAttributes": {
+                          "dependsOn": {
+                            "field": "attributeType",
+                            "value": "group",
+                          },
+                          "itemLabel": "Attribute",
+                          "items": {
+                            "columns": 2,
+                            "properties": {
+                              "confidence_threshold": {
+                                "description": "Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.",
+                                "maximum": 1,
+                                "minimum": 0,
+                                "order": 5,
+                                "type": "number",
+                              },
+                              "description": {
+                                "description": "Attribute description",
+                                "order": 1,
+                                "type": "string",
+                              },
+                              "evaluation_method": {
+                                "description": "Evaluation Method",
+                                "enum": [
+                                  "",
+                                  "LLM",
+                                  "SEMANTIC",
+                                  "FUZZY",
+                                  "NUMERIC_EXACT",
+                                  "EXACT",
+                                ],
+                                "order": 2,
+                                "type": "string",
+                              },
+                              "evaluation_threshold": {
+                                "dependsOn": {
+                                  "field": "evaluation_method",
+                                  "values": [
+                                    "SEMANTIC",
+                                    "FUZZY",
+                                  ],
+                                },
+                                "description": "Evaluation Threshold - used for SEMANTIC, and FUZZY methods",
+                                "maximum": 1,
+                                "minimum": 0,
+                                "order": 4,
+                                "type": "number",
+                              },
+                              "name": {
+                                "description": "Attribute name",
+                                "order": 0,
+                                "type": "string",
+                              },
+                            },
+                            "required": [
+                              "name",
+                              "description",
+                            ],
+                            "type": "object",
+                          },
+                          "listLabel": "Group Attributes",
+                          "order": 7,
+                          "type": "array",
+                        },
+                        "listItemTemplate": {
+                          "dependsOn": {
+                            "field": "attributeType",
+                            "value": "list",
+                          },
+                          "order": 8,
+                          "properties": {
+                            "itemAttributes": {
+                              "itemLabel": "Attribute",
+                              "items": {
+                                "columns": 2,
+                                "properties": {
+                                  "confidence_threshold": {
+                                    "description": "Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.",
+                                    "maximum": 1,
+                                    "minimum": 0,
+                                    "order": 5,
+                                    "type": "number",
+                                  },
+                                  "description": {
+                                    "description": "Attribute description",
+                                    "order": 1,
+                                    "type": "string",
+                                  },
+                                  "evaluation_method": {
+                                    "description": "Evaluation Method",
+                                    "enum": [
+                                      "",
+                                      "LLM",
+                                      "SEMANTIC",
+                                      "FUZZY",
+                                      "NUMERIC_EXACT",
+                                      "EXACT",
+                                    ],
+                                    "order": 2,
+                                    "type": "string",
+                                  },
+                                  "evaluation_threshold": {
+                                    "dependsOn": {
+                                      "field": "evaluation_method",
+                                      "values": [
+                                        "SEMANTIC",
+                                        "FUZZY",
+                                      ],
+                                    },
+                                    "description": "Evaluation Threshold - used for SEMANTIC, and FUZZY methods",
+                                    "maximum": 1,
+                                    "minimum": 0,
+                                    "order": 4,
+                                    "type": "number",
+                                  },
+                                  "name": {
+                                    "description": "Attribute name",
+                                    "order": 0,
+                                    "type": "string",
+                                  },
+                                },
+                                "required": [
+                                  "name",
+                                  "description",
+                                ],
+                                "type": "object",
+                              },
+                              "listLabel": "Item Attributes",
+                              "order": 1,
+                              "type": "array",
+                            },
+                            "itemDescription": {
+                              "description": "Description of each list item",
+                              "order": 0,
+                              "type": "string",
+                            },
+                          },
+                          "required": [
+                            "itemAttributes",
+                          ],
+                          "sectionLabel": "List Item Template",
+                          "type": "object",
+                        },
+                        "name": {
+                          "description": "Attribute name",
+                          "order": 0,
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "name",
+                        "description",
+                        "attributeType",
+                      ],
+                      "type": "object",
+                    },
+                    "listLabel": "Attributes",
+                    "type": "array",
+                  },
+                  "description": {
+                    "description": "Class description",
+                    "type": "string",
+                  },
+                  "examples": {
+                    "description": "Class few-shot examples",
+                    "itemLabel": "Few-shot example",
+                    "items": {
+                      "properties": {
+                        "attributesPrompt": {
+                          "description": "Extraction prompt as few-shot attribute value extraction example for this class.",
+                          "order": 3,
+                          "type": "string",
+                        },
+                        "classPrompt": {
+                          "description": "Classification prompt as few-shot classification example for this class",
+                          "order": 2,
+                          "type": "string",
+                        },
+                        "imagePath": {
+                          "description": "Image(s) Path in the Configuration Bucket. Supports single files, or S3 prefixes for folders with multiple images. Optional but recommended for better visual understanding.",
+                          "order": 4,
+                          "type": "string",
+                        },
+                        "name": {
+                          "description": "Example name",
+                          "order": 0,
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "name",
+                        "classPrompt",
+                        "attributesPrompt",
+                        "imagePath",
+                      ],
+                      "type": "object",
+                    },
+                    "listLabel": "Few-shot examples",
+                    "type": "array",
+                  },
+                  "name": {
+                    "description": "Class name",
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "attributes",
+                ],
+                "type": "object",
+              },
+              "listLabel": "Classes",
+              "order": 2,
+              "sectionLabel": "Class definitions",
+              "type": "array",
+            },
+            "evaluation": {
+              "order": 3,
+              "properties": {
+                "llm_method": {
+                  "properties": {
+                    "max_tokens": {
+                      "description": "Max tokens",
+                      "order": 5,
+                      "type": "number",
+                    },
+                    "model": {
+                      "description": "Bedrock model ID",
+                      "enum": [
+                        "us.amazon.nova-lite-v1:0",
+                        "us.amazon.nova-pro-v1:0",
+                        "us.amazon.nova-premier-v1:0",
+                        "us.anthropic.claude-3-haiku-20240307-v1:0",
+                        "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                        "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                        "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                        "us.anthropic.claude-opus-4-20250514-v1:0",
+                      ],
+                      "order": 1,
+                      "type": "string",
+                    },
+                    "system_prompt": {
+                      "description": "System prompt for LLM evaluation",
+                      "format": "textarea",
+                      "order": 6,
+                      "type": "string",
+                    },
+                    "task_prompt": {
+                      "description": "Task prompt for LLM evaluation - supports parameters {DOCUMENT_CLASS}, {ATTRIBUTE_NAME}, {ATTRIBUTE_DESCRIPTION}, {EXPECTED_VALUE} and {ACTUAL_VALUE}",
+                      "format": "textarea",
+                      "order": 7,
+                      "type": "string",
+                    },
+                    "temperature": {
+                      "description": "Sampling temperature",
+                      "order": 2,
+                      "type": "number",
+                    },
+                    "top_k": {
+                      "description": "Sampling Top K",
+                      "order": 3,
+                      "type": "number",
+                    },
+                    "top_p": {
+                      "description": "Sampling Top P",
+                      "order": 4,
+                      "type": "number",
+                    },
+                  },
+                  "type": "object",
+                },
+              },
+              "sectionLabel": "Evaluation Inference",
+              "type": "object",
+            },
+            "notes": {
+              "description": "Notes",
+              "order": 1,
+              "type": "string",
+            },
+            "pricing": {
+              "columns": 2,
+              "itemLabel": "Service/API",
+              "items": {
+                "properties": {
+                  "name": {
+                    "description": "Service/API",
+                    "type": "string",
+                  },
+                  "units": {
+                    "itemLabel": "Metered Unit price",
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "description": "Metered unit name",
+                          "type": "string",
+                        },
+                        "price": {
+                          "description": "Estimated cost/unit",
+                          "type": "number",
+                        },
+                      },
+                      "required": [
+                        "name",
+                        "price",
+                      ],
+                      "type": "object",
+                    },
+                    "listLabel": "Metered unit pricing",
+                    "type": "array",
+                  },
+                },
+                "required": [
+                  "name",
+                  "units",
+                ],
+                "type": "object",
+              },
+              "listLabel": "Services",
+              "order": 6,
+              "sectionLabel": "Pricing Estimates - check https://aws.amazon.com/bedrock/pricing/",
+              "type": "array",
+            },
+            "summarization": {
+              "order": 5,
+              "properties": {
+                "max_tokens": {
+                  "description": "Max tokens",
+                  "order": 5,
+                  "type": "number",
+                },
+                "model": {
+                  "description": "Bedrock model ID",
+                  "enum": [
+                    "us.amazon.nova-lite-v1:0",
+                    "us.amazon.nova-pro-v1:0",
+                    "us.amazon.nova-premier-v1:0",
+                    "us.anthropic.claude-3-haiku-20240307-v1:0",
+                    "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-20250514-v1:0",
+                  ],
+                  "order": 1,
+                  "type": "string",
+                },
+                "system_prompt": {
+                  "description": "System prompt",
+                  "format": "textarea",
+                  "order": 6,
+                  "type": "string",
+                },
+                "task_prompt": {
+                  "description": "Task prompt - supports parameter {DOCUMENT_TEXT}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
+                  "format": "textarea",
+                  "order": 7,
+                  "type": "string",
+                },
+                "temperature": {
+                  "description": "Sampling temperature",
+                  "order": 2,
+                  "type": "number",
+                },
+                "top_k": {
+                  "description": "Sampling Top K",
+                  "order": 3,
+                  "type": "number",
+                },
+                "top_p": {
+                  "description": "Sampling Top P",
+                  "order": 4,
+                  "type": "number",
+                },
+              },
+              "sectionLabel": "Summarization Inference",
+              "type": "object",
+            },
+          },
+          "required": [
+            "notes",
+          ],
+          "type": "object",
+        },
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "EnvironmentUpdateConfigurationFunctionD5138FA8",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::CloudFormation::CustomResource",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "BdaProcessorWorkflowStateChangeRule822C4F31": {
+      "Properties": {
+        "EventPattern": {
+          "detail": {
+            "stateMachineArn": [
+              {
+                "Ref": "BdaProcessorDocumentProcessingStateMachine8ACF3653",
+              },
+            ],
+            "status": [
+              "FAILED",
+              "TIMED_OUT",
+              "ABORTED",
+              "SUCCEEDED",
+            ],
+          },
+          "detail-type": [
+            "Step Functions Execution Status Change",
+          ],
+          "source": [
+            "aws.states",
+          ],
+        },
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "EnvironmentWorkflowTrackerFC27ADDE",
+                "Arn",
+              ],
+            },
+            "Id": "Target0",
+            "RetryPolicy": {
+              "MaximumEventAgeInSeconds": 7200,
+              "MaximumRetryAttempts": 3,
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Events::Rule",
+    },
+    "BdaProcessorWorkflowStateChangeRuleAllowEventRuleTestStackEnvironmentWorkflowTrackerB3532BD66452A786": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "EnvironmentWorkflowTrackerFC27ADDE",
+            "Arn",
+          ],
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "BdaProcessorWorkflowStateChangeRule822C4F31",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::Lambda::Permission",
+    },
+    "EnvironmentConcurrencyTableE6976F31": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "counter_id",
+            "AttributeType": "S",
+          },
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "counter_id",
+            "KeyType": "HASH",
+          },
+        ],
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": 5,
+          "WriteCapacityUnits": 5,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "EnvironmentConcurrencyTableInitializeConcurrencyTableCustomResource9AAD570D": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "EnvironmentConcurrencyTableInitializeConcurrencyTableLambdaB87539A8",
+            "Arn",
+          ],
+        },
+        "TableName": {
+          "Ref": "EnvironmentConcurrencyTableE6976F31",
+        },
+      },
+      "Type": "AWS::CloudFormation::CustomResource",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "EnvironmentConcurrencyTableInitializeConcurrencyTableLambdaB87539A8": {
+      "DependsOn": [
+        "EnvironmentConcurrencyTableInitializeConcurrencyTableLambdaServiceRoleDefaultPolicy63CB12D0",
+        "EnvironmentConcurrencyTableInitializeConcurrencyTableLambdaServiceRole796A836E",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "dd61a567fdae2f49acfc089009baf727a219b8564ca820236b9a90782c007af7.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "CONCURRENCY_TABLE": {
+              "Ref": "EnvironmentConcurrencyTableE6976F31",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "EnvironmentConcurrencyTableInitializeConcurrencyTableLambdaServiceRole796A836E",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 30,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "EnvironmentConcurrencyTableInitializeConcurrencyTableLambdaServiceRole796A836E": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "EnvironmentConcurrencyTableInitializeConcurrencyTableLambdaServiceRoleDefaultPolicy63CB12D0": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentConcurrencyTableE6976F31",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "EnvironmentConcurrencyTableInitializeConcurrencyTableLambdaServiceRoleDefaultPolicy63CB12D0",
+        "Roles": [
+          {
+            "Ref": "EnvironmentConcurrencyTableInitializeConcurrencyTableLambdaServiceRole796A836E",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "EnvironmentConfigurationTableFFC21CA7": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "Configuration",
+            "AttributeType": "S",
+          },
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "Configuration",
+            "KeyType": "HASH",
+          },
+        ],
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": 5,
+          "WriteCapacityUnits": 5,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "EnvironmentDocumentQueue95D3B000": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "MessageRetentionPeriod": 86400,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "EnvironmentDocumentQueueDLQAF00F989",
+              "Arn",
+            ],
+          },
+          "maxReceiveCount": 1000,
+        },
+        "VisibilityTimeout": 30,
+      },
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "EnvironmentDocumentQueueDLQAF00F989": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "MessageRetentionPeriod": 345600,
+        "VisibilityTimeout": 30,
+      },
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "EnvironmentLookupFunction9061F580": {
+      "DependsOn": [
+        "EnvironmentLookupFunctionServiceRoleDefaultPolicyC9624093",
+        "EnvironmentLookupFunctionServiceRole35D8AFE5",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "2808911717496b0149fba49c0a13571259bf71e34cffde5d8846375b4c129898.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "EnvironmentLookupFunctionLogGroup0CA6EDAD",
+          },
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "EnvironmentLookupFunctionServiceRole35D8AFE5",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 30,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "EnvironmentLookupFunctionLogGroup0CA6EDAD": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "EnvironmentLookupFunctionServiceRole35D8AFE5": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "EnvironmentLookupFunctionServiceRoleDefaultPolicyC9624093": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "states:ListExecutions",
+                "states:ListStateMachines",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Ref": "BdaProcessorDocumentProcessingStateMachine8ACF3653",
+              },
+            },
+            {
+              "Action": [
+                "states:DescribeExecution",
+                "states:DescribeStateMachineForExecution",
+                "states:GetExecutionHistory",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition",
+                    },
+                    ":states:",
+                    {
+                      "Ref": "AWS::Region",
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId",
+                    },
+                    ":execution:",
+                    {
+                      "Fn::Select": [
+                        6,
+                        {
+                          "Fn::Split": [
+                            ":",
+                            {
+                              "Ref": "BdaProcessorDocumentProcessingStateMachine8ACF3653",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    ":*",
+                  ],
+                ],
+              },
+            },
+            {
+              "Action": [
+                "states:ListActivities",
+                "states:DescribeStateMachine",
+                "states:DescribeActivity",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "EnvironmentLookupFunctionServiceRoleDefaultPolicyC9624093",
+        "Roles": [
+          {
+            "Ref": "EnvironmentLookupFunctionServiceRole35D8AFE5",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "EnvironmentQueueSender29E9D2B0": {
+      "DependsOn": [
+        "EnvironmentQueueSenderServiceRoleDefaultPolicy50341F3F",
+        "EnvironmentQueueSenderServiceRoleAE73D9E0",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "4b3f57cd4d14ceaad669c38b2750de1bd471cffdd3fb048d51c3e36ea87685ef.zip",
+        },
+        "DeadLetterConfig": {
+          "TargetArn": {
+            "Fn::GetAtt": [
+              "EnvironmentQueueSenderDLQ1F4F987B",
+              "Arn",
+            ],
+          },
+        },
+        "Environment": {
+          "Variables": {
+            "DATA_RETENTION_IN_DAYS": "365",
+            "DOCUMENT_TRACKING_MODE": "dynamodb",
+            "LOG_LEVEL": "INFO",
+            "OUTPUT_BUCKET": {
+              "Ref": "OutputBucket7114EB27",
+            },
+            "QUEUE_URL": {
+              "Ref": "EnvironmentDocumentQueue95D3B000",
+            },
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "EnvironmentQueueSenderLogGroup00DE2882",
+          },
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "EnvironmentQueueSenderServiceRoleAE73D9E0",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 30,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "EnvironmentQueueSenderDLQ1F4F987B": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "MessageRetentionPeriod": 345600,
+        "VisibilityTimeout": 30,
+      },
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "EnvironmentQueueSenderLogGroup00DE2882": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "EnvironmentQueueSenderServiceRoleAE73D9E0": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "EnvironmentQueueSenderServiceRoleDefaultPolicy50341F3F": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sqs:SendMessage",
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentQueueSenderDLQ1F4F987B",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "sqs:SendMessage",
+                "sqs:GetQueueAttributes",
+                "sqs:GetQueueUrl",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentDocumentQueue95D3B000",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "EnvironmentQueueSenderServiceRoleDefaultPolicy50341F3F",
+        "Roles": [
+          {
+            "Ref": "EnvironmentQueueSenderServiceRoleAE73D9E0",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "EnvironmentTrackingTable97AE1FE4": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": 5,
+          "WriteCapacityUnits": 5,
+        },
+        "TimeToLiveSpecification": {
+          "AttributeName": "ExpiresAfter",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "EnvironmentUpdateConfigurationFunctionD5138FA8": {
+      "DependsOn": [
+        "EnvironmentUpdateConfigurationFunctionServiceRoleDefaultPolicyC83238DE",
+        "EnvironmentUpdateConfigurationFunctionServiceRole6FF8673E",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "54e7d9c732090ea5039716687e3a5e7ca524ed38ad50fbd174580970ec8d9871.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "EnvironmentConfigurationTableFFC21CA7",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "EnvironmentUpdateConfigurationFunctionServiceRole6FF8673E",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "EnvironmentUpdateConfigurationFunctionServiceRole6FF8673E": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "EnvironmentUpdateConfigurationFunctionServiceRoleDefaultPolicyC83238DE": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentConfigurationTableFFC21CA7",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "EnvironmentUpdateConfigurationFunctionServiceRoleDefaultPolicyC83238DE",
+        "Roles": [
+          {
+            "Ref": "EnvironmentUpdateConfigurationFunctionServiceRole6FF8673E",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "EnvironmentWorkflowTrackerDLQ233E7165": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "MessageRetentionPeriod": 345600,
+        "VisibilityTimeout": 30,
+      },
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "EnvironmentWorkflowTrackerFC27ADDE": {
+      "DependsOn": [
+        "EnvironmentWorkflowTrackerServiceRoleDefaultPolicy054BF2B3",
+        "EnvironmentWorkflowTrackerServiceRole9CEC777F",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "5ac0e6c34b3c4972ec17b3916f95cf3a469f9a3aa946847c7dcb0f85f4b3a8f2.zip",
+        },
+        "DeadLetterConfig": {
+          "TargetArn": {
+            "Fn::GetAtt": [
+              "EnvironmentWorkflowTrackerDLQ233E7165",
+              "Arn",
+            ],
+          },
+        },
+        "Environment": {
+          "Variables": {
+            "CONCURRENCY_TABLE": {
+              "Ref": "EnvironmentConcurrencyTableE6976F31",
+            },
+            "DOCUMENT_TRACKING_MODE": "dynamodb",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "OUTPUT_BUCKET": {
+              "Ref": "OutputBucket7114EB27",
+            },
+            "TRACKING_TABLE": {
+              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "WorkingBucketAF106285",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "EnvironmentWorkflowTrackerLogGroup26002ADA",
+          },
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "EnvironmentWorkflowTrackerServiceRole9CEC777F",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 30,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "EnvironmentWorkflowTrackerLogGroup26002ADA": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "EnvironmentWorkflowTrackerServiceRole9CEC777F": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "EnvironmentWorkflowTrackerServiceRoleDefaultPolicy054BF2B3": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sqs:SendMessage",
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentWorkflowTrackerDLQ233E7165",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentTrackingTable97AE1FE4",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnvironmentConcurrencyTableE6976F31",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "WorkingBucketAF106285",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "WorkingBucketAF106285",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "EnvironmentWorkflowTrackerServiceRoleDefaultPolicy054BF2B3",
+        "Roles": [
+          {
+            "Ref": "EnvironmentWorkflowTrackerServiceRole9CEC777F",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "InputBucket3BF8630A": {
+      "DeletionPolicy": "Retain",
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "OutputBucket7114EB27": {
+      "DeletionPolicy": "Retain",
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "WorkingBucketAF106285": {
+      "DeletionPolicy": "Retain",
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer953afc69DFEF593D": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: appsync, summarization",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayerd7517139DE3E71C4": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only)",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;

@@ -1,0 +1,7 @@
+title: API Reference
+nav:
+  - index.md
+  - genai-idp-api.md
+  - genai-idp-bda-processor-api.md
+  - genai-idp-bedrock-llm-processor-api.md
+  - genai-idp-sagemaker-udop-processor-api.md

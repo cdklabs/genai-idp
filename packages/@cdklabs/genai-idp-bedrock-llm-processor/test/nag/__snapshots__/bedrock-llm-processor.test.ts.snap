@@ -1,0 +1,3277 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppressions satisfies CDK NAG AwsSolutionsChecks with proper suppressions 1`] = `
+{
+  "Metadata": {
+    "cdk_nag": {
+      "rules_to_suppress": [
+        {
+          "id": "AwsSolutions-IAM4",
+          "reason": "AWS managed policies are used for service roles as recommended by AWS best practices for Bedrock LLM processing",
+        },
+        {
+          "id": "AwsSolutions-IAM5",
+          "reason": "Wildcard permissions are required for Bedrock LLM service to access models and invoke operations dynamically",
+        },
+        {
+          "id": "AwsSolutions-L1",
+          "reason": "Lambda functions use supported Python runtime version as required by the IDP framework",
+        },
+        {
+          "id": "AwsSolutions-SF1",
+          "reason": "Step Functions logging is configured appropriately for the Bedrock LLM processing workflow",
+        },
+        {
+          "id": "AwsSolutions-SF2",
+          "reason": "Step Functions X-Ray tracing is configured based on operational requirements",
+        },
+        {
+          "id": "AwsSolutions-SQS3",
+          "reason": "SQS dead letter queue is configured for the Bedrock LLM processing workflow",
+        },
+        {
+          "id": "AwsSolutions-SQS4",
+          "reason": "SQS queue encryption is configured appropriately for the processing workflow",
+        },
+        {
+          "id": "AwsSolutions-S1",
+          "reason": "S3 bucket access logging is configured based on operational requirements for Bedrock LLM processing",
+        },
+        {
+          "id": "AwsSolutions-S2",
+          "reason": "S3 bucket public access is blocked by default in the Bedrock LLM processor configuration",
+        },
+        {
+          "id": "AwsSolutions-S10",
+          "reason": "S3 bucket SSL requests are enforced through bucket policies in the Bedrock LLM processor",
+        },
+        {
+          "id": "AwsSolutions-DDB3",
+          "reason": "DynamoDB point-in-time recovery is configured based on data retention requirements",
+        },
+        {
+          "id": "AwsSolutions-KMS5",
+          "reason": "KMS key rotation is configured based on security requirements for the Bedrock LLM processing workflow",
+        },
+      ],
+    },
+  },
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "BedrockLlmProcessorAssessmentFunction9E27100C": {
+      "DependsOn": [
+        "BedrockLlmProcessorAssessmentFunctionServiceRoleDefaultPolicyC27BB4E1",
+        "BedrockLlmProcessorAssessmentFunctionServiceRoleE3DDB004",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "b09be36febd41547e9fc71664d085773a1ffd7371ed0ad1f07525dd31bdd05d2.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "APPSYNC_API_URL": "https://example.com/graphql",
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "MockConfigTable9B38FA67",
+            },
+            "DOCUMENT_TRACKING_MODE": "appsync",
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "MockTrackingTableC27D2FF3",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "MockWorkingBucketAF257EA5",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerb854feae5C5E684D",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BedrockLlmProcessorAssessmentFunctionLogGroup6F774B56",
+          },
+        },
+        "MemorySize": 512,
+        "Role": {
+          "Fn::GetAtt": [
+            "BedrockLlmProcessorAssessmentFunctionServiceRoleE3DDB004",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BedrockLlmProcessorAssessmentFunctionLogGroup6F774B56": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "MockKey4B46A5C5",
+            "Arn",
+          ],
+        },
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BedrockLlmProcessorAssessmentFunctionServiceRoleDefaultPolicyC27BB4E1": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockInputBucketC83AF371",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockInputBucketC83AF371",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockOutputBucket40EE28D0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockOutputBucket40EE28D0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockWorkingBucketAF257EA5",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockWorkingBucketAF257EA5",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockConfigTable9B38FA67",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockTrackingTableC27D2FF3",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": "appsync:GraphQL",
+              "Effect": "Allow",
+              "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BedrockLlmProcessorAssessmentFunctionServiceRoleDefaultPolicyC27BB4E1",
+        "Roles": [
+          {
+            "Ref": "BedrockLlmProcessorAssessmentFunctionServiceRoleE3DDB004",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BedrockLlmProcessorAssessmentFunctionServiceRoleE3DDB004": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BedrockLlmProcessorClassificationFunction86BA6F94": {
+      "DependsOn": [
+        "BedrockLlmProcessorClassificationFunctionServiceRoleDefaultPolicyD7F31A5A",
+        "BedrockLlmProcessorClassificationFunctionServiceRole438BD237",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "9ccc58e64c2e6c2514ceeafa214f10afc238caa3cc4c6a38e105920a944c07de.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "APPSYNC_API_URL": "https://example.com/graphql",
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "MockConfigTable9B38FA67",
+            },
+            "DOCUMENT_TRACKING_MODE": "appsync",
+            "GUARDRAIL_ID_AND_VERSION": "",
+            "LOG_LEVEL": "INFO",
+            "MAX_WORKERS": "20",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "MockTrackingTableC27D2FF3",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "MockWorkingBucketAF257EA5",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer43f8950b5A0B891B",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BedrockLlmProcessorClassificationFunctionLogGroup199805AF",
+          },
+        },
+        "MemorySize": 4096,
+        "Role": {
+          "Fn::GetAtt": [
+            "BedrockLlmProcessorClassificationFunctionServiceRole438BD237",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BedrockLlmProcessorClassificationFunctionLogGroup199805AF": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "MockKey4B46A5C5",
+            "Arn",
+          ],
+        },
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BedrockLlmProcessorClassificationFunctionServiceRole438BD237": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BedrockLlmProcessorClassificationFunctionServiceRoleDefaultPolicyD7F31A5A": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockInputBucketC83AF371",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockInputBucketC83AF371",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockOutputBucket40EE28D0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockOutputBucket40EE28D0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockWorkingBucketAF257EA5",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockWorkingBucketAF257EA5",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockTrackingTableC27D2FF3",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockConfigTable9B38FA67",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockKey4B46A5C5",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": "bedrock:InvokeModel",
+              "Effect": "Allow",
+              "Resource": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
+            },
+            {
+              "Action": "appsync:GraphQL",
+              "Effect": "Allow",
+              "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BedrockLlmProcessorClassificationFunctionServiceRoleDefaultPolicyD7F31A5A",
+        "Roles": [
+          {
+            "Ref": "BedrockLlmProcessorClassificationFunctionServiceRole438BD237",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BedrockLlmProcessorDocumentProcessingStateMachineC95148F0": {
+      "DeletionPolicy": "Delete",
+      "DependsOn": [
+        "BedrockLlmProcessorStateMachineRoleDefaultPolicyB66847E2",
+        "BedrockLlmProcessorStateMachineRole3C796AE9",
+      ],
+      "Properties": {
+        "DefinitionS3Location": {
+          "Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "Key": "dd934969c5e40a0e14c6360ceba488be9febefe16af89087d2ebf5937ead54e6.json",
+        },
+        "DefinitionSubstitutions": {
+          "AssessmentFunctionArn": {
+            "Fn::GetAtt": [
+              "BedrockLlmProcessorAssessmentFunction9E27100C",
+              "Arn",
+            ],
+          },
+          "ClassificationFunctionArn": {
+            "Fn::GetAtt": [
+              "BedrockLlmProcessorClassificationFunction86BA6F94",
+              "Arn",
+            ],
+          },
+          "ExtractionFunctionArn": {
+            "Fn::GetAtt": [
+              "BedrockLlmProcessorExtractionFunction4D289D78",
+              "Arn",
+            ],
+          },
+          "OCRFunctionArn": {
+            "Fn::GetAtt": [
+              "BedrockLlmProcessorOCRFunction145292F0",
+              "Arn",
+            ],
+          },
+          "OutputBucket": {
+            "Ref": "MockOutputBucket40EE28D0",
+          },
+          "ProcessResultsLambdaArn": {
+            "Fn::GetAtt": [
+              "BedrockLlmProcessorProcessResultsFunction8854D1C1",
+              "Arn",
+            ],
+          },
+          "SummarizationLambdaArn": {
+            "Fn::GetAtt": [
+              "BedrockLlmProcessorSummarizationFunction9DB7DBE9",
+              "Arn",
+            ],
+          },
+        },
+        "LoggingConfiguration": {
+          "Destinations": [
+            {
+              "CloudWatchLogsLogGroup": {
+                "LogGroupArn": {
+                  "Fn::GetAtt": [
+                    "BedrockLlmProcessorStateMachineLogGroupE8C805C5",
+                    "Arn",
+                  ],
+                },
+              },
+            },
+          ],
+          "IncludeExecutionData": true,
+          "Level": "ALL",
+        },
+        "RoleArn": {
+          "Fn::GetAtt": [
+            "BedrockLlmProcessorStateMachineRole3C796AE9",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::StepFunctions::StateMachine",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "BedrockLlmProcessorExtractionFunction4D289D78": {
+      "DependsOn": [
+        "BedrockLlmProcessorExtractionFunctionServiceRoleDefaultPolicyE2AA64D1",
+        "BedrockLlmProcessorExtractionFunctionServiceRole5AFA321F",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "ac948d445b8493941140ddd05dbed0e175ee146dfa8e37960fe3e43e94c82b41.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "APPSYNC_API_URL": "https://example.com/graphql",
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "MockConfigTable9B38FA67",
+            },
+            "DOCUMENT_TRACKING_MODE": "appsync",
+            "GUARDRAIL_ID_AND_VERSION": "",
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "MockTrackingTableC27D2FF3",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "MockWorkingBucketAF257EA5",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer808533eb8316373F",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BedrockLlmProcessorExtractionFunctionLogGroupA2EB7465",
+          },
+        },
+        "MemorySize": 512,
+        "Role": {
+          "Fn::GetAtt": [
+            "BedrockLlmProcessorExtractionFunctionServiceRole5AFA321F",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BedrockLlmProcessorExtractionFunctionLogGroupA2EB7465": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "MockKey4B46A5C5",
+            "Arn",
+          ],
+        },
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BedrockLlmProcessorExtractionFunctionServiceRole5AFA321F": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BedrockLlmProcessorExtractionFunctionServiceRoleDefaultPolicyE2AA64D1": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockInputBucketC83AF371",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockInputBucketC83AF371",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockOutputBucket40EE28D0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockOutputBucket40EE28D0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockWorkingBucketAF257EA5",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockWorkingBucketAF257EA5",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockConfigTable9B38FA67",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockTrackingTableC27D2FF3",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockKey4B46A5C5",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": "bedrock:InvokeModel",
+              "Effect": "Allow",
+              "Resource": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
+            },
+            {
+              "Action": "appsync:GraphQL",
+              "Effect": "Allow",
+              "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BedrockLlmProcessorExtractionFunctionServiceRoleDefaultPolicyE2AA64D1",
+        "Roles": [
+          {
+            "Ref": "BedrockLlmProcessorExtractionFunctionServiceRole5AFA321F",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BedrockLlmProcessorOCRFunction145292F0": {
+      "DependsOn": [
+        "BedrockLlmProcessorOCRFunctionServiceRoleDefaultPolicy5F314DC2",
+        "BedrockLlmProcessorOCRFunctionServiceRole3E6719B6",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "00d1d71a7bdb7063624411b15737830b9d4eafa9f7c3b3c75152e0d908199455.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "APPSYNC_API_URL": "https://example.com/graphql",
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "MockConfigTable9B38FA67",
+            },
+            "DOCUMENT_TRACKING_MODE": "appsync",
+            "LOG_LEVEL": "INFO",
+            "MAX_WORKERS": "20",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "MockTrackingTableC27D2FF3",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "MockWorkingBucketAF257EA5",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer71ca309aA921E3CC",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BedrockLlmProcessorOCRFunctionLogGroup4DDEF635",
+          },
+        },
+        "MemorySize": 4096,
+        "Role": {
+          "Fn::GetAtt": [
+            "BedrockLlmProcessorOCRFunctionServiceRole3E6719B6",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BedrockLlmProcessorOCRFunctionLogGroup4DDEF635": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "MockKey4B46A5C5",
+            "Arn",
+          ],
+        },
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BedrockLlmProcessorOCRFunctionServiceRole3E6719B6": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BedrockLlmProcessorOCRFunctionServiceRoleDefaultPolicy5F314DC2": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockInputBucketC83AF371",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockInputBucketC83AF371",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockOutputBucket40EE28D0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockOutputBucket40EE28D0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockWorkingBucketAF257EA5",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockWorkingBucketAF257EA5",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockConfigTable9B38FA67",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockTrackingTableC27D2FF3",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "textract:DetectDocumentText",
+                "textract:AnalyzeDocument",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BedrockLlmProcessorOCRFunctionServiceRoleDefaultPolicy5F314DC2",
+        "Roles": [
+          {
+            "Ref": "BedrockLlmProcessorOCRFunctionServiceRole3E6719B6",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BedrockLlmProcessorProcessResultsFunction8854D1C1": {
+      "DependsOn": [
+        "BedrockLlmProcessorProcessResultsFunctionServiceRoleDefaultPolicy1B3872F3",
+        "BedrockLlmProcessorProcessResultsFunctionServiceRole2D93BEF4",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "a4aeba330a76bb639a8a9aab28bb51c2101f3e533efa2d4a8db73f6a75f5fdcf.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "APPSYNC_API_URL": "https://example.com/graphql",
+            "DOCUMENT_TRACKING_MODE": "appsync",
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "MockTrackingTableC27D2FF3",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "MockWorkingBucketAF257EA5",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BedrockLlmProcessorProcessResultsFunctionLogGroup3317B964",
+          },
+        },
+        "MemorySize": 4096,
+        "Role": {
+          "Fn::GetAtt": [
+            "BedrockLlmProcessorProcessResultsFunctionServiceRole2D93BEF4",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BedrockLlmProcessorProcessResultsFunctionLogGroup3317B964": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "MockKey4B46A5C5",
+            "Arn",
+          ],
+        },
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BedrockLlmProcessorProcessResultsFunctionServiceRole2D93BEF4": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BedrockLlmProcessorProcessResultsFunctionServiceRoleDefaultPolicy1B3872F3": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockInputBucketC83AF371",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockInputBucketC83AF371",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockOutputBucket40EE28D0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockOutputBucket40EE28D0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockWorkingBucketAF257EA5",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockWorkingBucketAF257EA5",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockTrackingTableC27D2FF3",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockKey4B46A5C5",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BedrockLlmProcessorProcessResultsFunctionServiceRoleDefaultPolicy1B3872F3",
+        "Roles": [
+          {
+            "Ref": "BedrockLlmProcessorProcessResultsFunctionServiceRole2D93BEF4",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BedrockLlmProcessorSetSchemaEBD22ECB": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "ConfigurationTable": {
+          "Ref": "MockConfigTable9B38FA67",
+        },
+        "Schema": {
+          "properties": {
+            "assessment": {
+              "order": 5,
+              "properties": {
+                "default_confidence_threshold": {
+                  "description": "Default confidence threshold for all attributes (0.0 to 1.0). If an attribute doesn't have its own threshold, this default will be used for confidence threshold alerts.",
+                  "maximum": 1,
+                  "minimum": 0,
+                  "order": 2,
+                  "type": "number",
+                },
+                "granular": {
+                  "description": "Configure granular assessment for improved accuracy and scalability with large documents",
+                  "order": 1,
+                  "properties": {
+                    "enabled": {
+                      "default": true,
+                      "description": "Enable granular assessment approach. When enabled, assessments are broken down into smaller, focused tasks for better accuracy and performance.",
+                      "order": 0,
+                      "type": "boolean",
+                    },
+                    "list_batch_size": {
+                      "default": 1,
+                      "dependsOn": {
+                        "field": "enabled",
+                        "value": true,
+                      },
+                      "description": "Number of list items to process in each assessment task. Usually 1 for best accuracy, can be increased for speed.",
+                      "maximum": 5,
+                      "minimum": 1,
+                      "order": 3,
+                      "type": "integer",
+                    },
+                    "max_workers": {
+                      "default": 4,
+                      "dependsOn": {
+                        "field": "enabled",
+                        "value": true,
+                      },
+                      "description": "Maximum number of parallel workers for concurrent assessment tasks. Higher values increase throughput but consume more resources.",
+                      "maximum": 20,
+                      "minimum": 1,
+                      "order": 1,
+                      "type": "integer",
+                    },
+                    "simple_batch_size": {
+                      "default": 3,
+                      "dependsOn": {
+                        "field": "enabled",
+                        "value": true,
+                      },
+                      "description": "Number of simple attributes to group together in each assessment task. Smaller batches provide more focused assessments.",
+                      "maximum": 10,
+                      "minimum": 1,
+                      "order": 2,
+                      "type": "integer",
+                    },
+                  },
+                  "sectionLabel": "Granular Assessment Configuration",
+                  "type": "object",
+                },
+                "image": {
+                  "description": "Configure image resolution and processing options for for image attachments in assessment",
+                  "order": 0,
+                  "properties": {
+                    "target_height": {
+                      "description": "Target image height in pixels. Images larger than this will be resized. Default: 1268",
+                      "maximum": 3500,
+                      "minimum": 100,
+                      "order": 1,
+                      "type": "number",
+                    },
+                    "target_width": {
+                      "description": "Target image width in pixels. Images larger than this will be resized. Default: 951",
+                      "maximum": 3500,
+                      "minimum": 100,
+                      "order": 0,
+                      "type": "number",
+                    },
+                  },
+                  "sectionLabel": "Image Processing Settings",
+                  "type": "object",
+                },
+                "max_tokens": {
+                  "description": "Max tokens",
+                  "order": 7,
+                  "type": "number",
+                },
+                "model": {
+                  "description": "Bedrock model ID",
+                  "enum": [
+                    "us.amazon.nova-lite-v1:0",
+                    "us.amazon.nova-pro-v1:0",
+                    "us.amazon.nova-premier-v1:0",
+                    "us.anthropic.claude-3-haiku-20240307-v1:0",
+                    "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-20250514-v1:0",
+                  ],
+                  "order": 3,
+                  "type": "string",
+                },
+                "system_prompt": {
+                  "description": "System prompt",
+                  "format": "textarea",
+                  "order": 8,
+                  "type": "string",
+                },
+                "task_prompt": {
+                  "description": "Task prompt - supports placeholders {DOCUMENT_TEXT} (markdown text), {OCR_TEXT_CONFIDENCE} (OCR text blocks with confidence), {DOCUMENT_CLASS}, {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}, {EXTRACTION_RESULTS}, {GRANULAR_CONTEXT} and {DOCUMENT_IMAGE}. Use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
+                  "format": "textarea",
+                  "order": 9,
+                  "type": "string",
+                },
+                "temperature": {
+                  "description": "Sampling temperature",
+                  "order": 4,
+                  "type": "number",
+                },
+                "top_k": {
+                  "description": "Sampling Top K",
+                  "order": 5,
+                  "type": "number",
+                },
+                "top_p": {
+                  "description": "Sampling Top P",
+                  "order": 6,
+                  "type": "number",
+                },
+              },
+              "sectionLabel": "Assessment Inference",
+              "type": "object",
+            },
+            "classes": {
+              "columns": 2,
+              "itemLabel": "Class",
+              "items": {
+                "properties": {
+                  "attributes": {
+                    "itemLabel": "Attribute",
+                    "items": {
+                      "columns": 2,
+                      "properties": {
+                        "attributeType": {
+                          "description": "Type of attribute",
+                          "enum": [
+                            "simple",
+                            "group",
+                            "list",
+                          ],
+                          "order": 2,
+                          "type": "string",
+                        },
+                        "confidence_threshold": {
+                          "dependsOn": {
+                            "field": "attributeType",
+                            "value": "simple",
+                          },
+                          "description": "Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.",
+                          "maximum": 1,
+                          "minimum": 0,
+                          "order": 6,
+                          "type": "number",
+                        },
+                        "description": {
+                          "description": "Attribute description. Instruct the LLM how to identify the attribute from the context provided in the extraction prompt. Include synonyms and positional infomation where it might help the LLM to resolve ambiquities.",
+                          "order": 1,
+                          "type": "string",
+                        },
+                        "evaluation_method": {
+                          "dependsOn": {
+                            "field": "attributeType",
+                            "value": "simple",
+                          },
+                          "description": "Evaluation Method",
+                          "enum": [
+                            "",
+                            "LLM",
+                            "SEMANTIC",
+                            "FUZZY",
+                            "NUMERIC_EXACT",
+                            "EXACT",
+                          ],
+                          "order": 3,
+                          "type": "string",
+                        },
+                        "evaluation_threshold": {
+                          "dependsOn": {
+                            "field": "evaluation_method",
+                            "values": [
+                              "SEMANTIC",
+                              "FUZZY",
+                            ],
+                          },
+                          "description": "Evaluation Threshold - used for SEMANTIC, and FUZZY methods",
+                          "maximum": 1,
+                          "minimum": 0,
+                          "order": 5,
+                          "type": "number",
+                        },
+                        "groupAttributes": {
+                          "dependsOn": {
+                            "field": "attributeType",
+                            "value": "group",
+                          },
+                          "itemLabel": "Attribute",
+                          "items": {
+                            "columns": 2,
+                            "properties": {
+                              "confidence_threshold": {
+                                "description": "Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.",
+                                "maximum": 1,
+                                "minimum": 0,
+                                "order": 5,
+                                "type": "number",
+                              },
+                              "description": {
+                                "description": "Attribute description. Instruct the LLM how to identify the attribute from the context provided in the extraction prompt. Include synonyms and positional infomation where it might help the LLM to resolve ambiquities.",
+                                "order": 1,
+                                "type": "string",
+                              },
+                              "evaluation_method": {
+                                "description": "Evaluation Method",
+                                "enum": [
+                                  "",
+                                  "LLM",
+                                  "SEMANTIC",
+                                  "FUZZY",
+                                  "NUMERIC_EXACT",
+                                  "EXACT",
+                                ],
+                                "order": 2,
+                                "type": "string",
+                              },
+                              "evaluation_threshold": {
+                                "dependsOn": {
+                                  "field": "evaluation_method",
+                                  "values": [
+                                    "SEMANTIC",
+                                    "FUZZY",
+                                  ],
+                                },
+                                "description": "Evaluation Threshold - used for SEMANTIC, and FUZZY methods",
+                                "maximum": 1,
+                                "minimum": 0,
+                                "order": 4,
+                                "type": "number",
+                              },
+                              "name": {
+                                "description": "Attribute name",
+                                "order": 0,
+                                "type": "string",
+                              },
+                            },
+                            "required": [
+                              "name",
+                              "description",
+                            ],
+                            "type": "object",
+                          },
+                          "listLabel": "Group Attributes",
+                          "order": 7,
+                          "type": "array",
+                        },
+                        "listItemTemplate": {
+                          "dependsOn": {
+                            "field": "attributeType",
+                            "value": "list",
+                          },
+                          "order": 8,
+                          "properties": {
+                            "itemAttributes": {
+                              "itemLabel": "Attribute",
+                              "items": {
+                                "columns": 2,
+                                "properties": {
+                                  "confidence_threshold": {
+                                    "description": "Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.",
+                                    "maximum": 1,
+                                    "minimum": 0,
+                                    "order": 5,
+                                    "type": "number",
+                                  },
+                                  "description": {
+                                    "description": "Attribute description. Instruct the LLM how to identify the attribute from the context provided in the extraction prompt. Include synonyms and positional infomation where it might help the LLM to resolve ambiquities.",
+                                    "order": 1,
+                                    "type": "string",
+                                  },
+                                  "evaluation_method": {
+                                    "description": "Evaluation Method",
+                                    "enum": [
+                                      "",
+                                      "LLM",
+                                      "SEMANTIC",
+                                      "FUZZY",
+                                      "NUMERIC_EXACT",
+                                      "EXACT",
+                                    ],
+                                    "order": 2,
+                                    "type": "string",
+                                  },
+                                  "evaluation_threshold": {
+                                    "dependsOn": {
+                                      "field": "evaluation_method",
+                                      "values": [
+                                        "SEMANTIC",
+                                        "FUZZY",
+                                      ],
+                                    },
+                                    "description": "Evaluation Threshold - used for SEMANTIC, and FUZZY methods",
+                                    "maximum": 1,
+                                    "minimum": 0,
+                                    "order": 4,
+                                    "type": "number",
+                                  },
+                                  "name": {
+                                    "description": "Attribute name",
+                                    "order": 0,
+                                    "type": "string",
+                                  },
+                                },
+                                "required": [
+                                  "name",
+                                  "description",
+                                ],
+                                "type": "object",
+                              },
+                              "listLabel": "Item Attributes",
+                              "order": 1,
+                              "type": "array",
+                            },
+                            "itemDescription": {
+                              "description": "Description of each list item. Instruct the LLM how to identify the list item (e.g. a transaction in a bank statement). ",
+                              "order": 0,
+                              "type": "string",
+                            },
+                          },
+                          "required": [
+                            "itemAttributes",
+                          ],
+                          "sectionLabel": "List Item Template",
+                          "type": "object",
+                        },
+                        "name": {
+                          "description": "Attribute name",
+                          "order": 0,
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "name",
+                        "description",
+                        "attributeType",
+                      ],
+                      "type": "object",
+                    },
+                    "listLabel": "Attributes",
+                    "type": "array",
+                  },
+                  "description": {
+                    "description": "Class description. Instruct LLM how to identify the class from the context provided in the classification prompt.",
+                    "type": "string",
+                  },
+                  "examples": {
+                    "description": "Class few-shot examples",
+                    "itemLabel": "Few-shot example",
+                    "items": {
+                      "properties": {
+                        "attributesPrompt": {
+                          "description": "Extraction prompt as few-shot attribute value extraction example for this class.",
+                          "order": 3,
+                          "type": "string",
+                        },
+                        "classPrompt": {
+                          "description": "Classification prompt as few-shot classification example for this class",
+                          "order": 2,
+                          "type": "string",
+                        },
+                        "imagePath": {
+                          "description": "Image(s) Path in the Configuration Bucket. Supports single files, or S3 prefixes for folders with multiple images. Optional but recommended for better visual understanding.",
+                          "order": 4,
+                          "type": "string",
+                        },
+                        "name": {
+                          "description": "Example name",
+                          "order": 0,
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "name",
+                        "classPrompt",
+                        "attributesPrompt",
+                        "imagePath",
+                      ],
+                      "type": "object",
+                    },
+                    "listLabel": "Few-shot examples",
+                    "type": "array",
+                  },
+                  "name": {
+                    "description": "Class name",
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "attributes",
+                ],
+                "type": "object",
+              },
+              "listLabel": "Classes",
+              "order": 2,
+              "sectionLabel": "Class definitions",
+              "type": "array",
+            },
+            "classification": {
+              "order": 3,
+              "properties": {
+                "classificationMethod": {
+                  "description": "Classification methodology to use",
+                  "enum": [
+                    "multimodalPageLevelClassification",
+                    "textbasedHolisticClassification",
+                  ],
+                  "order": 2,
+                  "type": "string",
+                },
+                "image": {
+                  "description": "Configure image resolution and processing options for image attachments in classification",
+                  "order": 0,
+                  "properties": {
+                    "target_height": {
+                      "default": 1268,
+                      "description": "Target image height in pixels. Images larger than this will be resized. Default: 1268",
+                      "maximum": 3500,
+                      "minimum": 100,
+                      "order": 1,
+                      "type": "number",
+                    },
+                    "target_width": {
+                      "default": 951,
+                      "description": "Target image width in pixels. Images larger than this will be resized. Default: 951",
+                      "maximum": 3500,
+                      "minimum": 100,
+                      "order": 0,
+                      "type": "number",
+                    },
+                  },
+                  "sectionLabel": "Image Processing Settings",
+                  "type": "object",
+                },
+                "max_tokens": {
+                  "description": "Max tokens",
+                  "order": 6,
+                  "type": "number",
+                },
+                "model": {
+                  "description": "Model identifier",
+                  "enum": [
+                    "us.amazon.nova-lite-v1:0",
+                    "us.amazon.nova-pro-v1:0",
+                    "us.amazon.nova-premier-v1:0",
+                    "us.anthropic.claude-3-haiku-20240307-v1:0",
+                    "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-20250514-v1:0",
+                  ],
+                  "order": 1,
+                  "type": "string",
+                },
+                "system_prompt": {
+                  "description": "System prompt",
+                  "order": 7,
+                  "type": "string",
+                },
+                "task_prompt": {
+                  "description": "Task prompt - include placeholders {CLASS_NAMES_AND_DESCRIPTIONS} (replaced with the class names and descriptions for all specified classes), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and for multi-modal classification {DOCUMENT_IMAGE} (replaced by the page image attachment). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
+                  "order": 8,
+                  "type": "string",
+                },
+                "temperature": {
+                  "description": "Sampling temperature",
+                  "maximum": 1,
+                  "minimum": 0,
+                  "order": 3,
+                  "type": "number",
+                },
+                "top_k": {
+                  "description": "Sampling Top K",
+                  "minimum": 1,
+                  "order": 4,
+                  "type": "integer",
+                },
+                "top_p": {
+                  "description": "Sampling Top P",
+                  "order": 5,
+                  "type": "number",
+                },
+              },
+              "required": [
+                "model",
+                "temperature",
+                "top_k",
+                "top_p",
+                "max_tokens",
+                "system_prompt",
+                "task_prompt",
+              ],
+              "sectionLabel": "Classification Inference",
+              "type": "object",
+            },
+            "evaluation": {
+              "order": 7,
+              "properties": {
+                "llm_method": {
+                  "properties": {
+                    "max_tokens": {
+                      "description": "Max tokens",
+                      "order": 5,
+                      "type": "number",
+                    },
+                    "model": {
+                      "description": "Bedrock model ID",
+                      "enum": [
+                        "us.amazon.nova-lite-v1:0",
+                        "us.amazon.nova-pro-v1:0",
+                        "us.amazon.nova-premier-v1:0",
+                        "us.anthropic.claude-3-haiku-20240307-v1:0",
+                        "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                        "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                        "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                        "us.anthropic.claude-opus-4-20250514-v1:0",
+                      ],
+                      "order": 1,
+                      "type": "string",
+                    },
+                    "system_prompt": {
+                      "description": "System prompt for LLM evaluation",
+                      "format": "textarea",
+                      "order": 6,
+                      "type": "string",
+                    },
+                    "task_prompt": {
+                      "description": "Task prompt for LLM evaluation - supports placeholders {DOCUMENT_CLASS}, {ATTRIBUTE_NAME}, {ATTRIBUTE_DESCRIPTION}, {EXPECTED_VALUE} and {ACTUAL_VALUE}",
+                      "format": "textarea",
+                      "order": 7,
+                      "type": "string",
+                    },
+                    "temperature": {
+                      "default": 0,
+                      "description": "Sampling temperature",
+                      "order": 2,
+                      "type": "number",
+                    },
+                    "top_k": {
+                      "default": 250,
+                      "description": "Sampling Top K",
+                      "order": 3,
+                      "type": "number",
+                    },
+                    "top_p": {
+                      "description": "Sampling Top P",
+                      "order": 4,
+                      "type": "number",
+                    },
+                  },
+                  "type": "object",
+                },
+              },
+              "sectionLabel": "Evaluation Inference",
+              "type": "object",
+            },
+            "extraction": {
+              "format": "section",
+              "order": 4,
+              "properties": {
+                "image": {
+                  "description": "Configure image resolution and processing options for for image attachments in extraction",
+                  "order": 0,
+                  "properties": {
+                    "target_height": {
+                      "default": 1268,
+                      "description": "Target image height in pixels. Images larger than this will be resized. Default: 1268",
+                      "maximum": 3500,
+                      "minimum": 100,
+                      "order": 1,
+                      "type": "number",
+                    },
+                    "target_width": {
+                      "default": 951,
+                      "description": "Target image width in pixels. Images larger than this will be resized. Default: 951",
+                      "maximum": 3500,
+                      "minimum": 100,
+                      "order": 0,
+                      "type": "number",
+                    },
+                  },
+                  "sectionLabel": "Image Processing Settings",
+                  "type": "object",
+                },
+                "max_tokens": {
+                  "description": "Max tokens",
+                  "order": 5,
+                  "type": "number",
+                },
+                "model": {
+                  "description": "Model identifier",
+                  "enum": [
+                    "us.amazon.nova-lite-v1:0",
+                    "us.amazon.nova-pro-v1:0",
+                    "us.amazon.nova-premier-v1:0",
+                    "us.anthropic.claude-3-haiku-20240307-v1:0",
+                    "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-20250514-v1:0",
+                  ],
+                  "order": 1,
+                  "type": "string",
+                },
+                "system_prompt": {
+                  "description": "System prompt",
+                  "order": 6,
+                  "type": "string",
+                },
+                "task_prompt": {
+                  "description": "Task prompt - supports placeholders {DOCUMENT_CLASS} (replaced with the detected class label), {ATTRIBUTE_NAMES_AND_DESCRIPTIONS} (replaced with the attribute names and descriptions for the detected class), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and {DOCUMENT_IMAGE} (replaced by the page image attachments for each page). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
+                  "order": 7,
+                  "type": "string",
+                },
+                "temperature": {
+                  "description": "Sampling temperature",
+                  "maximum": 1,
+                  "minimum": 0,
+                  "order": 2,
+                  "type": "number",
+                },
+                "top_k": {
+                  "description": "Sampling Top K",
+                  "minimum": 1,
+                  "order": 3,
+                  "type": "integer",
+                },
+                "top_p": {
+                  "description": "Sampling Top P",
+                  "order": 4,
+                  "type": "number",
+                },
+              },
+              "required": [
+                "model",
+                "temperature",
+                "top_k",
+                "top_p",
+                "max_tokens",
+                "system_prompt",
+                "task_prompt",
+              ],
+              "sectionLabel": "Extraction Inference",
+              "type": "object",
+            },
+            "notes": {
+              "description": "Notes",
+              "order": 0,
+              "type": "string",
+            },
+            "ocr": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "backend": {
+                      "const": "textract",
+                    },
+                  },
+                  "required": [
+                    "features",
+                  ],
+                },
+                {
+                  "properties": {
+                    "backend": {
+                      "enum": [
+                        "bedrock",
+                        "none",
+                      ],
+                    },
+                  },
+                },
+              ],
+              "order": 1,
+              "properties": {
+                "backend": {
+                  "default": "textract",
+                  "description": "OCR backend to use: 'textract' for AWS Textract, 'bedrock' for LLM-based OCR, 'none' for image-only processing without OCR",
+                  "enum": [
+                    "textract",
+                    "bedrock",
+                    "none",
+                  ],
+                  "order": 3,
+                  "type": "string",
+                },
+                "features": {
+                  "dependsOn": {
+                    "field": "backend",
+                    "values": [
+                      "textract",
+                    ],
+                  },
+                  "description": "Textract features (only used if backend is 'textract')",
+                  "itemLabel": "Feature",
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "description": "Feature - select one of the supported OCR feature types",
+                        "enum": [
+                          "TABLES",
+                          "FORMS",
+                          "SIGNATURES",
+                          "LAYOUT",
+                        ],
+                        "type": "string",
+                      },
+                    },
+                    "required": [
+                      "name",
+                    ],
+                    "type": "object",
+                  },
+                  "listLabel": "Textract Features",
+                  "order": 5,
+                  "type": "array",
+                },
+                "image": {
+                  "description": "Configure image resolution and processing options for OCR",
+                  "order": 0,
+                  "properties": {
+                    "dpi": {
+                      "default": 150,
+                      "description": "DPI (dots per inch) for extracting images from PDF pages. Higher values produce better quality but larger images. Default: 150",
+                      "maximum": 300,
+                      "minimum": 72,
+                      "order": 0,
+                      "type": "number",
+                    },
+                    "preprocessing": {
+                      "default": false,
+                      "description": "Apply adaptive binarization preprocessing to improve OCR accuracy on documents with uneven lighting or low contrast. Warning: May slightly increase processing time.",
+                      "order": 3,
+                      "type": "boolean",
+                    },
+                    "target_height": {
+                      "description": "Target image height in pixels. Images larger than this will be resized.",
+                      "maximum": 3500,
+                      "minimum": 100,
+                      "order": 2,
+                      "type": "number",
+                    },
+                    "target_width": {
+                      "description": "Target image width in pixels. Images larger than this will be resized.",
+                      "maximum": 3500,
+                      "minimum": 100,
+                      "order": 1,
+                      "type": "number",
+                    },
+                  },
+                  "sectionLabel": "Image Processing Settings",
+                  "type": "object",
+                },
+                "model_id": {
+                  "dependsOn": {
+                    "field": "backend",
+                    "value": "bedrock",
+                  },
+                  "description": "Bedrock model ID (only used if backend is 'bedrock')",
+                  "enum": [
+                    "us.amazon.nova-lite-v1:0",
+                    "us.amazon.nova-pro-v1:0",
+                    "us.amazon.nova-premier-v1:0",
+                    "us.anthropic.claude-3-haiku-20240307-v1:0",
+                    "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-20250514-v1:0",
+                  ],
+                  "order": 2,
+                  "type": "string",
+                },
+                "system_prompt": {
+                  "default": "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible.",
+                  "dependsOn": {
+                    "field": "backend",
+                    "value": "bedrock",
+                  },
+                  "description": "System prompt for Bedrock OCR (only used if backend is 'bedrock')",
+                  "order": 3,
+                  "type": "string",
+                },
+                "task_prompt": {
+                  "default": "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting.",
+                  "dependsOn": {
+                    "field": "backend",
+                    "value": "bedrock",
+                  },
+                  "description": "Task prompt for Bedrock OCR (only used if backend is 'bedrock')",
+                  "order": 4,
+                  "type": "string",
+                },
+              },
+              "sectionLabel": "OCR Configuration",
+              "type": "object",
+            },
+            "pricing": {
+              "columns": 2,
+              "itemLabel": "Service/API",
+              "items": {
+                "properties": {
+                  "name": {
+                    "description": "Service/API",
+                    "type": "string",
+                  },
+                  "units": {
+                    "itemLabel": "Metered Unit price",
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "description": "Metered unit name",
+                          "type": "string",
+                        },
+                        "price": {
+                          "description": "Estimated cost/unit",
+                          "type": "number",
+                        },
+                      },
+                      "required": [
+                        "name",
+                        "price",
+                      ],
+                      "type": "object",
+                    },
+                    "listLabel": "Metered unit pricing",
+                    "type": "array",
+                  },
+                },
+                "required": [
+                  "name",
+                  "units",
+                ],
+                "type": "object",
+              },
+              "listLabel": "Services",
+              "order": 8,
+              "sectionLabel": "Pricing (Estimates only - check https://aws.amazon.com/bedrock/pricing/ & https://aws.amazon.com/textract/pricing/)",
+              "type": "array",
+            },
+            "summarization": {
+              "order": 6,
+              "properties": {
+                "max_tokens": {
+                  "description": "Max tokens",
+                  "order": 5,
+                  "type": "number",
+                },
+                "model": {
+                  "description": "Bedrock model ID",
+                  "enum": [
+                    "us.amazon.nova-lite-v1:0",
+                    "us.amazon.nova-pro-v1:0",
+                    "us.amazon.nova-premier-v1:0",
+                    "us.anthropic.claude-3-haiku-20240307-v1:0",
+                    "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-20250514-v1:0",
+                  ],
+                  "order": 1,
+                  "type": "string",
+                },
+                "system_prompt": {
+                  "description": "System prompt",
+                  "format": "textarea",
+                  "order": 6,
+                  "type": "string",
+                },
+                "task_prompt": {
+                  "description": "Task prompt - supports parameter {DOCUMENT_TEXT}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
+                  "format": "textarea",
+                  "order": 7,
+                  "type": "string",
+                },
+                "temperature": {
+                  "description": "Sampling temperature",
+                  "order": 2,
+                  "type": "number",
+                },
+                "top_k": {
+                  "description": "Sampling Top K",
+                  "order": 3,
+                  "type": "number",
+                },
+                "top_p": {
+                  "description": "Sampling Top P",
+                  "order": 4,
+                  "type": "number",
+                },
+              },
+              "sectionLabel": "Summarization Inference",
+              "type": "object",
+            },
+          },
+          "required": [
+            "notes",
+            "classes",
+            "classification",
+            "extraction",
+          ],
+          "type": "object",
+        },
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "MockConfigFunction67038BBF",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::CloudFormation::CustomResource",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "BedrockLlmProcessorStateMachineLogGroupE8C805C5": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "MockKey4B46A5C5",
+            "Arn",
+          ],
+        },
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BedrockLlmProcessorStateMachineRole3C796AE9": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "states.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BedrockLlmProcessorStateMachineRoleDefaultPolicyB66847E2": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BedrockLlmProcessorOCRFunction145292F0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BedrockLlmProcessorOCRFunction145292F0",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BedrockLlmProcessorClassificationFunction86BA6F94",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BedrockLlmProcessorClassificationFunction86BA6F94",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BedrockLlmProcessorExtractionFunction4D289D78",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BedrockLlmProcessorExtractionFunction4D289D78",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BedrockLlmProcessorAssessmentFunction9E27100C",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BedrockLlmProcessorAssessmentFunction9E27100C",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BedrockLlmProcessorProcessResultsFunction8854D1C1",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BedrockLlmProcessorProcessResultsFunction8854D1C1",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BedrockLlmProcessorSummarizationFunction9DB7DBE9",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BedrockLlmProcessorSummarizationFunction9DB7DBE9",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "logs:CreateLogDelivery",
+                "logs:GetLogDelivery",
+                "logs:UpdateLogDelivery",
+                "logs:DeleteLogDelivery",
+                "logs:ListLogDeliveries",
+                "logs:PutResourcePolicy",
+                "logs:DescribeResourcePolicies",
+                "logs:DescribeLogGroups",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BedrockLlmProcessorStateMachineRoleDefaultPolicyB66847E2",
+        "Roles": [
+          {
+            "Ref": "BedrockLlmProcessorStateMachineRole3C796AE9",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BedrockLlmProcessorSummarizationFunction9DB7DBE9": {
+      "DependsOn": [
+        "BedrockLlmProcessorSummarizationFunctionServiceRoleDefaultPolicy23746D31",
+        "BedrockLlmProcessorSummarizationFunctionServiceRoleE57ADC55",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "7c39860528088a960e130b20eb6da59ebf7d37e3eed51f9a50525ea3d1c4e1e1.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "MockConfigTable9B38FA67",
+            },
+            "DOCUMENT_TRACKING_MODE": "appsync",
+            "GUARDRAIL_ID_AND_VERSION": "",
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "MockTrackingTableC27D2FF3",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "MockWorkingBucketAF257EA5",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BedrockLlmProcessorSummarizationFunctionLogGroup3EB686DE",
+          },
+        },
+        "MemorySize": 4096,
+        "Role": {
+          "Fn::GetAtt": [
+            "BedrockLlmProcessorSummarizationFunctionServiceRoleE57ADC55",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BedrockLlmProcessorSummarizationFunctionLogGroup3EB686DE": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "MockKey4B46A5C5",
+            "Arn",
+          ],
+        },
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BedrockLlmProcessorSummarizationFunctionServiceRoleDefaultPolicy23746D31": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockInputBucketC83AF371",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockInputBucketC83AF371",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockOutputBucket40EE28D0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockOutputBucket40EE28D0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockWorkingBucketAF257EA5",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockWorkingBucketAF257EA5",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockConfigTable9B38FA67",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": "appsync:GraphQL",
+              "Effect": "Allow",
+              "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockTrackingTableC27D2FF3",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BedrockLlmProcessorSummarizationFunctionServiceRoleDefaultPolicy23746D31",
+        "Roles": [
+          {
+            "Ref": "BedrockLlmProcessorSummarizationFunctionServiceRoleE57ADC55",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BedrockLlmProcessorSummarizationFunctionServiceRoleE57ADC55": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "MockConfigFunction67038BBF": {
+      "DependsOn": [
+        "MockConfigFunctionServiceRole91DCB23F",
+      ],
+      "Properties": {
+        "Code": {
+          "ZipFile": "def handler(event, context): return {}",
+        },
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "MockConfigFunctionServiceRole91DCB23F",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "MockConfigFunctionServiceRole91DCB23F": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "MockConfigTable9B38FA67": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S",
+          },
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH",
+          },
+        ],
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": 5,
+          "WriteCapacityUnits": 5,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "MockInputBucketC83AF371": {
+      "DeletionPolicy": "Retain",
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "MockKey4B46A5C5": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KeyPolicy": {
+          "Statement": [
+            {
+              "Action": "kms:*",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":iam::",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":root",
+                    ],
+                  ],
+                },
+              },
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::KMS::Key",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "MockOutputBucket40EE28D0": {
+      "DeletionPolicy": "Retain",
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "MockTrackingTableC27D2FF3": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S",
+          },
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH",
+          },
+        ],
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": 5,
+          "WriteCapacityUnits": 5,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "MockWorkingBucketAF257EA5": {
+      "DeletionPolicy": "Retain",
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer43f8950b5A0B891B": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer71ca309aA921E3CC": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer808533eb8316373F": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayerb854feae5C5E684D": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;
