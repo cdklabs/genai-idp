@@ -114,7 +114,6 @@ export class SummarizationFunction extends PythonFunction {
             `sed -i '/\\.\\/lib/d' requirements.txt || true`,
             `python -m pip install -r requirements.txt -t /tmp/builddir || true`,
             // Clean up unnecessary files in the temp directory
-            `find /tmp/builddir -type d -name "*.dist-info" -exec rm -rf {} +`,
             `find /tmp/builddir -type d -name "*.egg-info" -exec rm -rf {} +`,
             `find /tmp/builddir -type d -name "__pycache__" -exec rm -rf {} +`,
             `find /tmp/builddir -type d -name "build" -exec rm -rf {} +`,

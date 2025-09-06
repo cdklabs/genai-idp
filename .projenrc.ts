@@ -1,12 +1,12 @@
 import { yarn } from "cdklabs-projen-project-types";
 import { Stability } from "projen/lib/cdk";
 import { ReleasableCommits, TextFile } from "projen";
-import { GitHub } from "projen/lib/github";
-import { JobPermission } from "projen/lib/github/workflows-model";
 import { AwsCdkTypeScriptWorkspace } from "./projenrc/awscdk-typescript-workspace";
 import { AwsCdkTypeScriptWorkspaceApp } from "./projenrc/awscdk-workspace-app-ts";
+import { MkDocs } from "./projenrc/mkdocs";
 import { ProjenStruct, Struct } from "@mrgrain/jsii-struct-builder";
 import path from "path";
+import fs from 'fs';
 
 const stability = Stability.EXPERIMENTAL;
 const CDK_VERSION = '2.206.0';
@@ -91,6 +91,7 @@ new ProjenStruct(genaiIdp, {
 genaiIdp.eslint?.addIgnorePattern(environmentApiBasePropsPath);
 
 const idpPythonFunctionOptionsPath = path.join(genaiIdp.srcdir, 'functions', 'idp-python-function-options.ts');
+
 new ProjenStruct(genaiIdp, {
   name: 'IdpPythonFunctionOptions',
   description: 'Options for a Python Lambda function',
@@ -109,44 +110,15 @@ genaiIdp.bundleTask.spawn(genaiIdp.addTask("bundle:lambdas:lib", {
 
 // Custom prompt generator is already in assets/lambdas/custom_prompt_generator - no bundling needed
 
-const lambdas = [
-  "agent_processor",
-  "agent_request_handler",
-  "chat_with_document_resolver",
-  "cognito_updater_hitl",
-  "configuration_resolver",
-  "copy_to_baseline_resolver",
-  "create_a2i_resources",
-  "create_document_resolver",
-  "dashboard_merger",
-  "delete_document_resolver",
-  "evaluation_function",
-  "get-workforce-url",
-  "get_file_contents_resolver",
-  "get_stepfunction_execution_resolver",
-  "initialize_counter",
-  "ipset_updater",
-  "list_available_agents",
-  "lookup_function",
-  "publish_stepfunction_update_resolver",
-  "query_knowledgebase_resolver",
-  "queue_processor",
-  "queue_sender",
-  "reprocess_document_resolver",
-  "save_reporting_data",
-  "start_codebuild",
-  "stepfunction_subscription_publisher",
-  "update_configuration",
-  "update_settings",
-  "upload_resolver",
-  "workflow_tracker"
-];
+const lambdasDir = 'sources/src/lambda';
+fs.readdirSync(lambdasDir).forEach(lambdaName => {
 
-lambdas.forEach((lambdaName) => {
+  const lambdaSrcDir = path.join('../../../', lambdasDir, lambdaName);
+
   genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:handler:${lambdaName}`, {
     steps: [
       { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-      { exec: `rsync -rLct ../../../sources/src/lambda/${lambdaName}/ assets/lambdas/${lambdaName}/.` }
+      { exec: `rsync -rLct ${lambdaSrcDir}/ assets/lambdas/${lambdaName}/.` }
     ]
   }));
 });
@@ -195,21 +167,14 @@ const idpPattern1 = new AwsCdkTypeScriptWorkspace({
   releasableCommits: ReleasableCommits.featuresAndFixes('.'),
 });
 
-const pattern1_lambdas = [
-  "bda_completion_function",
-  "bda_invoke_function",
-  "processresults_function",
-  "summarization_function",
-  "hitl-status-update-function",
-  "hitl-wait-function",
-  "hitl-process-function"
-];
-
-pattern1_lambdas.forEach((lambdaName) => {
+// Bundle lambdas for Pattern 1 (BDA Processor) - read dynamically
+const pattern1LambdasDir = 'sources/patterns/pattern-1/src';
+fs.readdirSync(pattern1LambdasDir).forEach((lambdaName) => {
+  const lambdaSrcDir = path.join('../../../', pattern1LambdasDir, lambdaName);
   idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:lambda:${lambdaName}`, {
     steps: [
       { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-      { exec: `rsync -rLct ../../../sources/patterns/pattern-1/src/${lambdaName}/* assets/lambdas/${lambdaName}/.` }
+      { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
     ]
   }));
 });
@@ -272,20 +237,14 @@ const idpPattern2 = new AwsCdkTypeScriptWorkspace({
   releasableCommits: ReleasableCommits.featuresAndFixes('.'),
 });
 
-const pattern2_lambdas = [
-  "classification_function",
-  "extraction_function",
-  "ocr_function",
-  "processresults_function",
-  "summarization_function",
-  "assessment_function"
-];
-
-pattern2_lambdas.forEach((lambdaName) => {
+// Bundle lambdas for Pattern 2 (Bedrock LLM Processor) - read dynamically
+const pattern2LambdasDir = 'sources/patterns/pattern-2/src';
+fs.readdirSync(pattern2LambdasDir).forEach((lambdaName) => {
+  const lambdaSrcDir = path.join('../../../', pattern2LambdasDir, lambdaName);
   idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:lambda:${lambdaName}`, {
     steps: [
       { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-      { exec: `rsync -rLct ../../../sources/patterns/pattern-2/src/${lambdaName}/* assets/lambdas/${lambdaName}/.` }
+      { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
     ]
   }));
 });
@@ -357,20 +316,14 @@ const p3PreCompileTask = idpPattern3.tasks.tryFind("pre-compile") ?? idpPattern3
 
 p3PreCompileTask.spawn(p3BundleTask);
 
-const pattern3_lambdas = [
-  "classification_function",
-  "extraction_function",
-  "ocr_function",
-  "processresults_function",
-  "summarization_function",
-  "assessment_function"
-];
-
-pattern3_lambdas.forEach((lambdaName) => {
+// Bundle lambdas for Pattern 3 (SageMaker UDOP Processor) - read dynamically
+const pattern3LambdasDir = 'sources/patterns/pattern-3/src';
+fs.readdirSync(pattern3LambdasDir).forEach((lambdaName) => {
+  const lambdaSrcDir = path.join('../../../', pattern3LambdasDir, lambdaName);
   p3BundleTask.spawn(idpPattern3.addTask(`bundle:lambda:${lambdaName}`, {
     steps: [
       { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-      { exec: `rsync -rLct ../../../sources/patterns/pattern-3/src/${lambdaName}/* assets/lambdas/${lambdaName}/.` }
+      { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
     ]
   }));
 });
@@ -467,71 +420,17 @@ new TextFile(rootProject, '.nvmrc', {
 
 rootProject.gitignore.addPatterns('.venv/', '.*.md');
 
-const gh = GitHub.of(rootProject);
-
-if (gh) {
-  const docsWfl = gh.addWorkflow('docs');
-
-  docsWfl.on({
-    push: { branches: ['main'] },
-    pullRequest: { branches: ['main'] },
-    workflowDispatch: {}
-  });
-
-  docsWfl.addJob('build', {
-    runsOn: ['ubuntu-latest'],
-    permissions: {
-      contents: JobPermission.READ,
-      pages: JobPermission.WRITE,
-      idToken: JobPermission.WRITE
-    },
-    steps: [
-      {
-        uses: 'actions/checkout@v4',
-        with: { fetchDepth: 0 }
-      },
-      {
-        name: 'Setup Python',
-        uses: 'actions/setup-python@v4',
-        with: { 'python-version': '3.x' }
-      },
-      {
-        name: 'Install dependencies',
-        run: 'pip install -r docs/requirements.txt'
-      },
-      {
-        name: 'Build documentation',
-        run: 'cd docs && mkdocs build'
-      },
-      {
-        name: 'Upload Pages artifact',
-        uses: 'actions/upload-pages-artifact@v3',
-        with: { path: 'docs/site' }
-      }
-    ]
-  });
-
-  docsWfl.addJob('deploy', {
-    if: "github.ref == 'refs/heads/main'",
-    environment: {
-      name: 'github-pages',
-      url: '${{ steps.deployment.outputs.page_url }}'
-    },
-    runsOn: ['ubuntu-latest'],
-    needs: ['build'],
-    permissions: {
-      contents: JobPermission.READ,
-      pages: JobPermission.WRITE,
-      idToken: JobPermission.WRITE
-    },
-    steps: [
-      {
-        name: 'Deploy to GitHub Pages',
-        id: 'deployment',
-        uses: 'actions/deploy-pages@v4'
-      }
-    ]
-  });
-}
+// Configure MkDocs with GitHub Pages and API documentation
+new MkDocs(rootProject, {
+  path: 'docs',
+  github: true,
+  githubOptions: {
+    workflowName: 'docs'
+  },
+  docgenApiReferences: {
+    projects: [genaiIdp, idpPattern1, idpPattern2, idpPattern3],
+    targetPath: 'docs/content/api-reference'
+  }
+});
 
 rootProject.synth();

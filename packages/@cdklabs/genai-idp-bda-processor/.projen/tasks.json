@@ -54,10 +54,7 @@
           "spawn": "bundle:lambda:bda_invoke_function"
         },
         {
-          "spawn": "bundle:lambda:processresults_function"
-        },
-        {
-          "spawn": "bundle:lambda:summarization_function"
+          "spawn": "bundle:lambda:hitl-process-function"
         },
         {
           "spawn": "bundle:lambda:hitl-status-update-function"
@@ -66,7 +63,10 @@
           "spawn": "bundle:lambda:hitl-wait-function"
         },
         {
-          "spawn": "bundle:lambda:hitl-process-function"
+          "spawn": "bundle:lambda:processresults_function"
+        },
+        {
+          "spawn": "bundle:lambda:summarization_function"
         },
         {
           "spawn": "bundle:config:lending-package-sample"
@@ -233,6 +233,15 @@
       "steps": [
         {
           "exec": "jsii-docgen -o API.md"
+        },
+        {
+          "exec": "mkdir -p ../../../docs/content/api-reference"
+        },
+        {
+          "exec": "echo \"# @cdklabs/genai-idp-bda-processor\" > ../../../docs/content/api-reference/genai-idp-bda-processor-api.md"
+        },
+        {
+          "exec": "tail -n +2 API.md >> ../../../docs/content/api-reference/genai-idp-bda-processor-api.md"
         }
       ]
     },

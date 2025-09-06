@@ -555,6 +555,15 @@
       "steps": [
         {
           "exec": "jsii-docgen -o API.md"
+        },
+        {
+          "exec": "mkdir -p ../../../docs/content/api-reference"
+        },
+        {
+          "exec": "echo \"# @cdklabs/genai-idp\" > ../../../docs/content/api-reference/genai-idp-api.md"
+        },
+        {
+          "exec": "tail -n +2 API.md >> ../../../docs/content/api-reference/genai-idp-api.md"
         }
       ]
     },

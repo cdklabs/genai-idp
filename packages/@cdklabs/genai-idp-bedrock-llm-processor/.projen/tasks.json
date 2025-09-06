@@ -48,6 +48,9 @@
       "name": "bundle",
       "steps": [
         {
+          "spawn": "bundle:lambda:assessment_function"
+        },
+        {
           "spawn": "bundle:lambda:classification_function"
         },
         {
@@ -61,9 +64,6 @@
         },
         {
           "spawn": "bundle:lambda:summarization_function"
-        },
-        {
-          "spawn": "bundle:lambda:assessment_function"
         },
         {
           "spawn": "bundle:config:bank-statement-sample"
@@ -275,6 +275,15 @@
       "steps": [
         {
           "exec": "jsii-docgen -o API.md"
+        },
+        {
+          "exec": "mkdir -p ../../../docs/content/api-reference"
+        },
+        {
+          "exec": "echo \"# @cdklabs/genai-idp-bedrock-llm-processor\" > ../../../docs/content/api-reference/genai-idp-bedrock-llm-processor-api.md"
+        },
+        {
+          "exec": "tail -n +2 API.md >> ../../../docs/content/api-reference/genai-idp-bedrock-llm-processor-api.md"
         }
       ]
     },

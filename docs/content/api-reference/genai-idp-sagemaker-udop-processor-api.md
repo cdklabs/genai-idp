@@ -664,9 +664,9 @@ const sagemakerUdopProcessorProps: SagemakerUdopProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classifierEndpoint">classifierEndpoint</a></code> | <code>@aws-cdk/aws-sagemaker-alpha.IEndpoint</code> | The SageMaker endpoint used for document classification. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.configuration">configuration</a></code> | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfiguration">ISagemakerUdopProcessorConfiguration</a></code> | Configuration for the SageMaker UDOP document processor. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.assessmentEnabled">assessmentEnabled</a></code> | <code>boolean</code> | Controls whether assessment is enabled for extraction confidence evaluation. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.assessmentGuardrail">assessmentGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to assessment model interactions. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.customPromptGenerator">customPromptGenerator</a></code> | <code>@cdklabs/genai-idp.ICustomPromptGenerator</code> | Optional custom prompt generator for injecting business logic into extraction processing. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline documents for evaluation. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationEnabled">evaluationEnabled</a></code> | <code>boolean</code> | Controls whether extraction results are evaluated for accuracy. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.extractionGuardrail">extractionGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to extraction model interactions. |
@@ -740,22 +740,6 @@ including schema definitions, prompts, and evaluation settings.
 
 ---
 
-##### `assessmentEnabled`<sup>Optional</sup> <a name="assessmentEnabled" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.assessmentEnabled"></a>
-
-```typescript
-public readonly assessmentEnabled: boolean;
-```
-
-- *Type:* boolean
-- *Default:* false
-
-Controls whether assessment is enabled for extraction confidence evaluation.
-
-When enabled, evaluates the confidence of extraction results to identify
-potential issues and improve extraction quality.
-
----
-
 ##### `assessmentGuardrail`<sup>Optional</sup> <a name="assessmentGuardrail" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.assessmentGuardrail"></a>
 
 ```typescript
@@ -785,6 +769,22 @@ Optional Bedrock guardrail to apply to classification model interactions.
 
 Helps ensure model outputs adhere to content policies and guidelines
 by filtering inappropriate content and enforcing usage policies.
+
+---
+
+##### `customPromptGenerator`<sup>Optional</sup> <a name="customPromptGenerator" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.customPromptGenerator"></a>
+
+```typescript
+public readonly customPromptGenerator: ICustomPromptGenerator;
+```
+
+- *Type:* @cdklabs/genai-idp.ICustomPromptGenerator
+- *Default:* No custom prompt generator is used
+
+Optional custom prompt generator for injecting business logic into extraction processing.
+
+When provided, this Lambda function will be called to customize prompts based on
+document content, business rules, or external system integrations.
 
 ---
 

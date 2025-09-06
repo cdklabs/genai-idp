@@ -752,6 +752,7 @@ const bedrockLlmProcessorProps: BedrockLlmProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.assessmentGuardrail">assessmentGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to assessment model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationMaxWorkers">classificationMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for document classification. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.customPromptGenerator">customPromptGenerator</a></code> | <code>@cdklabs/genai-idp.ICustomPromptGenerator</code> | Optional custom prompt generator for injecting business logic into extraction processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline documents for evaluation. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.extractionGuardrail">extractionGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to extraction model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.ocrGuardrail">ocrGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to OCR model interactions. |
@@ -850,6 +851,22 @@ The maximum number of concurrent workers for document classification.
 
 Controls parallelism during the classification phase to optimize
 throughput while managing resource utilization.
+
+---
+
+##### `customPromptGenerator`<sup>Optional</sup> <a name="customPromptGenerator" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.customPromptGenerator"></a>
+
+```typescript
+public readonly customPromptGenerator: ICustomPromptGenerator;
+```
+
+- *Type:* @cdklabs/genai-idp.ICustomPromptGenerator
+- *Default:* No custom prompt generator is used
+
+Optional custom prompt generator for injecting business logic into extraction processing.
+
+When provided, this Lambda function will be called to customize prompts based on
+document content, business rules, or external system integrations.
 
 ---
 

@@ -65,7 +65,6 @@ export class IdpPythonLayerVersion {
             `mkdir -p /asset-output/python/idp_common`,
             `rsync -rL /tmp/builddir/idp_common/ /asset-output/python/idp_common`,
             // Clean up unnecessary files in the temp directory
-            `find /asset-output -type d -name "*.dist-info" -exec rm -rf {} +`,
             `find /asset-output -type d -name "*.egg-info" -exec rm -rf {} +`,
             `find /asset-output -type d -name "*.md" -exec rm -rf {} +`,
             `find /asset-output -type d -name "__pycache__" -exec rm -rf {} +`,

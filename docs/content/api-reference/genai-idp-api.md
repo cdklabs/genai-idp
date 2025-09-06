@@ -1,7 +1,3408 @@
 # @cdklabs/genai-idp
 
-
 ## Constructs <a name="Constructs" id="Constructs"></a>
+
+### AgentAnalytics <a name="AgentAnalytics" id="@cdklabs/genai-idp.AgentAnalytics"></a>
+
+- *Implements:* <a href="#@cdklabs/genai-idp.IAgentAnalytics">IAgentAnalytics</a>
+
+Agent Analytics construct for natural language document analytics.
+
+This construct provides AI-powered analytics capabilities that enable natural language
+querying of processed document data. Key features include:
+
+- Convert natural language questions to SQL queries
+- Generate interactive visualizations and tables
+- Explore database schema automatically
+- Secure code execution in AWS Bedrock AgentCore sandboxes
+- Multi-tool agent system for comprehensive analytics
+
+The analytics system uses a multi-tool approach:
+- Database discovery tool for schema exploration
+- Athena query tool for SQL execution
+- Secure code sandbox for data transfer
+- Python visualization tool for charts and tables
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.AgentAnalytics.Initializer"></a>
+
+```typescript
+import { AgentAnalytics } from '@cdklabs/genai-idp'
+
+new AgentAnalytics(scope: Construct, id: string, props: AgentAnalyticsProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps">AgentAnalyticsProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentAnalytics.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentAnalytics.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.AgentAnalytics.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.AgentAnalyticsProps">AgentAnalyticsProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.toString">toString</a></code> | Returns a string representation of this construct. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.AgentAnalytics.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.AgentAnalytics.isConstruct"></a>
+
+```typescript
+import { AgentAnalytics } from '@cdklabs/genai-idp'
+
+AgentAnalytics.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.AgentAnalytics.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.property.agentProcessor">agentProcessor</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function that processes agent queries using Bedrock AgentCore. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.property.agentRequestHandler">agentRequestHandler</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function that handles agent query requests from the UI. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.property.agentTable">agentTable</a></code> | <code><a href="#@cdklabs/genai-idp.IAgentTable">IAgentTable</a></code> | The DynamoDB table for tracking agent jobs and analytics queries. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.property.listAvailableAgents">listAvailableAgents</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function that lists available analytics agents. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.AgentAnalytics.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `agentProcessor`<sup>Required</sup> <a name="agentProcessor" id="@cdklabs/genai-idp.AgentAnalytics.property.agentProcessor"></a>
+
+```typescript
+public readonly agentProcessor: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+Lambda function that processes agent queries using Bedrock AgentCore.
+
+---
+
+##### `agentRequestHandler`<sup>Required</sup> <a name="agentRequestHandler" id="@cdklabs/genai-idp.AgentAnalytics.property.agentRequestHandler"></a>
+
+```typescript
+public readonly agentRequestHandler: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+Lambda function that handles agent query requests from the UI.
+
+---
+
+##### `agentTable`<sup>Required</sup> <a name="agentTable" id="@cdklabs/genai-idp.AgentAnalytics.property.agentTable"></a>
+
+```typescript
+public readonly agentTable: IAgentTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IAgentTable">IAgentTable</a>
+
+The DynamoDB table for tracking agent jobs and analytics queries.
+
+---
+
+##### `listAvailableAgents`<sup>Required</sup> <a name="listAvailableAgents" id="@cdklabs/genai-idp.AgentAnalytics.property.listAvailableAgents"></a>
+
+```typescript
+public readonly listAvailableAgents: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+Lambda function that lists available analytics agents.
+
+---
+
+
+### AgentProcessorFunction <a name="AgentProcessorFunction" id="@cdklabs/genai-idp.AgentProcessorFunction"></a>
+
+Lambda function for processing agent analytics queries.
+
+This function processes natural language queries using AWS Bedrock AgentCore,
+converting them to SQL queries and generating visualizations. It uses a multi-tool
+approach with secure code execution in Bedrock sandboxes.
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.AgentProcessorFunction.Initializer"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+new AgentProcessorFunction(scope: Construct, id: string, props: AgentProcessorFunctionProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps">AgentProcessorFunctionProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentProcessorFunction.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentProcessorFunction.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps">AgentProcessorFunctionProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.addFunctionUrl">addFunctionUrl</a></code> | Adds a url to this lambda function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.addPermission">addPermission</a></code> | Adds a permission to the Lambda resource policy. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.addToRolePolicy">addToRolePolicy</a></code> | Adds a statement to the IAM role assumed by the instance. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.configureAsyncInvoke">configureAsyncInvoke</a></code> | Configures options for asynchronous invocation. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.considerWarningOnInvokeFunctionPermissions">considerWarningOnInvokeFunctionPermissions</a></code> | A warning will be added to functions under the following conditions: - permissions that include `lambda:InvokeFunction` are added to the unqualified function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.grantInvoke">grantInvoke</a></code> | Grant the given identity permissions to invoke this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeCompositePrincipal">grantInvokeCompositePrincipal</a></code> | Grant multiple principals the ability to invoke this Lambda via CompositePrincipal. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeLatestVersion">grantInvokeLatestVersion</a></code> | Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeUrl">grantInvokeUrl</a></code> | Grant the given identity permissions to invoke this Lambda Function URL. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeVersion">grantInvokeVersion</a></code> | Grant the given identity permissions to invoke the given version of this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metric">metric</a></code> | Return the given named metric for this Function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricDuration">metricDuration</a></code> | How long execution of this Lambda takes. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricErrors">metricErrors</a></code> | How many invocations of this Lambda fail. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricInvocations">metricInvocations</a></code> | How often this Lambda is invoked. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricThrottles">metricThrottles</a></code> | How often this Lambda is throttled. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.addAlias">addAlias</a></code> | Defines an alias for this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.addEnvironment">addEnvironment</a></code> | Adds an environment variable to this Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.addLayers">addLayers</a></code> | Adds one or more Lambda Layers to this Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.invalidateVersionBasedOn">invalidateVersionBasedOn</a></code> | Mix additional information into the hash of the Version object. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.AgentProcessorFunction.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentProcessorFunction.applyRemovalPolicy"></a>
+
+```typescript
+public applyRemovalPolicy(policy: RemovalPolicy): void
+```
+
+Apply the given removal policy to this resource.
+
+The Removal Policy controls what happens to this resource when it stops
+being managed by CloudFormation, either because you've removed it from the
+CDK application or because you've made a change that requires the resource
+to be replaced.
+
+The resource can be deleted (`RemovalPolicy.DESTROY`), or left in your AWS
+account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
+
+###### `policy`<sup>Required</sup> <a name="policy" id="@cdklabs/genai-idp.AgentProcessorFunction.applyRemovalPolicy.parameter.policy"></a>
+
+- *Type:* aws-cdk-lib.RemovalPolicy
+
+---
+
+##### `addEventSource` <a name="addEventSource" id="@cdklabs/genai-idp.AgentProcessorFunction.addEventSource"></a>
+
+```typescript
+public addEventSource(source: IEventSource): void
+```
+
+Adds an event source to this function.
+
+Event sources are implemented in the aws-cdk-lib/aws-lambda-event-sources module.
+
+The following example adds an SQS Queue as an event source:
+```
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+myFunction.addEventSource(new SqsEventSource(myQueue));
+```
+
+###### `source`<sup>Required</sup> <a name="source" id="@cdklabs/genai-idp.AgentProcessorFunction.addEventSource.parameter.source"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.IEventSource
+
+---
+
+##### `addEventSourceMapping` <a name="addEventSourceMapping" id="@cdklabs/genai-idp.AgentProcessorFunction.addEventSourceMapping"></a>
+
+```typescript
+public addEventSourceMapping(id: string, options: EventSourceMappingOptions): EventSourceMapping
+```
+
+Adds an event source that maps to this AWS Lambda function.
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentProcessorFunction.addEventSourceMapping.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `options`<sup>Required</sup> <a name="options" id="@cdklabs/genai-idp.AgentProcessorFunction.addEventSourceMapping.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EventSourceMappingOptions
+
+---
+
+##### `addFunctionUrl` <a name="addFunctionUrl" id="@cdklabs/genai-idp.AgentProcessorFunction.addFunctionUrl"></a>
+
+```typescript
+public addFunctionUrl(options?: FunctionUrlOptions): FunctionUrl
+```
+
+Adds a url to this lambda function.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.AgentProcessorFunction.addFunctionUrl.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.FunctionUrlOptions
+
+---
+
+##### `addPermission` <a name="addPermission" id="@cdklabs/genai-idp.AgentProcessorFunction.addPermission"></a>
+
+```typescript
+public addPermission(id: string, permission: Permission): void
+```
+
+Adds a permission to the Lambda resource policy.
+
+> [Permission for details.](Permission for details.)
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentProcessorFunction.addPermission.parameter.id"></a>
+
+- *Type:* string
+
+The id for the permission construct.
+
+---
+
+###### `permission`<sup>Required</sup> <a name="permission" id="@cdklabs/genai-idp.AgentProcessorFunction.addPermission.parameter.permission"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.Permission
+
+The permission to grant to this Lambda function.
+
+---
+
+##### `addToRolePolicy` <a name="addToRolePolicy" id="@cdklabs/genai-idp.AgentProcessorFunction.addToRolePolicy"></a>
+
+```typescript
+public addToRolePolicy(statement: PolicyStatement): void
+```
+
+Adds a statement to the IAM role assumed by the instance.
+
+###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.AgentProcessorFunction.addToRolePolicy.parameter.statement"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyStatement
+
+---
+
+##### `configureAsyncInvoke` <a name="configureAsyncInvoke" id="@cdklabs/genai-idp.AgentProcessorFunction.configureAsyncInvoke"></a>
+
+```typescript
+public configureAsyncInvoke(options: EventInvokeConfigOptions): void
+```
+
+Configures options for asynchronous invocation.
+
+###### `options`<sup>Required</sup> <a name="options" id="@cdklabs/genai-idp.AgentProcessorFunction.configureAsyncInvoke.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EventInvokeConfigOptions
+
+---
+
+##### `considerWarningOnInvokeFunctionPermissions` <a name="considerWarningOnInvokeFunctionPermissions" id="@cdklabs/genai-idp.AgentProcessorFunction.considerWarningOnInvokeFunctionPermissions"></a>
+
+```typescript
+public considerWarningOnInvokeFunctionPermissions(scope: Construct, action: string): void
+```
+
+A warning will be added to functions under the following conditions: - permissions that include `lambda:InvokeFunction` are added to the unqualified function.
+
+function.currentVersion is invoked before or after the permission is created.
+
+This applies only to permissions on Lambda functions, not versions or aliases.
+This function is overridden as a noOp for QualifiedFunctionBase.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentProcessorFunction.considerWarningOnInvokeFunctionPermissions.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `action`<sup>Required</sup> <a name="action" id="@cdklabs/genai-idp.AgentProcessorFunction.considerWarningOnInvokeFunctionPermissions.parameter.action"></a>
+
+- *Type:* string
+
+---
+
+##### `grantInvoke` <a name="grantInvoke" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvoke"></a>
+
+```typescript
+public grantInvoke(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvoke.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeCompositePrincipal` <a name="grantInvokeCompositePrincipal" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeCompositePrincipal"></a>
+
+```typescript
+public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Grant[]
+```
+
+Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.CompositePrincipal
+
+---
+
+##### `grantInvokeLatestVersion` <a name="grantInvokeLatestVersion" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeLatestVersion"></a>
+
+```typescript
+public grantInvokeLatestVersion(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeLatestVersion.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeUrl` <a name="grantInvokeUrl" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeUrl"></a>
+
+```typescript
+public grantInvokeUrl(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke this Lambda Function URL.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeUrl.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeVersion` <a name="grantInvokeVersion" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeVersion"></a>
+
+```typescript
+public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
+```
+
+Grant the given identity permissions to invoke the given version of this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeVersion.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `version`<sup>Required</sup> <a name="version" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeVersion.parameter.version"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.IVersion
+
+---
+
+##### `metric` <a name="metric" id="@cdklabs/genai-idp.AgentProcessorFunction.metric"></a>
+
+```typescript
+public metric(metricName: string, props?: MetricOptions): Metric
+```
+
+Return the given named metric for this Function.
+
+###### `metricName`<sup>Required</sup> <a name="metricName" id="@cdklabs/genai-idp.AgentProcessorFunction.metric.parameter.metricName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metric.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricDuration` <a name="metricDuration" id="@cdklabs/genai-idp.AgentProcessorFunction.metricDuration"></a>
+
+```typescript
+public metricDuration(props?: MetricOptions): Metric
+```
+
+How long execution of this Lambda takes.
+
+Average over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricDuration.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricErrors` <a name="metricErrors" id="@cdklabs/genai-idp.AgentProcessorFunction.metricErrors"></a>
+
+```typescript
+public metricErrors(props?: MetricOptions): Metric
+```
+
+How many invocations of this Lambda fail.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricInvocations` <a name="metricInvocations" id="@cdklabs/genai-idp.AgentProcessorFunction.metricInvocations"></a>
+
+```typescript
+public metricInvocations(props?: MetricOptions): Metric
+```
+
+How often this Lambda is invoked.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricInvocations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricThrottles` <a name="metricThrottles" id="@cdklabs/genai-idp.AgentProcessorFunction.metricThrottles"></a>
+
+```typescript
+public metricThrottles(props?: MetricOptions): Metric
+```
+
+How often this Lambda is throttled.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `addAlias` <a name="addAlias" id="@cdklabs/genai-idp.AgentProcessorFunction.addAlias"></a>
+
+```typescript
+public addAlias(aliasName: string, options?: AliasOptions): Alias
+```
+
+Defines an alias for this function.
+
+The alias will automatically be updated to point to the latest version of
+the function as it is being updated during a deployment.
+
+```ts
+declare const fn: lambda.Function;
+
+fn.addAlias('Live');
+
+// Is equivalent to
+
+new lambda.Alias(this, 'AliasLive', {
+  aliasName: 'Live',
+  version: fn.currentVersion,
+});
+```
+
+###### `aliasName`<sup>Required</sup> <a name="aliasName" id="@cdklabs/genai-idp.AgentProcessorFunction.addAlias.parameter.aliasName"></a>
+
+- *Type:* string
+
+The name of the alias.
+
+---
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.AgentProcessorFunction.addAlias.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.AliasOptions
+
+Alias options.
+
+---
+
+##### `addEnvironment` <a name="addEnvironment" id="@cdklabs/genai-idp.AgentProcessorFunction.addEnvironment"></a>
+
+```typescript
+public addEnvironment(key: string, value: string, options?: EnvironmentOptions): Function
+```
+
+Adds an environment variable to this Lambda function.
+
+If this is a ref to a Lambda function, this operation results in a no-op.
+
+###### `key`<sup>Required</sup> <a name="key" id="@cdklabs/genai-idp.AgentProcessorFunction.addEnvironment.parameter.key"></a>
+
+- *Type:* string
+
+The environment variable key.
+
+---
+
+###### `value`<sup>Required</sup> <a name="value" id="@cdklabs/genai-idp.AgentProcessorFunction.addEnvironment.parameter.value"></a>
+
+- *Type:* string
+
+The environment variable's value.
+
+---
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.AgentProcessorFunction.addEnvironment.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EnvironmentOptions
+
+Environment variable options.
+
+---
+
+##### `addLayers` <a name="addLayers" id="@cdklabs/genai-idp.AgentProcessorFunction.addLayers"></a>
+
+```typescript
+public addLayers(layers: ...ILayerVersion[]): void
+```
+
+Adds one or more Lambda Layers to this Lambda function.
+
+###### `layers`<sup>Required</sup> <a name="layers" id="@cdklabs/genai-idp.AgentProcessorFunction.addLayers.parameter.layers"></a>
+
+- *Type:* ...aws-cdk-lib.aws_lambda.ILayerVersion[]
+
+the layers to be added.
+
+---
+
+##### `invalidateVersionBasedOn` <a name="invalidateVersionBasedOn" id="@cdklabs/genai-idp.AgentProcessorFunction.invalidateVersionBasedOn"></a>
+
+```typescript
+public invalidateVersionBasedOn(x: string): void
+```
+
+Mix additional information into the hash of the Version object.
+
+The Lambda Function construct does its best to automatically create a new
+Version when anything about the Function changes (its code, its layers,
+any of the other properties).
+
+However, you can sometimes source information from places that the CDK cannot
+look into, like the deploy-time values of SSM parameters. In those cases,
+the CDK would not force the creation of a new Version object when it actually
+should.
+
+This method can be used to invalidate the current Version object. Pass in
+any string into this method, and make sure the string changes when you know
+a new Version needs to be created.
+
+This method may be called more than once.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.AgentProcessorFunction.invalidateVersionBasedOn.parameter.x"></a>
+
+- *Type:* string
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.isOwnedResource">isOwnedResource</a></code> | Returns true if the construct was created by CDK, and false otherwise. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.isResource">isResource</a></code> | Check whether the given construct is a Resource. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.classifyVersionProperty">classifyVersionProperty</a></code> | Record whether specific properties in the `AWS::Lambda::Function` resource should also be associated to the Version resource. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionArn">fromFunctionArn</a></code> | Import a lambda function into the CDK using its ARN. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionAttributes">fromFunctionAttributes</a></code> | Creates a Lambda function object which represents a function not defined within this stack. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionName">fromFunctionName</a></code> | Import a lambda function into the CDK using its name. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricAll">metricAll</a></code> | Return the given named metric for this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricAllConcurrentExecutions">metricAllConcurrentExecutions</a></code> | Metric for the number of concurrent executions across all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricAllDuration">metricAllDuration</a></code> | Metric for the Duration executing all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricAllErrors">metricAllErrors</a></code> | Metric for the number of Errors executing all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricAllInvocations">metricAllInvocations</a></code> | Metric for the number of invocations of all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricAllThrottles">metricAllThrottles</a></code> | Metric for the number of throttled invocations of all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.metricAllUnreservedConcurrentExecutions">metricAllUnreservedConcurrentExecutions</a></code> | Metric for the number of unreserved concurrent executions across all Lambdas. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.AgentProcessorFunction.isConstruct"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.AgentProcessorFunction.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+##### `isOwnedResource` <a name="isOwnedResource" id="@cdklabs/genai-idp.AgentProcessorFunction.isOwnedResource"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.isOwnedResource(construct: IConstruct)
+```
+
+Returns true if the construct was created by CDK, and false otherwise.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.AgentProcessorFunction.isOwnedResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `isResource` <a name="isResource" id="@cdklabs/genai-idp.AgentProcessorFunction.isResource"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.isResource(construct: IConstruct)
+```
+
+Check whether the given construct is a Resource.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.AgentProcessorFunction.isResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `classifyVersionProperty` <a name="classifyVersionProperty" id="@cdklabs/genai-idp.AgentProcessorFunction.classifyVersionProperty"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.classifyVersionProperty(propertyName: string, locked: boolean)
+```
+
+Record whether specific properties in the `AWS::Lambda::Function` resource should also be associated to the Version resource.
+
+See 'currentVersion' section in the module README for more details.
+
+###### `propertyName`<sup>Required</sup> <a name="propertyName" id="@cdklabs/genai-idp.AgentProcessorFunction.classifyVersionProperty.parameter.propertyName"></a>
+
+- *Type:* string
+
+The property to classify.
+
+---
+
+###### `locked`<sup>Required</sup> <a name="locked" id="@cdklabs/genai-idp.AgentProcessorFunction.classifyVersionProperty.parameter.locked"></a>
+
+- *Type:* boolean
+
+whether the property should be associated to the version or not.
+
+---
+
+##### `fromFunctionArn` <a name="fromFunctionArn" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionArn"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.fromFunctionArn(scope: Construct, id: string, functionArn: string)
+```
+
+Import a lambda function into the CDK using its ARN.
+
+For `Function.addPermissions()` to work on this imported lambda, make sure that is
+in the same account and region as the stack you are importing it into.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionArn.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionArn.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `functionArn`<sup>Required</sup> <a name="functionArn" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionArn.parameter.functionArn"></a>
+
+- *Type:* string
+
+---
+
+##### `fromFunctionAttributes` <a name="fromFunctionAttributes" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionAttributes"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.fromFunctionAttributes(scope: Construct, id: string, attrs: FunctionAttributes)
+```
+
+Creates a Lambda function object which represents a function not defined within this stack.
+
+For `Function.addPermissions()` to work on this imported lambda, set the sameEnvironment property to true
+if this imported lambda is in the same account and region as the stack you are importing it into.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionAttributes.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+The parent construct.
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionAttributes.parameter.id"></a>
+
+- *Type:* string
+
+The name of the lambda construct.
+
+---
+
+###### `attrs`<sup>Required</sup> <a name="attrs" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionAttributes.parameter.attrs"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.FunctionAttributes
+
+the attributes of the function to import.
+
+---
+
+##### `fromFunctionName` <a name="fromFunctionName" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionName"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.fromFunctionName(scope: Construct, id: string, functionName: string)
+```
+
+Import a lambda function into the CDK using its name.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionName.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionName.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `functionName`<sup>Required</sup> <a name="functionName" id="@cdklabs/genai-idp.AgentProcessorFunction.fromFunctionName.parameter.functionName"></a>
+
+- *Type:* string
+
+---
+
+##### `metricAll` <a name="metricAll" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAll"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.metricAll(metricName: string, props?: MetricOptions)
+```
+
+Return the given named metric for this Lambda.
+
+###### `metricName`<sup>Required</sup> <a name="metricName" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAll.parameter.metricName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAll.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllConcurrentExecutions` <a name="metricAllConcurrentExecutions" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllConcurrentExecutions"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.metricAllConcurrentExecutions(props?: MetricOptions)
+```
+
+Metric for the number of concurrent executions across all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllConcurrentExecutions.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllDuration` <a name="metricAllDuration" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllDuration"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.metricAllDuration(props?: MetricOptions)
+```
+
+Metric for the Duration executing all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllDuration.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllErrors` <a name="metricAllErrors" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllErrors"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.metricAllErrors(props?: MetricOptions)
+```
+
+Metric for the number of Errors executing all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllInvocations` <a name="metricAllInvocations" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllInvocations"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.metricAllInvocations(props?: MetricOptions)
+```
+
+Metric for the number of invocations of all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllInvocations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllThrottles` <a name="metricAllThrottles" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllThrottles"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.metricAllThrottles(props?: MetricOptions)
+```
+
+Metric for the number of throttled invocations of all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllUnreservedConcurrentExecutions` <a name="metricAllUnreservedConcurrentExecutions" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllUnreservedConcurrentExecutions"></a>
+
+```typescript
+import { AgentProcessorFunction } from '@cdklabs/genai-idp'
+
+AgentProcessorFunction.metricAllUnreservedConcurrentExecutions(props?: MetricOptions)
+```
+
+Metric for the number of unreserved concurrent executions across all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentProcessorFunction.metricAllUnreservedConcurrentExecutions.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The DLQ (as queue) associated with this Lambda Function (this is an optional attribute). |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The DLQ (as topic) associated with this Lambda Function (this is an optional attribute). |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.timeout">timeout</a></code> | <code>aws-cdk-lib.Duration</code> | The timeout configured for this lambda. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.AgentProcessorFunction.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `env`<sup>Required</sup> <a name="env" id="@cdklabs/genai-idp.AgentProcessorFunction.property.env"></a>
+
+```typescript
+public readonly env: ResourceEnvironment;
+```
+
+- *Type:* aws-cdk-lib.ResourceEnvironment
+
+The environment this resource belongs to.
+
+For resources that are created and managed by the CDK
+(generally, those created by creating new class instances like Role, Bucket, etc.),
+this is always the same as the environment of the stack they belong to;
+however, for imported resources
+(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
+that might be different than the stack they were imported into.
+
+---
+
+##### `stack`<sup>Required</sup> <a name="stack" id="@cdklabs/genai-idp.AgentProcessorFunction.property.stack"></a>
+
+```typescript
+public readonly stack: Stack;
+```
+
+- *Type:* aws-cdk-lib.Stack
+
+The stack in which this resource is defined.
+
+---
+
+##### `architecture`<sup>Required</sup> <a name="architecture" id="@cdklabs/genai-idp.AgentProcessorFunction.property.architecture"></a>
+
+```typescript
+public readonly architecture: Architecture;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Architecture
+
+The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64).
+
+---
+
+##### `connections`<sup>Required</sup> <a name="connections" id="@cdklabs/genai-idp.AgentProcessorFunction.property.connections"></a>
+
+```typescript
+public readonly connections: Connections;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.Connections
+
+Access the Connections object.
+
+Will fail if not a VPC-enabled Lambda Function
+
+---
+
+##### `functionArn`<sup>Required</sup> <a name="functionArn" id="@cdklabs/genai-idp.AgentProcessorFunction.property.functionArn"></a>
+
+```typescript
+public readonly functionArn: string;
+```
+
+- *Type:* string
+
+ARN of this function.
+
+---
+
+##### `functionName`<sup>Required</sup> <a name="functionName" id="@cdklabs/genai-idp.AgentProcessorFunction.property.functionName"></a>
+
+```typescript
+public readonly functionName: string;
+```
+
+- *Type:* string
+
+Name of this function.
+
+---
+
+##### `grantPrincipal`<sup>Required</sup> <a name="grantPrincipal" id="@cdklabs/genai-idp.AgentProcessorFunction.property.grantPrincipal"></a>
+
+```typescript
+public readonly grantPrincipal: IPrincipal;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IPrincipal
+
+The principal this Lambda Function is running as.
+
+---
+
+##### `isBoundToVpc`<sup>Required</sup> <a name="isBoundToVpc" id="@cdklabs/genai-idp.AgentProcessorFunction.property.isBoundToVpc"></a>
+
+```typescript
+public readonly isBoundToVpc: boolean;
+```
+
+- *Type:* boolean
+
+Whether or not this Lambda function was bound to a VPC.
+
+If this is is `false`, trying to access the `connections` object will fail.
+
+---
+
+##### `latestVersion`<sup>Required</sup> <a name="latestVersion" id="@cdklabs/genai-idp.AgentProcessorFunction.property.latestVersion"></a>
+
+```typescript
+public readonly latestVersion: IVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IVersion
+
+The `$LATEST` version of this function.
+
+Note that this is reference to a non-specific AWS Lambda version, which
+means the function this version refers to can return different results in
+different invocations.
+
+To obtain a reference to an explicit version which references the current
+function configuration, use `lambdaFunction.currentVersion` instead.
+
+---
+
+##### `permissionsNode`<sup>Required</sup> <a name="permissionsNode" id="@cdklabs/genai-idp.AgentProcessorFunction.property.permissionsNode"></a>
+
+```typescript
+public readonly permissionsNode: Node;
+```
+
+- *Type:* constructs.Node
+
+The construct node where permissions are attached.
+
+---
+
+##### `resourceArnsForGrantInvoke`<sup>Required</sup> <a name="resourceArnsForGrantInvoke" id="@cdklabs/genai-idp.AgentProcessorFunction.property.resourceArnsForGrantInvoke"></a>
+
+```typescript
+public readonly resourceArnsForGrantInvoke: string[];
+```
+
+- *Type:* string[]
+
+The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke().
+
+---
+
+##### `role`<sup>Optional</sup> <a name="role" id="@cdklabs/genai-idp.AgentProcessorFunction.property.role"></a>
+
+```typescript
+public readonly role: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+
+Execution role associated with this function.
+
+---
+
+##### `currentVersion`<sup>Required</sup> <a name="currentVersion" id="@cdklabs/genai-idp.AgentProcessorFunction.property.currentVersion"></a>
+
+```typescript
+public readonly currentVersion: Version;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Version
+
+Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes.
+
+You can specify options for this version using the `currentVersionOptions`
+prop when initializing the `lambda.Function`.
+
+---
+
+##### `logGroup`<sup>Required</sup> <a name="logGroup" id="@cdklabs/genai-idp.AgentProcessorFunction.property.logGroup"></a>
+
+```typescript
+public readonly logGroup: ILogGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+
+The LogGroup where the Lambda function's logs are made available.
+
+If either `logRetention` is set or this property is called, a CloudFormation custom resource is added to the stack that
+pre-creates the log group as part of the stack deployment, if it already doesn't exist, and sets the correct log retention
+period (never expire, by default).
+
+Further, if the log group already exists and the `logRetention` is not set, the custom resource will reset the log retention
+to never expire even if it was configured with a different value.
+
+---
+
+##### `runtime`<sup>Required</sup> <a name="runtime" id="@cdklabs/genai-idp.AgentProcessorFunction.property.runtime"></a>
+
+```typescript
+public readonly runtime: Runtime;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Runtime
+
+The runtime configured for this lambda.
+
+---
+
+##### `deadLetterQueue`<sup>Optional</sup> <a name="deadLetterQueue" id="@cdklabs/genai-idp.AgentProcessorFunction.property.deadLetterQueue"></a>
+
+```typescript
+public readonly deadLetterQueue: IQueue;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.IQueue
+
+The DLQ (as queue) associated with this Lambda Function (this is an optional attribute).
+
+---
+
+##### `deadLetterTopic`<sup>Optional</sup> <a name="deadLetterTopic" id="@cdklabs/genai-idp.AgentProcessorFunction.property.deadLetterTopic"></a>
+
+```typescript
+public readonly deadLetterTopic: ITopic;
+```
+
+- *Type:* aws-cdk-lib.aws_sns.ITopic
+
+The DLQ (as topic) associated with this Lambda Function (this is an optional attribute).
+
+---
+
+##### `timeout`<sup>Optional</sup> <a name="timeout" id="@cdklabs/genai-idp.AgentProcessorFunction.property.timeout"></a>
+
+```typescript
+public readonly timeout: Duration;
+```
+
+- *Type:* aws-cdk-lib.Duration
+
+The timeout configured for this lambda.
+
+---
+
+#### Constants <a name="Constants" id="Constants"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.PROPERTY_INJECTION_ID">PROPERTY_INJECTION_ID</a></code> | <code>string</code> | Uniquely identifies this class. |
+
+---
+
+##### `PROPERTY_INJECTION_ID`<sup>Required</sup> <a name="PROPERTY_INJECTION_ID" id="@cdklabs/genai-idp.AgentProcessorFunction.property.PROPERTY_INJECTION_ID"></a>
+
+```typescript
+public readonly PROPERTY_INJECTION_ID: string;
+```
+
+- *Type:* string
+
+Uniquely identifies this class.
+
+---
+
+### AgentRequestHandlerFunction <a name="AgentRequestHandlerFunction" id="@cdklabs/genai-idp.AgentRequestHandlerFunction"></a>
+
+Lambda function for handling agent query requests.
+
+This function receives agent query requests from the GraphQL API and manages
+the job lifecycle, including creating job records and invoking the agent processor.
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.Initializer"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+new AgentRequestHandlerFunction(scope: Construct, id: string, props: AgentRequestHandlerFunctionProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps">AgentRequestHandlerFunctionProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps">AgentRequestHandlerFunctionProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.addFunctionUrl">addFunctionUrl</a></code> | Adds a url to this lambda function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.addPermission">addPermission</a></code> | Adds a permission to the Lambda resource policy. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.addToRolePolicy">addToRolePolicy</a></code> | Adds a statement to the IAM role assumed by the instance. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.configureAsyncInvoke">configureAsyncInvoke</a></code> | Configures options for asynchronous invocation. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.considerWarningOnInvokeFunctionPermissions">considerWarningOnInvokeFunctionPermissions</a></code> | A warning will be added to functions under the following conditions: - permissions that include `lambda:InvokeFunction` are added to the unqualified function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvoke">grantInvoke</a></code> | Grant the given identity permissions to invoke this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeCompositePrincipal">grantInvokeCompositePrincipal</a></code> | Grant multiple principals the ability to invoke this Lambda via CompositePrincipal. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeLatestVersion">grantInvokeLatestVersion</a></code> | Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeUrl">grantInvokeUrl</a></code> | Grant the given identity permissions to invoke this Lambda Function URL. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeVersion">grantInvokeVersion</a></code> | Grant the given identity permissions to invoke the given version of this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metric">metric</a></code> | Return the given named metric for this Function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricDuration">metricDuration</a></code> | How long execution of this Lambda takes. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricErrors">metricErrors</a></code> | How many invocations of this Lambda fail. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricInvocations">metricInvocations</a></code> | How often this Lambda is invoked. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricThrottles">metricThrottles</a></code> | How often this Lambda is throttled. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.addAlias">addAlias</a></code> | Defines an alias for this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.addEnvironment">addEnvironment</a></code> | Adds an environment variable to this Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.addLayers">addLayers</a></code> | Adds one or more Lambda Layers to this Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.invalidateVersionBasedOn">invalidateVersionBasedOn</a></code> | Mix additional information into the hash of the Version object. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.applyRemovalPolicy"></a>
+
+```typescript
+public applyRemovalPolicy(policy: RemovalPolicy): void
+```
+
+Apply the given removal policy to this resource.
+
+The Removal Policy controls what happens to this resource when it stops
+being managed by CloudFormation, either because you've removed it from the
+CDK application or because you've made a change that requires the resource
+to be replaced.
+
+The resource can be deleted (`RemovalPolicy.DESTROY`), or left in your AWS
+account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
+
+###### `policy`<sup>Required</sup> <a name="policy" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.applyRemovalPolicy.parameter.policy"></a>
+
+- *Type:* aws-cdk-lib.RemovalPolicy
+
+---
+
+##### `addEventSource` <a name="addEventSource" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addEventSource"></a>
+
+```typescript
+public addEventSource(source: IEventSource): void
+```
+
+Adds an event source to this function.
+
+Event sources are implemented in the aws-cdk-lib/aws-lambda-event-sources module.
+
+The following example adds an SQS Queue as an event source:
+```
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+myFunction.addEventSource(new SqsEventSource(myQueue));
+```
+
+###### `source`<sup>Required</sup> <a name="source" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addEventSource.parameter.source"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.IEventSource
+
+---
+
+##### `addEventSourceMapping` <a name="addEventSourceMapping" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addEventSourceMapping"></a>
+
+```typescript
+public addEventSourceMapping(id: string, options: EventSourceMappingOptions): EventSourceMapping
+```
+
+Adds an event source that maps to this AWS Lambda function.
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addEventSourceMapping.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `options`<sup>Required</sup> <a name="options" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addEventSourceMapping.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EventSourceMappingOptions
+
+---
+
+##### `addFunctionUrl` <a name="addFunctionUrl" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addFunctionUrl"></a>
+
+```typescript
+public addFunctionUrl(options?: FunctionUrlOptions): FunctionUrl
+```
+
+Adds a url to this lambda function.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addFunctionUrl.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.FunctionUrlOptions
+
+---
+
+##### `addPermission` <a name="addPermission" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addPermission"></a>
+
+```typescript
+public addPermission(id: string, permission: Permission): void
+```
+
+Adds a permission to the Lambda resource policy.
+
+> [Permission for details.](Permission for details.)
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addPermission.parameter.id"></a>
+
+- *Type:* string
+
+The id for the permission construct.
+
+---
+
+###### `permission`<sup>Required</sup> <a name="permission" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addPermission.parameter.permission"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.Permission
+
+The permission to grant to this Lambda function.
+
+---
+
+##### `addToRolePolicy` <a name="addToRolePolicy" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addToRolePolicy"></a>
+
+```typescript
+public addToRolePolicy(statement: PolicyStatement): void
+```
+
+Adds a statement to the IAM role assumed by the instance.
+
+###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addToRolePolicy.parameter.statement"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyStatement
+
+---
+
+##### `configureAsyncInvoke` <a name="configureAsyncInvoke" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.configureAsyncInvoke"></a>
+
+```typescript
+public configureAsyncInvoke(options: EventInvokeConfigOptions): void
+```
+
+Configures options for asynchronous invocation.
+
+###### `options`<sup>Required</sup> <a name="options" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.configureAsyncInvoke.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EventInvokeConfigOptions
+
+---
+
+##### `considerWarningOnInvokeFunctionPermissions` <a name="considerWarningOnInvokeFunctionPermissions" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.considerWarningOnInvokeFunctionPermissions"></a>
+
+```typescript
+public considerWarningOnInvokeFunctionPermissions(scope: Construct, action: string): void
+```
+
+A warning will be added to functions under the following conditions: - permissions that include `lambda:InvokeFunction` are added to the unqualified function.
+
+function.currentVersion is invoked before or after the permission is created.
+
+This applies only to permissions on Lambda functions, not versions or aliases.
+This function is overridden as a noOp for QualifiedFunctionBase.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.considerWarningOnInvokeFunctionPermissions.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `action`<sup>Required</sup> <a name="action" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.considerWarningOnInvokeFunctionPermissions.parameter.action"></a>
+
+- *Type:* string
+
+---
+
+##### `grantInvoke` <a name="grantInvoke" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvoke"></a>
+
+```typescript
+public grantInvoke(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvoke.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeCompositePrincipal` <a name="grantInvokeCompositePrincipal" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeCompositePrincipal"></a>
+
+```typescript
+public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Grant[]
+```
+
+Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.CompositePrincipal
+
+---
+
+##### `grantInvokeLatestVersion` <a name="grantInvokeLatestVersion" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeLatestVersion"></a>
+
+```typescript
+public grantInvokeLatestVersion(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeLatestVersion.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeUrl` <a name="grantInvokeUrl" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeUrl"></a>
+
+```typescript
+public grantInvokeUrl(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke this Lambda Function URL.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeUrl.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeVersion` <a name="grantInvokeVersion" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeVersion"></a>
+
+```typescript
+public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
+```
+
+Grant the given identity permissions to invoke the given version of this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeVersion.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `version`<sup>Required</sup> <a name="version" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeVersion.parameter.version"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.IVersion
+
+---
+
+##### `metric` <a name="metric" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metric"></a>
+
+```typescript
+public metric(metricName: string, props?: MetricOptions): Metric
+```
+
+Return the given named metric for this Function.
+
+###### `metricName`<sup>Required</sup> <a name="metricName" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metric.parameter.metricName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metric.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricDuration` <a name="metricDuration" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricDuration"></a>
+
+```typescript
+public metricDuration(props?: MetricOptions): Metric
+```
+
+How long execution of this Lambda takes.
+
+Average over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricDuration.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricErrors` <a name="metricErrors" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricErrors"></a>
+
+```typescript
+public metricErrors(props?: MetricOptions): Metric
+```
+
+How many invocations of this Lambda fail.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricInvocations` <a name="metricInvocations" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricInvocations"></a>
+
+```typescript
+public metricInvocations(props?: MetricOptions): Metric
+```
+
+How often this Lambda is invoked.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricInvocations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricThrottles` <a name="metricThrottles" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricThrottles"></a>
+
+```typescript
+public metricThrottles(props?: MetricOptions): Metric
+```
+
+How often this Lambda is throttled.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `addAlias` <a name="addAlias" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addAlias"></a>
+
+```typescript
+public addAlias(aliasName: string, options?: AliasOptions): Alias
+```
+
+Defines an alias for this function.
+
+The alias will automatically be updated to point to the latest version of
+the function as it is being updated during a deployment.
+
+```ts
+declare const fn: lambda.Function;
+
+fn.addAlias('Live');
+
+// Is equivalent to
+
+new lambda.Alias(this, 'AliasLive', {
+  aliasName: 'Live',
+  version: fn.currentVersion,
+});
+```
+
+###### `aliasName`<sup>Required</sup> <a name="aliasName" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addAlias.parameter.aliasName"></a>
+
+- *Type:* string
+
+The name of the alias.
+
+---
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addAlias.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.AliasOptions
+
+Alias options.
+
+---
+
+##### `addEnvironment` <a name="addEnvironment" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addEnvironment"></a>
+
+```typescript
+public addEnvironment(key: string, value: string, options?: EnvironmentOptions): Function
+```
+
+Adds an environment variable to this Lambda function.
+
+If this is a ref to a Lambda function, this operation results in a no-op.
+
+###### `key`<sup>Required</sup> <a name="key" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addEnvironment.parameter.key"></a>
+
+- *Type:* string
+
+The environment variable key.
+
+---
+
+###### `value`<sup>Required</sup> <a name="value" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addEnvironment.parameter.value"></a>
+
+- *Type:* string
+
+The environment variable's value.
+
+---
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addEnvironment.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EnvironmentOptions
+
+Environment variable options.
+
+---
+
+##### `addLayers` <a name="addLayers" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addLayers"></a>
+
+```typescript
+public addLayers(layers: ...ILayerVersion[]): void
+```
+
+Adds one or more Lambda Layers to this Lambda function.
+
+###### `layers`<sup>Required</sup> <a name="layers" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.addLayers.parameter.layers"></a>
+
+- *Type:* ...aws-cdk-lib.aws_lambda.ILayerVersion[]
+
+the layers to be added.
+
+---
+
+##### `invalidateVersionBasedOn` <a name="invalidateVersionBasedOn" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.invalidateVersionBasedOn"></a>
+
+```typescript
+public invalidateVersionBasedOn(x: string): void
+```
+
+Mix additional information into the hash of the Version object.
+
+The Lambda Function construct does its best to automatically create a new
+Version when anything about the Function changes (its code, its layers,
+any of the other properties).
+
+However, you can sometimes source information from places that the CDK cannot
+look into, like the deploy-time values of SSM parameters. In those cases,
+the CDK would not force the creation of a new Version object when it actually
+should.
+
+This method can be used to invalidate the current Version object. Pass in
+any string into this method, and make sure the string changes when you know
+a new Version needs to be created.
+
+This method may be called more than once.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.invalidateVersionBasedOn.parameter.x"></a>
+
+- *Type:* string
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.isOwnedResource">isOwnedResource</a></code> | Returns true if the construct was created by CDK, and false otherwise. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.isResource">isResource</a></code> | Check whether the given construct is a Resource. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.classifyVersionProperty">classifyVersionProperty</a></code> | Record whether specific properties in the `AWS::Lambda::Function` resource should also be associated to the Version resource. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionArn">fromFunctionArn</a></code> | Import a lambda function into the CDK using its ARN. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionAttributes">fromFunctionAttributes</a></code> | Creates a Lambda function object which represents a function not defined within this stack. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionName">fromFunctionName</a></code> | Import a lambda function into the CDK using its name. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAll">metricAll</a></code> | Return the given named metric for this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllConcurrentExecutions">metricAllConcurrentExecutions</a></code> | Metric for the number of concurrent executions across all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllDuration">metricAllDuration</a></code> | Metric for the Duration executing all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllErrors">metricAllErrors</a></code> | Metric for the number of Errors executing all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllInvocations">metricAllInvocations</a></code> | Metric for the number of invocations of all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllThrottles">metricAllThrottles</a></code> | Metric for the number of throttled invocations of all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllUnreservedConcurrentExecutions">metricAllUnreservedConcurrentExecutions</a></code> | Metric for the number of unreserved concurrent executions across all Lambdas. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.isConstruct"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+##### `isOwnedResource` <a name="isOwnedResource" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.isOwnedResource"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.isOwnedResource(construct: IConstruct)
+```
+
+Returns true if the construct was created by CDK, and false otherwise.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.isOwnedResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `isResource` <a name="isResource" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.isResource"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.isResource(construct: IConstruct)
+```
+
+Check whether the given construct is a Resource.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.isResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `classifyVersionProperty` <a name="classifyVersionProperty" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.classifyVersionProperty"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.classifyVersionProperty(propertyName: string, locked: boolean)
+```
+
+Record whether specific properties in the `AWS::Lambda::Function` resource should also be associated to the Version resource.
+
+See 'currentVersion' section in the module README for more details.
+
+###### `propertyName`<sup>Required</sup> <a name="propertyName" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.classifyVersionProperty.parameter.propertyName"></a>
+
+- *Type:* string
+
+The property to classify.
+
+---
+
+###### `locked`<sup>Required</sup> <a name="locked" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.classifyVersionProperty.parameter.locked"></a>
+
+- *Type:* boolean
+
+whether the property should be associated to the version or not.
+
+---
+
+##### `fromFunctionArn` <a name="fromFunctionArn" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionArn"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.fromFunctionArn(scope: Construct, id: string, functionArn: string)
+```
+
+Import a lambda function into the CDK using its ARN.
+
+For `Function.addPermissions()` to work on this imported lambda, make sure that is
+in the same account and region as the stack you are importing it into.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionArn.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionArn.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `functionArn`<sup>Required</sup> <a name="functionArn" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionArn.parameter.functionArn"></a>
+
+- *Type:* string
+
+---
+
+##### `fromFunctionAttributes` <a name="fromFunctionAttributes" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionAttributes"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.fromFunctionAttributes(scope: Construct, id: string, attrs: FunctionAttributes)
+```
+
+Creates a Lambda function object which represents a function not defined within this stack.
+
+For `Function.addPermissions()` to work on this imported lambda, set the sameEnvironment property to true
+if this imported lambda is in the same account and region as the stack you are importing it into.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionAttributes.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+The parent construct.
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionAttributes.parameter.id"></a>
+
+- *Type:* string
+
+The name of the lambda construct.
+
+---
+
+###### `attrs`<sup>Required</sup> <a name="attrs" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionAttributes.parameter.attrs"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.FunctionAttributes
+
+the attributes of the function to import.
+
+---
+
+##### `fromFunctionName` <a name="fromFunctionName" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionName"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.fromFunctionName(scope: Construct, id: string, functionName: string)
+```
+
+Import a lambda function into the CDK using its name.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionName.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionName.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `functionName`<sup>Required</sup> <a name="functionName" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.fromFunctionName.parameter.functionName"></a>
+
+- *Type:* string
+
+---
+
+##### `metricAll` <a name="metricAll" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAll"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.metricAll(metricName: string, props?: MetricOptions)
+```
+
+Return the given named metric for this Lambda.
+
+###### `metricName`<sup>Required</sup> <a name="metricName" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAll.parameter.metricName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAll.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllConcurrentExecutions` <a name="metricAllConcurrentExecutions" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllConcurrentExecutions"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.metricAllConcurrentExecutions(props?: MetricOptions)
+```
+
+Metric for the number of concurrent executions across all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllConcurrentExecutions.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllDuration` <a name="metricAllDuration" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllDuration"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.metricAllDuration(props?: MetricOptions)
+```
+
+Metric for the Duration executing all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllDuration.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllErrors` <a name="metricAllErrors" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllErrors"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.metricAllErrors(props?: MetricOptions)
+```
+
+Metric for the number of Errors executing all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllInvocations` <a name="metricAllInvocations" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllInvocations"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.metricAllInvocations(props?: MetricOptions)
+```
+
+Metric for the number of invocations of all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllInvocations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllThrottles` <a name="metricAllThrottles" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllThrottles"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.metricAllThrottles(props?: MetricOptions)
+```
+
+Metric for the number of throttled invocations of all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllUnreservedConcurrentExecutions` <a name="metricAllUnreservedConcurrentExecutions" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllUnreservedConcurrentExecutions"></a>
+
+```typescript
+import { AgentRequestHandlerFunction } from '@cdklabs/genai-idp'
+
+AgentRequestHandlerFunction.metricAllUnreservedConcurrentExecutions(props?: MetricOptions)
+```
+
+Metric for the number of unreserved concurrent executions across all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.metricAllUnreservedConcurrentExecutions.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The DLQ (as queue) associated with this Lambda Function (this is an optional attribute). |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The DLQ (as topic) associated with this Lambda Function (this is an optional attribute). |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.timeout">timeout</a></code> | <code>aws-cdk-lib.Duration</code> | The timeout configured for this lambda. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `env`<sup>Required</sup> <a name="env" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.env"></a>
+
+```typescript
+public readonly env: ResourceEnvironment;
+```
+
+- *Type:* aws-cdk-lib.ResourceEnvironment
+
+The environment this resource belongs to.
+
+For resources that are created and managed by the CDK
+(generally, those created by creating new class instances like Role, Bucket, etc.),
+this is always the same as the environment of the stack they belong to;
+however, for imported resources
+(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
+that might be different than the stack they were imported into.
+
+---
+
+##### `stack`<sup>Required</sup> <a name="stack" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.stack"></a>
+
+```typescript
+public readonly stack: Stack;
+```
+
+- *Type:* aws-cdk-lib.Stack
+
+The stack in which this resource is defined.
+
+---
+
+##### `architecture`<sup>Required</sup> <a name="architecture" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.architecture"></a>
+
+```typescript
+public readonly architecture: Architecture;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Architecture
+
+The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64).
+
+---
+
+##### `connections`<sup>Required</sup> <a name="connections" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.connections"></a>
+
+```typescript
+public readonly connections: Connections;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.Connections
+
+Access the Connections object.
+
+Will fail if not a VPC-enabled Lambda Function
+
+---
+
+##### `functionArn`<sup>Required</sup> <a name="functionArn" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.functionArn"></a>
+
+```typescript
+public readonly functionArn: string;
+```
+
+- *Type:* string
+
+ARN of this function.
+
+---
+
+##### `functionName`<sup>Required</sup> <a name="functionName" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.functionName"></a>
+
+```typescript
+public readonly functionName: string;
+```
+
+- *Type:* string
+
+Name of this function.
+
+---
+
+##### `grantPrincipal`<sup>Required</sup> <a name="grantPrincipal" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.grantPrincipal"></a>
+
+```typescript
+public readonly grantPrincipal: IPrincipal;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IPrincipal
+
+The principal this Lambda Function is running as.
+
+---
+
+##### `isBoundToVpc`<sup>Required</sup> <a name="isBoundToVpc" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.isBoundToVpc"></a>
+
+```typescript
+public readonly isBoundToVpc: boolean;
+```
+
+- *Type:* boolean
+
+Whether or not this Lambda function was bound to a VPC.
+
+If this is is `false`, trying to access the `connections` object will fail.
+
+---
+
+##### `latestVersion`<sup>Required</sup> <a name="latestVersion" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.latestVersion"></a>
+
+```typescript
+public readonly latestVersion: IVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IVersion
+
+The `$LATEST` version of this function.
+
+Note that this is reference to a non-specific AWS Lambda version, which
+means the function this version refers to can return different results in
+different invocations.
+
+To obtain a reference to an explicit version which references the current
+function configuration, use `lambdaFunction.currentVersion` instead.
+
+---
+
+##### `permissionsNode`<sup>Required</sup> <a name="permissionsNode" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.permissionsNode"></a>
+
+```typescript
+public readonly permissionsNode: Node;
+```
+
+- *Type:* constructs.Node
+
+The construct node where permissions are attached.
+
+---
+
+##### `resourceArnsForGrantInvoke`<sup>Required</sup> <a name="resourceArnsForGrantInvoke" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.resourceArnsForGrantInvoke"></a>
+
+```typescript
+public readonly resourceArnsForGrantInvoke: string[];
+```
+
+- *Type:* string[]
+
+The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke().
+
+---
+
+##### `role`<sup>Optional</sup> <a name="role" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.role"></a>
+
+```typescript
+public readonly role: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+
+Execution role associated with this function.
+
+---
+
+##### `currentVersion`<sup>Required</sup> <a name="currentVersion" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.currentVersion"></a>
+
+```typescript
+public readonly currentVersion: Version;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Version
+
+Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes.
+
+You can specify options for this version using the `currentVersionOptions`
+prop when initializing the `lambda.Function`.
+
+---
+
+##### `logGroup`<sup>Required</sup> <a name="logGroup" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.logGroup"></a>
+
+```typescript
+public readonly logGroup: ILogGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+
+The LogGroup where the Lambda function's logs are made available.
+
+If either `logRetention` is set or this property is called, a CloudFormation custom resource is added to the stack that
+pre-creates the log group as part of the stack deployment, if it already doesn't exist, and sets the correct log retention
+period (never expire, by default).
+
+Further, if the log group already exists and the `logRetention` is not set, the custom resource will reset the log retention
+to never expire even if it was configured with a different value.
+
+---
+
+##### `runtime`<sup>Required</sup> <a name="runtime" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.runtime"></a>
+
+```typescript
+public readonly runtime: Runtime;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Runtime
+
+The runtime configured for this lambda.
+
+---
+
+##### `deadLetterQueue`<sup>Optional</sup> <a name="deadLetterQueue" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.deadLetterQueue"></a>
+
+```typescript
+public readonly deadLetterQueue: IQueue;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.IQueue
+
+The DLQ (as queue) associated with this Lambda Function (this is an optional attribute).
+
+---
+
+##### `deadLetterTopic`<sup>Optional</sup> <a name="deadLetterTopic" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.deadLetterTopic"></a>
+
+```typescript
+public readonly deadLetterTopic: ITopic;
+```
+
+- *Type:* aws-cdk-lib.aws_sns.ITopic
+
+The DLQ (as topic) associated with this Lambda Function (this is an optional attribute).
+
+---
+
+##### `timeout`<sup>Optional</sup> <a name="timeout" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.timeout"></a>
+
+```typescript
+public readonly timeout: Duration;
+```
+
+- *Type:* aws-cdk-lib.Duration
+
+The timeout configured for this lambda.
+
+---
+
+#### Constants <a name="Constants" id="Constants"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.PROPERTY_INJECTION_ID">PROPERTY_INJECTION_ID</a></code> | <code>string</code> | Uniquely identifies this class. |
+
+---
+
+##### `PROPERTY_INJECTION_ID`<sup>Required</sup> <a name="PROPERTY_INJECTION_ID" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.PROPERTY_INJECTION_ID"></a>
+
+```typescript
+public readonly PROPERTY_INJECTION_ID: string;
+```
+
+- *Type:* string
+
+Uniquely identifies this class.
+
+---
+
+### AgentTable <a name="AgentTable" id="@cdklabs/genai-idp.AgentTable"></a>
+
+- *Implements:* <a href="#@cdklabs/genai-idp.IAgentTable">IAgentTable</a>
+
+DynamoDB table for agent job tracking.
+
+Uses fixed keys: PK (partition key) and SK (sort key).
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.AgentTable.Initializer"></a>
+
+```typescript
+import { AgentTable } from '@cdklabs/genai-idp'
+
+new AgentTable(scope: Construct, id: string, props?: FixedKeyTableProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.FixedKeyTableProps">FixedKeyTableProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentTable.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentTable.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.FixedKeyTableProps">FixedKeyTableProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this file system. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.grantFullAccess">grantFullAccess</a></code> | Permits all DynamoDB operations ("dynamodb:*") to an IAM principal. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.grantReadData">grantReadData</a></code> | Permits an IAM principal all data read operations from this table: BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan, DescribeTable. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.grantReadWriteData">grantReadWriteData</a></code> | Permits an IAM principal to all data read/write operations to this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.grantStream">grantStream</a></code> | Adds an IAM policy statement associated with this table's stream to an IAM principal's policy. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.grantStreamRead">grantStreamRead</a></code> | Permits an IAM principal all stream data read operations for this table's stream: DescribeStream, GetRecords, GetShardIterator, ListStreams. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.grantTableListStreams">grantTableListStreams</a></code> | Permits an IAM Principal to list streams attached to current dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.grantWriteData">grantWriteData</a></code> | Permits an IAM principal all data write operations to this table: BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metric">metric</a></code> | Return the given named metric for this Table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metricConditionalCheckFailedRequests">metricConditionalCheckFailedRequests</a></code> | Metric for the conditional check failed requests this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metricConsumedReadCapacityUnits">metricConsumedReadCapacityUnits</a></code> | Metric for the consumed read capacity units this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metricConsumedWriteCapacityUnits">metricConsumedWriteCapacityUnits</a></code> | Metric for the consumed write capacity units this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metricSuccessfulRequestLatency">metricSuccessfulRequestLatency</a></code> | Metric for the successful request latency this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metricSystemErrors">metricSystemErrors</a></code> | Metric for the system errors this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metricSystemErrorsForOperations">metricSystemErrorsForOperations</a></code> | Metric for the system errors this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metricThrottledRequests">metricThrottledRequests</a></code> | How many requests are throttled on this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metricThrottledRequestsForOperation">metricThrottledRequestsForOperation</a></code> | How many requests are throttled on this table, for the given operation. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metricThrottledRequestsForOperations">metricThrottledRequestsForOperations</a></code> | How many requests are throttled on this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.metricUserErrors">metricUserErrors</a></code> | Metric for the user errors. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.addGlobalSecondaryIndex">addGlobalSecondaryIndex</a></code> | Add a global secondary index of table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.addLocalSecondaryIndex">addLocalSecondaryIndex</a></code> | Add a local secondary index of table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.autoScaleGlobalSecondaryIndexReadCapacity">autoScaleGlobalSecondaryIndexReadCapacity</a></code> | Enable read capacity scaling for the given GSI. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.autoScaleGlobalSecondaryIndexWriteCapacity">autoScaleGlobalSecondaryIndexWriteCapacity</a></code> | Enable write capacity scaling for the given GSI. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.autoScaleReadCapacity">autoScaleReadCapacity</a></code> | Enable read capacity scaling for this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.autoScaleWriteCapacity">autoScaleWriteCapacity</a></code> | Enable write capacity scaling for this table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.schema">schema</a></code> | Get schema attributes of table or index. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.AgentTable.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentTable.applyRemovalPolicy"></a>
+
+```typescript
+public applyRemovalPolicy(policy: RemovalPolicy): void
+```
+
+Apply the given removal policy to this resource.
+
+The Removal Policy controls what happens to this resource when it stops
+being managed by CloudFormation, either because you've removed it from the
+CDK application or because you've made a change that requires the resource
+to be replaced.
+
+The resource can be deleted (`RemovalPolicy.DESTROY`), or left in your AWS
+account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
+
+###### `policy`<sup>Required</sup> <a name="policy" id="@cdklabs/genai-idp.AgentTable.applyRemovalPolicy.parameter.policy"></a>
+
+- *Type:* aws-cdk-lib.RemovalPolicy
+
+---
+
+##### `addToResourcePolicy` <a name="addToResourcePolicy" id="@cdklabs/genai-idp.AgentTable.addToResourcePolicy"></a>
+
+```typescript
+public addToResourcePolicy(statement: PolicyStatement): AddToResourcePolicyResult
+```
+
+Adds a statement to the resource policy associated with this file system.
+
+A resource policy will be automatically created upon the first call to `addToResourcePolicy`.
+
+Note that this does not work with imported file systems.
+
+###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.AgentTable.addToResourcePolicy.parameter.statement"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyStatement
+
+The policy statement to add.
+
+---
+
+##### `grant` <a name="grant" id="@cdklabs/genai-idp.AgentTable.grant"></a>
+
+```typescript
+public grant(grantee: IGrantable, actions: ...string[]): Grant
+```
+
+Adds an IAM policy statement associated with this table to an IAM principal's policy.
+
+If `encryptionKey` is present, appropriate grants to the key needs to be added
+separately using the `table.encryptionKey.grant*` methods.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grant.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal (no-op if undefined).
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.AgentTable.grant.parameter.actions"></a>
+
+- *Type:* ...string[]
+
+The set of actions to allow (i.e. "dynamodb:PutItem", "dynamodb:GetItem", ...).
+
+---
+
+##### `grantFullAccess` <a name="grantFullAccess" id="@cdklabs/genai-idp.AgentTable.grantFullAccess"></a>
+
+```typescript
+public grantFullAccess(grantee: IGrantable): Grant
+```
+
+Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
+
+Appropriate grants will also be added to the customer-managed KMS key
+if one was configured.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantFullAccess.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant access to.
+
+---
+
+##### `grantReadData` <a name="grantReadData" id="@cdklabs/genai-idp.AgentTable.grantReadData"></a>
+
+```typescript
+public grantReadData(grantee: IGrantable): Grant
+```
+
+Permits an IAM principal all data read operations from this table: BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan, DescribeTable.
+
+Appropriate grants will also be added to the customer-managed KMS key
+if one was configured.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantReadData.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant access to.
+
+---
+
+##### `grantReadWriteData` <a name="grantReadWriteData" id="@cdklabs/genai-idp.AgentTable.grantReadWriteData"></a>
+
+```typescript
+public grantReadWriteData(grantee: IGrantable): Grant
+```
+
+Permits an IAM principal to all data read/write operations to this table.
+
+BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan,
+BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
+
+Appropriate grants will also be added to the customer-managed KMS key
+if one was configured.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantReadWriteData.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant access to.
+
+---
+
+##### `grantStream` <a name="grantStream" id="@cdklabs/genai-idp.AgentTable.grantStream"></a>
+
+```typescript
+public grantStream(grantee: IGrantable, actions: ...string[]): Grant
+```
+
+Adds an IAM policy statement associated with this table's stream to an IAM principal's policy.
+
+If `encryptionKey` is present, appropriate grants to the key needs to be added
+separately using the `table.encryptionKey.grant*` methods.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantStream.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal (no-op if undefined).
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.AgentTable.grantStream.parameter.actions"></a>
+
+- *Type:* ...string[]
+
+The set of actions to allow (i.e. "dynamodb:DescribeStream", "dynamodb:GetRecords", ...).
+
+---
+
+##### `grantStreamRead` <a name="grantStreamRead" id="@cdklabs/genai-idp.AgentTable.grantStreamRead"></a>
+
+```typescript
+public grantStreamRead(grantee: IGrantable): Grant
+```
+
+Permits an IAM principal all stream data read operations for this table's stream: DescribeStream, GetRecords, GetShardIterator, ListStreams.
+
+Appropriate grants will also be added to the customer-managed KMS key
+if one was configured.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantStreamRead.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant access to.
+
+---
+
+##### `grantTableListStreams` <a name="grantTableListStreams" id="@cdklabs/genai-idp.AgentTable.grantTableListStreams"></a>
+
+```typescript
+public grantTableListStreams(grantee: IGrantable): Grant
+```
+
+Permits an IAM Principal to list streams attached to current dynamodb table.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantTableListStreams.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal (no-op if undefined).
+
+---
+
+##### `grantWriteData` <a name="grantWriteData" id="@cdklabs/genai-idp.AgentTable.grantWriteData"></a>
+
+```typescript
+public grantWriteData(grantee: IGrantable): Grant
+```
+
+Permits an IAM principal all data write operations to this table: BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable.
+
+Appropriate grants will also be added to the customer-managed KMS key
+if one was configured.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantWriteData.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant access to.
+
+---
+
+##### `metric` <a name="metric" id="@cdklabs/genai-idp.AgentTable.metric"></a>
+
+```typescript
+public metric(metricName: string, props?: MetricOptions): Metric
+```
+
+Return the given named metric for this Table.
+
+By default, the metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `metricName`<sup>Required</sup> <a name="metricName" id="@cdklabs/genai-idp.AgentTable.metric.parameter.metricName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metric.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricConditionalCheckFailedRequests` <a name="metricConditionalCheckFailedRequests" id="@cdklabs/genai-idp.AgentTable.metricConditionalCheckFailedRequests"></a>
+
+```typescript
+public metricConditionalCheckFailedRequests(props?: MetricOptions): Metric
+```
+
+Metric for the conditional check failed requests this table.
+
+By default, the metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metricConditionalCheckFailedRequests.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricConsumedReadCapacityUnits` <a name="metricConsumedReadCapacityUnits" id="@cdklabs/genai-idp.AgentTable.metricConsumedReadCapacityUnits"></a>
+
+```typescript
+public metricConsumedReadCapacityUnits(props?: MetricOptions): Metric
+```
+
+Metric for the consumed read capacity units this table.
+
+By default, the metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metricConsumedReadCapacityUnits.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricConsumedWriteCapacityUnits` <a name="metricConsumedWriteCapacityUnits" id="@cdklabs/genai-idp.AgentTable.metricConsumedWriteCapacityUnits"></a>
+
+```typescript
+public metricConsumedWriteCapacityUnits(props?: MetricOptions): Metric
+```
+
+Metric for the consumed write capacity units this table.
+
+By default, the metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metricConsumedWriteCapacityUnits.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricSuccessfulRequestLatency` <a name="metricSuccessfulRequestLatency" id="@cdklabs/genai-idp.AgentTable.metricSuccessfulRequestLatency"></a>
+
+```typescript
+public metricSuccessfulRequestLatency(props?: MetricOptions): Metric
+```
+
+Metric for the successful request latency this table.
+
+By default, the metric will be calculated as an average over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metricSuccessfulRequestLatency.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### ~~`metricSystemErrors`~~ <a name="metricSystemErrors" id="@cdklabs/genai-idp.AgentTable.metricSystemErrors"></a>
+
+```typescript
+public metricSystemErrors(props?: MetricOptions): Metric
+```
+
+Metric for the system errors this table.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metricSystemErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricSystemErrorsForOperations` <a name="metricSystemErrorsForOperations" id="@cdklabs/genai-idp.AgentTable.metricSystemErrorsForOperations"></a>
+
+```typescript
+public metricSystemErrorsForOperations(props?: SystemErrorsForOperationsMetricOptions): IMetric
+```
+
+Metric for the system errors this table.
+
+This will sum errors across all possible operations.
+Note that by default, each individual metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metricSystemErrorsForOperations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.SystemErrorsForOperationsMetricOptions
+
+---
+
+##### ~~`metricThrottledRequests`~~ <a name="metricThrottledRequests" id="@cdklabs/genai-idp.AgentTable.metricThrottledRequests"></a>
+
+```typescript
+public metricThrottledRequests(props?: MetricOptions): Metric
+```
+
+How many requests are throttled on this table.
+
+Default: sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metricThrottledRequests.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricThrottledRequestsForOperation` <a name="metricThrottledRequestsForOperation" id="@cdklabs/genai-idp.AgentTable.metricThrottledRequestsForOperation"></a>
+
+```typescript
+public metricThrottledRequestsForOperation(operation: string, props?: MetricOptions): Metric
+```
+
+How many requests are throttled on this table, for the given operation.
+
+Default: sum over 5 minutes
+
+###### `operation`<sup>Required</sup> <a name="operation" id="@cdklabs/genai-idp.AgentTable.metricThrottledRequestsForOperation.parameter.operation"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metricThrottledRequestsForOperation.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricThrottledRequestsForOperations` <a name="metricThrottledRequestsForOperations" id="@cdklabs/genai-idp.AgentTable.metricThrottledRequestsForOperations"></a>
+
+```typescript
+public metricThrottledRequestsForOperations(props?: OperationsMetricOptions): IMetric
+```
+
+How many requests are throttled on this table.
+
+This will sum errors across all possible operations.
+Note that by default, each individual metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metricThrottledRequestsForOperations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.OperationsMetricOptions
+
+---
+
+##### `metricUserErrors` <a name="metricUserErrors" id="@cdklabs/genai-idp.AgentTable.metricUserErrors"></a>
+
+```typescript
+public metricUserErrors(props?: MetricOptions): Metric
+```
+
+Metric for the user errors.
+
+Note that this metric reports user errors across all
+the tables in the account and region the table resides in.
+
+By default, the metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.metricUserErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `addGlobalSecondaryIndex` <a name="addGlobalSecondaryIndex" id="@cdklabs/genai-idp.AgentTable.addGlobalSecondaryIndex"></a>
+
+```typescript
+public addGlobalSecondaryIndex(props: GlobalSecondaryIndexProps): void
+```
+
+Add a global secondary index of table.
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.addGlobalSecondaryIndex.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.GlobalSecondaryIndexProps
+
+the property of global secondary index.
+
+---
+
+##### `addLocalSecondaryIndex` <a name="addLocalSecondaryIndex" id="@cdklabs/genai-idp.AgentTable.addLocalSecondaryIndex"></a>
+
+```typescript
+public addLocalSecondaryIndex(props: LocalSecondaryIndexProps): void
+```
+
+Add a local secondary index of table.
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.addLocalSecondaryIndex.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.LocalSecondaryIndexProps
+
+the property of local secondary index.
+
+---
+
+##### `autoScaleGlobalSecondaryIndexReadCapacity` <a name="autoScaleGlobalSecondaryIndexReadCapacity" id="@cdklabs/genai-idp.AgentTable.autoScaleGlobalSecondaryIndexReadCapacity"></a>
+
+```typescript
+public autoScaleGlobalSecondaryIndexReadCapacity(indexName: string, props: EnableScalingProps): IScalableTableAttribute
+```
+
+Enable read capacity scaling for the given GSI.
+
+###### `indexName`<sup>Required</sup> <a name="indexName" id="@cdklabs/genai-idp.AgentTable.autoScaleGlobalSecondaryIndexReadCapacity.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.autoScaleGlobalSecondaryIndexReadCapacity.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.EnableScalingProps
+
+---
+
+##### `autoScaleGlobalSecondaryIndexWriteCapacity` <a name="autoScaleGlobalSecondaryIndexWriteCapacity" id="@cdklabs/genai-idp.AgentTable.autoScaleGlobalSecondaryIndexWriteCapacity"></a>
+
+```typescript
+public autoScaleGlobalSecondaryIndexWriteCapacity(indexName: string, props: EnableScalingProps): IScalableTableAttribute
+```
+
+Enable write capacity scaling for the given GSI.
+
+###### `indexName`<sup>Required</sup> <a name="indexName" id="@cdklabs/genai-idp.AgentTable.autoScaleGlobalSecondaryIndexWriteCapacity.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.autoScaleGlobalSecondaryIndexWriteCapacity.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.EnableScalingProps
+
+---
+
+##### `autoScaleReadCapacity` <a name="autoScaleReadCapacity" id="@cdklabs/genai-idp.AgentTable.autoScaleReadCapacity"></a>
+
+```typescript
+public autoScaleReadCapacity(props: EnableScalingProps): IScalableTableAttribute
+```
+
+Enable read capacity scaling for this table.
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.autoScaleReadCapacity.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.EnableScalingProps
+
+---
+
+##### `autoScaleWriteCapacity` <a name="autoScaleWriteCapacity" id="@cdklabs/genai-idp.AgentTable.autoScaleWriteCapacity"></a>
+
+```typescript
+public autoScaleWriteCapacity(props: EnableScalingProps): IScalableTableAttribute
+```
+
+Enable write capacity scaling for this table.
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.AgentTable.autoScaleWriteCapacity.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.EnableScalingProps
+
+---
+
+##### `schema` <a name="schema" id="@cdklabs/genai-idp.AgentTable.schema"></a>
+
+```typescript
+public schema(indexName?: string): SchemaOptions
+```
+
+Get schema attributes of table or index.
+
+###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.AgentTable.schema.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.isOwnedResource">isOwnedResource</a></code> | Returns true if the construct was created by CDK, and false otherwise. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.isResource">isResource</a></code> | Check whether the given construct is a Resource. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.fromTableArn">fromTableArn</a></code> | Creates a Table construct that represents an external table via table arn. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.fromTableAttributes">fromTableAttributes</a></code> | Creates a Table construct that represents an external table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.fromTableName">fromTableName</a></code> | Creates a Table construct that represents an external table via table name. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.AgentTable.isConstruct"></a>
+
+```typescript
+import { AgentTable } from '@cdklabs/genai-idp'
+
+AgentTable.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.AgentTable.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+##### `isOwnedResource` <a name="isOwnedResource" id="@cdklabs/genai-idp.AgentTable.isOwnedResource"></a>
+
+```typescript
+import { AgentTable } from '@cdklabs/genai-idp'
+
+AgentTable.isOwnedResource(construct: IConstruct)
+```
+
+Returns true if the construct was created by CDK, and false otherwise.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.AgentTable.isOwnedResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `isResource` <a name="isResource" id="@cdklabs/genai-idp.AgentTable.isResource"></a>
+
+```typescript
+import { AgentTable } from '@cdklabs/genai-idp'
+
+AgentTable.isResource(construct: IConstruct)
+```
+
+Check whether the given construct is a Resource.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.AgentTable.isResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `fromTableArn` <a name="fromTableArn" id="@cdklabs/genai-idp.AgentTable.fromTableArn"></a>
+
+```typescript
+import { AgentTable } from '@cdklabs/genai-idp'
+
+AgentTable.fromTableArn(scope: Construct, id: string, tableArn: string)
+```
+
+Creates a Table construct that represents an external table via table arn.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentTable.fromTableArn.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+The parent creating construct (usually `this`).
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentTable.fromTableArn.parameter.id"></a>
+
+- *Type:* string
+
+The construct's name.
+
+---
+
+###### `tableArn`<sup>Required</sup> <a name="tableArn" id="@cdklabs/genai-idp.AgentTable.fromTableArn.parameter.tableArn"></a>
+
+- *Type:* string
+
+The table's ARN.
+
+---
+
+##### `fromTableAttributes` <a name="fromTableAttributes" id="@cdklabs/genai-idp.AgentTable.fromTableAttributes"></a>
+
+```typescript
+import { AgentTable } from '@cdklabs/genai-idp'
+
+AgentTable.fromTableAttributes(scope: Construct, id: string, attrs: TableAttributes)
+```
+
+Creates a Table construct that represents an external table.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentTable.fromTableAttributes.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+The parent creating construct (usually `this`).
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentTable.fromTableAttributes.parameter.id"></a>
+
+- *Type:* string
+
+The construct's name.
+
+---
+
+###### `attrs`<sup>Required</sup> <a name="attrs" id="@cdklabs/genai-idp.AgentTable.fromTableAttributes.parameter.attrs"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.TableAttributes
+
+A `TableAttributes` object.
+
+---
+
+##### `fromTableName` <a name="fromTableName" id="@cdklabs/genai-idp.AgentTable.fromTableName"></a>
+
+```typescript
+import { AgentTable } from '@cdklabs/genai-idp'
+
+AgentTable.fromTableName(scope: Construct, id: string, tableName: string)
+```
+
+Creates a Table construct that represents an external table via table name.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.AgentTable.fromTableName.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+The parent creating construct (usually `this`).
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.AgentTable.fromTableName.parameter.id"></a>
+
+- *Type:* string
+
+The construct's name.
+
+---
+
+###### `tableName`<sup>Required</sup> <a name="tableName" id="@cdklabs/genai-idp.AgentTable.fromTableName.parameter.tableName"></a>
+
+- *Type:* string
+
+The table's name.
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | KMS encryption key, if this table uses a customer-managed encryption key. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.tableStreamArn">tableStreamArn</a></code> | <code>string</code> | ARN of the table's stream, if there is one. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.resourcePolicy">resourcePolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyDocument</code> | Resource policy to assign to DynamoDB Table. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.AgentTable.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `env`<sup>Required</sup> <a name="env" id="@cdklabs/genai-idp.AgentTable.property.env"></a>
+
+```typescript
+public readonly env: ResourceEnvironment;
+```
+
+- *Type:* aws-cdk-lib.ResourceEnvironment
+
+The environment this resource belongs to.
+
+For resources that are created and managed by the CDK
+(generally, those created by creating new class instances like Role, Bucket, etc.),
+this is always the same as the environment of the stack they belong to;
+however, for imported resources
+(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
+that might be different than the stack they were imported into.
+
+---
+
+##### `stack`<sup>Required</sup> <a name="stack" id="@cdklabs/genai-idp.AgentTable.property.stack"></a>
+
+```typescript
+public readonly stack: Stack;
+```
+
+- *Type:* aws-cdk-lib.Stack
+
+The stack in which this resource is defined.
+
+---
+
+##### `tableArn`<sup>Required</sup> <a name="tableArn" id="@cdklabs/genai-idp.AgentTable.property.tableArn"></a>
+
+```typescript
+public readonly tableArn: string;
+```
+
+- *Type:* string
+
+Arn of the dynamodb table.
+
+---
+
+##### `tableName`<sup>Required</sup> <a name="tableName" id="@cdklabs/genai-idp.AgentTable.property.tableName"></a>
+
+```typescript
+public readonly tableName: string;
+```
+
+- *Type:* string
+
+Table name of the dynamodb table.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.AgentTable.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+KMS encryption key, if this table uses a customer-managed encryption key.
+
+---
+
+##### `tableStreamArn`<sup>Optional</sup> <a name="tableStreamArn" id="@cdklabs/genai-idp.AgentTable.property.tableStreamArn"></a>
+
+```typescript
+public readonly tableStreamArn: string;
+```
+
+- *Type:* string
+
+ARN of the table's stream, if there is one.
+
+---
+
+##### `resourcePolicy`<sup>Optional</sup> <a name="resourcePolicy" id="@cdklabs/genai-idp.AgentTable.property.resourcePolicy"></a>
+
+```typescript
+public readonly resourcePolicy: PolicyDocument;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyDocument
+- *Default:* No resource policy statements are added to the created table.
+
+Resource policy to assign to DynamoDB Table.
+
+> [https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-dynamodb-table-resourcepolicy.html](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-dynamodb-table-resourcepolicy.html)
+
+---
+
+#### Constants <a name="Constants" id="Constants"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.PROPERTY_INJECTION_ID">PROPERTY_INJECTION_ID</a></code> | <code>string</code> | Uniquely identifies this class. |
+
+---
+
+##### `PROPERTY_INJECTION_ID`<sup>Required</sup> <a name="PROPERTY_INJECTION_ID" id="@cdklabs/genai-idp.AgentTable.property.PROPERTY_INJECTION_ID"></a>
+
+```typescript
+public readonly PROPERTY_INJECTION_ID: string;
+```
+
+- *Type:* string
+
+Uniquely identifies this class.
+
+---
 
 ### CognitoUpdaterHitlFunction <a name="CognitoUpdaterHitlFunction" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction"></a>
 
@@ -4195,6 +7596,1305 @@ Uniquely identifies this class.
 
 ---
 
+### CustomPromptGenerator <a name="CustomPromptGenerator" id="@cdklabs/genai-idp.CustomPromptGenerator"></a>
+
+- *Implements:* <a href="#@cdklabs/genai-idp.ICustomPromptGenerator">ICustomPromptGenerator</a>
+
+Custom prompt generator construct for injecting business logic into document processing.
+
+This construct creates a Lambda function that can be used by Pattern 2 and Pattern 3 processors
+to customize prompts based on document content, business rules, or external system integrations.
+
+The Lambda function receives template placeholders including:
+- DOCUMENT_TEXT: Extracted text from the document
+- DOCUMENT_CLASS: Classification result
+- ATTRIBUTE_NAMES_AND_DESCRIPTIONS: Schema information
+- DOCUMENT_IMAGE: URI-based image reference for JSON serialization
+
+Key features:
+- Scoped IAM permissions requiring GENAIIDP-* function naming convention
+- Comprehensive error handling with fail-fast behavior
+- JSON serialization support for all object types
+- Complete observability with detailed logging
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.CustomPromptGenerator.Initializer"></a>
+
+```typescript
+import { CustomPromptGenerator } from '@cdklabs/genai-idp'
+
+new CustomPromptGenerator(scope: Construct, id: string, props: CustomPromptGeneratorProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGenerator.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGenerator.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGenerator.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorProps">CustomPromptGeneratorProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.CustomPromptGenerator.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.CustomPromptGenerator.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGenerator.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.CustomPromptGeneratorProps">CustomPromptGeneratorProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGenerator.toString">toString</a></code> | Returns a string representation of this construct. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.CustomPromptGenerator.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGenerator.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.CustomPromptGenerator.isConstruct"></a>
+
+```typescript
+import { CustomPromptGenerator } from '@cdklabs/genai-idp'
+
+CustomPromptGenerator.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.CustomPromptGenerator.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGenerator.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGenerator.property.generatorFunction">generatorFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | The Lambda function that implements the custom prompt generation logic. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.CustomPromptGenerator.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `generatorFunction`<sup>Required</sup> <a name="generatorFunction" id="@cdklabs/genai-idp.CustomPromptGenerator.property.generatorFunction"></a>
+
+```typescript
+public readonly generatorFunction: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+The Lambda function that implements the custom prompt generation logic.
+
+This function receives template placeholders and returns customized prompts.
+
+---
+
+
+### CustomPromptGeneratorFunction <a name="CustomPromptGeneratorFunction" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction"></a>
+
+Lambda function for custom prompt generation.
+
+This function implements custom business logic for prompt generation in document
+processing workflows. It receives template placeholders and returns customized
+prompts based on document content, business rules, or external integrations.
+
+Key features:
+- Template placeholder support (DOCUMENT_TEXT, DOCUMENT_CLASS, etc.)
+- Business rule integration
+- External system connectivity
+- Fail-fast error handling
+- Comprehensive logging and observability
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.Initializer"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+new CustomPromptGeneratorFunction(scope: Construct, id: string, props: CustomPromptGeneratorFunctionProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps">CustomPromptGeneratorFunctionProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps">CustomPromptGeneratorFunctionProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.addFunctionUrl">addFunctionUrl</a></code> | Adds a url to this lambda function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.addPermission">addPermission</a></code> | Adds a permission to the Lambda resource policy. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.addToRolePolicy">addToRolePolicy</a></code> | Adds a statement to the IAM role assumed by the instance. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.configureAsyncInvoke">configureAsyncInvoke</a></code> | Configures options for asynchronous invocation. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.considerWarningOnInvokeFunctionPermissions">considerWarningOnInvokeFunctionPermissions</a></code> | A warning will be added to functions under the following conditions: - permissions that include `lambda:InvokeFunction` are added to the unqualified function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvoke">grantInvoke</a></code> | Grant the given identity permissions to invoke this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeCompositePrincipal">grantInvokeCompositePrincipal</a></code> | Grant multiple principals the ability to invoke this Lambda via CompositePrincipal. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeLatestVersion">grantInvokeLatestVersion</a></code> | Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeUrl">grantInvokeUrl</a></code> | Grant the given identity permissions to invoke this Lambda Function URL. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeVersion">grantInvokeVersion</a></code> | Grant the given identity permissions to invoke the given version of this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metric">metric</a></code> | Return the given named metric for this Function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricDuration">metricDuration</a></code> | How long execution of this Lambda takes. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricErrors">metricErrors</a></code> | How many invocations of this Lambda fail. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricInvocations">metricInvocations</a></code> | How often this Lambda is invoked. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricThrottles">metricThrottles</a></code> | How often this Lambda is throttled. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.addAlias">addAlias</a></code> | Defines an alias for this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEnvironment">addEnvironment</a></code> | Adds an environment variable to this Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.addLayers">addLayers</a></code> | Adds one or more Lambda Layers to this Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.invalidateVersionBasedOn">invalidateVersionBasedOn</a></code> | Mix additional information into the hash of the Version object. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.applyRemovalPolicy"></a>
+
+```typescript
+public applyRemovalPolicy(policy: RemovalPolicy): void
+```
+
+Apply the given removal policy to this resource.
+
+The Removal Policy controls what happens to this resource when it stops
+being managed by CloudFormation, either because you've removed it from the
+CDK application or because you've made a change that requires the resource
+to be replaced.
+
+The resource can be deleted (`RemovalPolicy.DESTROY`), or left in your AWS
+account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
+
+###### `policy`<sup>Required</sup> <a name="policy" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.applyRemovalPolicy.parameter.policy"></a>
+
+- *Type:* aws-cdk-lib.RemovalPolicy
+
+---
+
+##### `addEventSource` <a name="addEventSource" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEventSource"></a>
+
+```typescript
+public addEventSource(source: IEventSource): void
+```
+
+Adds an event source to this function.
+
+Event sources are implemented in the aws-cdk-lib/aws-lambda-event-sources module.
+
+The following example adds an SQS Queue as an event source:
+```
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+myFunction.addEventSource(new SqsEventSource(myQueue));
+```
+
+###### `source`<sup>Required</sup> <a name="source" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEventSource.parameter.source"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.IEventSource
+
+---
+
+##### `addEventSourceMapping` <a name="addEventSourceMapping" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEventSourceMapping"></a>
+
+```typescript
+public addEventSourceMapping(id: string, options: EventSourceMappingOptions): EventSourceMapping
+```
+
+Adds an event source that maps to this AWS Lambda function.
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEventSourceMapping.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `options`<sup>Required</sup> <a name="options" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEventSourceMapping.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EventSourceMappingOptions
+
+---
+
+##### `addFunctionUrl` <a name="addFunctionUrl" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addFunctionUrl"></a>
+
+```typescript
+public addFunctionUrl(options?: FunctionUrlOptions): FunctionUrl
+```
+
+Adds a url to this lambda function.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addFunctionUrl.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.FunctionUrlOptions
+
+---
+
+##### `addPermission` <a name="addPermission" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addPermission"></a>
+
+```typescript
+public addPermission(id: string, permission: Permission): void
+```
+
+Adds a permission to the Lambda resource policy.
+
+> [Permission for details.](Permission for details.)
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addPermission.parameter.id"></a>
+
+- *Type:* string
+
+The id for the permission construct.
+
+---
+
+###### `permission`<sup>Required</sup> <a name="permission" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addPermission.parameter.permission"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.Permission
+
+The permission to grant to this Lambda function.
+
+---
+
+##### `addToRolePolicy` <a name="addToRolePolicy" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addToRolePolicy"></a>
+
+```typescript
+public addToRolePolicy(statement: PolicyStatement): void
+```
+
+Adds a statement to the IAM role assumed by the instance.
+
+###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addToRolePolicy.parameter.statement"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyStatement
+
+---
+
+##### `configureAsyncInvoke` <a name="configureAsyncInvoke" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.configureAsyncInvoke"></a>
+
+```typescript
+public configureAsyncInvoke(options: EventInvokeConfigOptions): void
+```
+
+Configures options for asynchronous invocation.
+
+###### `options`<sup>Required</sup> <a name="options" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.configureAsyncInvoke.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EventInvokeConfigOptions
+
+---
+
+##### `considerWarningOnInvokeFunctionPermissions` <a name="considerWarningOnInvokeFunctionPermissions" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.considerWarningOnInvokeFunctionPermissions"></a>
+
+```typescript
+public considerWarningOnInvokeFunctionPermissions(scope: Construct, action: string): void
+```
+
+A warning will be added to functions under the following conditions: - permissions that include `lambda:InvokeFunction` are added to the unqualified function.
+
+function.currentVersion is invoked before or after the permission is created.
+
+This applies only to permissions on Lambda functions, not versions or aliases.
+This function is overridden as a noOp for QualifiedFunctionBase.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.considerWarningOnInvokeFunctionPermissions.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `action`<sup>Required</sup> <a name="action" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.considerWarningOnInvokeFunctionPermissions.parameter.action"></a>
+
+- *Type:* string
+
+---
+
+##### `grantInvoke` <a name="grantInvoke" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvoke"></a>
+
+```typescript
+public grantInvoke(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvoke.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeCompositePrincipal` <a name="grantInvokeCompositePrincipal" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeCompositePrincipal"></a>
+
+```typescript
+public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Grant[]
+```
+
+Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.CompositePrincipal
+
+---
+
+##### `grantInvokeLatestVersion` <a name="grantInvokeLatestVersion" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeLatestVersion"></a>
+
+```typescript
+public grantInvokeLatestVersion(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeLatestVersion.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeUrl` <a name="grantInvokeUrl" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeUrl"></a>
+
+```typescript
+public grantInvokeUrl(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke this Lambda Function URL.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeUrl.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeVersion` <a name="grantInvokeVersion" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeVersion"></a>
+
+```typescript
+public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
+```
+
+Grant the given identity permissions to invoke the given version of this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeVersion.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `version`<sup>Required</sup> <a name="version" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeVersion.parameter.version"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.IVersion
+
+---
+
+##### `metric` <a name="metric" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metric"></a>
+
+```typescript
+public metric(metricName: string, props?: MetricOptions): Metric
+```
+
+Return the given named metric for this Function.
+
+###### `metricName`<sup>Required</sup> <a name="metricName" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metric.parameter.metricName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metric.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricDuration` <a name="metricDuration" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricDuration"></a>
+
+```typescript
+public metricDuration(props?: MetricOptions): Metric
+```
+
+How long execution of this Lambda takes.
+
+Average over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricDuration.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricErrors` <a name="metricErrors" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricErrors"></a>
+
+```typescript
+public metricErrors(props?: MetricOptions): Metric
+```
+
+How many invocations of this Lambda fail.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricInvocations` <a name="metricInvocations" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricInvocations"></a>
+
+```typescript
+public metricInvocations(props?: MetricOptions): Metric
+```
+
+How often this Lambda is invoked.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricInvocations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricThrottles` <a name="metricThrottles" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricThrottles"></a>
+
+```typescript
+public metricThrottles(props?: MetricOptions): Metric
+```
+
+How often this Lambda is throttled.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `addAlias` <a name="addAlias" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addAlias"></a>
+
+```typescript
+public addAlias(aliasName: string, options?: AliasOptions): Alias
+```
+
+Defines an alias for this function.
+
+The alias will automatically be updated to point to the latest version of
+the function as it is being updated during a deployment.
+
+```ts
+declare const fn: lambda.Function;
+
+fn.addAlias('Live');
+
+// Is equivalent to
+
+new lambda.Alias(this, 'AliasLive', {
+  aliasName: 'Live',
+  version: fn.currentVersion,
+});
+```
+
+###### `aliasName`<sup>Required</sup> <a name="aliasName" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addAlias.parameter.aliasName"></a>
+
+- *Type:* string
+
+The name of the alias.
+
+---
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addAlias.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.AliasOptions
+
+Alias options.
+
+---
+
+##### `addEnvironment` <a name="addEnvironment" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEnvironment"></a>
+
+```typescript
+public addEnvironment(key: string, value: string, options?: EnvironmentOptions): Function
+```
+
+Adds an environment variable to this Lambda function.
+
+If this is a ref to a Lambda function, this operation results in a no-op.
+
+###### `key`<sup>Required</sup> <a name="key" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEnvironment.parameter.key"></a>
+
+- *Type:* string
+
+The environment variable key.
+
+---
+
+###### `value`<sup>Required</sup> <a name="value" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEnvironment.parameter.value"></a>
+
+- *Type:* string
+
+The environment variable's value.
+
+---
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEnvironment.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EnvironmentOptions
+
+Environment variable options.
+
+---
+
+##### `addLayers` <a name="addLayers" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addLayers"></a>
+
+```typescript
+public addLayers(layers: ...ILayerVersion[]): void
+```
+
+Adds one or more Lambda Layers to this Lambda function.
+
+###### `layers`<sup>Required</sup> <a name="layers" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.addLayers.parameter.layers"></a>
+
+- *Type:* ...aws-cdk-lib.aws_lambda.ILayerVersion[]
+
+the layers to be added.
+
+---
+
+##### `invalidateVersionBasedOn` <a name="invalidateVersionBasedOn" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.invalidateVersionBasedOn"></a>
+
+```typescript
+public invalidateVersionBasedOn(x: string): void
+```
+
+Mix additional information into the hash of the Version object.
+
+The Lambda Function construct does its best to automatically create a new
+Version when anything about the Function changes (its code, its layers,
+any of the other properties).
+
+However, you can sometimes source information from places that the CDK cannot
+look into, like the deploy-time values of SSM parameters. In those cases,
+the CDK would not force the creation of a new Version object when it actually
+should.
+
+This method can be used to invalidate the current Version object. Pass in
+any string into this method, and make sure the string changes when you know
+a new Version needs to be created.
+
+This method may be called more than once.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.invalidateVersionBasedOn.parameter.x"></a>
+
+- *Type:* string
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.isOwnedResource">isOwnedResource</a></code> | Returns true if the construct was created by CDK, and false otherwise. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.isResource">isResource</a></code> | Check whether the given construct is a Resource. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.classifyVersionProperty">classifyVersionProperty</a></code> | Record whether specific properties in the `AWS::Lambda::Function` resource should also be associated to the Version resource. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionArn">fromFunctionArn</a></code> | Import a lambda function into the CDK using its ARN. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionAttributes">fromFunctionAttributes</a></code> | Creates a Lambda function object which represents a function not defined within this stack. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionName">fromFunctionName</a></code> | Import a lambda function into the CDK using its name. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAll">metricAll</a></code> | Return the given named metric for this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllConcurrentExecutions">metricAllConcurrentExecutions</a></code> | Metric for the number of concurrent executions across all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllDuration">metricAllDuration</a></code> | Metric for the Duration executing all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllErrors">metricAllErrors</a></code> | Metric for the number of Errors executing all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllInvocations">metricAllInvocations</a></code> | Metric for the number of invocations of all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllThrottles">metricAllThrottles</a></code> | Metric for the number of throttled invocations of all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllUnreservedConcurrentExecutions">metricAllUnreservedConcurrentExecutions</a></code> | Metric for the number of unreserved concurrent executions across all Lambdas. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.isConstruct"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+##### `isOwnedResource` <a name="isOwnedResource" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.isOwnedResource"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.isOwnedResource(construct: IConstruct)
+```
+
+Returns true if the construct was created by CDK, and false otherwise.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.isOwnedResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `isResource` <a name="isResource" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.isResource"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.isResource(construct: IConstruct)
+```
+
+Check whether the given construct is a Resource.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.isResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `classifyVersionProperty` <a name="classifyVersionProperty" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.classifyVersionProperty"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.classifyVersionProperty(propertyName: string, locked: boolean)
+```
+
+Record whether specific properties in the `AWS::Lambda::Function` resource should also be associated to the Version resource.
+
+See 'currentVersion' section in the module README for more details.
+
+###### `propertyName`<sup>Required</sup> <a name="propertyName" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.classifyVersionProperty.parameter.propertyName"></a>
+
+- *Type:* string
+
+The property to classify.
+
+---
+
+###### `locked`<sup>Required</sup> <a name="locked" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.classifyVersionProperty.parameter.locked"></a>
+
+- *Type:* boolean
+
+whether the property should be associated to the version or not.
+
+---
+
+##### `fromFunctionArn` <a name="fromFunctionArn" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionArn"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.fromFunctionArn(scope: Construct, id: string, functionArn: string)
+```
+
+Import a lambda function into the CDK using its ARN.
+
+For `Function.addPermissions()` to work on this imported lambda, make sure that is
+in the same account and region as the stack you are importing it into.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionArn.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionArn.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `functionArn`<sup>Required</sup> <a name="functionArn" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionArn.parameter.functionArn"></a>
+
+- *Type:* string
+
+---
+
+##### `fromFunctionAttributes` <a name="fromFunctionAttributes" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionAttributes"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.fromFunctionAttributes(scope: Construct, id: string, attrs: FunctionAttributes)
+```
+
+Creates a Lambda function object which represents a function not defined within this stack.
+
+For `Function.addPermissions()` to work on this imported lambda, set the sameEnvironment property to true
+if this imported lambda is in the same account and region as the stack you are importing it into.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionAttributes.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+The parent construct.
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionAttributes.parameter.id"></a>
+
+- *Type:* string
+
+The name of the lambda construct.
+
+---
+
+###### `attrs`<sup>Required</sup> <a name="attrs" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionAttributes.parameter.attrs"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.FunctionAttributes
+
+the attributes of the function to import.
+
+---
+
+##### `fromFunctionName` <a name="fromFunctionName" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionName"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.fromFunctionName(scope: Construct, id: string, functionName: string)
+```
+
+Import a lambda function into the CDK using its name.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionName.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionName.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `functionName`<sup>Required</sup> <a name="functionName" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.fromFunctionName.parameter.functionName"></a>
+
+- *Type:* string
+
+---
+
+##### `metricAll` <a name="metricAll" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAll"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.metricAll(metricName: string, props?: MetricOptions)
+```
+
+Return the given named metric for this Lambda.
+
+###### `metricName`<sup>Required</sup> <a name="metricName" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAll.parameter.metricName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAll.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllConcurrentExecutions` <a name="metricAllConcurrentExecutions" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllConcurrentExecutions"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.metricAllConcurrentExecutions(props?: MetricOptions)
+```
+
+Metric for the number of concurrent executions across all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllConcurrentExecutions.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllDuration` <a name="metricAllDuration" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllDuration"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.metricAllDuration(props?: MetricOptions)
+```
+
+Metric for the Duration executing all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllDuration.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllErrors` <a name="metricAllErrors" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllErrors"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.metricAllErrors(props?: MetricOptions)
+```
+
+Metric for the number of Errors executing all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllInvocations` <a name="metricAllInvocations" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllInvocations"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.metricAllInvocations(props?: MetricOptions)
+```
+
+Metric for the number of invocations of all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllInvocations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllThrottles` <a name="metricAllThrottles" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllThrottles"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.metricAllThrottles(props?: MetricOptions)
+```
+
+Metric for the number of throttled invocations of all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllUnreservedConcurrentExecutions` <a name="metricAllUnreservedConcurrentExecutions" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllUnreservedConcurrentExecutions"></a>
+
+```typescript
+import { CustomPromptGeneratorFunction } from '@cdklabs/genai-idp'
+
+CustomPromptGeneratorFunction.metricAllUnreservedConcurrentExecutions(props?: MetricOptions)
+```
+
+Metric for the number of unreserved concurrent executions across all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.metricAllUnreservedConcurrentExecutions.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The DLQ (as queue) associated with this Lambda Function (this is an optional attribute). |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The DLQ (as topic) associated with this Lambda Function (this is an optional attribute). |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.timeout">timeout</a></code> | <code>aws-cdk-lib.Duration</code> | The timeout configured for this lambda. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `env`<sup>Required</sup> <a name="env" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.env"></a>
+
+```typescript
+public readonly env: ResourceEnvironment;
+```
+
+- *Type:* aws-cdk-lib.ResourceEnvironment
+
+The environment this resource belongs to.
+
+For resources that are created and managed by the CDK
+(generally, those created by creating new class instances like Role, Bucket, etc.),
+this is always the same as the environment of the stack they belong to;
+however, for imported resources
+(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
+that might be different than the stack they were imported into.
+
+---
+
+##### `stack`<sup>Required</sup> <a name="stack" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.stack"></a>
+
+```typescript
+public readonly stack: Stack;
+```
+
+- *Type:* aws-cdk-lib.Stack
+
+The stack in which this resource is defined.
+
+---
+
+##### `architecture`<sup>Required</sup> <a name="architecture" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.architecture"></a>
+
+```typescript
+public readonly architecture: Architecture;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Architecture
+
+The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64).
+
+---
+
+##### `connections`<sup>Required</sup> <a name="connections" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.connections"></a>
+
+```typescript
+public readonly connections: Connections;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.Connections
+
+Access the Connections object.
+
+Will fail if not a VPC-enabled Lambda Function
+
+---
+
+##### `functionArn`<sup>Required</sup> <a name="functionArn" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.functionArn"></a>
+
+```typescript
+public readonly functionArn: string;
+```
+
+- *Type:* string
+
+ARN of this function.
+
+---
+
+##### `functionName`<sup>Required</sup> <a name="functionName" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.functionName"></a>
+
+```typescript
+public readonly functionName: string;
+```
+
+- *Type:* string
+
+Name of this function.
+
+---
+
+##### `grantPrincipal`<sup>Required</sup> <a name="grantPrincipal" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.grantPrincipal"></a>
+
+```typescript
+public readonly grantPrincipal: IPrincipal;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IPrincipal
+
+The principal this Lambda Function is running as.
+
+---
+
+##### `isBoundToVpc`<sup>Required</sup> <a name="isBoundToVpc" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.isBoundToVpc"></a>
+
+```typescript
+public readonly isBoundToVpc: boolean;
+```
+
+- *Type:* boolean
+
+Whether or not this Lambda function was bound to a VPC.
+
+If this is is `false`, trying to access the `connections` object will fail.
+
+---
+
+##### `latestVersion`<sup>Required</sup> <a name="latestVersion" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.latestVersion"></a>
+
+```typescript
+public readonly latestVersion: IVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IVersion
+
+The `$LATEST` version of this function.
+
+Note that this is reference to a non-specific AWS Lambda version, which
+means the function this version refers to can return different results in
+different invocations.
+
+To obtain a reference to an explicit version which references the current
+function configuration, use `lambdaFunction.currentVersion` instead.
+
+---
+
+##### `permissionsNode`<sup>Required</sup> <a name="permissionsNode" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.permissionsNode"></a>
+
+```typescript
+public readonly permissionsNode: Node;
+```
+
+- *Type:* constructs.Node
+
+The construct node where permissions are attached.
+
+---
+
+##### `resourceArnsForGrantInvoke`<sup>Required</sup> <a name="resourceArnsForGrantInvoke" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.resourceArnsForGrantInvoke"></a>
+
+```typescript
+public readonly resourceArnsForGrantInvoke: string[];
+```
+
+- *Type:* string[]
+
+The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke().
+
+---
+
+##### `role`<sup>Optional</sup> <a name="role" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.role"></a>
+
+```typescript
+public readonly role: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+
+Execution role associated with this function.
+
+---
+
+##### `currentVersion`<sup>Required</sup> <a name="currentVersion" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.currentVersion"></a>
+
+```typescript
+public readonly currentVersion: Version;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Version
+
+Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes.
+
+You can specify options for this version using the `currentVersionOptions`
+prop when initializing the `lambda.Function`.
+
+---
+
+##### `logGroup`<sup>Required</sup> <a name="logGroup" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.logGroup"></a>
+
+```typescript
+public readonly logGroup: ILogGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+
+The LogGroup where the Lambda function's logs are made available.
+
+If either `logRetention` is set or this property is called, a CloudFormation custom resource is added to the stack that
+pre-creates the log group as part of the stack deployment, if it already doesn't exist, and sets the correct log retention
+period (never expire, by default).
+
+Further, if the log group already exists and the `logRetention` is not set, the custom resource will reset the log retention
+to never expire even if it was configured with a different value.
+
+---
+
+##### `runtime`<sup>Required</sup> <a name="runtime" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.runtime"></a>
+
+```typescript
+public readonly runtime: Runtime;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Runtime
+
+The runtime configured for this lambda.
+
+---
+
+##### `deadLetterQueue`<sup>Optional</sup> <a name="deadLetterQueue" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.deadLetterQueue"></a>
+
+```typescript
+public readonly deadLetterQueue: IQueue;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.IQueue
+
+The DLQ (as queue) associated with this Lambda Function (this is an optional attribute).
+
+---
+
+##### `deadLetterTopic`<sup>Optional</sup> <a name="deadLetterTopic" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.deadLetterTopic"></a>
+
+```typescript
+public readonly deadLetterTopic: ITopic;
+```
+
+- *Type:* aws-cdk-lib.aws_sns.ITopic
+
+The DLQ (as topic) associated with this Lambda Function (this is an optional attribute).
+
+---
+
+##### `timeout`<sup>Optional</sup> <a name="timeout" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.timeout"></a>
+
+```typescript
+public readonly timeout: Duration;
+```
+
+- *Type:* aws-cdk-lib.Duration
+
+The timeout configured for this lambda.
+
+---
+
+#### Constants <a name="Constants" id="Constants"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.PROPERTY_INJECTION_ID">PROPERTY_INJECTION_ID</a></code> | <code>string</code> | Uniquely identifies this class. |
+
+---
+
+##### `PROPERTY_INJECTION_ID`<sup>Required</sup> <a name="PROPERTY_INJECTION_ID" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.PROPERTY_INJECTION_ID"></a>
+
+```typescript
+public readonly PROPERTY_INJECTION_ID: string;
+```
+
+- *Type:* string
+
+Uniquely identifies this class.
+
+---
+
 ### GetWorkforceUrlFunction <a name="GetWorkforceUrlFunction" id="@cdklabs/genai-idp.GetWorkforceUrlFunction"></a>
 
 - *Implements:* aws-cdk-lib.aws_lambda.IFunction
@@ -5545,6 +10245,1150 @@ The SageMaker workteam for HITL tasks.
 ---
 
 
+### ListAvailableAgentsFunction <a name="ListAvailableAgentsFunction" id="@cdklabs/genai-idp.ListAvailableAgentsFunction"></a>
+
+Lambda function for listing available analytics agents.
+
+This function returns a list of available agents including both built-in
+analytics agents and any configured external MCP agents.
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.Initializer"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+new ListAvailableAgentsFunction(scope: Construct, id: string, props: ListAvailableAgentsFunctionProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps">ListAvailableAgentsFunctionProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps">ListAvailableAgentsFunctionProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.addFunctionUrl">addFunctionUrl</a></code> | Adds a url to this lambda function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.addPermission">addPermission</a></code> | Adds a permission to the Lambda resource policy. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.addToRolePolicy">addToRolePolicy</a></code> | Adds a statement to the IAM role assumed by the instance. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.configureAsyncInvoke">configureAsyncInvoke</a></code> | Configures options for asynchronous invocation. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.considerWarningOnInvokeFunctionPermissions">considerWarningOnInvokeFunctionPermissions</a></code> | A warning will be added to functions under the following conditions: - permissions that include `lambda:InvokeFunction` are added to the unqualified function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvoke">grantInvoke</a></code> | Grant the given identity permissions to invoke this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeCompositePrincipal">grantInvokeCompositePrincipal</a></code> | Grant multiple principals the ability to invoke this Lambda via CompositePrincipal. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeLatestVersion">grantInvokeLatestVersion</a></code> | Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeUrl">grantInvokeUrl</a></code> | Grant the given identity permissions to invoke this Lambda Function URL. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeVersion">grantInvokeVersion</a></code> | Grant the given identity permissions to invoke the given version of this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metric">metric</a></code> | Return the given named metric for this Function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricDuration">metricDuration</a></code> | How long execution of this Lambda takes. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricErrors">metricErrors</a></code> | How many invocations of this Lambda fail. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricInvocations">metricInvocations</a></code> | How often this Lambda is invoked. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricThrottles">metricThrottles</a></code> | How often this Lambda is throttled. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.addAlias">addAlias</a></code> | Defines an alias for this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.addEnvironment">addEnvironment</a></code> | Adds an environment variable to this Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.addLayers">addLayers</a></code> | Adds one or more Lambda Layers to this Lambda function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.invalidateVersionBasedOn">invalidateVersionBasedOn</a></code> | Mix additional information into the hash of the Version object. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.applyRemovalPolicy"></a>
+
+```typescript
+public applyRemovalPolicy(policy: RemovalPolicy): void
+```
+
+Apply the given removal policy to this resource.
+
+The Removal Policy controls what happens to this resource when it stops
+being managed by CloudFormation, either because you've removed it from the
+CDK application or because you've made a change that requires the resource
+to be replaced.
+
+The resource can be deleted (`RemovalPolicy.DESTROY`), or left in your AWS
+account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
+
+###### `policy`<sup>Required</sup> <a name="policy" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.applyRemovalPolicy.parameter.policy"></a>
+
+- *Type:* aws-cdk-lib.RemovalPolicy
+
+---
+
+##### `addEventSource` <a name="addEventSource" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addEventSource"></a>
+
+```typescript
+public addEventSource(source: IEventSource): void
+```
+
+Adds an event source to this function.
+
+Event sources are implemented in the aws-cdk-lib/aws-lambda-event-sources module.
+
+The following example adds an SQS Queue as an event source:
+```
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+myFunction.addEventSource(new SqsEventSource(myQueue));
+```
+
+###### `source`<sup>Required</sup> <a name="source" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addEventSource.parameter.source"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.IEventSource
+
+---
+
+##### `addEventSourceMapping` <a name="addEventSourceMapping" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addEventSourceMapping"></a>
+
+```typescript
+public addEventSourceMapping(id: string, options: EventSourceMappingOptions): EventSourceMapping
+```
+
+Adds an event source that maps to this AWS Lambda function.
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addEventSourceMapping.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `options`<sup>Required</sup> <a name="options" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addEventSourceMapping.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EventSourceMappingOptions
+
+---
+
+##### `addFunctionUrl` <a name="addFunctionUrl" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addFunctionUrl"></a>
+
+```typescript
+public addFunctionUrl(options?: FunctionUrlOptions): FunctionUrl
+```
+
+Adds a url to this lambda function.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addFunctionUrl.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.FunctionUrlOptions
+
+---
+
+##### `addPermission` <a name="addPermission" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addPermission"></a>
+
+```typescript
+public addPermission(id: string, permission: Permission): void
+```
+
+Adds a permission to the Lambda resource policy.
+
+> [Permission for details.](Permission for details.)
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addPermission.parameter.id"></a>
+
+- *Type:* string
+
+The id for the permission construct.
+
+---
+
+###### `permission`<sup>Required</sup> <a name="permission" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addPermission.parameter.permission"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.Permission
+
+The permission to grant to this Lambda function.
+
+---
+
+##### `addToRolePolicy` <a name="addToRolePolicy" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addToRolePolicy"></a>
+
+```typescript
+public addToRolePolicy(statement: PolicyStatement): void
+```
+
+Adds a statement to the IAM role assumed by the instance.
+
+###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addToRolePolicy.parameter.statement"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyStatement
+
+---
+
+##### `configureAsyncInvoke` <a name="configureAsyncInvoke" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.configureAsyncInvoke"></a>
+
+```typescript
+public configureAsyncInvoke(options: EventInvokeConfigOptions): void
+```
+
+Configures options for asynchronous invocation.
+
+###### `options`<sup>Required</sup> <a name="options" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.configureAsyncInvoke.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EventInvokeConfigOptions
+
+---
+
+##### `considerWarningOnInvokeFunctionPermissions` <a name="considerWarningOnInvokeFunctionPermissions" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.considerWarningOnInvokeFunctionPermissions"></a>
+
+```typescript
+public considerWarningOnInvokeFunctionPermissions(scope: Construct, action: string): void
+```
+
+A warning will be added to functions under the following conditions: - permissions that include `lambda:InvokeFunction` are added to the unqualified function.
+
+function.currentVersion is invoked before or after the permission is created.
+
+This applies only to permissions on Lambda functions, not versions or aliases.
+This function is overridden as a noOp for QualifiedFunctionBase.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.considerWarningOnInvokeFunctionPermissions.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `action`<sup>Required</sup> <a name="action" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.considerWarningOnInvokeFunctionPermissions.parameter.action"></a>
+
+- *Type:* string
+
+---
+
+##### `grantInvoke` <a name="grantInvoke" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvoke"></a>
+
+```typescript
+public grantInvoke(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvoke.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeCompositePrincipal` <a name="grantInvokeCompositePrincipal" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeCompositePrincipal"></a>
+
+```typescript
+public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Grant[]
+```
+
+Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.CompositePrincipal
+
+---
+
+##### `grantInvokeLatestVersion` <a name="grantInvokeLatestVersion" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeLatestVersion"></a>
+
+```typescript
+public grantInvokeLatestVersion(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeLatestVersion.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeUrl` <a name="grantInvokeUrl" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeUrl"></a>
+
+```typescript
+public grantInvokeUrl(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke this Lambda Function URL.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeUrl.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+##### `grantInvokeVersion` <a name="grantInvokeVersion" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeVersion"></a>
+
+```typescript
+public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
+```
+
+Grant the given identity permissions to invoke the given version of this Lambda.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeVersion.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `version`<sup>Required</sup> <a name="version" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeVersion.parameter.version"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.IVersion
+
+---
+
+##### `metric` <a name="metric" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metric"></a>
+
+```typescript
+public metric(metricName: string, props?: MetricOptions): Metric
+```
+
+Return the given named metric for this Function.
+
+###### `metricName`<sup>Required</sup> <a name="metricName" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metric.parameter.metricName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metric.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricDuration` <a name="metricDuration" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricDuration"></a>
+
+```typescript
+public metricDuration(props?: MetricOptions): Metric
+```
+
+How long execution of this Lambda takes.
+
+Average over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricDuration.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricErrors` <a name="metricErrors" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricErrors"></a>
+
+```typescript
+public metricErrors(props?: MetricOptions): Metric
+```
+
+How many invocations of this Lambda fail.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricInvocations` <a name="metricInvocations" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricInvocations"></a>
+
+```typescript
+public metricInvocations(props?: MetricOptions): Metric
+```
+
+How often this Lambda is invoked.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricInvocations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricThrottles` <a name="metricThrottles" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricThrottles"></a>
+
+```typescript
+public metricThrottles(props?: MetricOptions): Metric
+```
+
+How often this Lambda is throttled.
+
+Sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `addAlias` <a name="addAlias" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addAlias"></a>
+
+```typescript
+public addAlias(aliasName: string, options?: AliasOptions): Alias
+```
+
+Defines an alias for this function.
+
+The alias will automatically be updated to point to the latest version of
+the function as it is being updated during a deployment.
+
+```ts
+declare const fn: lambda.Function;
+
+fn.addAlias('Live');
+
+// Is equivalent to
+
+new lambda.Alias(this, 'AliasLive', {
+  aliasName: 'Live',
+  version: fn.currentVersion,
+});
+```
+
+###### `aliasName`<sup>Required</sup> <a name="aliasName" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addAlias.parameter.aliasName"></a>
+
+- *Type:* string
+
+The name of the alias.
+
+---
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addAlias.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.AliasOptions
+
+Alias options.
+
+---
+
+##### `addEnvironment` <a name="addEnvironment" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addEnvironment"></a>
+
+```typescript
+public addEnvironment(key: string, value: string, options?: EnvironmentOptions): Function
+```
+
+Adds an environment variable to this Lambda function.
+
+If this is a ref to a Lambda function, this operation results in a no-op.
+
+###### `key`<sup>Required</sup> <a name="key" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addEnvironment.parameter.key"></a>
+
+- *Type:* string
+
+The environment variable key.
+
+---
+
+###### `value`<sup>Required</sup> <a name="value" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addEnvironment.parameter.value"></a>
+
+- *Type:* string
+
+The environment variable's value.
+
+---
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addEnvironment.parameter.options"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.EnvironmentOptions
+
+Environment variable options.
+
+---
+
+##### `addLayers` <a name="addLayers" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addLayers"></a>
+
+```typescript
+public addLayers(layers: ...ILayerVersion[]): void
+```
+
+Adds one or more Lambda Layers to this Lambda function.
+
+###### `layers`<sup>Required</sup> <a name="layers" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.addLayers.parameter.layers"></a>
+
+- *Type:* ...aws-cdk-lib.aws_lambda.ILayerVersion[]
+
+the layers to be added.
+
+---
+
+##### `invalidateVersionBasedOn` <a name="invalidateVersionBasedOn" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.invalidateVersionBasedOn"></a>
+
+```typescript
+public invalidateVersionBasedOn(x: string): void
+```
+
+Mix additional information into the hash of the Version object.
+
+The Lambda Function construct does its best to automatically create a new
+Version when anything about the Function changes (its code, its layers,
+any of the other properties).
+
+However, you can sometimes source information from places that the CDK cannot
+look into, like the deploy-time values of SSM parameters. In those cases,
+the CDK would not force the creation of a new Version object when it actually
+should.
+
+This method can be used to invalidate the current Version object. Pass in
+any string into this method, and make sure the string changes when you know
+a new Version needs to be created.
+
+This method may be called more than once.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.invalidateVersionBasedOn.parameter.x"></a>
+
+- *Type:* string
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.isOwnedResource">isOwnedResource</a></code> | Returns true if the construct was created by CDK, and false otherwise. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.isResource">isResource</a></code> | Check whether the given construct is a Resource. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.classifyVersionProperty">classifyVersionProperty</a></code> | Record whether specific properties in the `AWS::Lambda::Function` resource should also be associated to the Version resource. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionArn">fromFunctionArn</a></code> | Import a lambda function into the CDK using its ARN. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionAttributes">fromFunctionAttributes</a></code> | Creates a Lambda function object which represents a function not defined within this stack. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionName">fromFunctionName</a></code> | Import a lambda function into the CDK using its name. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAll">metricAll</a></code> | Return the given named metric for this Lambda. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllConcurrentExecutions">metricAllConcurrentExecutions</a></code> | Metric for the number of concurrent executions across all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllDuration">metricAllDuration</a></code> | Metric for the Duration executing all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllErrors">metricAllErrors</a></code> | Metric for the number of Errors executing all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllInvocations">metricAllInvocations</a></code> | Metric for the number of invocations of all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllThrottles">metricAllThrottles</a></code> | Metric for the number of throttled invocations of all Lambdas. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllUnreservedConcurrentExecutions">metricAllUnreservedConcurrentExecutions</a></code> | Metric for the number of unreserved concurrent executions across all Lambdas. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.isConstruct"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+##### `isOwnedResource` <a name="isOwnedResource" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.isOwnedResource"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.isOwnedResource(construct: IConstruct)
+```
+
+Returns true if the construct was created by CDK, and false otherwise.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.isOwnedResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `isResource` <a name="isResource" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.isResource"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.isResource(construct: IConstruct)
+```
+
+Check whether the given construct is a Resource.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.isResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `classifyVersionProperty` <a name="classifyVersionProperty" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.classifyVersionProperty"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.classifyVersionProperty(propertyName: string, locked: boolean)
+```
+
+Record whether specific properties in the `AWS::Lambda::Function` resource should also be associated to the Version resource.
+
+See 'currentVersion' section in the module README for more details.
+
+###### `propertyName`<sup>Required</sup> <a name="propertyName" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.classifyVersionProperty.parameter.propertyName"></a>
+
+- *Type:* string
+
+The property to classify.
+
+---
+
+###### `locked`<sup>Required</sup> <a name="locked" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.classifyVersionProperty.parameter.locked"></a>
+
+- *Type:* boolean
+
+whether the property should be associated to the version or not.
+
+---
+
+##### `fromFunctionArn` <a name="fromFunctionArn" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionArn"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.fromFunctionArn(scope: Construct, id: string, functionArn: string)
+```
+
+Import a lambda function into the CDK using its ARN.
+
+For `Function.addPermissions()` to work on this imported lambda, make sure that is
+in the same account and region as the stack you are importing it into.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionArn.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionArn.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `functionArn`<sup>Required</sup> <a name="functionArn" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionArn.parameter.functionArn"></a>
+
+- *Type:* string
+
+---
+
+##### `fromFunctionAttributes` <a name="fromFunctionAttributes" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionAttributes"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.fromFunctionAttributes(scope: Construct, id: string, attrs: FunctionAttributes)
+```
+
+Creates a Lambda function object which represents a function not defined within this stack.
+
+For `Function.addPermissions()` to work on this imported lambda, set the sameEnvironment property to true
+if this imported lambda is in the same account and region as the stack you are importing it into.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionAttributes.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+The parent construct.
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionAttributes.parameter.id"></a>
+
+- *Type:* string
+
+The name of the lambda construct.
+
+---
+
+###### `attrs`<sup>Required</sup> <a name="attrs" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionAttributes.parameter.attrs"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.FunctionAttributes
+
+the attributes of the function to import.
+
+---
+
+##### `fromFunctionName` <a name="fromFunctionName" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionName"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.fromFunctionName(scope: Construct, id: string, functionName: string)
+```
+
+Import a lambda function into the CDK using its name.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionName.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionName.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+###### `functionName`<sup>Required</sup> <a name="functionName" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.fromFunctionName.parameter.functionName"></a>
+
+- *Type:* string
+
+---
+
+##### `metricAll` <a name="metricAll" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAll"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.metricAll(metricName: string, props?: MetricOptions)
+```
+
+Return the given named metric for this Lambda.
+
+###### `metricName`<sup>Required</sup> <a name="metricName" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAll.parameter.metricName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAll.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllConcurrentExecutions` <a name="metricAllConcurrentExecutions" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllConcurrentExecutions"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.metricAllConcurrentExecutions(props?: MetricOptions)
+```
+
+Metric for the number of concurrent executions across all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllConcurrentExecutions.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllDuration` <a name="metricAllDuration" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllDuration"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.metricAllDuration(props?: MetricOptions)
+```
+
+Metric for the Duration executing all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllDuration.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllErrors` <a name="metricAllErrors" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllErrors"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.metricAllErrors(props?: MetricOptions)
+```
+
+Metric for the number of Errors executing all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllInvocations` <a name="metricAllInvocations" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllInvocations"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.metricAllInvocations(props?: MetricOptions)
+```
+
+Metric for the number of invocations of all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllInvocations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllThrottles` <a name="metricAllThrottles" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllThrottles"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.metricAllThrottles(props?: MetricOptions)
+```
+
+Metric for the number of throttled invocations of all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricAllUnreservedConcurrentExecutions` <a name="metricAllUnreservedConcurrentExecutions" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllUnreservedConcurrentExecutions"></a>
+
+```typescript
+import { ListAvailableAgentsFunction } from '@cdklabs/genai-idp'
+
+ListAvailableAgentsFunction.metricAllUnreservedConcurrentExecutions(props?: MetricOptions)
+```
+
+Metric for the number of unreserved concurrent executions across all Lambdas.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.metricAllUnreservedConcurrentExecutions.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The DLQ (as queue) associated with this Lambda Function (this is an optional attribute). |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The DLQ (as topic) associated with this Lambda Function (this is an optional attribute). |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.timeout">timeout</a></code> | <code>aws-cdk-lib.Duration</code> | The timeout configured for this lambda. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `env`<sup>Required</sup> <a name="env" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.env"></a>
+
+```typescript
+public readonly env: ResourceEnvironment;
+```
+
+- *Type:* aws-cdk-lib.ResourceEnvironment
+
+The environment this resource belongs to.
+
+For resources that are created and managed by the CDK
+(generally, those created by creating new class instances like Role, Bucket, etc.),
+this is always the same as the environment of the stack they belong to;
+however, for imported resources
+(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
+that might be different than the stack they were imported into.
+
+---
+
+##### `stack`<sup>Required</sup> <a name="stack" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.stack"></a>
+
+```typescript
+public readonly stack: Stack;
+```
+
+- *Type:* aws-cdk-lib.Stack
+
+The stack in which this resource is defined.
+
+---
+
+##### `architecture`<sup>Required</sup> <a name="architecture" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.architecture"></a>
+
+```typescript
+public readonly architecture: Architecture;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Architecture
+
+The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64).
+
+---
+
+##### `connections`<sup>Required</sup> <a name="connections" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.connections"></a>
+
+```typescript
+public readonly connections: Connections;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.Connections
+
+Access the Connections object.
+
+Will fail if not a VPC-enabled Lambda Function
+
+---
+
+##### `functionArn`<sup>Required</sup> <a name="functionArn" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.functionArn"></a>
+
+```typescript
+public readonly functionArn: string;
+```
+
+- *Type:* string
+
+ARN of this function.
+
+---
+
+##### `functionName`<sup>Required</sup> <a name="functionName" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.functionName"></a>
+
+```typescript
+public readonly functionName: string;
+```
+
+- *Type:* string
+
+Name of this function.
+
+---
+
+##### `grantPrincipal`<sup>Required</sup> <a name="grantPrincipal" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.grantPrincipal"></a>
+
+```typescript
+public readonly grantPrincipal: IPrincipal;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IPrincipal
+
+The principal this Lambda Function is running as.
+
+---
+
+##### `isBoundToVpc`<sup>Required</sup> <a name="isBoundToVpc" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.isBoundToVpc"></a>
+
+```typescript
+public readonly isBoundToVpc: boolean;
+```
+
+- *Type:* boolean
+
+Whether or not this Lambda function was bound to a VPC.
+
+If this is is `false`, trying to access the `connections` object will fail.
+
+---
+
+##### `latestVersion`<sup>Required</sup> <a name="latestVersion" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.latestVersion"></a>
+
+```typescript
+public readonly latestVersion: IVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IVersion
+
+The `$LATEST` version of this function.
+
+Note that this is reference to a non-specific AWS Lambda version, which
+means the function this version refers to can return different results in
+different invocations.
+
+To obtain a reference to an explicit version which references the current
+function configuration, use `lambdaFunction.currentVersion` instead.
+
+---
+
+##### `permissionsNode`<sup>Required</sup> <a name="permissionsNode" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.permissionsNode"></a>
+
+```typescript
+public readonly permissionsNode: Node;
+```
+
+- *Type:* constructs.Node
+
+The construct node where permissions are attached.
+
+---
+
+##### `resourceArnsForGrantInvoke`<sup>Required</sup> <a name="resourceArnsForGrantInvoke" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.resourceArnsForGrantInvoke"></a>
+
+```typescript
+public readonly resourceArnsForGrantInvoke: string[];
+```
+
+- *Type:* string[]
+
+The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke().
+
+---
+
+##### `role`<sup>Optional</sup> <a name="role" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.role"></a>
+
+```typescript
+public readonly role: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+
+Execution role associated with this function.
+
+---
+
+##### `currentVersion`<sup>Required</sup> <a name="currentVersion" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.currentVersion"></a>
+
+```typescript
+public readonly currentVersion: Version;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Version
+
+Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes.
+
+You can specify options for this version using the `currentVersionOptions`
+prop when initializing the `lambda.Function`.
+
+---
+
+##### `logGroup`<sup>Required</sup> <a name="logGroup" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.logGroup"></a>
+
+```typescript
+public readonly logGroup: ILogGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+
+The LogGroup where the Lambda function's logs are made available.
+
+If either `logRetention` is set or this property is called, a CloudFormation custom resource is added to the stack that
+pre-creates the log group as part of the stack deployment, if it already doesn't exist, and sets the correct log retention
+period (never expire, by default).
+
+Further, if the log group already exists and the `logRetention` is not set, the custom resource will reset the log retention
+to never expire even if it was configured with a different value.
+
+---
+
+##### `runtime`<sup>Required</sup> <a name="runtime" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.runtime"></a>
+
+```typescript
+public readonly runtime: Runtime;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Runtime
+
+The runtime configured for this lambda.
+
+---
+
+##### `deadLetterQueue`<sup>Optional</sup> <a name="deadLetterQueue" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.deadLetterQueue"></a>
+
+```typescript
+public readonly deadLetterQueue: IQueue;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.IQueue
+
+The DLQ (as queue) associated with this Lambda Function (this is an optional attribute).
+
+---
+
+##### `deadLetterTopic`<sup>Optional</sup> <a name="deadLetterTopic" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.deadLetterTopic"></a>
+
+```typescript
+public readonly deadLetterTopic: ITopic;
+```
+
+- *Type:* aws-cdk-lib.aws_sns.ITopic
+
+The DLQ (as topic) associated with this Lambda Function (this is an optional attribute).
+
+---
+
+##### `timeout`<sup>Optional</sup> <a name="timeout" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.timeout"></a>
+
+```typescript
+public readonly timeout: Duration;
+```
+
+- *Type:* aws-cdk-lib.Duration
+
+The timeout configured for this lambda.
+
+---
+
+#### Constants <a name="Constants" id="Constants"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.PROPERTY_INJECTION_ID">PROPERTY_INJECTION_ID</a></code> | <code>string</code> | Uniquely identifies this class. |
+
+---
+
+##### `PROPERTY_INJECTION_ID`<sup>Required</sup> <a name="PROPERTY_INJECTION_ID" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.PROPERTY_INJECTION_ID"></a>
+
+```typescript
+public readonly PROPERTY_INJECTION_ID: string;
+```
+
+- *Type:* string
+
+Uniquely identifies this class.
+
+---
+
 ### ProcessingEnvironment <a name="ProcessingEnvironment" id="@cdklabs/genai-idp.ProcessingEnvironment"></a>
 
 - *Implements:* <a href="#@cdklabs/genai-idp.IProcessingEnvironment">IProcessingEnvironment</a>
@@ -6048,6 +11892,8 @@ Configuration properties for the API.
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.grantQuery">grantQuery</a></code> | Adds an IAM policy statement for Query access to this GraphQLApi to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.grantSubscription">grantSubscription</a></code> | Adds an IAM policy statement for Subscription access to this GraphQLApi to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addEnvironmentVariable">addEnvironmentVariable</a></code> | Add an environment variable to the construct. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics">addAgentAnalytics</a></code> | Add Agent Analytics capabilities to the GraphQL API. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument">addChatWithDocument</a></code> | Add Chat with Document capabilities to the GraphQL API. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addConfigurationTable">addConfigurationTable</a></code> | Add configuration table data sources and resolvers to the GraphQL API. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addEvaluation">addEvaluation</a></code> | Add evaluation capabilities to the GraphQL API. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addKnowledgeBase">addKnowledgeBase</a></code> | Add knowledge base querying capabilities to the GraphQL API. |
@@ -6558,6 +12404,112 @@ Add an environment variable to the construct.
 ###### `value`<sup>Required</sup> <a name="value" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addEnvironmentVariable.parameter.value"></a>
 
 - *Type:* string
+
+---
+
+##### `addAgentAnalytics` <a name="addAgentAnalytics" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics"></a>
+
+```typescript
+public addAgentAnalytics(trackingTable: ITrackingTable, model: IInvokable, reportingEnvironment: IReportingEnvironment, externalMcpAgentsSecret?: ISecret): void
+```
+
+Add Agent Analytics capabilities to the GraphQL API.
+
+This method adds AI-powered analytics functionality that enables natural language
+querying of processed document data. It creates the necessary resolvers and data sources
+for agent analytics workflows including database discovery, SQL query generation,
+and interactive visualizations.
+
+*Example*
+
+```typescript
+// Add agent analytics after API creation
+api.addAgentAnalytics(
+  trackingTable,
+  myAnalyticsModel,
+  reportingDatabase,
+  athenaBucket
+);
+```
+
+
+###### `trackingTable`<sup>Required</sup> <a name="trackingTable" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics.parameter.trackingTable"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a>
+
+The DynamoDB table that tracks document processing status.
+
+---
+
+###### `model`<sup>Required</sup> <a name="model" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics.parameter.model"></a>
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+
+The foundation model or inference profile for analytics queries.
+
+---
+
+###### `reportingEnvironment`<sup>Required</sup> <a name="reportingEnvironment" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics.parameter.reportingEnvironment"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IReportingEnvironment">IReportingEnvironment</a>
+
+The reporting environment that the analytics will be run for.
+
+---
+
+###### `externalMcpAgentsSecret`<sup>Optional</sup> <a name="externalMcpAgentsSecret" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics.parameter.externalMcpAgentsSecret"></a>
+
+- *Type:* aws-cdk-lib.aws_secretsmanager.ISecret
+
+Optional Secrets Manager secret for external MCP agents.
+
+---
+
+##### `addChatWithDocument` <a name="addChatWithDocument" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument"></a>
+
+```typescript
+public addChatWithDocument(knowledgeBase: IKnowledgeBase, chatModel: IInvokable, guardrail?: IGuardrail): void
+```
+
+Add Chat with Document capabilities to the GraphQL API.
+
+This method adds natural language conversation functionality about processed documents
+by combining document context from the knowledge base with conversational AI.
+It maintains conversation history and provides contextual responses.
+
+*Example*
+
+```typescript
+// Add chat with document after API creation
+api.addChatWithDocument(
+  knowledgeBase,
+  chatModel,
+  myGuardrail
+);
+```
+
+
+###### `knowledgeBase`<sup>Required</sup> <a name="knowledgeBase" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument.parameter.knowledgeBase"></a>
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase
+
+The Bedrock knowledge base for document context.
+
+---
+
+###### `chatModel`<sup>Required</sup> <a name="chatModel" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument.parameter.chatModel"></a>
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+
+The invokable model for chat functionality.
+
+---
+
+###### `guardrail`<sup>Optional</sup> <a name="guardrail" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument.parameter.guardrail"></a>
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+
+Optional Bedrock guardrail for content filtering.
 
 ---
 
@@ -9936,6 +15888,1804 @@ The name of the SageMaker workteam.
 
 ## Structs <a name="Structs" id="Structs"></a>
 
+### AgentAnalyticsProps <a name="AgentAnalyticsProps" id="@cdklabs/genai-idp.AgentAnalyticsProps"></a>
+
+Properties for configuring Agent Analytics.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.AgentAnalyticsProps.Initializer"></a>
+
+```typescript
+import { AgentAnalyticsProps } from '@cdklabs/genai-idp'
+
+const agentAnalyticsProps: AgentAnalyticsProps = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.appSyncApiUrl">appSyncApiUrl</a></code> | <code>string</code> | AppSync GraphQL API URL for publishing updates. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.metricNamespace">metricNamespace</a></code> | <code>string</code> | The namespace for CloudWatch metrics. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.model">model</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The foundation model or inference profile to use for document analysis agent. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.reportingEnvironment">reportingEnvironment</a></code> | <code><a href="#@cdklabs/genai-idp.IReportingEnvironment">IReportingEnvironment</a></code> | Athena database for analytics queries. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table that tracks document processing status and metadata. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.dataRetentionDays">dataRetentionDays</a></code> | <code>number</code> | Data retention period in days. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The KMS key for encryption. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.externalMcpAgentsSecret">externalMcpAgentsSecret</a></code> | <code>aws-cdk-lib.aws_secretsmanager.ISecret</code> | Optional Secrets Manager secret for external MCP agents. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | Log level for agent analytics functions. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | Log retention period. |
+
+---
+
+##### `appSyncApiUrl`<sup>Required</sup> <a name="appSyncApiUrl" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.appSyncApiUrl"></a>
+
+```typescript
+public readonly appSyncApiUrl: string;
+```
+
+- *Type:* string
+
+AppSync GraphQL API URL for publishing updates.
+
+---
+
+##### `metricNamespace`<sup>Required</sup> <a name="metricNamespace" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.metricNamespace"></a>
+
+```typescript
+public readonly metricNamespace: string;
+```
+
+- *Type:* string
+
+The namespace for CloudWatch metrics.
+
+---
+
+##### `model`<sup>Required</sup> <a name="model" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.model"></a>
+
+```typescript
+public readonly model: IInvokable;
+```
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Default:* No model specified, must be provided
+
+The foundation model or inference profile to use for document analysis agent.
+
+---
+
+##### `reportingEnvironment`<sup>Required</sup> <a name="reportingEnvironment" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.reportingEnvironment"></a>
+
+```typescript
+public readonly reportingEnvironment: IReportingEnvironment;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IReportingEnvironment">IReportingEnvironment</a>
+
+Athena database for analytics queries.
+
+---
+
+##### `trackingTable`<sup>Required</sup> <a name="trackingTable" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.trackingTable"></a>
+
+```typescript
+public readonly trackingTable: ITrackingTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a>
+
+The DynamoDB table that tracks document processing status and metadata.
+
+Used by analytics agents to query processed document data.
+
+---
+
+##### `dataRetentionDays`<sup>Optional</sup> <a name="dataRetentionDays" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.dataRetentionDays"></a>
+
+```typescript
+public readonly dataRetentionDays: number;
+```
+
+- *Type:* number
+- *Default:* 365
+
+Data retention period in days.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+The KMS key for encryption.
+
+---
+
+##### `externalMcpAgentsSecret`<sup>Optional</sup> <a name="externalMcpAgentsSecret" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.externalMcpAgentsSecret"></a>
+
+```typescript
+public readonly externalMcpAgentsSecret: ISecret;
+```
+
+- *Type:* aws-cdk-lib.aws_secretsmanager.ISecret
+- *Default:* No external MCP agents configured
+
+Optional Secrets Manager secret for external MCP agents.
+
+---
+
+##### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.logLevel"></a>
+
+```typescript
+public readonly logLevel: LogLevel;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+- *Default:* LogLevel.INFO
+
+Log level for agent analytics functions.
+
+---
+
+##### `logRetention`<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.logRetention"></a>
+
+```typescript
+public readonly logRetention: RetentionDays;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+- *Default:* logs.RetentionDays.ONE_WEEK
+
+Log retention period.
+
+---
+
+### AgentProcessorFunctionProps <a name="AgentProcessorFunctionProps" id="@cdklabs/genai-idp.AgentProcessorFunctionProps"></a>
+
+Properties for the Agent Processor function.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.Initializer"></a>
+
+```typescript
+import { AgentProcessorFunctionProps } from '@cdklabs/genai-idp'
+
+const agentProcessorFunctionProps: AgentProcessorFunctionProps = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.adotInstrumentation">adotInstrumentation</a></code> | <code>aws-cdk-lib.aws_lambda.AdotInstrumentationConfig</code> | Specify the configuration of AWS Distro for OpenTelemetry (ADOT) instrumentation. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.allowAllIpv6Outbound">allowAllIpv6Outbound</a></code> | <code>boolean</code> | Whether to allow the Lambda to send all ipv6 network traffic. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.initialPolicy">initialPolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyStatement[]</code> | Initial policy statements to add to the created Lambda Role. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.insightsVersion">insightsVersion</a></code> | <code>aws-cdk-lib.aws_lambda.LambdaInsightsVersion</code> | Specify the version of CloudWatch Lambda insights to use for monitoring. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRetentionRole">logRetentionRole</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | The IAM role for the Lambda function associated with the custom resource that sets the retention policy. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.maxEventAge">maxEventAge</a></code> | <code>aws-cdk-lib.Duration</code> | The maximum age of a request that Lambda sends to a function for processing. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.onFailure">onFailure</a></code> | <code>aws-cdk-lib.aws_lambda.IDestination</code> | The destination for failed invocations. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.onSuccess">onSuccess</a></code> | <code>aws-cdk-lib.aws_lambda.IDestination</code> | The destination for successful invocations. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.paramsAndSecrets">paramsAndSecrets</a></code> | <code>aws-cdk-lib.aws_lambda.ParamsAndSecretsLayerVersion</code> | Specify the configuration of Parameters and Secrets Extension. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.profiling">profiling</a></code> | <code>boolean</code> | Enable profiling. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.profilingGroup">profilingGroup</a></code> | <code>aws-cdk-lib.aws_codeguruprofiler.IProfilingGroup</code> | Profiling Group. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.recursiveLoop">recursiveLoop</a></code> | <code>aws-cdk-lib.aws_lambda.RecursiveLoop</code> | Sets the Recursive Loop Protection for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.reservedConcurrentExecutions">reservedConcurrentExecutions</a></code> | <code>number</code> | The maximum of concurrent executions you want to reserve for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.retryAttempts">retryAttempts</a></code> | <code>number</code> | The maximum number of times to retry when the function returns an error. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Lambda execution role. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.runtimeManagementMode">runtimeManagementMode</a></code> | <code>aws-cdk-lib.aws_lambda.RuntimeManagementMode</code> | Sets the runtime management configuration for a function's version. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.securityGroups">securityGroups</a></code> | <code>aws-cdk-lib.aws_ec2.ISecurityGroup[]</code> | The list of security groups to associate with the Lambda's network interfaces. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.agentTable">agentTable</a></code> | <code>aws-cdk-lib.aws_dynamodb.ITable</code> | The DynamoDB table for agent job tracking. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.appSyncApiUrl">appSyncApiUrl</a></code> | <code>string</code> | AppSync GraphQL API URL for publishing updates. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.athenaBucket">athenaBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | S3 bucket for Athena query results. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.athenaDatabase">athenaDatabase</a></code> | <code>@aws-cdk/aws-glue-alpha.IDatabase</code> | Athena database for analytics queries. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.metricNamespace">metricNamespace</a></code> | <code>string</code> | The namespace for CloudWatch metrics. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.model">model</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The foundation model or inference profile to use for document analysis agent. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The KMS key used for encryption. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.externalMcpAgentsSecret">externalMcpAgentsSecret</a></code> | <code>aws-cdk-lib.aws_secretsmanager.ISecret</code> | Optional Secrets Manager secret for external MCP agents. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the function. |
+
+---
+
+##### `adotInstrumentation`<sup>Optional</sup> <a name="adotInstrumentation" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.adotInstrumentation"></a>
+
+```typescript
+public readonly adotInstrumentation: AdotInstrumentationConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.AdotInstrumentationConfig
+- *Default:* No ADOT instrumentation
+
+Specify the configuration of AWS Distro for OpenTelemetry (ADOT) instrumentation.
+
+---
+
+##### `allowAllIpv6Outbound`<sup>Optional</sup> <a name="allowAllIpv6Outbound" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.allowAllIpv6Outbound"></a>
+
+```typescript
+public readonly allowAllIpv6Outbound: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Whether to allow the Lambda to send all ipv6 network traffic.
+
+If set to true, there will only be a single egress rule which allows all
+outbound ipv6 traffic. If set to false, you must individually add traffic rules to allow the
+Lambda to connect to network targets using ipv6.
+
+Do not specify this property if the `securityGroups` or `securityGroup` property is set.
+Instead, configure `allowAllIpv6Outbound` directly on the security group.
+
+---
+
+##### ~~`applicationLogLevel`~~<sup>Optional</sup> <a name="applicationLogLevel" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.applicationLogLevel"></a>
+
+- *Deprecated:* Use `applicationLogLevelV2` as a property instead.
+
+```typescript
+public readonly applicationLogLevel: string;
+```
+
+- *Type:* string
+- *Default:* "INFO"
+
+Sets the application log level for the function.
+
+---
+
+##### `applicationLogLevelV2`<sup>Optional</sup> <a name="applicationLogLevelV2" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.applicationLogLevelV2"></a>
+
+```typescript
+public readonly applicationLogLevelV2: ApplicationLogLevel;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ApplicationLogLevel
+- *Default:* ApplicationLogLevel.INFO
+
+Sets the application log level for the function.
+
+---
+
+##### `architecture`<sup>Optional</sup> <a name="architecture" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.architecture"></a>
+
+```typescript
+public readonly architecture: Architecture;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Architecture
+- *Default:* Architecture.X86_64
+
+The system architectures compatible with this lambda function.
+
+---
+
+##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.codeSigningConfig"></a>
+
+```typescript
+public readonly codeSigningConfig: ICodeSigningConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Default:* Not Sign the Code
+
+Code signing config associated with this function.
+
+---
+
+##### `currentVersionOptions`<sup>Optional</sup> <a name="currentVersionOptions" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.currentVersionOptions"></a>
+
+```typescript
+public readonly currentVersionOptions: VersionOptions;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.VersionOptions
+- *Default:* default options as described in `VersionOptions`
+
+Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method.
+
+---
+
+##### `deadLetterQueue`<sup>Optional</sup> <a name="deadLetterQueue" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.deadLetterQueue"></a>
+
+```typescript
+public readonly deadLetterQueue: IQueue;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.IQueue
+- *Default:* SQS queue with 14 day retention period if `deadLetterQueueEnabled` is `true`
+
+The SQS queue to use if DLQ is enabled.
+
+If SNS topic is desired, specify `deadLetterTopic` property instead.
+
+---
+
+##### `deadLetterQueueEnabled`<sup>Optional</sup> <a name="deadLetterQueueEnabled" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.deadLetterQueueEnabled"></a>
+
+```typescript
+public readonly deadLetterQueueEnabled: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false unless `deadLetterQueue` is set, which implies DLQ is enabled.
+
+Enabled DLQ.
+
+If `deadLetterQueue` is undefined,
+an SQS queue with default options will be defined for your Function.
+
+---
+
+##### `deadLetterTopic`<sup>Optional</sup> <a name="deadLetterTopic" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.deadLetterTopic"></a>
+
+```typescript
+public readonly deadLetterTopic: ITopic;
+```
+
+- *Type:* aws-cdk-lib.aws_sns.ITopic
+- *Default:* no SNS topic
+
+The SNS topic to use as a DLQ.
+
+Note that if `deadLetterQueueEnabled` is set to `true`, an SQS queue will be created
+rather than an SNS topic. Using an SNS topic as a DLQ requires this property to be set explicitly.
+
+---
+
+##### `description`<sup>Optional</sup> <a name="description" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.description"></a>
+
+```typescript
+public readonly description: string;
+```
+
+- *Type:* string
+- *Default:* No description.
+
+A description of the function.
+
+---
+
+##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.environmentEncryption"></a>
+
+```typescript
+public readonly environmentEncryption: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
+
+The AWS KMS key that's used to encrypt your function's environment variables.
+
+---
+
+##### `ephemeralStorageSize`<sup>Optional</sup> <a name="ephemeralStorageSize" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.ephemeralStorageSize"></a>
+
+```typescript
+public readonly ephemeralStorageSize: Size;
+```
+
+- *Type:* aws-cdk-lib.Size
+- *Default:* 512 MiB
+
+The size of the function’s /tmp directory in MiB.
+
+---
+
+##### `events`<sup>Optional</sup> <a name="events" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.events"></a>
+
+```typescript
+public readonly events: IEventSource[];
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IEventSource[]
+- *Default:* No event sources.
+
+Event sources for this function.
+
+You can also add event sources using `addEventSource`.
+
+---
+
+##### `functionName`<sup>Optional</sup> <a name="functionName" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.functionName"></a>
+
+```typescript
+public readonly functionName: string;
+```
+
+- *Type:* string
+- *Default:* AWS CloudFormation generates a unique physical ID and uses that ID for the function's name. For more information, see Name Type.
+
+A name for the function.
+
+---
+
+##### `initialPolicy`<sup>Optional</sup> <a name="initialPolicy" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.initialPolicy"></a>
+
+```typescript
+public readonly initialPolicy: PolicyStatement[];
+```
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyStatement[]
+- *Default:* No policy statements are added to the created Lambda role.
+
+Initial policy statements to add to the created Lambda Role.
+
+You can call `addToRolePolicy` to the created lambda to add statements post creation.
+
+---
+
+##### `insightsVersion`<sup>Optional</sup> <a name="insightsVersion" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.insightsVersion"></a>
+
+```typescript
+public readonly insightsVersion: LambdaInsightsVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LambdaInsightsVersion
+- *Default:* No Lambda Insights
+
+Specify the version of CloudWatch Lambda insights to use for monitoring.
+
+---
+
+##### `ipv6AllowedForDualStack`<sup>Optional</sup> <a name="ipv6AllowedForDualStack" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.ipv6AllowedForDualStack"></a>
+
+```typescript
+public readonly ipv6AllowedForDualStack: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets.
+
+Only used if 'vpc' is supplied.
+
+---
+
+##### ~~`logFormat`~~<sup>Optional</sup> <a name="logFormat" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logFormat"></a>
+
+- *Deprecated:* Use `loggingFormat` as a property instead.
+
+```typescript
+public readonly logFormat: string;
+```
+
+- *Type:* string
+- *Default:* "Text"
+
+Sets the logFormat for the function.
+
+---
+
+##### `loggingFormat`<sup>Optional</sup> <a name="loggingFormat" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.loggingFormat"></a>
+
+```typescript
+public readonly loggingFormat: LoggingFormat;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LoggingFormat
+- *Default:* LoggingFormat.TEXT
+
+Sets the loggingFormat for the function.
+
+---
+
+##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logGroup"></a>
+
+```typescript
+public readonly logGroup: ILogGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
+
+The log group the function sends logs to.
+
+By default, Lambda functions send logs to an automatically created default log group named /aws/lambda/\<function name\>.
+However you cannot change the properties of this auto-created log group using the AWS CDK, e.g. you cannot set a different log retention.
+
+Use the `logGroup` property to create a fully customizable LogGroup ahead of time, and instruct the Lambda function to send logs to it.
+
+Providing a user-controlled log group was rolled out to commercial regions on 2023-11-16.
+If you are deploying to another type of region, please check regional availability first.
+
+---
+
+##### ~~`logRemovalPolicy`~~<sup>Optional</sup> <a name="logRemovalPolicy" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRemovalPolicy"></a>
+
+- *Deprecated:* use `logGroup` instead
+
+```typescript
+public readonly logRemovalPolicy: RemovalPolicy;
+```
+
+- *Type:* aws-cdk-lib.RemovalPolicy
+- *Default:* RemovalPolicy.Retain
+
+Determine the removal policy of the log group that is auto-created by this construct.
+
+Normally you want to retain the log group so you can diagnose issues
+from logs even after a deployment that no longer includes the log group.
+In that case, use the normal date-based retention policy to age out your
+logs.
+
+---
+
+##### ~~`logRetention`~~<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRetention"></a>
+
+- *Deprecated:* use `logGroup` instead
+
+```typescript
+public readonly logRetention: RetentionDays;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+- *Default:* logs.RetentionDays.INFINITE
+
+The number of days log events are kept in CloudWatch Logs.
+
+When updating
+this property, unsetting it doesn't remove the log retention policy. To
+remove the retention policy, set the value to `INFINITE`.
+
+This is a legacy API and we strongly recommend you move away from it if you can.
+Instead create a fully customizable log group with `logs.LogGroup` and use the `logGroup` property
+to instruct the Lambda function to send logs to it.
+Migrating from `logRetention` to `logGroup` will cause the name of the log group to change.
+Users and code and referencing the name verbatim will have to adjust.
+
+In AWS CDK code, you can access the log group name directly from the LogGroup construct:
+```ts
+import * as logs from 'aws-cdk-lib/aws-logs';
+
+declare const myLogGroup: logs.LogGroup;
+myLogGroup.logGroupName;
+```
+
+---
+
+##### `logRetentionRetryOptions`<sup>Optional</sup> <a name="logRetentionRetryOptions" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRetentionRetryOptions"></a>
+
+```typescript
+public readonly logRetentionRetryOptions: LogRetentionRetryOptions;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LogRetentionRetryOptions
+- *Default:* Default AWS SDK retry options.
+
+When log retention is specified, a custom resource attempts to create the CloudWatch log group.
+
+These options control the retry policy when interacting with CloudWatch APIs.
+
+This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+`logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+
+---
+
+##### `logRetentionRole`<sup>Optional</sup> <a name="logRetentionRole" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRetentionRole"></a>
+
+```typescript
+public readonly logRetentionRole: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+- *Default:* A new role is created.
+
+The IAM role for the Lambda function associated with the custom resource that sets the retention policy.
+
+This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+`logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+
+---
+
+##### `maxEventAge`<sup>Optional</sup> <a name="maxEventAge" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.maxEventAge"></a>
+
+```typescript
+public readonly maxEventAge: Duration;
+```
+
+- *Type:* aws-cdk-lib.Duration
+- *Default:* Duration.hours(6)
+
+The maximum age of a request that Lambda sends to a function for processing.
+
+Minimum: 60 seconds
+Maximum: 6 hours
+
+---
+
+##### `onFailure`<sup>Optional</sup> <a name="onFailure" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.onFailure"></a>
+
+```typescript
+public readonly onFailure: IDestination;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IDestination
+- *Default:* no destination
+
+The destination for failed invocations.
+
+---
+
+##### `onSuccess`<sup>Optional</sup> <a name="onSuccess" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.onSuccess"></a>
+
+```typescript
+public readonly onSuccess: IDestination;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IDestination
+- *Default:* no destination
+
+The destination for successful invocations.
+
+---
+
+##### `paramsAndSecrets`<sup>Optional</sup> <a name="paramsAndSecrets" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.paramsAndSecrets"></a>
+
+```typescript
+public readonly paramsAndSecrets: ParamsAndSecretsLayerVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ParamsAndSecretsLayerVersion
+- *Default:* No Parameters and Secrets Extension
+
+Specify the configuration of Parameters and Secrets Extension.
+
+---
+
+##### `profiling`<sup>Optional</sup> <a name="profiling" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.profiling"></a>
+
+```typescript
+public readonly profiling: boolean;
+```
+
+- *Type:* boolean
+- *Default:* No profiling.
+
+Enable profiling.
+
+---
+
+##### `profilingGroup`<sup>Optional</sup> <a name="profilingGroup" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.profilingGroup"></a>
+
+```typescript
+public readonly profilingGroup: IProfilingGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_codeguruprofiler.IProfilingGroup
+- *Default:* A new profiling group will be created if `profiling` is set.
+
+Profiling Group.
+
+---
+
+##### `recursiveLoop`<sup>Optional</sup> <a name="recursiveLoop" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.recursiveLoop"></a>
+
+```typescript
+public readonly recursiveLoop: RecursiveLoop;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.RecursiveLoop
+- *Default:* RecursiveLoop.Terminate
+
+Sets the Recursive Loop Protection for Lambda Function.
+
+It lets Lambda detect and terminate unintended recursive loops.
+
+---
+
+##### `reservedConcurrentExecutions`<sup>Optional</sup> <a name="reservedConcurrentExecutions" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.reservedConcurrentExecutions"></a>
+
+```typescript
+public readonly reservedConcurrentExecutions: number;
+```
+
+- *Type:* number
+- *Default:* No specific limit - account limit.
+
+The maximum of concurrent executions you want to reserve for the function.
+
+---
+
+##### `retryAttempts`<sup>Optional</sup> <a name="retryAttempts" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.retryAttempts"></a>
+
+```typescript
+public readonly retryAttempts: number;
+```
+
+- *Type:* number
+- *Default:* 2
+
+The maximum number of times to retry when the function returns an error.
+
+Minimum: 0
+Maximum: 2
+
+---
+
+##### `role`<sup>Optional</sup> <a name="role" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.role"></a>
+
+```typescript
+public readonly role: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+- *Default:* A unique role will be generated for this lambda function. Both supplied and generated roles can always be changed by calling `addToRolePolicy`.
+
+Lambda execution role.
+
+This is the role that will be assumed by the function upon execution.
+It controls the permissions that the function will have. The Role must
+be assumable by the 'lambda.amazonaws.com' service principal.
+
+The default Role automatically has permissions granted for Lambda execution. If you
+provide a Role, you must add the relevant AWS managed policies yourself.
+
+The relevant managed policies are "service-role/AWSLambdaBasicExecutionRole" and
+"service-role/AWSLambdaVPCAccessExecutionRole".
+
+---
+
+##### `runtimeManagementMode`<sup>Optional</sup> <a name="runtimeManagementMode" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.runtimeManagementMode"></a>
+
+```typescript
+public readonly runtimeManagementMode: RuntimeManagementMode;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.RuntimeManagementMode
+- *Default:* Auto
+
+Sets the runtime management configuration for a function's version.
+
+---
+
+##### `securityGroups`<sup>Optional</sup> <a name="securityGroups" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.securityGroups"></a>
+
+```typescript
+public readonly securityGroups: ISecurityGroup[];
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.ISecurityGroup[]
+- *Default:* If the function is placed within a VPC and a security group is not specified, either by this or securityGroup prop, a dedicated security group will be created for this function.
+
+The list of security groups to associate with the Lambda's network interfaces.
+
+Only used if 'vpc' is supplied.
+
+---
+
+##### `snapStart`<sup>Optional</sup> <a name="snapStart" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.snapStart"></a>
+
+```typescript
+public readonly snapStart: SnapStartConf;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.SnapStartConf
+- *Default:* No snapstart
+
+Enable SnapStart for Lambda Function.
+
+SnapStart is currently supported for Java 11, Java 17, Python 3.12, Python 3.13, and .NET 8 runtime
+
+---
+
+##### ~~`systemLogLevel`~~<sup>Optional</sup> <a name="systemLogLevel" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.systemLogLevel"></a>
+
+- *Deprecated:* Use `systemLogLevelV2` as a property instead.
+
+```typescript
+public readonly systemLogLevel: string;
+```
+
+- *Type:* string
+- *Default:* "INFO"
+
+Sets the system log level for the function.
+
+---
+
+##### `systemLogLevelV2`<sup>Optional</sup> <a name="systemLogLevelV2" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.systemLogLevelV2"></a>
+
+```typescript
+public readonly systemLogLevelV2: SystemLogLevel;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.SystemLogLevel
+- *Default:* SystemLogLevel.INFO
+
+Sets the system log level for the function.
+
+---
+
+##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.tracing"></a>
+
+```typescript
+public readonly tracing: Tracing;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Tracing
+- *Default:* Tracing.Disabled
+
+Enable AWS X-Ray Tracing for Lambda Function.
+
+---
+
+##### `vpc`<sup>Optional</sup> <a name="vpc" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.vpc"></a>
+
+```typescript
+public readonly vpc: IVpc;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.IVpc
+- *Default:* Function is not placed within a VPC.
+
+VPC network to place Lambda network interfaces.
+
+Specify this if the Lambda function needs to access resources in a VPC.
+This is required when `vpcSubnets` is specified.
+
+---
+
+##### `vpcSubnets`<sup>Optional</sup> <a name="vpcSubnets" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.vpcSubnets"></a>
+
+```typescript
+public readonly vpcSubnets: SubnetSelection;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.SubnetSelection
+- *Default:* the Vpc default strategy if not specified
+
+Where to place the network interfaces within the VPC.
+
+This requires `vpc` to be specified in order for interfaces to actually be
+placed in the subnets. If `vpc` is not specify, this will raise an error.
+
+Note: Internet access for Lambda Functions requires a NAT Gateway, so picking
+public subnets is not allowed (unless `allowPublicSubnet` is set to `true`).
+
+---
+
+##### `agentTable`<sup>Required</sup> <a name="agentTable" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.agentTable"></a>
+
+```typescript
+public readonly agentTable: ITable;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.ITable
+
+The DynamoDB table for agent job tracking.
+
+---
+
+##### `appSyncApiUrl`<sup>Required</sup> <a name="appSyncApiUrl" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.appSyncApiUrl"></a>
+
+```typescript
+public readonly appSyncApiUrl: string;
+```
+
+- *Type:* string
+
+AppSync GraphQL API URL for publishing updates.
+
+---
+
+##### `athenaBucket`<sup>Required</sup> <a name="athenaBucket" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.athenaBucket"></a>
+
+```typescript
+public readonly athenaBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+S3 bucket for Athena query results.
+
+---
+
+##### `athenaDatabase`<sup>Required</sup> <a name="athenaDatabase" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.athenaDatabase"></a>
+
+```typescript
+public readonly athenaDatabase: IDatabase;
+```
+
+- *Type:* @aws-cdk/aws-glue-alpha.IDatabase
+
+Athena database for analytics queries.
+
+---
+
+##### `metricNamespace`<sup>Required</sup> <a name="metricNamespace" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.metricNamespace"></a>
+
+```typescript
+public readonly metricNamespace: string;
+```
+
+- *Type:* string
+
+The namespace for CloudWatch metrics.
+
+---
+
+##### `model`<sup>Required</sup> <a name="model" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.model"></a>
+
+```typescript
+public readonly model: IInvokable;
+```
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+
+The foundation model or inference profile to use for document analysis agent.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+The KMS key used for encryption.
+
+---
+
+##### `externalMcpAgentsSecret`<sup>Optional</sup> <a name="externalMcpAgentsSecret" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.externalMcpAgentsSecret"></a>
+
+```typescript
+public readonly externalMcpAgentsSecret: ISecret;
+```
+
+- *Type:* aws-cdk-lib.aws_secretsmanager.ISecret
+
+Optional Secrets Manager secret for external MCP agents.
+
+---
+
+##### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logLevel"></a>
+
+```typescript
+public readonly logLevel: LogLevel;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+- *Default:* LogLevel.INFO
+
+The log level for the function.
+
+---
+
+### AgentRequestHandlerFunctionProps <a name="AgentRequestHandlerFunctionProps" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps"></a>
+
+Properties for the Agent Request Handler function.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.Initializer"></a>
+
+```typescript
+import { AgentRequestHandlerFunctionProps } from '@cdklabs/genai-idp'
+
+const agentRequestHandlerFunctionProps: AgentRequestHandlerFunctionProps = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.adotInstrumentation">adotInstrumentation</a></code> | <code>aws-cdk-lib.aws_lambda.AdotInstrumentationConfig</code> | Specify the configuration of AWS Distro for OpenTelemetry (ADOT) instrumentation. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.allowAllIpv6Outbound">allowAllIpv6Outbound</a></code> | <code>boolean</code> | Whether to allow the Lambda to send all ipv6 network traffic. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.initialPolicy">initialPolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyStatement[]</code> | Initial policy statements to add to the created Lambda Role. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.insightsVersion">insightsVersion</a></code> | <code>aws-cdk-lib.aws_lambda.LambdaInsightsVersion</code> | Specify the version of CloudWatch Lambda insights to use for monitoring. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRetentionRole">logRetentionRole</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | The IAM role for the Lambda function associated with the custom resource that sets the retention policy. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.maxEventAge">maxEventAge</a></code> | <code>aws-cdk-lib.Duration</code> | The maximum age of a request that Lambda sends to a function for processing. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.onFailure">onFailure</a></code> | <code>aws-cdk-lib.aws_lambda.IDestination</code> | The destination for failed invocations. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.onSuccess">onSuccess</a></code> | <code>aws-cdk-lib.aws_lambda.IDestination</code> | The destination for successful invocations. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.paramsAndSecrets">paramsAndSecrets</a></code> | <code>aws-cdk-lib.aws_lambda.ParamsAndSecretsLayerVersion</code> | Specify the configuration of Parameters and Secrets Extension. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.profiling">profiling</a></code> | <code>boolean</code> | Enable profiling. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.profilingGroup">profilingGroup</a></code> | <code>aws-cdk-lib.aws_codeguruprofiler.IProfilingGroup</code> | Profiling Group. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.recursiveLoop">recursiveLoop</a></code> | <code>aws-cdk-lib.aws_lambda.RecursiveLoop</code> | Sets the Recursive Loop Protection for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.reservedConcurrentExecutions">reservedConcurrentExecutions</a></code> | <code>number</code> | The maximum of concurrent executions you want to reserve for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.retryAttempts">retryAttempts</a></code> | <code>number</code> | The maximum number of times to retry when the function returns an error. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Lambda execution role. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.runtimeManagementMode">runtimeManagementMode</a></code> | <code>aws-cdk-lib.aws_lambda.RuntimeManagementMode</code> | Sets the runtime management configuration for a function's version. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.securityGroups">securityGroups</a></code> | <code>aws-cdk-lib.aws_ec2.ISecurityGroup[]</code> | The list of security groups to associate with the Lambda's network interfaces. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.agentProcessorFunction">agentProcessorFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | The agent processor function to invoke for processing queries. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.agentTable">agentTable</a></code> | <code>aws-cdk-lib.aws_dynamodb.ITable</code> | The DynamoDB table for agent job tracking. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.metricNamespace">metricNamespace</a></code> | <code>string</code> | The namespace for CloudWatch metrics. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.dataRetentionDays">dataRetentionDays</a></code> | <code>number</code> | Data retention period in days. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The KMS key used for encryption. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the function. |
+
+---
+
+##### `adotInstrumentation`<sup>Optional</sup> <a name="adotInstrumentation" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.adotInstrumentation"></a>
+
+```typescript
+public readonly adotInstrumentation: AdotInstrumentationConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.AdotInstrumentationConfig
+- *Default:* No ADOT instrumentation
+
+Specify the configuration of AWS Distro for OpenTelemetry (ADOT) instrumentation.
+
+---
+
+##### `allowAllIpv6Outbound`<sup>Optional</sup> <a name="allowAllIpv6Outbound" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.allowAllIpv6Outbound"></a>
+
+```typescript
+public readonly allowAllIpv6Outbound: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Whether to allow the Lambda to send all ipv6 network traffic.
+
+If set to true, there will only be a single egress rule which allows all
+outbound ipv6 traffic. If set to false, you must individually add traffic rules to allow the
+Lambda to connect to network targets using ipv6.
+
+Do not specify this property if the `securityGroups` or `securityGroup` property is set.
+Instead, configure `allowAllIpv6Outbound` directly on the security group.
+
+---
+
+##### ~~`applicationLogLevel`~~<sup>Optional</sup> <a name="applicationLogLevel" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.applicationLogLevel"></a>
+
+- *Deprecated:* Use `applicationLogLevelV2` as a property instead.
+
+```typescript
+public readonly applicationLogLevel: string;
+```
+
+- *Type:* string
+- *Default:* "INFO"
+
+Sets the application log level for the function.
+
+---
+
+##### `applicationLogLevelV2`<sup>Optional</sup> <a name="applicationLogLevelV2" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.applicationLogLevelV2"></a>
+
+```typescript
+public readonly applicationLogLevelV2: ApplicationLogLevel;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ApplicationLogLevel
+- *Default:* ApplicationLogLevel.INFO
+
+Sets the application log level for the function.
+
+---
+
+##### `architecture`<sup>Optional</sup> <a name="architecture" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.architecture"></a>
+
+```typescript
+public readonly architecture: Architecture;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Architecture
+- *Default:* Architecture.X86_64
+
+The system architectures compatible with this lambda function.
+
+---
+
+##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.codeSigningConfig"></a>
+
+```typescript
+public readonly codeSigningConfig: ICodeSigningConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Default:* Not Sign the Code
+
+Code signing config associated with this function.
+
+---
+
+##### `currentVersionOptions`<sup>Optional</sup> <a name="currentVersionOptions" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.currentVersionOptions"></a>
+
+```typescript
+public readonly currentVersionOptions: VersionOptions;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.VersionOptions
+- *Default:* default options as described in `VersionOptions`
+
+Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method.
+
+---
+
+##### `deadLetterQueue`<sup>Optional</sup> <a name="deadLetterQueue" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.deadLetterQueue"></a>
+
+```typescript
+public readonly deadLetterQueue: IQueue;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.IQueue
+- *Default:* SQS queue with 14 day retention period if `deadLetterQueueEnabled` is `true`
+
+The SQS queue to use if DLQ is enabled.
+
+If SNS topic is desired, specify `deadLetterTopic` property instead.
+
+---
+
+##### `deadLetterQueueEnabled`<sup>Optional</sup> <a name="deadLetterQueueEnabled" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.deadLetterQueueEnabled"></a>
+
+```typescript
+public readonly deadLetterQueueEnabled: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false unless `deadLetterQueue` is set, which implies DLQ is enabled.
+
+Enabled DLQ.
+
+If `deadLetterQueue` is undefined,
+an SQS queue with default options will be defined for your Function.
+
+---
+
+##### `deadLetterTopic`<sup>Optional</sup> <a name="deadLetterTopic" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.deadLetterTopic"></a>
+
+```typescript
+public readonly deadLetterTopic: ITopic;
+```
+
+- *Type:* aws-cdk-lib.aws_sns.ITopic
+- *Default:* no SNS topic
+
+The SNS topic to use as a DLQ.
+
+Note that if `deadLetterQueueEnabled` is set to `true`, an SQS queue will be created
+rather than an SNS topic. Using an SNS topic as a DLQ requires this property to be set explicitly.
+
+---
+
+##### `description`<sup>Optional</sup> <a name="description" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.description"></a>
+
+```typescript
+public readonly description: string;
+```
+
+- *Type:* string
+- *Default:* No description.
+
+A description of the function.
+
+---
+
+##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.environmentEncryption"></a>
+
+```typescript
+public readonly environmentEncryption: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
+
+The AWS KMS key that's used to encrypt your function's environment variables.
+
+---
+
+##### `ephemeralStorageSize`<sup>Optional</sup> <a name="ephemeralStorageSize" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.ephemeralStorageSize"></a>
+
+```typescript
+public readonly ephemeralStorageSize: Size;
+```
+
+- *Type:* aws-cdk-lib.Size
+- *Default:* 512 MiB
+
+The size of the function’s /tmp directory in MiB.
+
+---
+
+##### `events`<sup>Optional</sup> <a name="events" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.events"></a>
+
+```typescript
+public readonly events: IEventSource[];
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IEventSource[]
+- *Default:* No event sources.
+
+Event sources for this function.
+
+You can also add event sources using `addEventSource`.
+
+---
+
+##### `functionName`<sup>Optional</sup> <a name="functionName" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.functionName"></a>
+
+```typescript
+public readonly functionName: string;
+```
+
+- *Type:* string
+- *Default:* AWS CloudFormation generates a unique physical ID and uses that ID for the function's name. For more information, see Name Type.
+
+A name for the function.
+
+---
+
+##### `initialPolicy`<sup>Optional</sup> <a name="initialPolicy" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.initialPolicy"></a>
+
+```typescript
+public readonly initialPolicy: PolicyStatement[];
+```
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyStatement[]
+- *Default:* No policy statements are added to the created Lambda role.
+
+Initial policy statements to add to the created Lambda Role.
+
+You can call `addToRolePolicy` to the created lambda to add statements post creation.
+
+---
+
+##### `insightsVersion`<sup>Optional</sup> <a name="insightsVersion" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.insightsVersion"></a>
+
+```typescript
+public readonly insightsVersion: LambdaInsightsVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LambdaInsightsVersion
+- *Default:* No Lambda Insights
+
+Specify the version of CloudWatch Lambda insights to use for monitoring.
+
+---
+
+##### `ipv6AllowedForDualStack`<sup>Optional</sup> <a name="ipv6AllowedForDualStack" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.ipv6AllowedForDualStack"></a>
+
+```typescript
+public readonly ipv6AllowedForDualStack: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets.
+
+Only used if 'vpc' is supplied.
+
+---
+
+##### ~~`logFormat`~~<sup>Optional</sup> <a name="logFormat" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logFormat"></a>
+
+- *Deprecated:* Use `loggingFormat` as a property instead.
+
+```typescript
+public readonly logFormat: string;
+```
+
+- *Type:* string
+- *Default:* "Text"
+
+Sets the logFormat for the function.
+
+---
+
+##### `loggingFormat`<sup>Optional</sup> <a name="loggingFormat" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.loggingFormat"></a>
+
+```typescript
+public readonly loggingFormat: LoggingFormat;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LoggingFormat
+- *Default:* LoggingFormat.TEXT
+
+Sets the loggingFormat for the function.
+
+---
+
+##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logGroup"></a>
+
+```typescript
+public readonly logGroup: ILogGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
+
+The log group the function sends logs to.
+
+By default, Lambda functions send logs to an automatically created default log group named /aws/lambda/\<function name\>.
+However you cannot change the properties of this auto-created log group using the AWS CDK, e.g. you cannot set a different log retention.
+
+Use the `logGroup` property to create a fully customizable LogGroup ahead of time, and instruct the Lambda function to send logs to it.
+
+Providing a user-controlled log group was rolled out to commercial regions on 2023-11-16.
+If you are deploying to another type of region, please check regional availability first.
+
+---
+
+##### ~~`logRemovalPolicy`~~<sup>Optional</sup> <a name="logRemovalPolicy" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRemovalPolicy"></a>
+
+- *Deprecated:* use `logGroup` instead
+
+```typescript
+public readonly logRemovalPolicy: RemovalPolicy;
+```
+
+- *Type:* aws-cdk-lib.RemovalPolicy
+- *Default:* RemovalPolicy.Retain
+
+Determine the removal policy of the log group that is auto-created by this construct.
+
+Normally you want to retain the log group so you can diagnose issues
+from logs even after a deployment that no longer includes the log group.
+In that case, use the normal date-based retention policy to age out your
+logs.
+
+---
+
+##### ~~`logRetention`~~<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRetention"></a>
+
+- *Deprecated:* use `logGroup` instead
+
+```typescript
+public readonly logRetention: RetentionDays;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+- *Default:* logs.RetentionDays.INFINITE
+
+The number of days log events are kept in CloudWatch Logs.
+
+When updating
+this property, unsetting it doesn't remove the log retention policy. To
+remove the retention policy, set the value to `INFINITE`.
+
+This is a legacy API and we strongly recommend you move away from it if you can.
+Instead create a fully customizable log group with `logs.LogGroup` and use the `logGroup` property
+to instruct the Lambda function to send logs to it.
+Migrating from `logRetention` to `logGroup` will cause the name of the log group to change.
+Users and code and referencing the name verbatim will have to adjust.
+
+In AWS CDK code, you can access the log group name directly from the LogGroup construct:
+```ts
+import * as logs from 'aws-cdk-lib/aws-logs';
+
+declare const myLogGroup: logs.LogGroup;
+myLogGroup.logGroupName;
+```
+
+---
+
+##### `logRetentionRetryOptions`<sup>Optional</sup> <a name="logRetentionRetryOptions" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRetentionRetryOptions"></a>
+
+```typescript
+public readonly logRetentionRetryOptions: LogRetentionRetryOptions;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LogRetentionRetryOptions
+- *Default:* Default AWS SDK retry options.
+
+When log retention is specified, a custom resource attempts to create the CloudWatch log group.
+
+These options control the retry policy when interacting with CloudWatch APIs.
+
+This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+`logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+
+---
+
+##### `logRetentionRole`<sup>Optional</sup> <a name="logRetentionRole" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRetentionRole"></a>
+
+```typescript
+public readonly logRetentionRole: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+- *Default:* A new role is created.
+
+The IAM role for the Lambda function associated with the custom resource that sets the retention policy.
+
+This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+`logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+
+---
+
+##### `maxEventAge`<sup>Optional</sup> <a name="maxEventAge" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.maxEventAge"></a>
+
+```typescript
+public readonly maxEventAge: Duration;
+```
+
+- *Type:* aws-cdk-lib.Duration
+- *Default:* Duration.hours(6)
+
+The maximum age of a request that Lambda sends to a function for processing.
+
+Minimum: 60 seconds
+Maximum: 6 hours
+
+---
+
+##### `onFailure`<sup>Optional</sup> <a name="onFailure" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.onFailure"></a>
+
+```typescript
+public readonly onFailure: IDestination;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IDestination
+- *Default:* no destination
+
+The destination for failed invocations.
+
+---
+
+##### `onSuccess`<sup>Optional</sup> <a name="onSuccess" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.onSuccess"></a>
+
+```typescript
+public readonly onSuccess: IDestination;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IDestination
+- *Default:* no destination
+
+The destination for successful invocations.
+
+---
+
+##### `paramsAndSecrets`<sup>Optional</sup> <a name="paramsAndSecrets" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.paramsAndSecrets"></a>
+
+```typescript
+public readonly paramsAndSecrets: ParamsAndSecretsLayerVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ParamsAndSecretsLayerVersion
+- *Default:* No Parameters and Secrets Extension
+
+Specify the configuration of Parameters and Secrets Extension.
+
+---
+
+##### `profiling`<sup>Optional</sup> <a name="profiling" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.profiling"></a>
+
+```typescript
+public readonly profiling: boolean;
+```
+
+- *Type:* boolean
+- *Default:* No profiling.
+
+Enable profiling.
+
+---
+
+##### `profilingGroup`<sup>Optional</sup> <a name="profilingGroup" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.profilingGroup"></a>
+
+```typescript
+public readonly profilingGroup: IProfilingGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_codeguruprofiler.IProfilingGroup
+- *Default:* A new profiling group will be created if `profiling` is set.
+
+Profiling Group.
+
+---
+
+##### `recursiveLoop`<sup>Optional</sup> <a name="recursiveLoop" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.recursiveLoop"></a>
+
+```typescript
+public readonly recursiveLoop: RecursiveLoop;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.RecursiveLoop
+- *Default:* RecursiveLoop.Terminate
+
+Sets the Recursive Loop Protection for Lambda Function.
+
+It lets Lambda detect and terminate unintended recursive loops.
+
+---
+
+##### `reservedConcurrentExecutions`<sup>Optional</sup> <a name="reservedConcurrentExecutions" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.reservedConcurrentExecutions"></a>
+
+```typescript
+public readonly reservedConcurrentExecutions: number;
+```
+
+- *Type:* number
+- *Default:* No specific limit - account limit.
+
+The maximum of concurrent executions you want to reserve for the function.
+
+---
+
+##### `retryAttempts`<sup>Optional</sup> <a name="retryAttempts" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.retryAttempts"></a>
+
+```typescript
+public readonly retryAttempts: number;
+```
+
+- *Type:* number
+- *Default:* 2
+
+The maximum number of times to retry when the function returns an error.
+
+Minimum: 0
+Maximum: 2
+
+---
+
+##### `role`<sup>Optional</sup> <a name="role" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.role"></a>
+
+```typescript
+public readonly role: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+- *Default:* A unique role will be generated for this lambda function. Both supplied and generated roles can always be changed by calling `addToRolePolicy`.
+
+Lambda execution role.
+
+This is the role that will be assumed by the function upon execution.
+It controls the permissions that the function will have. The Role must
+be assumable by the 'lambda.amazonaws.com' service principal.
+
+The default Role automatically has permissions granted for Lambda execution. If you
+provide a Role, you must add the relevant AWS managed policies yourself.
+
+The relevant managed policies are "service-role/AWSLambdaBasicExecutionRole" and
+"service-role/AWSLambdaVPCAccessExecutionRole".
+
+---
+
+##### `runtimeManagementMode`<sup>Optional</sup> <a name="runtimeManagementMode" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.runtimeManagementMode"></a>
+
+```typescript
+public readonly runtimeManagementMode: RuntimeManagementMode;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.RuntimeManagementMode
+- *Default:* Auto
+
+Sets the runtime management configuration for a function's version.
+
+---
+
+##### `securityGroups`<sup>Optional</sup> <a name="securityGroups" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.securityGroups"></a>
+
+```typescript
+public readonly securityGroups: ISecurityGroup[];
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.ISecurityGroup[]
+- *Default:* If the function is placed within a VPC and a security group is not specified, either by this or securityGroup prop, a dedicated security group will be created for this function.
+
+The list of security groups to associate with the Lambda's network interfaces.
+
+Only used if 'vpc' is supplied.
+
+---
+
+##### `snapStart`<sup>Optional</sup> <a name="snapStart" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.snapStart"></a>
+
+```typescript
+public readonly snapStart: SnapStartConf;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.SnapStartConf
+- *Default:* No snapstart
+
+Enable SnapStart for Lambda Function.
+
+SnapStart is currently supported for Java 11, Java 17, Python 3.12, Python 3.13, and .NET 8 runtime
+
+---
+
+##### ~~`systemLogLevel`~~<sup>Optional</sup> <a name="systemLogLevel" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.systemLogLevel"></a>
+
+- *Deprecated:* Use `systemLogLevelV2` as a property instead.
+
+```typescript
+public readonly systemLogLevel: string;
+```
+
+- *Type:* string
+- *Default:* "INFO"
+
+Sets the system log level for the function.
+
+---
+
+##### `systemLogLevelV2`<sup>Optional</sup> <a name="systemLogLevelV2" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.systemLogLevelV2"></a>
+
+```typescript
+public readonly systemLogLevelV2: SystemLogLevel;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.SystemLogLevel
+- *Default:* SystemLogLevel.INFO
+
+Sets the system log level for the function.
+
+---
+
+##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.tracing"></a>
+
+```typescript
+public readonly tracing: Tracing;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Tracing
+- *Default:* Tracing.Disabled
+
+Enable AWS X-Ray Tracing for Lambda Function.
+
+---
+
+##### `vpc`<sup>Optional</sup> <a name="vpc" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.vpc"></a>
+
+```typescript
+public readonly vpc: IVpc;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.IVpc
+- *Default:* Function is not placed within a VPC.
+
+VPC network to place Lambda network interfaces.
+
+Specify this if the Lambda function needs to access resources in a VPC.
+This is required when `vpcSubnets` is specified.
+
+---
+
+##### `vpcSubnets`<sup>Optional</sup> <a name="vpcSubnets" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.vpcSubnets"></a>
+
+```typescript
+public readonly vpcSubnets: SubnetSelection;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.SubnetSelection
+- *Default:* the Vpc default strategy if not specified
+
+Where to place the network interfaces within the VPC.
+
+This requires `vpc` to be specified in order for interfaces to actually be
+placed in the subnets. If `vpc` is not specify, this will raise an error.
+
+Note: Internet access for Lambda Functions requires a NAT Gateway, so picking
+public subnets is not allowed (unless `allowPublicSubnet` is set to `true`).
+
+---
+
+##### `agentProcessorFunction`<sup>Required</sup> <a name="agentProcessorFunction" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.agentProcessorFunction"></a>
+
+```typescript
+public readonly agentProcessorFunction: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+The agent processor function to invoke for processing queries.
+
+---
+
+##### `agentTable`<sup>Required</sup> <a name="agentTable" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.agentTable"></a>
+
+```typescript
+public readonly agentTable: ITable;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.ITable
+
+The DynamoDB table for agent job tracking.
+
+---
+
+##### `metricNamespace`<sup>Required</sup> <a name="metricNamespace" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.metricNamespace"></a>
+
+```typescript
+public readonly metricNamespace: string;
+```
+
+- *Type:* string
+
+The namespace for CloudWatch metrics.
+
+---
+
+##### `dataRetentionDays`<sup>Optional</sup> <a name="dataRetentionDays" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.dataRetentionDays"></a>
+
+```typescript
+public readonly dataRetentionDays: number;
+```
+
+- *Type:* number
+- *Default:* 30
+
+Data retention period in days.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+The KMS key used for encryption.
+
+---
+
+##### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logLevel"></a>
+
+```typescript
+public readonly logLevel: LogLevel;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+- *Default:* LogLevel.INFO
+
+The log level for the function.
+
+---
+
 ### CognitoUpdaterHitlFunctionProps <a name="CognitoUpdaterHitlFunctionProps" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps"></a>
 
 Properties for configuring the CognitoUpdaterHitlFunction.
@@ -11558,6 +19308,885 @@ public readonly logLevel: LogLevel;
 - *Default:* LogLevel.INFO
 
 The log level for the function.
+
+---
+
+### CustomPromptGeneratorFunctionProps <a name="CustomPromptGeneratorFunctionProps" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps"></a>
+
+Properties for the Custom Prompt Generator function.
+
+This function provides custom business logic injection for document processing
+workflows in Patterns 2 and 3, enabling dynamic prompt customization based on
+document content, business rules, or external system integrations.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.Initializer"></a>
+
+```typescript
+import { CustomPromptGeneratorFunctionProps } from '@cdklabs/genai-idp'
+
+const customPromptGeneratorFunctionProps: CustomPromptGeneratorFunctionProps = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.adotInstrumentation">adotInstrumentation</a></code> | <code>aws-cdk-lib.aws_lambda.AdotInstrumentationConfig</code> | Specify the configuration of AWS Distro for OpenTelemetry (ADOT) instrumentation. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.allowAllIpv6Outbound">allowAllIpv6Outbound</a></code> | <code>boolean</code> | Whether to allow the Lambda to send all ipv6 network traffic. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.initialPolicy">initialPolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyStatement[]</code> | Initial policy statements to add to the created Lambda Role. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.insightsVersion">insightsVersion</a></code> | <code>aws-cdk-lib.aws_lambda.LambdaInsightsVersion</code> | Specify the version of CloudWatch Lambda insights to use for monitoring. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRetentionRole">logRetentionRole</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | The IAM role for the Lambda function associated with the custom resource that sets the retention policy. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.maxEventAge">maxEventAge</a></code> | <code>aws-cdk-lib.Duration</code> | The maximum age of a request that Lambda sends to a function for processing. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.onFailure">onFailure</a></code> | <code>aws-cdk-lib.aws_lambda.IDestination</code> | The destination for failed invocations. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.onSuccess">onSuccess</a></code> | <code>aws-cdk-lib.aws_lambda.IDestination</code> | The destination for successful invocations. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.paramsAndSecrets">paramsAndSecrets</a></code> | <code>aws-cdk-lib.aws_lambda.ParamsAndSecretsLayerVersion</code> | Specify the configuration of Parameters and Secrets Extension. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.profiling">profiling</a></code> | <code>boolean</code> | Enable profiling. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.profilingGroup">profilingGroup</a></code> | <code>aws-cdk-lib.aws_codeguruprofiler.IProfilingGroup</code> | Profiling Group. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.recursiveLoop">recursiveLoop</a></code> | <code>aws-cdk-lib.aws_lambda.RecursiveLoop</code> | Sets the Recursive Loop Protection for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.reservedConcurrentExecutions">reservedConcurrentExecutions</a></code> | <code>number</code> | The maximum of concurrent executions you want to reserve for the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.retryAttempts">retryAttempts</a></code> | <code>number</code> | The maximum number of times to retry when the function returns an error. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Lambda execution role. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.runtimeManagementMode">runtimeManagementMode</a></code> | <code>aws-cdk-lib.aws_lambda.RuntimeManagementMode</code> | Sets the runtime management configuration for a function's version. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.securityGroups">securityGroups</a></code> | <code>aws-cdk-lib.aws_ec2.ISecurityGroup[]</code> | The list of security groups to associate with the Lambda's network interfaces. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | The DynamoDB table containing configuration data. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.inputBucket">inputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where source documents are stored. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.metricNamespace">metricNamespace</a></code> | <code>string</code> | The namespace for CloudWatch metrics emitted by the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.outputBucket">outputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where processed documents are stored. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table that tracks document processing status and metadata. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.workingBucket">workingBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for temporary working files during processing. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The KMS key used for encryption. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the function. |
+
+---
+
+##### `adotInstrumentation`<sup>Optional</sup> <a name="adotInstrumentation" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.adotInstrumentation"></a>
+
+```typescript
+public readonly adotInstrumentation: AdotInstrumentationConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.AdotInstrumentationConfig
+- *Default:* No ADOT instrumentation
+
+Specify the configuration of AWS Distro for OpenTelemetry (ADOT) instrumentation.
+
+---
+
+##### `allowAllIpv6Outbound`<sup>Optional</sup> <a name="allowAllIpv6Outbound" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.allowAllIpv6Outbound"></a>
+
+```typescript
+public readonly allowAllIpv6Outbound: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Whether to allow the Lambda to send all ipv6 network traffic.
+
+If set to true, there will only be a single egress rule which allows all
+outbound ipv6 traffic. If set to false, you must individually add traffic rules to allow the
+Lambda to connect to network targets using ipv6.
+
+Do not specify this property if the `securityGroups` or `securityGroup` property is set.
+Instead, configure `allowAllIpv6Outbound` directly on the security group.
+
+---
+
+##### ~~`applicationLogLevel`~~<sup>Optional</sup> <a name="applicationLogLevel" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.applicationLogLevel"></a>
+
+- *Deprecated:* Use `applicationLogLevelV2` as a property instead.
+
+```typescript
+public readonly applicationLogLevel: string;
+```
+
+- *Type:* string
+- *Default:* "INFO"
+
+Sets the application log level for the function.
+
+---
+
+##### `applicationLogLevelV2`<sup>Optional</sup> <a name="applicationLogLevelV2" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.applicationLogLevelV2"></a>
+
+```typescript
+public readonly applicationLogLevelV2: ApplicationLogLevel;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ApplicationLogLevel
+- *Default:* ApplicationLogLevel.INFO
+
+Sets the application log level for the function.
+
+---
+
+##### `architecture`<sup>Optional</sup> <a name="architecture" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.architecture"></a>
+
+```typescript
+public readonly architecture: Architecture;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Architecture
+- *Default:* Architecture.X86_64
+
+The system architectures compatible with this lambda function.
+
+---
+
+##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.codeSigningConfig"></a>
+
+```typescript
+public readonly codeSigningConfig: ICodeSigningConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Default:* Not Sign the Code
+
+Code signing config associated with this function.
+
+---
+
+##### `currentVersionOptions`<sup>Optional</sup> <a name="currentVersionOptions" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.currentVersionOptions"></a>
+
+```typescript
+public readonly currentVersionOptions: VersionOptions;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.VersionOptions
+- *Default:* default options as described in `VersionOptions`
+
+Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method.
+
+---
+
+##### `deadLetterQueue`<sup>Optional</sup> <a name="deadLetterQueue" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.deadLetterQueue"></a>
+
+```typescript
+public readonly deadLetterQueue: IQueue;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.IQueue
+- *Default:* SQS queue with 14 day retention period if `deadLetterQueueEnabled` is `true`
+
+The SQS queue to use if DLQ is enabled.
+
+If SNS topic is desired, specify `deadLetterTopic` property instead.
+
+---
+
+##### `deadLetterQueueEnabled`<sup>Optional</sup> <a name="deadLetterQueueEnabled" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.deadLetterQueueEnabled"></a>
+
+```typescript
+public readonly deadLetterQueueEnabled: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false unless `deadLetterQueue` is set, which implies DLQ is enabled.
+
+Enabled DLQ.
+
+If `deadLetterQueue` is undefined,
+an SQS queue with default options will be defined for your Function.
+
+---
+
+##### `deadLetterTopic`<sup>Optional</sup> <a name="deadLetterTopic" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.deadLetterTopic"></a>
+
+```typescript
+public readonly deadLetterTopic: ITopic;
+```
+
+- *Type:* aws-cdk-lib.aws_sns.ITopic
+- *Default:* no SNS topic
+
+The SNS topic to use as a DLQ.
+
+Note that if `deadLetterQueueEnabled` is set to `true`, an SQS queue will be created
+rather than an SNS topic. Using an SNS topic as a DLQ requires this property to be set explicitly.
+
+---
+
+##### `description`<sup>Optional</sup> <a name="description" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.description"></a>
+
+```typescript
+public readonly description: string;
+```
+
+- *Type:* string
+- *Default:* No description.
+
+A description of the function.
+
+---
+
+##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.environmentEncryption"></a>
+
+```typescript
+public readonly environmentEncryption: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
+
+The AWS KMS key that's used to encrypt your function's environment variables.
+
+---
+
+##### `ephemeralStorageSize`<sup>Optional</sup> <a name="ephemeralStorageSize" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.ephemeralStorageSize"></a>
+
+```typescript
+public readonly ephemeralStorageSize: Size;
+```
+
+- *Type:* aws-cdk-lib.Size
+- *Default:* 512 MiB
+
+The size of the function’s /tmp directory in MiB.
+
+---
+
+##### `events`<sup>Optional</sup> <a name="events" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.events"></a>
+
+```typescript
+public readonly events: IEventSource[];
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IEventSource[]
+- *Default:* No event sources.
+
+Event sources for this function.
+
+You can also add event sources using `addEventSource`.
+
+---
+
+##### `functionName`<sup>Optional</sup> <a name="functionName" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.functionName"></a>
+
+```typescript
+public readonly functionName: string;
+```
+
+- *Type:* string
+- *Default:* AWS CloudFormation generates a unique physical ID and uses that ID for the function's name. For more information, see Name Type.
+
+A name for the function.
+
+---
+
+##### `initialPolicy`<sup>Optional</sup> <a name="initialPolicy" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.initialPolicy"></a>
+
+```typescript
+public readonly initialPolicy: PolicyStatement[];
+```
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyStatement[]
+- *Default:* No policy statements are added to the created Lambda role.
+
+Initial policy statements to add to the created Lambda Role.
+
+You can call `addToRolePolicy` to the created lambda to add statements post creation.
+
+---
+
+##### `insightsVersion`<sup>Optional</sup> <a name="insightsVersion" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.insightsVersion"></a>
+
+```typescript
+public readonly insightsVersion: LambdaInsightsVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LambdaInsightsVersion
+- *Default:* No Lambda Insights
+
+Specify the version of CloudWatch Lambda insights to use for monitoring.
+
+---
+
+##### `ipv6AllowedForDualStack`<sup>Optional</sup> <a name="ipv6AllowedForDualStack" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.ipv6AllowedForDualStack"></a>
+
+```typescript
+public readonly ipv6AllowedForDualStack: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets.
+
+Only used if 'vpc' is supplied.
+
+---
+
+##### ~~`logFormat`~~<sup>Optional</sup> <a name="logFormat" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logFormat"></a>
+
+- *Deprecated:* Use `loggingFormat` as a property instead.
+
+```typescript
+public readonly logFormat: string;
+```
+
+- *Type:* string
+- *Default:* "Text"
+
+Sets the logFormat for the function.
+
+---
+
+##### `loggingFormat`<sup>Optional</sup> <a name="loggingFormat" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.loggingFormat"></a>
+
+```typescript
+public readonly loggingFormat: LoggingFormat;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LoggingFormat
+- *Default:* LoggingFormat.TEXT
+
+Sets the loggingFormat for the function.
+
+---
+
+##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logGroup"></a>
+
+```typescript
+public readonly logGroup: ILogGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
+
+The log group the function sends logs to.
+
+By default, Lambda functions send logs to an automatically created default log group named /aws/lambda/\<function name\>.
+However you cannot change the properties of this auto-created log group using the AWS CDK, e.g. you cannot set a different log retention.
+
+Use the `logGroup` property to create a fully customizable LogGroup ahead of time, and instruct the Lambda function to send logs to it.
+
+Providing a user-controlled log group was rolled out to commercial regions on 2023-11-16.
+If you are deploying to another type of region, please check regional availability first.
+
+---
+
+##### ~~`logRemovalPolicy`~~<sup>Optional</sup> <a name="logRemovalPolicy" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRemovalPolicy"></a>
+
+- *Deprecated:* use `logGroup` instead
+
+```typescript
+public readonly logRemovalPolicy: RemovalPolicy;
+```
+
+- *Type:* aws-cdk-lib.RemovalPolicy
+- *Default:* RemovalPolicy.Retain
+
+Determine the removal policy of the log group that is auto-created by this construct.
+
+Normally you want to retain the log group so you can diagnose issues
+from logs even after a deployment that no longer includes the log group.
+In that case, use the normal date-based retention policy to age out your
+logs.
+
+---
+
+##### ~~`logRetention`~~<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRetention"></a>
+
+- *Deprecated:* use `logGroup` instead
+
+```typescript
+public readonly logRetention: RetentionDays;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+- *Default:* logs.RetentionDays.INFINITE
+
+The number of days log events are kept in CloudWatch Logs.
+
+When updating
+this property, unsetting it doesn't remove the log retention policy. To
+remove the retention policy, set the value to `INFINITE`.
+
+This is a legacy API and we strongly recommend you move away from it if you can.
+Instead create a fully customizable log group with `logs.LogGroup` and use the `logGroup` property
+to instruct the Lambda function to send logs to it.
+Migrating from `logRetention` to `logGroup` will cause the name of the log group to change.
+Users and code and referencing the name verbatim will have to adjust.
+
+In AWS CDK code, you can access the log group name directly from the LogGroup construct:
+```ts
+import * as logs from 'aws-cdk-lib/aws-logs';
+
+declare const myLogGroup: logs.LogGroup;
+myLogGroup.logGroupName;
+```
+
+---
+
+##### `logRetentionRetryOptions`<sup>Optional</sup> <a name="logRetentionRetryOptions" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRetentionRetryOptions"></a>
+
+```typescript
+public readonly logRetentionRetryOptions: LogRetentionRetryOptions;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LogRetentionRetryOptions
+- *Default:* Default AWS SDK retry options.
+
+When log retention is specified, a custom resource attempts to create the CloudWatch log group.
+
+These options control the retry policy when interacting with CloudWatch APIs.
+
+This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+`logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+
+---
+
+##### `logRetentionRole`<sup>Optional</sup> <a name="logRetentionRole" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRetentionRole"></a>
+
+```typescript
+public readonly logRetentionRole: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+- *Default:* A new role is created.
+
+The IAM role for the Lambda function associated with the custom resource that sets the retention policy.
+
+This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+`logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+
+---
+
+##### `maxEventAge`<sup>Optional</sup> <a name="maxEventAge" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.maxEventAge"></a>
+
+```typescript
+public readonly maxEventAge: Duration;
+```
+
+- *Type:* aws-cdk-lib.Duration
+- *Default:* Duration.hours(6)
+
+The maximum age of a request that Lambda sends to a function for processing.
+
+Minimum: 60 seconds
+Maximum: 6 hours
+
+---
+
+##### `onFailure`<sup>Optional</sup> <a name="onFailure" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.onFailure"></a>
+
+```typescript
+public readonly onFailure: IDestination;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IDestination
+- *Default:* no destination
+
+The destination for failed invocations.
+
+---
+
+##### `onSuccess`<sup>Optional</sup> <a name="onSuccess" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.onSuccess"></a>
+
+```typescript
+public readonly onSuccess: IDestination;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IDestination
+- *Default:* no destination
+
+The destination for successful invocations.
+
+---
+
+##### `paramsAndSecrets`<sup>Optional</sup> <a name="paramsAndSecrets" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.paramsAndSecrets"></a>
+
+```typescript
+public readonly paramsAndSecrets: ParamsAndSecretsLayerVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ParamsAndSecretsLayerVersion
+- *Default:* No Parameters and Secrets Extension
+
+Specify the configuration of Parameters and Secrets Extension.
+
+---
+
+##### `profiling`<sup>Optional</sup> <a name="profiling" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.profiling"></a>
+
+```typescript
+public readonly profiling: boolean;
+```
+
+- *Type:* boolean
+- *Default:* No profiling.
+
+Enable profiling.
+
+---
+
+##### `profilingGroup`<sup>Optional</sup> <a name="profilingGroup" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.profilingGroup"></a>
+
+```typescript
+public readonly profilingGroup: IProfilingGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_codeguruprofiler.IProfilingGroup
+- *Default:* A new profiling group will be created if `profiling` is set.
+
+Profiling Group.
+
+---
+
+##### `recursiveLoop`<sup>Optional</sup> <a name="recursiveLoop" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.recursiveLoop"></a>
+
+```typescript
+public readonly recursiveLoop: RecursiveLoop;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.RecursiveLoop
+- *Default:* RecursiveLoop.Terminate
+
+Sets the Recursive Loop Protection for Lambda Function.
+
+It lets Lambda detect and terminate unintended recursive loops.
+
+---
+
+##### `reservedConcurrentExecutions`<sup>Optional</sup> <a name="reservedConcurrentExecutions" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.reservedConcurrentExecutions"></a>
+
+```typescript
+public readonly reservedConcurrentExecutions: number;
+```
+
+- *Type:* number
+- *Default:* No specific limit - account limit.
+
+The maximum of concurrent executions you want to reserve for the function.
+
+---
+
+##### `retryAttempts`<sup>Optional</sup> <a name="retryAttempts" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.retryAttempts"></a>
+
+```typescript
+public readonly retryAttempts: number;
+```
+
+- *Type:* number
+- *Default:* 2
+
+The maximum number of times to retry when the function returns an error.
+
+Minimum: 0
+Maximum: 2
+
+---
+
+##### `role`<sup>Optional</sup> <a name="role" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.role"></a>
+
+```typescript
+public readonly role: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+- *Default:* A unique role will be generated for this lambda function. Both supplied and generated roles can always be changed by calling `addToRolePolicy`.
+
+Lambda execution role.
+
+This is the role that will be assumed by the function upon execution.
+It controls the permissions that the function will have. The Role must
+be assumable by the 'lambda.amazonaws.com' service principal.
+
+The default Role automatically has permissions granted for Lambda execution. If you
+provide a Role, you must add the relevant AWS managed policies yourself.
+
+The relevant managed policies are "service-role/AWSLambdaBasicExecutionRole" and
+"service-role/AWSLambdaVPCAccessExecutionRole".
+
+---
+
+##### `runtimeManagementMode`<sup>Optional</sup> <a name="runtimeManagementMode" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.runtimeManagementMode"></a>
+
+```typescript
+public readonly runtimeManagementMode: RuntimeManagementMode;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.RuntimeManagementMode
+- *Default:* Auto
+
+Sets the runtime management configuration for a function's version.
+
+---
+
+##### `securityGroups`<sup>Optional</sup> <a name="securityGroups" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.securityGroups"></a>
+
+```typescript
+public readonly securityGroups: ISecurityGroup[];
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.ISecurityGroup[]
+- *Default:* If the function is placed within a VPC and a security group is not specified, either by this or securityGroup prop, a dedicated security group will be created for this function.
+
+The list of security groups to associate with the Lambda's network interfaces.
+
+Only used if 'vpc' is supplied.
+
+---
+
+##### `snapStart`<sup>Optional</sup> <a name="snapStart" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.snapStart"></a>
+
+```typescript
+public readonly snapStart: SnapStartConf;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.SnapStartConf
+- *Default:* No snapstart
+
+Enable SnapStart for Lambda Function.
+
+SnapStart is currently supported for Java 11, Java 17, Python 3.12, Python 3.13, and .NET 8 runtime
+
+---
+
+##### ~~`systemLogLevel`~~<sup>Optional</sup> <a name="systemLogLevel" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.systemLogLevel"></a>
+
+- *Deprecated:* Use `systemLogLevelV2` as a property instead.
+
+```typescript
+public readonly systemLogLevel: string;
+```
+
+- *Type:* string
+- *Default:* "INFO"
+
+Sets the system log level for the function.
+
+---
+
+##### `systemLogLevelV2`<sup>Optional</sup> <a name="systemLogLevelV2" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.systemLogLevelV2"></a>
+
+```typescript
+public readonly systemLogLevelV2: SystemLogLevel;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.SystemLogLevel
+- *Default:* SystemLogLevel.INFO
+
+Sets the system log level for the function.
+
+---
+
+##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.tracing"></a>
+
+```typescript
+public readonly tracing: Tracing;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Tracing
+- *Default:* Tracing.Disabled
+
+Enable AWS X-Ray Tracing for Lambda Function.
+
+---
+
+##### `vpc`<sup>Optional</sup> <a name="vpc" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.vpc"></a>
+
+```typescript
+public readonly vpc: IVpc;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.IVpc
+- *Default:* Function is not placed within a VPC.
+
+VPC network to place Lambda network interfaces.
+
+Specify this if the Lambda function needs to access resources in a VPC.
+This is required when `vpcSubnets` is specified.
+
+---
+
+##### `vpcSubnets`<sup>Optional</sup> <a name="vpcSubnets" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.vpcSubnets"></a>
+
+```typescript
+public readonly vpcSubnets: SubnetSelection;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.SubnetSelection
+- *Default:* the Vpc default strategy if not specified
+
+Where to place the network interfaces within the VPC.
+
+This requires `vpc` to be specified in order for interfaces to actually be
+placed in the subnets. If `vpc` is not specify, this will raise an error.
+
+Note: Internet access for Lambda Functions requires a NAT Gateway, so picking
+public subnets is not allowed (unless `allowPublicSubnet` is set to `true`).
+
+---
+
+##### `configurationTable`<sup>Required</sup> <a name="configurationTable" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.configurationTable"></a>
+
+```typescript
+public readonly configurationTable: IConfigurationTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a>
+
+The DynamoDB table containing configuration data.
+
+Used to load customer-specific configurations and business rules.
+
+---
+
+##### `inputBucket`<sup>Required</sup> <a name="inputBucket" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.inputBucket"></a>
+
+```typescript
+public readonly inputBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket where source documents are stored.
+
+Used to access document content for prompt customization.
+
+---
+
+##### `metricNamespace`<sup>Required</sup> <a name="metricNamespace" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.metricNamespace"></a>
+
+```typescript
+public readonly metricNamespace: string;
+```
+
+- *Type:* string
+
+The namespace for CloudWatch metrics emitted by the function.
+
+Used to organize and identify metrics related to custom prompt generation.
+
+---
+
+##### `outputBucket`<sup>Required</sup> <a name="outputBucket" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.outputBucket"></a>
+
+```typescript
+public readonly outputBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket where processed documents are stored.
+
+Used to store customized prompts and processing artifacts.
+
+---
+
+##### `trackingTable`<sup>Required</sup> <a name="trackingTable" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.trackingTable"></a>
+
+```typescript
+public readonly trackingTable: ITrackingTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a>
+
+The DynamoDB table that tracks document processing status and metadata.
+
+Used to access document context and processing history.
+
+---
+
+##### `workingBucket`<sup>Required</sup> <a name="workingBucket" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.workingBucket"></a>
+
+```typescript
+public readonly workingBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket for temporary working files during processing.
+
+Used for intermediate prompt generation artifacts.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+The KMS key used for encryption.
+
+Applied to all encrypted resources and operations.
+
+---
+
+##### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logLevel"></a>
+
+```typescript
+public readonly logLevel: LogLevel;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+- *Default:* LogLevel.INFO
+
+The log level for the function.
+
+Controls the verbosity of logs generated during prompt customization.
+
+---
+
+### CustomPromptGeneratorProps <a name="CustomPromptGeneratorProps" id="@cdklabs/genai-idp.CustomPromptGeneratorProps"></a>
+
+Properties for configuring a custom prompt generator.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.CustomPromptGeneratorProps.Initializer"></a>
+
+```typescript
+import { CustomPromptGeneratorProps } from '@cdklabs/genai-idp'
+
+const customPromptGeneratorProps: CustomPromptGeneratorProps = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorProps.property.environment">environment</a></code> | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironment">IProcessingEnvironment</a></code> | The processing environment that provides shared infrastructure and services. |
+
+---
+
+##### `environment`<sup>Required</sup> <a name="environment" id="@cdklabs/genai-idp.CustomPromptGeneratorProps.property.environment"></a>
+
+```typescript
+public readonly environment: IProcessingEnvironment;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironment">IProcessingEnvironment</a>
+
+The processing environment that provides shared infrastructure and services.
 
 ---
 
@@ -13692,6 +22321,781 @@ public subnets is not allowed (unless `allowPublicSubnet` is set to `true`).
 
 ---
 
+### ListAvailableAgentsFunctionProps <a name="ListAvailableAgentsFunctionProps" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps"></a>
+
+Properties for the List Available Agents function.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.Initializer"></a>
+
+```typescript
+import { ListAvailableAgentsFunctionProps } from '@cdklabs/genai-idp'
+
+const listAvailableAgentsFunctionProps: ListAvailableAgentsFunctionProps = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.adotInstrumentation">adotInstrumentation</a></code> | <code>aws-cdk-lib.aws_lambda.AdotInstrumentationConfig</code> | Specify the configuration of AWS Distro for OpenTelemetry (ADOT) instrumentation. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.allowAllIpv6Outbound">allowAllIpv6Outbound</a></code> | <code>boolean</code> | Whether to allow the Lambda to send all ipv6 network traffic. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.initialPolicy">initialPolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyStatement[]</code> | Initial policy statements to add to the created Lambda Role. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.insightsVersion">insightsVersion</a></code> | <code>aws-cdk-lib.aws_lambda.LambdaInsightsVersion</code> | Specify the version of CloudWatch Lambda insights to use for monitoring. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRetentionRole">logRetentionRole</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | The IAM role for the Lambda function associated with the custom resource that sets the retention policy. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.maxEventAge">maxEventAge</a></code> | <code>aws-cdk-lib.Duration</code> | The maximum age of a request that Lambda sends to a function for processing. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.onFailure">onFailure</a></code> | <code>aws-cdk-lib.aws_lambda.IDestination</code> | The destination for failed invocations. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.onSuccess">onSuccess</a></code> | <code>aws-cdk-lib.aws_lambda.IDestination</code> | The destination for successful invocations. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.paramsAndSecrets">paramsAndSecrets</a></code> | <code>aws-cdk-lib.aws_lambda.ParamsAndSecretsLayerVersion</code> | Specify the configuration of Parameters and Secrets Extension. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.profiling">profiling</a></code> | <code>boolean</code> | Enable profiling. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.profilingGroup">profilingGroup</a></code> | <code>aws-cdk-lib.aws_codeguruprofiler.IProfilingGroup</code> | Profiling Group. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.recursiveLoop">recursiveLoop</a></code> | <code>aws-cdk-lib.aws_lambda.RecursiveLoop</code> | Sets the Recursive Loop Protection for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.reservedConcurrentExecutions">reservedConcurrentExecutions</a></code> | <code>number</code> | The maximum of concurrent executions you want to reserve for the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.retryAttempts">retryAttempts</a></code> | <code>number</code> | The maximum number of times to retry when the function returns an error. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Lambda execution role. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.runtimeManagementMode">runtimeManagementMode</a></code> | <code>aws-cdk-lib.aws_lambda.RuntimeManagementMode</code> | Sets the runtime management configuration for a function's version. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.securityGroups">securityGroups</a></code> | <code>aws-cdk-lib.aws_ec2.ISecurityGroup[]</code> | The list of security groups to associate with the Lambda's network interfaces. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.metricNamespace">metricNamespace</a></code> | <code>string</code> | The namespace for CloudWatch metrics. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The KMS key used for encryption. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.externalMcpAgentsSecret">externalMcpAgentsSecret</a></code> | <code>aws-cdk-lib.aws_secretsmanager.ISecret</code> | Optional Secrets Manager secret for external MCP agents. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the function. |
+
+---
+
+##### `adotInstrumentation`<sup>Optional</sup> <a name="adotInstrumentation" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.adotInstrumentation"></a>
+
+```typescript
+public readonly adotInstrumentation: AdotInstrumentationConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.AdotInstrumentationConfig
+- *Default:* No ADOT instrumentation
+
+Specify the configuration of AWS Distro for OpenTelemetry (ADOT) instrumentation.
+
+---
+
+##### `allowAllIpv6Outbound`<sup>Optional</sup> <a name="allowAllIpv6Outbound" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.allowAllIpv6Outbound"></a>
+
+```typescript
+public readonly allowAllIpv6Outbound: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Whether to allow the Lambda to send all ipv6 network traffic.
+
+If set to true, there will only be a single egress rule which allows all
+outbound ipv6 traffic. If set to false, you must individually add traffic rules to allow the
+Lambda to connect to network targets using ipv6.
+
+Do not specify this property if the `securityGroups` or `securityGroup` property is set.
+Instead, configure `allowAllIpv6Outbound` directly on the security group.
+
+---
+
+##### ~~`applicationLogLevel`~~<sup>Optional</sup> <a name="applicationLogLevel" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.applicationLogLevel"></a>
+
+- *Deprecated:* Use `applicationLogLevelV2` as a property instead.
+
+```typescript
+public readonly applicationLogLevel: string;
+```
+
+- *Type:* string
+- *Default:* "INFO"
+
+Sets the application log level for the function.
+
+---
+
+##### `applicationLogLevelV2`<sup>Optional</sup> <a name="applicationLogLevelV2" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.applicationLogLevelV2"></a>
+
+```typescript
+public readonly applicationLogLevelV2: ApplicationLogLevel;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ApplicationLogLevel
+- *Default:* ApplicationLogLevel.INFO
+
+Sets the application log level for the function.
+
+---
+
+##### `architecture`<sup>Optional</sup> <a name="architecture" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.architecture"></a>
+
+```typescript
+public readonly architecture: Architecture;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Architecture
+- *Default:* Architecture.X86_64
+
+The system architectures compatible with this lambda function.
+
+---
+
+##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.codeSigningConfig"></a>
+
+```typescript
+public readonly codeSigningConfig: ICodeSigningConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Default:* Not Sign the Code
+
+Code signing config associated with this function.
+
+---
+
+##### `currentVersionOptions`<sup>Optional</sup> <a name="currentVersionOptions" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.currentVersionOptions"></a>
+
+```typescript
+public readonly currentVersionOptions: VersionOptions;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.VersionOptions
+- *Default:* default options as described in `VersionOptions`
+
+Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method.
+
+---
+
+##### `deadLetterQueue`<sup>Optional</sup> <a name="deadLetterQueue" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.deadLetterQueue"></a>
+
+```typescript
+public readonly deadLetterQueue: IQueue;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.IQueue
+- *Default:* SQS queue with 14 day retention period if `deadLetterQueueEnabled` is `true`
+
+The SQS queue to use if DLQ is enabled.
+
+If SNS topic is desired, specify `deadLetterTopic` property instead.
+
+---
+
+##### `deadLetterQueueEnabled`<sup>Optional</sup> <a name="deadLetterQueueEnabled" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.deadLetterQueueEnabled"></a>
+
+```typescript
+public readonly deadLetterQueueEnabled: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false unless `deadLetterQueue` is set, which implies DLQ is enabled.
+
+Enabled DLQ.
+
+If `deadLetterQueue` is undefined,
+an SQS queue with default options will be defined for your Function.
+
+---
+
+##### `deadLetterTopic`<sup>Optional</sup> <a name="deadLetterTopic" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.deadLetterTopic"></a>
+
+```typescript
+public readonly deadLetterTopic: ITopic;
+```
+
+- *Type:* aws-cdk-lib.aws_sns.ITopic
+- *Default:* no SNS topic
+
+The SNS topic to use as a DLQ.
+
+Note that if `deadLetterQueueEnabled` is set to `true`, an SQS queue will be created
+rather than an SNS topic. Using an SNS topic as a DLQ requires this property to be set explicitly.
+
+---
+
+##### `description`<sup>Optional</sup> <a name="description" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.description"></a>
+
+```typescript
+public readonly description: string;
+```
+
+- *Type:* string
+- *Default:* No description.
+
+A description of the function.
+
+---
+
+##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.environmentEncryption"></a>
+
+```typescript
+public readonly environmentEncryption: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
+
+The AWS KMS key that's used to encrypt your function's environment variables.
+
+---
+
+##### `ephemeralStorageSize`<sup>Optional</sup> <a name="ephemeralStorageSize" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.ephemeralStorageSize"></a>
+
+```typescript
+public readonly ephemeralStorageSize: Size;
+```
+
+- *Type:* aws-cdk-lib.Size
+- *Default:* 512 MiB
+
+The size of the function’s /tmp directory in MiB.
+
+---
+
+##### `events`<sup>Optional</sup> <a name="events" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.events"></a>
+
+```typescript
+public readonly events: IEventSource[];
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IEventSource[]
+- *Default:* No event sources.
+
+Event sources for this function.
+
+You can also add event sources using `addEventSource`.
+
+---
+
+##### `functionName`<sup>Optional</sup> <a name="functionName" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.functionName"></a>
+
+```typescript
+public readonly functionName: string;
+```
+
+- *Type:* string
+- *Default:* AWS CloudFormation generates a unique physical ID and uses that ID for the function's name. For more information, see Name Type.
+
+A name for the function.
+
+---
+
+##### `initialPolicy`<sup>Optional</sup> <a name="initialPolicy" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.initialPolicy"></a>
+
+```typescript
+public readonly initialPolicy: PolicyStatement[];
+```
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyStatement[]
+- *Default:* No policy statements are added to the created Lambda role.
+
+Initial policy statements to add to the created Lambda Role.
+
+You can call `addToRolePolicy` to the created lambda to add statements post creation.
+
+---
+
+##### `insightsVersion`<sup>Optional</sup> <a name="insightsVersion" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.insightsVersion"></a>
+
+```typescript
+public readonly insightsVersion: LambdaInsightsVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LambdaInsightsVersion
+- *Default:* No Lambda Insights
+
+Specify the version of CloudWatch Lambda insights to use for monitoring.
+
+---
+
+##### `ipv6AllowedForDualStack`<sup>Optional</sup> <a name="ipv6AllowedForDualStack" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.ipv6AllowedForDualStack"></a>
+
+```typescript
+public readonly ipv6AllowedForDualStack: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets.
+
+Only used if 'vpc' is supplied.
+
+---
+
+##### ~~`logFormat`~~<sup>Optional</sup> <a name="logFormat" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logFormat"></a>
+
+- *Deprecated:* Use `loggingFormat` as a property instead.
+
+```typescript
+public readonly logFormat: string;
+```
+
+- *Type:* string
+- *Default:* "Text"
+
+Sets the logFormat for the function.
+
+---
+
+##### `loggingFormat`<sup>Optional</sup> <a name="loggingFormat" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.loggingFormat"></a>
+
+```typescript
+public readonly loggingFormat: LoggingFormat;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LoggingFormat
+- *Default:* LoggingFormat.TEXT
+
+Sets the loggingFormat for the function.
+
+---
+
+##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logGroup"></a>
+
+```typescript
+public readonly logGroup: ILogGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
+
+The log group the function sends logs to.
+
+By default, Lambda functions send logs to an automatically created default log group named /aws/lambda/\<function name\>.
+However you cannot change the properties of this auto-created log group using the AWS CDK, e.g. you cannot set a different log retention.
+
+Use the `logGroup` property to create a fully customizable LogGroup ahead of time, and instruct the Lambda function to send logs to it.
+
+Providing a user-controlled log group was rolled out to commercial regions on 2023-11-16.
+If you are deploying to another type of region, please check regional availability first.
+
+---
+
+##### ~~`logRemovalPolicy`~~<sup>Optional</sup> <a name="logRemovalPolicy" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRemovalPolicy"></a>
+
+- *Deprecated:* use `logGroup` instead
+
+```typescript
+public readonly logRemovalPolicy: RemovalPolicy;
+```
+
+- *Type:* aws-cdk-lib.RemovalPolicy
+- *Default:* RemovalPolicy.Retain
+
+Determine the removal policy of the log group that is auto-created by this construct.
+
+Normally you want to retain the log group so you can diagnose issues
+from logs even after a deployment that no longer includes the log group.
+In that case, use the normal date-based retention policy to age out your
+logs.
+
+---
+
+##### ~~`logRetention`~~<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRetention"></a>
+
+- *Deprecated:* use `logGroup` instead
+
+```typescript
+public readonly logRetention: RetentionDays;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+- *Default:* logs.RetentionDays.INFINITE
+
+The number of days log events are kept in CloudWatch Logs.
+
+When updating
+this property, unsetting it doesn't remove the log retention policy. To
+remove the retention policy, set the value to `INFINITE`.
+
+This is a legacy API and we strongly recommend you move away from it if you can.
+Instead create a fully customizable log group with `logs.LogGroup` and use the `logGroup` property
+to instruct the Lambda function to send logs to it.
+Migrating from `logRetention` to `logGroup` will cause the name of the log group to change.
+Users and code and referencing the name verbatim will have to adjust.
+
+In AWS CDK code, you can access the log group name directly from the LogGroup construct:
+```ts
+import * as logs from 'aws-cdk-lib/aws-logs';
+
+declare const myLogGroup: logs.LogGroup;
+myLogGroup.logGroupName;
+```
+
+---
+
+##### `logRetentionRetryOptions`<sup>Optional</sup> <a name="logRetentionRetryOptions" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRetentionRetryOptions"></a>
+
+```typescript
+public readonly logRetentionRetryOptions: LogRetentionRetryOptions;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.LogRetentionRetryOptions
+- *Default:* Default AWS SDK retry options.
+
+When log retention is specified, a custom resource attempts to create the CloudWatch log group.
+
+These options control the retry policy when interacting with CloudWatch APIs.
+
+This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+`logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+
+---
+
+##### `logRetentionRole`<sup>Optional</sup> <a name="logRetentionRole" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRetentionRole"></a>
+
+```typescript
+public readonly logRetentionRole: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+- *Default:* A new role is created.
+
+The IAM role for the Lambda function associated with the custom resource that sets the retention policy.
+
+This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+`logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+
+---
+
+##### `maxEventAge`<sup>Optional</sup> <a name="maxEventAge" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.maxEventAge"></a>
+
+```typescript
+public readonly maxEventAge: Duration;
+```
+
+- *Type:* aws-cdk-lib.Duration
+- *Default:* Duration.hours(6)
+
+The maximum age of a request that Lambda sends to a function for processing.
+
+Minimum: 60 seconds
+Maximum: 6 hours
+
+---
+
+##### `onFailure`<sup>Optional</sup> <a name="onFailure" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.onFailure"></a>
+
+```typescript
+public readonly onFailure: IDestination;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IDestination
+- *Default:* no destination
+
+The destination for failed invocations.
+
+---
+
+##### `onSuccess`<sup>Optional</sup> <a name="onSuccess" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.onSuccess"></a>
+
+```typescript
+public readonly onSuccess: IDestination;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IDestination
+- *Default:* no destination
+
+The destination for successful invocations.
+
+---
+
+##### `paramsAndSecrets`<sup>Optional</sup> <a name="paramsAndSecrets" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.paramsAndSecrets"></a>
+
+```typescript
+public readonly paramsAndSecrets: ParamsAndSecretsLayerVersion;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.ParamsAndSecretsLayerVersion
+- *Default:* No Parameters and Secrets Extension
+
+Specify the configuration of Parameters and Secrets Extension.
+
+---
+
+##### `profiling`<sup>Optional</sup> <a name="profiling" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.profiling"></a>
+
+```typescript
+public readonly profiling: boolean;
+```
+
+- *Type:* boolean
+- *Default:* No profiling.
+
+Enable profiling.
+
+---
+
+##### `profilingGroup`<sup>Optional</sup> <a name="profilingGroup" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.profilingGroup"></a>
+
+```typescript
+public readonly profilingGroup: IProfilingGroup;
+```
+
+- *Type:* aws-cdk-lib.aws_codeguruprofiler.IProfilingGroup
+- *Default:* A new profiling group will be created if `profiling` is set.
+
+Profiling Group.
+
+---
+
+##### `recursiveLoop`<sup>Optional</sup> <a name="recursiveLoop" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.recursiveLoop"></a>
+
+```typescript
+public readonly recursiveLoop: RecursiveLoop;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.RecursiveLoop
+- *Default:* RecursiveLoop.Terminate
+
+Sets the Recursive Loop Protection for Lambda Function.
+
+It lets Lambda detect and terminate unintended recursive loops.
+
+---
+
+##### `reservedConcurrentExecutions`<sup>Optional</sup> <a name="reservedConcurrentExecutions" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.reservedConcurrentExecutions"></a>
+
+```typescript
+public readonly reservedConcurrentExecutions: number;
+```
+
+- *Type:* number
+- *Default:* No specific limit - account limit.
+
+The maximum of concurrent executions you want to reserve for the function.
+
+---
+
+##### `retryAttempts`<sup>Optional</sup> <a name="retryAttempts" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.retryAttempts"></a>
+
+```typescript
+public readonly retryAttempts: number;
+```
+
+- *Type:* number
+- *Default:* 2
+
+The maximum number of times to retry when the function returns an error.
+
+Minimum: 0
+Maximum: 2
+
+---
+
+##### `role`<sup>Optional</sup> <a name="role" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.role"></a>
+
+```typescript
+public readonly role: IRole;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.IRole
+- *Default:* A unique role will be generated for this lambda function. Both supplied and generated roles can always be changed by calling `addToRolePolicy`.
+
+Lambda execution role.
+
+This is the role that will be assumed by the function upon execution.
+It controls the permissions that the function will have. The Role must
+be assumable by the 'lambda.amazonaws.com' service principal.
+
+The default Role automatically has permissions granted for Lambda execution. If you
+provide a Role, you must add the relevant AWS managed policies yourself.
+
+The relevant managed policies are "service-role/AWSLambdaBasicExecutionRole" and
+"service-role/AWSLambdaVPCAccessExecutionRole".
+
+---
+
+##### `runtimeManagementMode`<sup>Optional</sup> <a name="runtimeManagementMode" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.runtimeManagementMode"></a>
+
+```typescript
+public readonly runtimeManagementMode: RuntimeManagementMode;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.RuntimeManagementMode
+- *Default:* Auto
+
+Sets the runtime management configuration for a function's version.
+
+---
+
+##### `securityGroups`<sup>Optional</sup> <a name="securityGroups" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.securityGroups"></a>
+
+```typescript
+public readonly securityGroups: ISecurityGroup[];
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.ISecurityGroup[]
+- *Default:* If the function is placed within a VPC and a security group is not specified, either by this or securityGroup prop, a dedicated security group will be created for this function.
+
+The list of security groups to associate with the Lambda's network interfaces.
+
+Only used if 'vpc' is supplied.
+
+---
+
+##### `snapStart`<sup>Optional</sup> <a name="snapStart" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.snapStart"></a>
+
+```typescript
+public readonly snapStart: SnapStartConf;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.SnapStartConf
+- *Default:* No snapstart
+
+Enable SnapStart for Lambda Function.
+
+SnapStart is currently supported for Java 11, Java 17, Python 3.12, Python 3.13, and .NET 8 runtime
+
+---
+
+##### ~~`systemLogLevel`~~<sup>Optional</sup> <a name="systemLogLevel" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.systemLogLevel"></a>
+
+- *Deprecated:* Use `systemLogLevelV2` as a property instead.
+
+```typescript
+public readonly systemLogLevel: string;
+```
+
+- *Type:* string
+- *Default:* "INFO"
+
+Sets the system log level for the function.
+
+---
+
+##### `systemLogLevelV2`<sup>Optional</sup> <a name="systemLogLevelV2" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.systemLogLevelV2"></a>
+
+```typescript
+public readonly systemLogLevelV2: SystemLogLevel;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.SystemLogLevel
+- *Default:* SystemLogLevel.INFO
+
+Sets the system log level for the function.
+
+---
+
+##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.tracing"></a>
+
+```typescript
+public readonly tracing: Tracing;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.Tracing
+- *Default:* Tracing.Disabled
+
+Enable AWS X-Ray Tracing for Lambda Function.
+
+---
+
+##### `vpc`<sup>Optional</sup> <a name="vpc" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.vpc"></a>
+
+```typescript
+public readonly vpc: IVpc;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.IVpc
+- *Default:* Function is not placed within a VPC.
+
+VPC network to place Lambda network interfaces.
+
+Specify this if the Lambda function needs to access resources in a VPC.
+This is required when `vpcSubnets` is specified.
+
+---
+
+##### `vpcSubnets`<sup>Optional</sup> <a name="vpcSubnets" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.vpcSubnets"></a>
+
+```typescript
+public readonly vpcSubnets: SubnetSelection;
+```
+
+- *Type:* aws-cdk-lib.aws_ec2.SubnetSelection
+- *Default:* the Vpc default strategy if not specified
+
+Where to place the network interfaces within the VPC.
+
+This requires `vpc` to be specified in order for interfaces to actually be
+placed in the subnets. If `vpc` is not specify, this will raise an error.
+
+Note: Internet access for Lambda Functions requires a NAT Gateway, so picking
+public subnets is not allowed (unless `allowPublicSubnet` is set to `true`).
+
+---
+
+##### `metricNamespace`<sup>Required</sup> <a name="metricNamespace" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.metricNamespace"></a>
+
+```typescript
+public readonly metricNamespace: string;
+```
+
+- *Type:* string
+
+The namespace for CloudWatch metrics.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+The KMS key used for encryption.
+
+---
+
+##### `externalMcpAgentsSecret`<sup>Optional</sup> <a name="externalMcpAgentsSecret" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.externalMcpAgentsSecret"></a>
+
+```typescript
+public readonly externalMcpAgentsSecret: ISecret;
+```
+
+- *Type:* aws-cdk-lib.aws_secretsmanager.ISecret
+
+Optional Secrets Manager secret for external MCP agents.
+
+---
+
+##### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logLevel"></a>
+
+```typescript
+public readonly logLevel: LogLevel;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+- *Default:* LogLevel.INFO
+
+The log level for the function.
+
+---
+
 ### ProcessingEnvironmentApiBaseProps <a name="ProcessingEnvironmentApiBaseProps" id="@cdklabs/genai-idp.ProcessingEnvironmentApiBaseProps"></a>
 
 Properties for a GraphQL API that has a predefined schema.
@@ -14513,8 +23917,6 @@ When provided, deploys processing components within a VPC with specified setting
 
 ### ReportingEnvironmentProps <a name="ReportingEnvironmentProps" id="@cdklabs/genai-idp.ReportingEnvironmentProps"></a>
 
-Properties for configuring the ReportingEnvironment construct.
-
 #### Initializer <a name="Initializer" id="@cdklabs/genai-idp.ReportingEnvironmentProps.Initializer"></a>
 
 ```typescript
@@ -14529,6 +23931,8 @@ const reportingEnvironmentProps: ReportingEnvironmentProps = { ... }
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ReportingEnvironmentProps.property.reportingBucket">reportingBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where evaluation metrics and reporting data will be stored. |
 | <code><a href="#@cdklabs/genai-idp.ReportingEnvironmentProps.property.reportingDatabase">reportingDatabase</a></code> | <code>@aws-cdk/aws-glue-alpha.Database</code> | The AWS Glue database where reporting tables will be created. |
+| <code><a href="#@cdklabs/genai-idp.ReportingEnvironmentProps.property.crawlerSchedule">crawlerSchedule</a></code> | <code><a href="#@cdklabs/genai-idp.CrawlerSchedule">CrawlerSchedule</a></code> | The frequency for the document sections crawler to run. |
+| <code><a href="#@cdklabs/genai-idp.ReportingEnvironmentProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting Glue crawler resources. |
 
 ---
 
@@ -14557,6 +23961,32 @@ public readonly reportingDatabase: Database;
 The AWS Glue database where reporting tables will be created.
 
 The construct will create tables for document, section, attribute, and metering data.
+
+---
+
+##### `crawlerSchedule`<sup>Optional</sup> <a name="crawlerSchedule" id="@cdklabs/genai-idp.ReportingEnvironmentProps.property.crawlerSchedule"></a>
+
+```typescript
+public readonly crawlerSchedule: CrawlerSchedule;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.CrawlerSchedule">CrawlerSchedule</a>
+- *Default:* CrawlerSchedule.DAILY
+
+The frequency for the document sections crawler to run.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.ReportingEnvironmentProps.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Default:* Uses AWS managed encryption
+
+Optional KMS key for encrypting Glue crawler resources.
 
 ---
 
@@ -15910,6 +25340,203 @@ The modules to install (using TypeScript spread operator).
 
 ## Protocols <a name="Protocols" id="Protocols"></a>
 
+### IAgentAnalytics <a name="IAgentAnalytics" id="@cdklabs/genai-idp.IAgentAnalytics"></a>
+
+- *Extends:* constructs.IConstruct
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp.AgentAnalytics">AgentAnalytics</a>, <a href="#@cdklabs/genai-idp.IAgentAnalytics">IAgentAnalytics</a>
+
+Interface for Agent Analytics implementations.
+
+Provides AI-powered analytics capabilities for natural language querying of processed document data.
+
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IAgentAnalytics.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.IAgentAnalytics.property.agentProcessor">agentProcessor</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function that processes agent queries using Bedrock AgentCore. |
+| <code><a href="#@cdklabs/genai-idp.IAgentAnalytics.property.agentRequestHandler">agentRequestHandler</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function that handles agent query requests from the UI. |
+| <code><a href="#@cdklabs/genai-idp.IAgentAnalytics.property.agentTable">agentTable</a></code> | <code><a href="#@cdklabs/genai-idp.IAgentTable">IAgentTable</a></code> | The DynamoDB table for tracking agent jobs and analytics queries. |
+| <code><a href="#@cdklabs/genai-idp.IAgentAnalytics.property.listAvailableAgents">listAvailableAgents</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function that lists available analytics agents. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.IAgentAnalytics.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `agentProcessor`<sup>Required</sup> <a name="agentProcessor" id="@cdklabs/genai-idp.IAgentAnalytics.property.agentProcessor"></a>
+
+```typescript
+public readonly agentProcessor: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+Lambda function that processes agent queries using Bedrock AgentCore.
+
+---
+
+##### `agentRequestHandler`<sup>Required</sup> <a name="agentRequestHandler" id="@cdklabs/genai-idp.IAgentAnalytics.property.agentRequestHandler"></a>
+
+```typescript
+public readonly agentRequestHandler: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+Lambda function that handles agent query requests from the UI.
+
+---
+
+##### `agentTable`<sup>Required</sup> <a name="agentTable" id="@cdklabs/genai-idp.IAgentAnalytics.property.agentTable"></a>
+
+```typescript
+public readonly agentTable: IAgentTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IAgentTable">IAgentTable</a>
+
+The DynamoDB table for tracking agent jobs and analytics queries.
+
+---
+
+##### `listAvailableAgents`<sup>Required</sup> <a name="listAvailableAgents" id="@cdklabs/genai-idp.IAgentAnalytics.property.listAvailableAgents"></a>
+
+```typescript
+public readonly listAvailableAgents: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+Lambda function that lists available analytics agents.
+
+---
+
+### IAgentTable <a name="IAgentTable" id="@cdklabs/genai-idp.IAgentTable"></a>
+
+- *Extends:* aws-cdk-lib.aws_dynamodb.ITable
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp.AgentTable">AgentTable</a>, <a href="#@cdklabs/genai-idp.IAgentTable">IAgentTable</a>
+
+Interface for Agent Table implementations.
+
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IAgentTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.IAgentTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.IAgentTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.IAgentTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.IAgentTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.IAgentTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
+| <code><a href="#@cdklabs/genai-idp.IAgentTable.property.tableStreamArn">tableStreamArn</a></code> | <code>string</code> | ARN of the table's stream, if there is one. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.IAgentTable.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `env`<sup>Required</sup> <a name="env" id="@cdklabs/genai-idp.IAgentTable.property.env"></a>
+
+```typescript
+public readonly env: ResourceEnvironment;
+```
+
+- *Type:* aws-cdk-lib.ResourceEnvironment
+
+The environment this resource belongs to.
+
+For resources that are created and managed by the CDK
+(generally, those created by creating new class instances like Role, Bucket, etc.),
+this is always the same as the environment of the stack they belong to;
+however, for imported resources
+(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
+that might be different than the stack they were imported into.
+
+---
+
+##### `stack`<sup>Required</sup> <a name="stack" id="@cdklabs/genai-idp.IAgentTable.property.stack"></a>
+
+```typescript
+public readonly stack: Stack;
+```
+
+- *Type:* aws-cdk-lib.Stack
+
+The stack in which this resource is defined.
+
+---
+
+##### `tableArn`<sup>Required</sup> <a name="tableArn" id="@cdklabs/genai-idp.IAgentTable.property.tableArn"></a>
+
+```typescript
+public readonly tableArn: string;
+```
+
+- *Type:* string
+
+Arn of the dynamodb table.
+
+---
+
+##### `tableName`<sup>Required</sup> <a name="tableName" id="@cdklabs/genai-idp.IAgentTable.property.tableName"></a>
+
+```typescript
+public readonly tableName: string;
+```
+
+- *Type:* string
+
+Table name of the dynamodb table.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.IAgentTable.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+Optional KMS encryption key associated with this table.
+
+---
+
+##### `tableStreamArn`<sup>Optional</sup> <a name="tableStreamArn" id="@cdklabs/genai-idp.IAgentTable.property.tableStreamArn"></a>
+
+```typescript
+public readonly tableStreamArn: string;
+```
+
+- *Type:* string
+
+ARN of the table's stream, if there is one.
+
+---
+
 ### IConcurrencyTable <a name="IConcurrencyTable" id="@cdklabs/genai-idp.IConcurrencyTable"></a>
 
 - *Extends:* aws-cdk-lib.aws_dynamodb.ITable
@@ -16218,6 +25845,54 @@ public readonly tableStreamArn: string;
 - *Type:* string
 
 ARN of the table's stream, if there is one.
+
+---
+
+### ICustomPromptGenerator <a name="ICustomPromptGenerator" id="@cdklabs/genai-idp.ICustomPromptGenerator"></a>
+
+- *Extends:* constructs.IConstruct
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp.CustomPromptGenerator">CustomPromptGenerator</a>, <a href="#@cdklabs/genai-idp.ICustomPromptGenerator">ICustomPromptGenerator</a>
+
+Interface for custom prompt generator implementations.
+
+Custom prompt generators allow injection of business logic into document processing workflows
+for Patterns 2 and 3, enabling dynamic prompt customization based on document content,
+customer configurations, or external system integrations.
+
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ICustomPromptGenerator.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.ICustomPromptGenerator.property.generatorFunction">generatorFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | The Lambda function that implements the custom prompt generation logic. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.ICustomPromptGenerator.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `generatorFunction`<sup>Required</sup> <a name="generatorFunction" id="@cdklabs/genai-idp.ICustomPromptGenerator.property.generatorFunction"></a>
+
+```typescript
+public readonly generatorFunction: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+The Lambda function that implements the custom prompt generation logic.
+
+This function receives template placeholders and returns customized prompts.
 
 ---
 
@@ -17193,6 +26868,49 @@ The name of the SageMaker workteam.
 ---
 
 ## Enums <a name="Enums" id="Enums"></a>
+
+### CrawlerSchedule <a name="CrawlerSchedule" id="@cdklabs/genai-idp.CrawlerSchedule"></a>
+
+Enumeration of supported crawler schedules.
+
+#### Members <a name="Members" id="Members"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.CrawlerSchedule.MANUAL">MANUAL</a></code> | Manual execution only - no automatic schedule. |
+| <code><a href="#@cdklabs/genai-idp.CrawlerSchedule.EVERY_15_MINUTES">EVERY_15_MINUTES</a></code> | Run every 15 minutes. |
+| <code><a href="#@cdklabs/genai-idp.CrawlerSchedule.HOURLY">HOURLY</a></code> | Run every hour. |
+| <code><a href="#@cdklabs/genai-idp.CrawlerSchedule.DAILY">DAILY</a></code> | Run daily. |
+
+---
+
+##### `MANUAL` <a name="MANUAL" id="@cdklabs/genai-idp.CrawlerSchedule.MANUAL"></a>
+
+Manual execution only - no automatic schedule.
+
+---
+
+
+##### `EVERY_15_MINUTES` <a name="EVERY_15_MINUTES" id="@cdklabs/genai-idp.CrawlerSchedule.EVERY_15_MINUTES"></a>
+
+Run every 15 minutes.
+
+---
+
+
+##### `HOURLY` <a name="HOURLY" id="@cdklabs/genai-idp.CrawlerSchedule.HOURLY"></a>
+
+Run every hour.
+
+---
+
+
+##### `DAILY` <a name="DAILY" id="@cdklabs/genai-idp.CrawlerSchedule.DAILY"></a>
+
+Run daily.
+
+---
+
 
 ### LogLevel <a name="LogLevel" id="@cdklabs/genai-idp.LogLevel"></a>
 

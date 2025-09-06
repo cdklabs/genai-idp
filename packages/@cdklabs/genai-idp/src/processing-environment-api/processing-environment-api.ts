@@ -1434,6 +1434,12 @@ export class ProcessingEnvironmentApi
       },
     );
 
+    // Add Agent Table data source for job status queries
+    const agentTableDataSource = this.addDynamoDbDataSource(
+      "AgentTableDataSource",
+      this._agentAnalytics.agentTable,
+    );
+
     // Create resolvers
     this.createResolver("SubmitAgentQueryResolver", {
       dataSource: agentRequestHandlerDataSource,
@@ -1445,6 +1451,46 @@ export class ProcessingEnvironmentApi
       dataSource: listAvailableAgentsDataSource,
       typeName: "Query",
       fieldName: "listAvailableAgents",
+    });
+
+    // Create getAgentJobStatus resolver using DynamoDB data source
+    agentTableDataSource.createResolver("GetAgentJobStatusResolver", {
+      typeName: "Query",
+      fieldName: "getAgentJobStatus",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "GetItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("agent#\${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          }
+        }
+      `),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        #if(!$ctx.result)
+          null
+        #else
+          {
+            "jobId": $util.toJson($ctx.result.SK),
+            "status": $util.toJson($ctx.result.status),
+            "query": $util.toJson($ctx.result.query),
+            "agentIds": $util.toJson($ctx.result.agentIds),
+            "createdAt": $util.toJson($ctx.result.createdAt),
+            "completedAt": $util.toJson($ctx.result.completedAt),
+            "result": $util.toJson($ctx.result.result),
+            "error": $util.toJson($ctx.result.error),
+            "agent_messages": $util.toJson($ctx.result.agent_messages)
+          }
+        #end
+      `),
     });
   }
 
