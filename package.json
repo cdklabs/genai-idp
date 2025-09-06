@@ -11,6 +11,7 @@
     "release": "npx projen release",
     "run": "npx projen run",
     "test": "npx projen test",
+    "update-upstream-sources": "npx projen update-upstream-sources",
     "upgrade": "npx projen upgrade",
     "projen": "npx projen"
   },

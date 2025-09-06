@@ -5,10 +5,6 @@ SPDX-License-Identifier: MIT-0
 
 The GenAI IDP solution includes support for External MCP (Model Context Protocol) Agents that can connect to your own MCP servers to provide additional tools and capabilities. This enables you to extend the IDP system with custom functionality hosted in your own infrastructure.
 
-
-https://github.com/user-attachments/assets/630ec15d-6aef-4e57-aa01-40c8663a5510
-
-
 ## Overview
 
 The External MCP Agent allows you to:

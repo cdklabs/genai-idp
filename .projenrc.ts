@@ -4,6 +4,7 @@ import { ReleasableCommits, TextFile } from "projen";
 import { AwsCdkTypeScriptWorkspace } from "./projenrc/awscdk-typescript-workspace";
 import { AwsCdkTypeScriptWorkspaceApp } from "./projenrc/awscdk-workspace-app-ts";
 import { MkDocs } from "./projenrc/mkdocs";
+import { UpstreamSourceSync } from "./projenrc/upstream-source-sync";
 import { ProjenStruct, Struct } from "@mrgrain/jsii-struct-builder";
 import path from "path";
 import fs from 'fs';
@@ -431,6 +432,12 @@ new MkDocs(rootProject, {
     projects: [genaiIdp, idpPattern1, idpPattern2, idpPattern3],
     targetPath: 'docs/content/api-reference'
   }
+});
+
+// Configure upstream source synchronization
+new UpstreamSourceSync(rootProject, {
+  upstreamRepo: 'https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws.git',
+  schedule: '0 2 * * 1', // Weekly on Monday at 2 AM UTC
 });
 
 rootProject.synth();
