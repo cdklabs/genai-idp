@@ -156,7 +156,7 @@ export class MkDocs extends Component {
 
         const packageName = project.name;
         const apiFileName = `${packageName.split('/')[1]}-api.md`;
-        const relativePath = path.relative(project.srcdir, path.join('..', '..', options.docgenApiReferences!.targetPath));
+        const relativePath = path.relative(project.workspaceDirectory, options.docgenApiReferences!.targetPath);
 
         const docCopyTask = project.tasks.addTask(options.docgenApiReferences?.taskName ?? 'mkdocs:doccopy', {
           steps: [
