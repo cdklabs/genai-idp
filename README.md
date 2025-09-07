@@ -93,6 +93,8 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 
 ## Additional Resources
 
+- [Accelerate intelligent document processing with generative AI on AWS blog post](https://aws.amazon.com/blogs/machine-learning/accelerate-intelligent-document-processing-with-generative-ai-on-aws/)
+- [Gen AI Intelligent Document Processing (GenAIIDP)](github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws)
 - [AWS CDK Documentation](https://docs.aws.amazon.com/cdk/v2/guide/home.html)
 - [Amazon Bedrock Documentation](https://docs.aws.amazon.com/bedrock/)
 - [Projen Documentation](https://projen.io/)

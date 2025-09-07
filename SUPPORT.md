@@ -8,7 +8,7 @@ If you need help with the GenAI IDP Accelerator for AWS CDK, please use the foll
 
 2. **GitHub Issues**: For bugs, feature requests, or questions about the project, please create a new issue in this repository.
 
-3. **AWS Support**: If you're an AWS customer, you can contact AWS Support through your AWS Management Console.
+3. **AWS Support**: If you're an AWS customer, you can contact AWS Support through your AWS Management Console. You can also seek support with [Generative AI Innovation Center](https://aws.amazon.com/ai/generative-ai/innovation-center/) and [AWS Professional Services](https://aws.amazon.com/professional-services/).
 
 ## Contributing
 
