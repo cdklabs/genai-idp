@@ -10,11 +10,17 @@ This project is a representation of the [GenAI Intelligent Document Processing A
 
 ### Repository Structure
 
-The repository is organized into:
+#### Packages
 - `@cdklabs/genai-idp` - Core building blocks for document processing infrastructure
 - `@cdklabs/genai-idp-bda-processor` - Pattern 1 implementation using Amazon Bedrock Data Automation
 - `@cdklabs/genai-idp-bedrock-llm-processor` - Pattern 2 implementation for custom extraction using Amazon Bedrock models
 - `@cdklabs/genai-idp-sagemaker-udop-processor` - Pattern 3 implementation for specialized document processing using Sagemaker Endpoint
+
+#### Samples
+- `sample-bda-lending` - Complete Pattern 1 implementation for processing lending documents using Amazon Bedrock Data Automation
+- `sample-bedrock` - Pattern 2 demonstration using custom extraction with Amazon Bedrock foundation models
+- `sample-sagemaker-udop-rvl-cdip` - Pattern 3 implementation using fine-tuned Hugging Face RVL-CDIP model on Amazon SageMaker
+
 
 ### Key Features
 
@@ -83,7 +89,7 @@ This project is licensed under the terms specified in the LICENSE file.
 
 ## Contributing
 
-TODO
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details on how to get started, development workflow, and coding standards.
 
 ## Additional Resources
 
