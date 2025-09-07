@@ -1425,6 +1425,7 @@ const bdaMetadataTableProps: BdaMetadataTableProps = { ... }
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTableProps.property.billingMode">billingMode</a></code> | <code>aws-cdk-lib.aws_dynamodb.BillingMode</code> | Specify how you are charged for read and write throughput and how you manage capacity. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTableProps.property.contributorInsightsEnabled">contributorInsightsEnabled</a></code> | <code>boolean</code> | Whether CloudWatch contributor insights is enabled. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTableProps.property.contributorInsightsSpecification">contributorInsightsSpecification</a></code> | <code>aws-cdk-lib.aws_dynamodb.ContributorInsightsSpecification</code> | Whether CloudWatch contributor insights is enabled and what mode is selected. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTableProps.property.deletionProtection">deletionProtection</a></code> | <code>boolean</code> | Enables deletion protection for the table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTableProps.property.encryption">encryption</a></code> | <code>aws-cdk-lib.aws_dynamodb.TableEncryption</code> | Whether server-side encryption with an AWS managed customer master key is enabled. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTableProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | External KMS key to use for table encryption. |
@@ -1463,7 +1464,9 @@ Specify how you are charged for read and write throughput and how you manage cap
 
 ---
 
-##### `contributorInsightsEnabled`<sup>Optional</sup> <a name="contributorInsightsEnabled" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTableProps.property.contributorInsightsEnabled"></a>
+##### ~~`contributorInsightsEnabled`~~<sup>Optional</sup> <a name="contributorInsightsEnabled" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTableProps.property.contributorInsightsEnabled"></a>
+
+- *Deprecated:* use `contributorInsightsSpecification instead
 
 ```typescript
 public readonly contributorInsightsEnabled: boolean;
@@ -1473,6 +1476,19 @@ public readonly contributorInsightsEnabled: boolean;
 - *Default:* false
 
 Whether CloudWatch contributor insights is enabled.
+
+---
+
+##### `contributorInsightsSpecification`<sup>Optional</sup> <a name="contributorInsightsSpecification" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTableProps.property.contributorInsightsSpecification"></a>
+
+```typescript
+public readonly contributorInsightsSpecification: ContributorInsightsSpecification;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.ContributorInsightsSpecification
+- *Default:* contributor insights is not enabled
+
+Whether CloudWatch contributor insights is enabled and what mode is selected.
 
 ---
 

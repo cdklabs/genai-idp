@@ -34,16 +34,16 @@
     "organization": false
   },
   "devDependencies": {
-    "@aws-cdk/aws-glue-alpha": "^2.206.0-alpha.0",
-    "@aws-cdk/aws-lambda-python-alpha": "^2.206.0-alpha.0",
-    "@aws-cdk/aws-sagemaker-alpha": "^2.206.0-alpha.0",
+    "@aws-cdk/aws-glue-alpha": "^2.214.0-alpha.0",
+    "@aws-cdk/aws-lambda-python-alpha": "^2.214.0-alpha.0",
+    "@aws-cdk/aws-sagemaker-alpha": "^2.214.0-alpha.0",
     "@cdklabs/generative-ai-cdk-constructs": "^0.1.309",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.15.16",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
     "aws-cdk": "^2",
-    "aws-cdk-lib": "2.206.0",
+    "aws-cdk-lib": "2.214.0",
     "constructs": "10.4.2",
     "esbuild": "^0.25.4",
     "eslint": "^9",
@@ -59,13 +59,13 @@
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "aws-cdk-lib": "^2.206.0",
+    "aws-cdk-lib": "^2.214.0",
     "constructs": "^10.4.2"
   },
   "dependencies": {
-    "@aws-cdk/aws-glue-alpha": "^2.206.0-alpha.0",
-    "@aws-cdk/aws-lambda-python-alpha": "^2.206.0-alpha.0",
-    "@aws-cdk/aws-sagemaker-alpha": "^2.206.0-alpha.0",
+    "@aws-cdk/aws-glue-alpha": "^2.214.0-alpha.0",
+    "@aws-cdk/aws-lambda-python-alpha": "^2.214.0-alpha.0",
+    "@aws-cdk/aws-sagemaker-alpha": "^2.214.0-alpha.0",
     "@aws-sdk/client-bedrock-agent": "^3.848.0",
     "@cdklabs/genai-idp": "^0.0.0",
     "@cdklabs/genai-idp-bda-processor": "^0.0.0",

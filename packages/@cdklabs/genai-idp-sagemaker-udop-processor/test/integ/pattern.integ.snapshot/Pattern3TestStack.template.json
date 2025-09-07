@@ -152,15 +152,7 @@
       "Arn"
      ]
     },
-    "Runtime": {
-     "Fn::FindInMap": [
-      "LatestNodeRuntimeMap",
-      {
-       "Ref": "AWS::Region"
-      },
-      "value"
-     ]
-    },
+    "Runtime": "nodejs22.x",
     "Description": {
      "Fn::Join": [
       "",
@@ -541,7 +533,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "64c9a8b27152d7a13c0592ecb898853c3ba85e14c621a367bed8ccc122ae1d1e.zip"
+     "S3Key": "288988c410aa3beaf787b16d6aae259412caf443425f107b69a700783c9c77ae.zip"
     },
     "Environment": {
      "Variables": {
@@ -727,7 +719,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "fe9b5f93d169a4c0d667be2b1d1c46ac8ac3d1b5beb9896e8031e86f25443c1e.zip"
+     "S3Key": "97c23f175fd4124257ca485e69da70cac3263d6d3edbb5b4d770c7bb7c041fed.zip"
     },
     "Environment": {
      "Variables": {
@@ -906,7 +898,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "935f1e8cacd653974cde93ee31787a88fd606f85866453213820ac84b0ea8dc8.zip"
+     "S3Key": "8695970a5d049bf99d33f851d7a2869a25e3e5b0ef75a0dbb505ff7767a7a8a5.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -1142,7 +1134,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "14302717e461b02f9f97a0c344dc58ee4917f8f8ecf59abaddca8d02c9844086.zip"
+     "S3Key": "6825242f436598a11f2e5cb1c58272210c13d4ded41b6bccc5be2c8b0118aa7c.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -1348,7 +1340,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "f6f5efbb6063df0a91cea691837680e766e7b3895ae514cf49e6b73904a31c2f.zip"
+     "S3Key": "46c28c6b174ac9d8f20c64212c538455a40080406ff5de7d1cc3aaabcf1ecb07.zip"
     },
     "Environment": {
      "Variables": {
@@ -1389,7 +1381,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "b7e754d1305de78978d86cdc935a7ea50ed2ec9400a799e6e92a614518aff8f4.zip"
+     "S3Key": "1fe8e90d565f5dad7cc5a2a2c4de85299e6d598f55be41b613da1f088c59c54d.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service"
    },
@@ -3711,7 +3703,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "344a7749452d592d2b012afb2298a7d382f434b329fed75e966082f7b8c46378.zip"
+     "S3Key": "74a9ffa4791181149d58ca701891a67968b408d19f7dc1400b52a8d3c9097ca6.zip"
     },
     "Environment": {
      "Variables": {
@@ -3996,7 +3988,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "287378e74e94e76e6b25e269790bd59891c1b7ba7e813654bc2eeea3f09f473e.zip"
+     "S3Key": "8cdee5b74ed2a0ffc269cbad733bc55f7c25a8a0f72fb1d28e97709abfb65423.zip"
     },
     "Environment": {
      "Variables": {
@@ -4327,7 +4319,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "9155052a85bff22c84f8c630cd352dd545a3bc326868e8f39126aab3243d11d2.zip"
+     "S3Key": "c3e80195a88be7ad67e5f33b4115a930be238be5bc25c15f604a39d3574737c6.zip"
     },
     "Environment": {
      "Variables": {
@@ -4652,7 +4644,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "f69f41fd212ef3bc761ad129061359757e5dad5839e606dd5b5028326fdd1592.zip"
+     "S3Key": "f95e4a73ebef0a5f6c0fa210003fef1a09f9634f5370e84ef82895679ad008a0.zip"
     },
     "Environment": {
      "Variables": {
@@ -4901,7 +4893,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "3f78968b37ea372a0fd0f5015c9ca713cabeeb7e5623021da0ddcda6bf601762.zip"
+     "S3Key": "a24d5d715127c321122be3fc9c584753edb180da93b69e42d51f51bc07902b22.zip"
     },
     "Environment": {
      "Variables": {
@@ -5221,7 +5213,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "7feabed00371c401bf0cefc6df561468075b9a2abecbf61ce5614855f3025e0d.zip"
+     "S3Key": "aff9743d581747e364e8db6e2acf3a0c388326ad066a4a1d7f5fff75bfe16438.zip"
     },
     "Environment": {
      "Variables": {
@@ -5684,7 +5676,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "12c673365021aa29f747c3c46565d62d0176855e205e05a465efb06cab587f1a.zip"
+     "S3Key": "216cfff56767c5378bd30651012429d0da5357efc2b69a2631fd4f874c9a654e.zip"
     },
     "Environment": {
      "Variables": {
@@ -5882,7 +5874,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "297a749d6ac3c143a6281038768be0ed7523b5a14ee0f04a2b7c800b9b962a96.zip"
+     "S3Key": "aa6da71ebf7c59fe0852ef95851248e982474d2ab3e2c80d3317b66bf920eadb.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr"
    },
@@ -5899,7 +5891,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "de9166c1c02de887fe62657fc93797a9b862534a8000a10a823916396ebba1d1.zip"
+     "S3Key": "bcc3308fc98b29e514ad89681cf5f7b8388da5b6816b38964b44942577704142.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service"
    },
@@ -5916,7 +5908,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "a2364888f534dbb0a7fce943dcc3b27e96605b96df36fef39663f0d8c4dd6581.zip"
+     "S3Key": "44d473a36325e6afd18972211edc3b08e0ef958ba4ecd5c342d60c99cbbb1d1c.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction"
    },
@@ -5933,7 +5925,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "76540b31cab8dc3d0e7bf256b68f8ff5f19a0b6543c40a4cbe5b4fc477ef3ae1.zip"
+     "S3Key": "551b87244f3d5e688f258876c8d7ac0dd286490f918a9d877719bffa2dc0995a.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service"
    },
@@ -5941,138 +5933,22 @@
    "DeletionPolicy": "Delete"
   }
  },
- "Mappings": {
-  "LatestNodeRuntimeMap": {
-   "af-south-1": {
-    "value": "nodejs22.x"
-   },
-   "ap-east-1": {
-    "value": "nodejs22.x"
-   },
-   "ap-east-2": {
-    "value": "nodejs22.x"
-   },
-   "ap-northeast-1": {
-    "value": "nodejs22.x"
-   },
-   "ap-northeast-2": {
-    "value": "nodejs22.x"
-   },
-   "ap-northeast-3": {
-    "value": "nodejs22.x"
-   },
-   "ap-south-1": {
-    "value": "nodejs22.x"
-   },
-   "ap-south-2": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-1": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-2": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-3": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-4": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-5": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-7": {
-    "value": "nodejs22.x"
-   },
-   "ca-central-1": {
-    "value": "nodejs22.x"
-   },
-   "ca-west-1": {
-    "value": "nodejs22.x"
-   },
-   "cn-north-1": {
-    "value": "nodejs22.x"
-   },
-   "cn-northwest-1": {
-    "value": "nodejs22.x"
-   },
-   "eu-central-1": {
-    "value": "nodejs22.x"
-   },
-   "eu-central-2": {
-    "value": "nodejs22.x"
-   },
-   "eu-isoe-west-1": {
-    "value": "nodejs18.x"
-   },
-   "eu-north-1": {
-    "value": "nodejs22.x"
-   },
-   "eu-south-1": {
-    "value": "nodejs22.x"
-   },
-   "eu-south-2": {
-    "value": "nodejs22.x"
-   },
-   "eu-west-1": {
-    "value": "nodejs22.x"
-   },
-   "eu-west-2": {
-    "value": "nodejs22.x"
-   },
-   "eu-west-3": {
-    "value": "nodejs22.x"
-   },
-   "eusc-de-east-1": {
-    "value": "nodejs22.x"
-   },
-   "il-central-1": {
-    "value": "nodejs22.x"
-   },
-   "me-central-1": {
-    "value": "nodejs22.x"
-   },
-   "me-south-1": {
-    "value": "nodejs22.x"
-   },
-   "mx-central-1": {
-    "value": "nodejs22.x"
-   },
-   "sa-east-1": {
-    "value": "nodejs22.x"
-   },
-   "us-east-1": {
-    "value": "nodejs22.x"
-   },
-   "us-east-2": {
-    "value": "nodejs22.x"
-   },
-   "us-gov-east-1": {
-    "value": "nodejs22.x"
-   },
-   "us-gov-west-1": {
-    "value": "nodejs22.x"
-   },
-   "us-iso-east-1": {
-    "value": "nodejs18.x"
-   },
-   "us-iso-west-1": {
-    "value": "nodejs18.x"
-   },
-   "us-isob-east-1": {
-    "value": "nodejs18.x"
-   },
-   "us-isob-west-1": {
-    "value": "nodejs18.x"
-   },
-   "us-west-1": {
-    "value": "nodejs22.x"
-   },
-   "us-west-2": {
-    "value": "nodejs22.x"
-   }
+ "Parameters": {
+  "ModelBucketNameParameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/idp/pattern3/model/bucketname"
   },
+  "ModelObjectKeyParameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/idp/pattern3/model/objectkey"
+  },
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Mappings": {
   "DlcRepositoryAccountMap": {
    "ap-east-1": {
     "value": "871362719292"
@@ -6103,6 +5979,9 @@
    },
    "ap-southeast-4": {
     "value": "457447274322"
+   },
+   "ap-southeast-6": {
+    "value": "633930458069"
    },
    "ca-central-1": {
     "value": "763104351884"
@@ -6161,21 +6040,6 @@
    "us-west-2": {
     "value": "763104351884"
    }
-  }
- },
- "Parameters": {
-  "ModelBucketNameParameter": {
-   "Type": "AWS::SSM::Parameter::Value<String>",
-   "Default": "/idp/pattern3/model/bucketname"
-  },
-  "ModelObjectKeyParameter": {
-   "Type": "AWS::SSM::Parameter::Value<String>",
-   "Default": "/idp/pattern3/model/objectkey"
-  },
-  "BootstrapVersion": {
-   "Type": "AWS::SSM::Parameter::Value<String>",
-   "Default": "/cdk-bootstrap/hnb659fds/version",
-   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
   }
  },
  "Rules": {

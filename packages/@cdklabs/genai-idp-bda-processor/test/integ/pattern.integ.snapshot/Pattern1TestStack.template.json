@@ -152,15 +152,7 @@
       "Arn"
      ]
     },
-    "Runtime": {
-     "Fn::FindInMap": [
-      "LatestNodeRuntimeMap",
-      {
-       "Ref": "AWS::Region"
-      },
-      "value"
-     ]
-    },
+    "Runtime": "nodejs22.x",
     "Description": {
      "Fn::Join": [
       "",
@@ -541,7 +533,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "64c9a8b27152d7a13c0592ecb898853c3ba85e14c621a367bed8ccc122ae1d1e.zip"
+     "S3Key": "288988c410aa3beaf787b16d6aae259412caf443425f107b69a700783c9c77ae.zip"
     },
     "Environment": {
      "Variables": {
@@ -727,7 +719,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "fe9b5f93d169a4c0d667be2b1d1c46ac8ac3d1b5beb9896e8031e86f25443c1e.zip"
+     "S3Key": "97c23f175fd4124257ca485e69da70cac3263d6d3edbb5b4d770c7bb7c041fed.zip"
     },
     "Environment": {
      "Variables": {
@@ -906,7 +898,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "935f1e8cacd653974cde93ee31787a88fd606f85866453213820ac84b0ea8dc8.zip"
+     "S3Key": "8695970a5d049bf99d33f851d7a2869a25e3e5b0ef75a0dbb505ff7767a7a8a5.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -1142,7 +1134,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "14302717e461b02f9f97a0c344dc58ee4917f8f8ecf59abaddca8d02c9844086.zip"
+     "S3Key": "6825242f436598a11f2e5cb1c58272210c13d4ded41b6bccc5be2c8b0118aa7c.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -1348,7 +1340,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "f6f5efbb6063df0a91cea691837680e766e7b3895ae514cf49e6b73904a31c2f.zip"
+     "S3Key": "46c28c6b174ac9d8f20c64212c538455a40080406ff5de7d1cc3aaabcf1ecb07.zip"
     },
     "Environment": {
      "Variables": {
@@ -1389,7 +1381,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "b7e754d1305de78978d86cdc935a7ea50ed2ec9400a799e6e92a614518aff8f4.zip"
+     "S3Key": "1fe8e90d565f5dad7cc5a2a2c4de85299e6d598f55be41b613da1f088c59c54d.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service"
    },
@@ -2534,7 +2526,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "6b4bed7d4a01350da4d46556aa23c9dee603e3fdf385761e1a10a3ba65bb2311.zip"
+     "S3Key": "d1dd44970d42fc31a5c58930ca23d7a2469f3d7dc96567c46a7bb3c570967a37.zip"
     },
     "Environment": {
      "Variables": {
@@ -2856,7 +2848,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "e0153563207d79bf840b91ec2f4097c19e6537771be54f1b1a8ea8f3780a9688.zip"
+     "S3Key": "a41604be2e10cd7a567f86f999543ab2c31c0650c7a75645868ad809561f870c.zip"
     },
     "Environment": {
      "Variables": {
@@ -3190,7 +3182,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "9b5ab4adcb817dc0a57328c193f03530bc8176dc307427d11bb5fffd1e63ae80.zip"
+     "S3Key": "210d21d59c955e66b6310872a4e8e037082c534f3869910be619c94e7e3fecff.zip"
     },
     "Environment": {
      "Variables": {
@@ -3381,7 +3373,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "400992446139078cfb6b738c179033b35327de1ff6511a534577df85fc04634a.zip"
+     "S3Key": "fae68654b07743fcac6499411a5983c3e6d4b8dd7ceedc67a5e6aa5c8d90ec66.zip"
     },
     "Environment": {
      "Variables": {
@@ -3550,7 +3542,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "d8aceee86c47325cbbae044f4314be86156cf8584e0f9fc14c438889aa22c796.zip"
+     "S3Key": "a11b24e706b244070b4cd398a576cb12c45f8508af3153c99398e3cdc9d49b4f.zip"
     },
     "Environment": {
      "Variables": {
@@ -4025,7 +4017,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "f1d79dd0e6ddf9d11b056cebf84c7aa02a84c1a493633e5448ab32b019ac257b.zip"
+     "S3Key": "7e007dc11157c21e1591b5bba4576987867c0df51f1b3235e0821e008a6c57c7.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -4361,7 +4353,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "21bf4f404c35859f5fbdaf2f8da91dc72b1f7dcb3f61a079fe8a2a0600e98ea2.zip"
+     "S3Key": "e62a19d77745852f36db81be3c7815ba5bc03993e8e8cdfd05c5ad54dd16747a.zip"
     },
     "Environment": {
      "Variables": {
@@ -4579,7 +4571,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "12c673365021aa29f747c3c46565d62d0176855e205e05a465efb06cab587f1a.zip"
+     "S3Key": "216cfff56767c5378bd30651012429d0da5357efc2b69a2631fd4f874c9a654e.zip"
     },
     "Environment": {
      "Variables": {
@@ -4777,7 +4769,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "c07296ec273cdd4c4c544fbb37c2fee4784563b4fee6c917f0ea4f06f1742fbc.zip"
+     "S3Key": "14041c432454ed4a2356dcbf0daf363fe0220263a67212926bbf724856875c64.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only)"
    },
@@ -4794,145 +4786,12 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "647179ad920c62d34261ff10eb6a53226a53758c0f65a4f7b41d5c9779bd3bfd.zip"
+     "S3Key": "8e2eefd7aadff4c66f06900f0f8b661c23488b3f3a731b51878a8cfe5f9ddec1.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: appsync, summarization"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
-  }
- },
- "Mappings": {
-  "LatestNodeRuntimeMap": {
-   "af-south-1": {
-    "value": "nodejs22.x"
-   },
-   "ap-east-1": {
-    "value": "nodejs22.x"
-   },
-   "ap-east-2": {
-    "value": "nodejs22.x"
-   },
-   "ap-northeast-1": {
-    "value": "nodejs22.x"
-   },
-   "ap-northeast-2": {
-    "value": "nodejs22.x"
-   },
-   "ap-northeast-3": {
-    "value": "nodejs22.x"
-   },
-   "ap-south-1": {
-    "value": "nodejs22.x"
-   },
-   "ap-south-2": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-1": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-2": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-3": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-4": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-5": {
-    "value": "nodejs22.x"
-   },
-   "ap-southeast-7": {
-    "value": "nodejs22.x"
-   },
-   "ca-central-1": {
-    "value": "nodejs22.x"
-   },
-   "ca-west-1": {
-    "value": "nodejs22.x"
-   },
-   "cn-north-1": {
-    "value": "nodejs22.x"
-   },
-   "cn-northwest-1": {
-    "value": "nodejs22.x"
-   },
-   "eu-central-1": {
-    "value": "nodejs22.x"
-   },
-   "eu-central-2": {
-    "value": "nodejs22.x"
-   },
-   "eu-isoe-west-1": {
-    "value": "nodejs18.x"
-   },
-   "eu-north-1": {
-    "value": "nodejs22.x"
-   },
-   "eu-south-1": {
-    "value": "nodejs22.x"
-   },
-   "eu-south-2": {
-    "value": "nodejs22.x"
-   },
-   "eu-west-1": {
-    "value": "nodejs22.x"
-   },
-   "eu-west-2": {
-    "value": "nodejs22.x"
-   },
-   "eu-west-3": {
-    "value": "nodejs22.x"
-   },
-   "eusc-de-east-1": {
-    "value": "nodejs22.x"
-   },
-   "il-central-1": {
-    "value": "nodejs22.x"
-   },
-   "me-central-1": {
-    "value": "nodejs22.x"
-   },
-   "me-south-1": {
-    "value": "nodejs22.x"
-   },
-   "mx-central-1": {
-    "value": "nodejs22.x"
-   },
-   "sa-east-1": {
-    "value": "nodejs22.x"
-   },
-   "us-east-1": {
-    "value": "nodejs22.x"
-   },
-   "us-east-2": {
-    "value": "nodejs22.x"
-   },
-   "us-gov-east-1": {
-    "value": "nodejs22.x"
-   },
-   "us-gov-west-1": {
-    "value": "nodejs22.x"
-   },
-   "us-iso-east-1": {
-    "value": "nodejs18.x"
-   },
-   "us-iso-west-1": {
-    "value": "nodejs18.x"
-   },
-   "us-isob-east-1": {
-    "value": "nodejs18.x"
-   },
-   "us-isob-west-1": {
-    "value": "nodejs18.x"
-   },
-   "us-west-1": {
-    "value": "nodejs22.x"
-   },
-   "us-west-2": {
-    "value": "nodejs22.x"
-   }
   }
  },
  "Parameters": {

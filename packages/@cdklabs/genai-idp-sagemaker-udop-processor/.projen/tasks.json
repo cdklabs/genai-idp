@@ -219,15 +219,6 @@
       "steps": [
         {
           "exec": "jsii-docgen -o API.md"
-        },
-        {
-          "exec": "mkdir -p ../../../docs/content/api-reference"
-        },
-        {
-          "exec": "echo \"# @cdklabs/genai-idp-sagemaker-udop-processor\" > ../../../docs/content/api-reference/genai-idp-sagemaker-udop-processor-api.md"
-        },
-        {
-          "exec": "tail -n +2 API.md >> ../../../docs/content/api-reference/genai-idp-sagemaker-udop-processor-api.md"
         }
       ]
     },
@@ -343,6 +334,20 @@
         }
       ]
     },
+    "mkdocs:doccopy": {
+      "name": "mkdocs:doccopy",
+      "steps": [
+        {
+          "exec": "mkdir -p ../../../docs/content/api-reference"
+        },
+        {
+          "exec": "echo \"# @cdklabs/genai-idp-sagemaker-udop-processor\" > ../../../docs/content/api-reference/genai-idp-sagemaker-udop-processor-api.md"
+        },
+        {
+          "exec": "tail -n +2 API.md >> ../../../docs/content/api-reference/genai-idp-sagemaker-udop-processor-api.md"
+        }
+      ]
+    },
     "package": {
       "name": "package",
       "description": "Creates the distribution package",
@@ -400,6 +405,9 @@
       "steps": [
         {
           "spawn": "docgen"
+        },
+        {
+          "spawn": "mkdocs:doccopy"
         }
       ]
     },

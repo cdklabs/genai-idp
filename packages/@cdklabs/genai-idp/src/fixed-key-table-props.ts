@@ -183,9 +183,16 @@ an encryption key managed by DynamoDB, and you are not charged any fee for using
    */
   readonly deletionProtection?: boolean;
   /**
+   * Whether CloudWatch contributor insights is enabled and what mode is selected.
+   * @default - contributor insights is not enabled
+   * @stability stable
+   */
+  readonly contributorInsightsSpecification?: aws_dynamodb.ContributorInsightsSpecification;
+  /**
    * Whether CloudWatch contributor insights is enabled.
    * @default false
-   * @stability stable
+   * @deprecated use `contributorInsightsSpecification instead
+   * @stability deprecated
    */
   readonly contributorInsightsEnabled?: boolean;
   /**
