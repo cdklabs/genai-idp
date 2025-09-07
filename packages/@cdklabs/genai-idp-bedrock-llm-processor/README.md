@@ -4,6 +4,7 @@
 ![Stability: Experimental](https://img.shields.io/badge/Stability-Experimental-important.svg)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
+> This package is provided on an "as-is" basis, and may include bugs, errors, or other issues.
 > All classes are under active development and subject to non-backward compatible changes or removal in any
 > future version. These are not subject to the [Semantic Versioning](https://semver.org/) model.
 > This means that while you may use them, you may need to update your source code when upgrading to a newer version of this package.
