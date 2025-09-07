@@ -64,7 +64,7 @@ yarn install
 yarn build:packages
 
 # Navigate to the sample directory
-cd samples/sample-pattern2
+cd samples/sample-bedrock
 ```
 
 ### 3. Deploy to AWS
@@ -97,7 +97,7 @@ The sample can be customized through various configuration options:
 - **Concurrency**: Adjust processing throughput for OCR and classification
 - **Web UI**: Enable or disable the web interface
 
-Edit the `bin/sample-pattern2.ts` file to modify these settings.
+Edit the `src/bedrock-llm-stack.ts` file to modify these settings.
 
 ## Customizing Extraction Schemas
 

@@ -112,7 +112,7 @@ The sample can be customized through various configuration options:
 - **Concurrency**: Adjust processing throughput for OCR and classification
 - **Web UI**: Enable or disable the web interface
 
-Edit the `bin/sample-sagemaker-udop-rvl-cdip.ts` file to modify these settings.
+Edit the `src/rvl-cdip-stack.ts` file to modify these settings.
 
 ## Cost Considerations
 
@@ -148,7 +148,7 @@ We welcome contributions to improve this sample! Please follow these steps:
 ## Related Projects
 
 - [Sample Pattern 1: BDA Lending](../sample-bda-lending): Example using Pattern 1 for lending document processing
-- [Sample Pattern 2](../sample-pattern2): Example using Pattern 2 for custom extraction
+- [Sample Pattern 2](../sample-bedrock): Example using Pattern 2 for custom extraction
 
 ## License
 

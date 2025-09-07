@@ -96,7 +96,7 @@ The sample can be customized through various configuration options:
 - **Concurrency**: Adjust processing throughput
 - **Retention Periods**: Set data retention policies
 
-Edit the `bin/sample-bda-lending.ts` file to modify these settings.
+Edit the `src/bda-lending-stack.ts` file to modify these settings.
 
 ## Cost Considerations
 
