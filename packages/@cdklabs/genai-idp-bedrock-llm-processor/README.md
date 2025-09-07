@@ -90,7 +90,7 @@ export class MyIdpStack extends cdk.Stack {
       encryptionKey: key,
     });
 
-    const configurationBucket = new s3.Bucket(this, 'ConfigurationBucket', {
+    const workingBucket = new s3.Bucket(this, 'WorkingBucket', {
       encryption: s3.BucketEncryption.KMS,
       encryptionKey: key,
     });
@@ -100,20 +100,16 @@ export class MyIdpStack extends cdk.Stack {
       key,
       inputBucket,
       outputBucket,
-      configurationBucket,
+      workingBucket,
       metricNamespace: 'MyIdpSolution',
     });
 
     // Create the processor
     const processor = new BedrockLlmProcessor(this, 'Processor', {
       environment,
-      classificationMethod: ClassificationMethod.MULTIMODAL_PAGE_LEVEL_CLASSIFICATION,
-      classificationInvokable: bedrock.BedrockFoundationModel.AMAZON_NOVA_PRO_V1,
-      extractionInvokable: bedrock.BedrockFoundationModel.ANTHROPIC_CLAUDE_3_5_SONNET_V2_0,
-      summarizationInvokable: bedrock.BedrockFoundationModel.ANTHROPIC_CLAUDE_3_5_SONNET_V2_0,
-      isSummarizationEnabled: true,
-      ocrMaxWorkers: 20,
+      configuration: /* Your BedrockLlmProcessorConfiguration */,
       classificationMaxWorkers: 10,
+      ocrMaxWorkers: 20,
     });
   }
 }

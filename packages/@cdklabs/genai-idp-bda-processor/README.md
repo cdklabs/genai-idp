@@ -65,9 +65,8 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as kms from 'aws-cdk-lib/aws-kms';
-import * as bedrock from '@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock';
 import { ProcessingEnvironment } from '@cdklabs/genai-idp';
-import { BdaProcessor, IDataAutomationProject } from '@cdklabs/genai-idp-bda-processor';
+import { BdaProcessor, BdaProcessorConfiguration, IDataAutomationProject } from '@cdklabs/genai-idp-bda-processor';
 
 export class MyIdpStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -90,11 +89,6 @@ export class MyIdpStack extends cdk.Stack {
       encryptionKey: key,
     });
 
-    const configurationBucket = new s3.Bucket(this, 'ConfigurationBucket', {
-      encryption: s3.BucketEncryption.KMS,
-      encryptionKey: key,
-    });
-
     const workingBucket = new s3.Bucket(this, 'WorkingBucket', {
       encryption: s3.BucketEncryption.KMS,
       encryptionKey: key,
@@ -105,20 +99,21 @@ export class MyIdpStack extends cdk.Stack {
       key,
       inputBucket,
       outputBucket,
-      configurationBucket,
+      workingBucket,
       metricNamespace: 'MyIdpSolution',
     });
 
-    // Reference an existing Bedrock Data Automation project
-    const dataAutomationProject: IDataAutomationProject = ...; /** Your concrete data automation project **/
+    // Create processor configuration
+    const configuration = BdaProcessorConfiguration.lendingPackageSample();
+
+    // Reference your Bedrock Data Automation project
+    const dataAutomationProject: IDataAutomationProject = /* Your data automation project */;
 
     // Create the processor
     const processor = new BdaProcessor(this, 'Processor', {
       environment,
-      workingBucket,
+      configuration,
       dataAutomationProject,
-      evaluationInvokable: bedrock.BedrockFoundationModel.ANTHROPIC_CLAUDE_3_5_SONNET_V2_0,
-      summarizationInvokable: bedrock.BedrockFoundationModel.ANTHROPIC_CLAUDE_3_5_SONNET_V2_0,
     });
   }
 }

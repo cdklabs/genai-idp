@@ -91,7 +91,7 @@ export class MyIdpStack extends cdk.Stack {
       encryptionKey: key,
     });
 
-    const configurationBucket = new s3.Bucket(this, 'ConfigurationBucket', {
+    const workingBucket = new s3.Bucket(this, 'WorkingBucket', {
       encryption: s3.BucketEncryption.KMS,
       encryptionKey: key,
     });
@@ -101,7 +101,7 @@ export class MyIdpStack extends cdk.Stack {
       key,
       inputBucket,
       outputBucket,
-      configurationBucket,
+      workingBucket,
       metricNamespace: 'MyIdpSolution',
     });
 
@@ -120,9 +120,8 @@ export class MyIdpStack extends cdk.Stack {
     // Create the processor
     const processor = new SagemakerUdopProcessor(this, 'Processor', {
       environment,
-      classifier,
-      extractionInvokable: bedrock.BedrockFoundationModel.ANTHROPIC_CLAUDE_3_5_SONNET_V2_0,
-      summarizationInvokable: bedrock.BedrockFoundationModel.ANTHROPIC_CLAUDE_3_5_SONNET_V2_0,
+      configuration: /* Your SagemakerUdopProcessorConfiguration */,
+      classifierEndpoint: classifier.endpoint,
       ocrMaxWorkers: 20,
     });
   }

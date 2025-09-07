@@ -64,7 +64,6 @@ import { Construct } from 'constructs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import { ProcessingEnvironment } from '@cdklabs/genai-idp';
-import { BdaProcessor } from '@cdklabs/genai-idp-bda-processor';
 
 export class MyIdpStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -87,7 +86,7 @@ export class MyIdpStack extends cdk.Stack {
       encryptionKey: key,
     });
 
-    const configurationBucket = new s3.Bucket(this, 'ConfigurationBucket', {
+    const workingBucket = new s3.Bucket(this, 'WorkingBucket', {
       encryption: s3.BucketEncryption.KMS,
       encryptionKey: key,
     });
@@ -97,15 +96,12 @@ export class MyIdpStack extends cdk.Stack {
       key,
       inputBucket,
       outputBucket,
-      configurationBucket,
+      workingBucket,
       metricNamespace: 'MyIdpSolution',
     });
 
-    // Create document processor (using BdaProcessor as an example)
-    const processor = new BdaProcessor(this, 'Processor', {
-      environment,
-      // ... other processor-specific properties
-    });
+    // Attach document processors to the environment
+    // (processors are provided by separate packages)
   }
 }
 ```
