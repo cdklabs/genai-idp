@@ -2,25 +2,29 @@
   "tasks": {
     "build": {
       "name": "build",
-      "description": "Full release build",
       "steps": [
         {
           "spawn": "default"
         },
         {
-          "spawn": "pre-compile"
+          "exec": "yarn workspaces run build"
+        }
+      ]
+    },
+    "build:packages": {
+      "name": "build:packages",
+      "steps": [
+        {
+          "exec": "yarn workspace @cdklabs/genai-idp build"
         },
         {
-          "spawn": "compile"
+          "exec": "yarn workspace @cdklabs/genai-idp-bda-processor build"
         },
         {
-          "spawn": "post-compile"
+          "exec": "yarn workspace @cdklabs/genai-idp-bedrock-llm-processor build"
         },
         {
-          "spawn": "test"
-        },
-        {
-          "spawn": "package"
+          "exec": "yarn workspace @cdklabs/genai-idp-sagemaker-udop-processor build"
         }
       ]
     },
@@ -56,21 +60,12 @@
       ],
       "condition": "git diff --exit-code > /dev/null"
     },
-    "compat": {
-      "name": "compat",
-      "description": "Perform API compatibility check against latest version",
-      "steps": [
-        {
-          "exec": "jsii-diff npm:$(node -p \"require('./package.json').name\") -k --ignore-file .compatignore || (echo \"\nUNEXPECTED BREAKING CHANGES: add keys such as 'removed:constructs.Node.of' to .compatignore to skip.\n\" && exit 1)"
-        }
-      ]
-    },
     "compile": {
       "name": "compile",
       "description": "Only compile",
       "steps": [
         {
-          "exec": "jsii --silence-warnings=reserved-word"
+          "exec": "yarn workspaces run compile"
         }
       ]
     },
@@ -80,40 +75,6 @@
       "steps": [
         {
           "exec": "ts-node --project tsconfig.dev.json .projenrc.ts"
-        }
-      ]
-    },
-    "docgen": {
-      "name": "docgen",
-      "description": "Generate API.md from .jsii manifest",
-      "steps": [
-        {
-          "exec": "jsii-docgen -o API.md"
-        }
-      ]
-    },
-    "eject": {
-      "name": "eject",
-      "description": "Remove projen from the project",
-      "env": {
-        "PROJEN_EJECTING": "true"
-      },
-      "steps": [
-        {
-          "spawn": "default"
-        }
-      ]
-    },
-    "eslint": {
-      "name": "eslint",
-      "description": "Runs eslint against the codebase",
-      "env": {
-        "ESLINT_USE_FLAT_CONFIG": "false"
-      },
-      "steps": [
-        {
-          "exec": "eslint --ext .ts,.tsx --fix --no-error-on-unmatched-pattern $@ src test build-tools projenrc .projenrc.ts",
-          "receiveArgs": true
         }
       ]
     },
@@ -135,115 +96,12 @@
         }
       ]
     },
-    "integ": {
-      "name": "integ",
-      "description": "Run integration snapshot tests",
-      "steps": [
-        {
-          "exec": "yarn integ-runner --language typescript",
-          "receiveArgs": true
-        }
-      ]
-    },
-    "integ:update": {
-      "name": "integ:update",
-      "description": "Run and update integration snapshot tests",
-      "steps": [
-        {
-          "exec": "yarn integ-runner --language typescript --update-on-failed",
-          "receiveArgs": true
-        }
-      ]
-    },
     "package": {
       "name": "package",
       "description": "Creates the distribution package",
       "steps": [
         {
-          "spawn": "package:js",
-          "condition": "node -e \"if (!process.env.CI) process.exit(1)\""
-        },
-        {
-          "spawn": "package-all",
-          "condition": "node -e \"if (process.env.CI) process.exit(1)\""
-        }
-      ]
-    },
-    "package-all": {
-      "name": "package-all",
-      "description": "Packages artifacts for all target languages",
-      "steps": [
-        {
-          "spawn": "package:js"
-        },
-        {
-          "spawn": "package:java"
-        },
-        {
-          "spawn": "package:python"
-        },
-        {
-          "spawn": "package:dotnet"
-        },
-        {
-          "spawn": "package:go"
-        }
-      ]
-    },
-    "package:dotnet": {
-      "name": "package:dotnet",
-      "description": "Create dotnet language bindings",
-      "steps": [
-        {
-          "exec": "jsii-pacmak -v --target dotnet"
-        }
-      ]
-    },
-    "package:go": {
-      "name": "package:go",
-      "description": "Create go language bindings",
-      "steps": [
-        {
-          "exec": "jsii-pacmak -v --target go"
-        }
-      ]
-    },
-    "package:java": {
-      "name": "package:java",
-      "description": "Create java language bindings",
-      "steps": [
-        {
-          "exec": "jsii-pacmak -v --target java"
-        }
-      ]
-    },
-    "package:js": {
-      "name": "package:js",
-      "description": "Create js language bindings",
-      "steps": [
-        {
-          "exec": "jsii-pacmak -v --target js"
-        }
-      ]
-    },
-    "package:python": {
-      "name": "package:python",
-      "description": "Create python language bindings",
-      "steps": [
-        {
-          "exec": "jsii-pacmak -v --target python"
-        }
-      ]
-    },
-    "post-compile": {
-      "name": "post-compile",
-      "description": "Runs after successful compilation",
-      "steps": [
-        {
-          "spawn": "docgen"
-        },
-        {
-          "spawn": "rosetta:extract"
+          "exec": "yarn workspaces run package"
         }
       ]
     },
@@ -251,16 +109,36 @@
       "name": "post-upgrade",
       "description": "Runs after upgrading dependencies"
     },
-    "pre-compile": {
-      "name": "pre-compile",
-      "description": "Prepare the project for compilation"
-    },
-    "rosetta:extract": {
-      "name": "rosetta:extract",
-      "description": "Test rosetta extract",
+    "release": {
+      "name": "release",
+      "description": "Prepare a release from all monorepo packages",
+      "env": {
+        "RELEASE": "true"
+      },
       "steps": [
         {
-          "exec": "yarn --silent jsii-rosetta extract --strict"
+          "exec": "yarn workspaces run shx rm -rf dist"
+        },
+        {
+          "exec": "yarn workspaces run bump"
+        },
+        {
+          "exec": "yarn workspaces run build"
+        },
+        {
+          "exec": "yarn workspaces run unbump"
+        },
+        {
+          "exec": "git diff --ignore-space-at-eol --exit-code"
+        }
+      ]
+    },
+    "run": {
+      "name": "run",
+      "steps": [
+        {
+          "exec": "yarn workspaces run",
+          "receiveArgs": true
         }
       ]
     },
@@ -269,92 +147,42 @@
       "description": "Run tests",
       "steps": [
         {
-          "exec": "jest --passWithNoTests --updateSnapshot",
-          "receiveArgs": true
-        },
-        {
-          "spawn": "eslint"
-        },
-        {
-          "spawn": "integ"
+          "exec": "yarn workspaces run test"
         }
       ]
     },
-    "test:watch": {
-      "name": "test:watch",
-      "description": "Run jest in watch mode",
+    "update-upstream-sources": {
+      "name": "update-upstream-sources",
       "steps": [
         {
-          "exec": "jest --watch"
+          "exec": "bash -c '\n# Get latest release tag from GitHub API\nLATEST_TAG=$(curl -s \"https://api.github.com/repos/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/latest\" | grep \"tag_name\" | cut -d \":\" -f 2 | tr -d \" ,\\\"\")\nif [ -z \"$LATEST_TAG\" ] || [ \"$LATEST_TAG\" = \"null\" ]; then\n  echo \"No releases found in upstream repository\"\n  exit 0\nfi\necho \"Found latest release: $LATEST_TAG\"\n\n# Clone the specific release tag\ngit clone --depth 1 --branch $LATEST_TAG https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws.git temp-upstream\nVERSION=$(cat temp-upstream/VERSION)\nif [[ ! $VERSION =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then\n  echo \"Skipping sync: VERSION '\"'\"'$VERSION'\"'\"' is not in X.Y.Z format (appears to be work-in-progress)\"\n  rm -rf temp-upstream\n  exit 0\nfi\nrm -rf sources\nmv temp-upstream sources\nrm -rf sources/.git\necho \"Successfully synced release $LATEST_TAG (VERSION: $VERSION)\"\n'"
         }
       ]
     },
     "upgrade": {
       "name": "upgrade",
-      "description": "upgrade dependencies",
+      "description": "Upgrade dependencies in all workspaces",
       "env": {
         "CI": "0"
       },
       "steps": [
         {
-          "exec": "echo No dependencies to upgrade."
-        }
-      ]
-    },
-    "upgrade-cdklabs-projen-project-types": {
-      "name": "upgrade-cdklabs-projen-project-types",
-      "description": "upgrade cdklabs-projen-project-types",
-      "env": {
-        "CI": "0"
-      },
-      "steps": [
+          "exec": "npx npm-check-updates@16 --dep=dev,optional,peer,prod,bundle --upgrade --target=minor"
+        },
         {
-          "exec": "npx npm-check-updates@16 --upgrade --target=latest --peer --no-deprecated --dep=dev,peer,prod,optional --filter=cdklabs-projen-project-types,projen"
+          "exec": "yarn workspaces run check-for-updates"
         },
         {
           "exec": "yarn install --check-files"
         },
         {
-          "exec": "yarn upgrade cdklabs-projen-project-types projen"
+          "exec": "yarn upgrade"
         },
         {
-          "exec": "npx projen"
-        },
-        {
-          "spawn": "post-upgrade"
-        }
-      ]
-    },
-    "upgrade-dev-deps": {
-      "name": "upgrade-dev-deps",
-      "description": "upgrade dev dependencies",
-      "env": {
-        "CI": "0"
-      },
-      "steps": [
-        {
-          "exec": "npx npm-check-updates@16 --upgrade --target=minor --peer --no-deprecated --dep=dev --filter=@types/jest,eslint-import-resolver-typescript,eslint-plugin-import,jest,jsii-diff,jsii-pacmak,jsii-rosetta,ts-jest,ts-node,typescript"
-        },
-        {
-          "exec": "yarn install --check-files"
-        },
-        {
-          "exec": "yarn upgrade @stylistic/eslint-plugin @types/jest @types/node @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-import-resolver-typescript eslint-plugin-import eslint jest jest-junit jsii-diff jsii-docgen jsii-pacmak jsii-rosetta jsii ts-jest ts-node typescript @aws-cdk/integ-runner @aws-cdk/integ-tests-alpha"
-        },
-        {
-          "exec": "npx projen"
+          "spawn": "default"
         },
         {
           "spawn": "post-upgrade"
-        }
-      ]
-    },
-    "watch": {
-      "name": "watch",
-      "description": "Watch & compile in the background",
-      "steps": [
-        {
-          "exec": "jsii -w --silence-warnings=reserved-word"
         }
       ]
     }

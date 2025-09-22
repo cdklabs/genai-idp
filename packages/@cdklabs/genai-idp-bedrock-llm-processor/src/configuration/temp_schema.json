@@ -1,0 +1,739 @@
+{
+      "": "object",
+      "": ["notes", "classes", "classification", "extraction"],
+      "": {
+        "": {
+          "": 0,
+          "": "string",
+          "": "Notes",
+        "": {
+          "": 1,
+          "": "object",
+          "": "OCR Configuration",
+          "": ["features"],
+          "": {
+            "": {
+              "": "object",
+              "": "Image Processing Settings",
+              "":
+                "Configure image resolution and processing options for OCR",
+              "": 0,
+              "": {
+                "": {
+                  "": "number",
+                  "":
+                    "DPI (dots per inch) for extracting images from PDF pages. Higher values produce better quality but larger images. "": 150",
+                  "": 72,
+                  "": 300,
+                  "": 150,
+                  "": 0,
+                "": {
+                  "": "number",
+                  "":
+                    "Target image width in pixels. Images larger than this will be resized.",
+                  "": 100,
+                  "": 3500,
+                  "": 1,
+                "": {
+                  "": "number",
+                  "":
+                    "Target image height in pixels. Images larger than this will be resized.",
+                  "": 100,
+                  "": 3500,
+                  "": 2,
+                "": {
+                  "": "boolean",
+                  "":
+                    "Apply adaptive binarization preprocessing to improve OCR accuracy on documents with uneven lighting or low contrast. "": May slightly increase processing time.",
+                  "": false,
+                  "": 3,
+            "": {
+              "": "string",
+              "":
+                "OCR backend to "": "textract" for AWS Textract, "bedrock" for LLM-based OCR, "none" for image-only processing without OCR",
+              "": ["textract", "bedrock", "none"],
+              "": "textract",
+              "": 3,
+            "": {
+              "": "string",
+              "":
+                "Bedrock model ID (only used if backend is "bedrock")",
+              "": [
+                "us.amazon.nova-lite-"":0",
+                "us.amazon.nova-pro-"":0",
+                "us.amazon.nova-premier-"":0",
+                "us.anthropic.claude-3-haiku-20240307-"":0",
+                "us.anthropic.claude-3-5-sonnet-20241022-"":0",
+                "us.anthropic.claude-3-7-sonnet-20250219-"":0",
+                "us.anthropic.claude-sonnet-4-20250514-"":0",
+                "us.anthropic.claude-opus-4-20250514-"":0",
+              "": 2,
+              "": {
+                "": "backend",
+                "": "bedrock",
+            "": {
+              "": "string",
+              "":
+                "System prompt for Bedrock OCR (only used if backend is "bedrock")",
+              "":
+                "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible.",
+              "": 3,
+              "": {
+                "": "backend",
+                "": "bedrock",
+            "": {
+              "": "string",
+              "":
+                "Task prompt for Bedrock OCR (only used if backend is "bedrock")",
+              "":
+                "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting.",
+              "": 4,
+              "": {
+                "": "backend",
+                "": "bedrock",
+            "": {
+              "": "array",
+              "": "Textract Features",
+              "": "Feature",
+              "":
+                "Textract features (only used if backend is "textract")",
+              "": 5,
+              "": {
+                "": "backend",
+                "": ["textract"],
+              "": {
+                "": "object",
+                "": ["name"],
+                "": {
+                  "": {
+                    "": "string",
+                    "":
+                      "Feature - select one of the supported OCR feature types",
+                    "": ["TABLES", "FORMS", "SIGNATURES", "LAYOUT"],
+        "": {
+          "": 2,
+          "": "array",
+          "": "Class definitions",
+          "": "Classes",
+          "": "Class",
+          "": 2,
+          "": {
+            "": "object",
+            "": ["name", "description", "attributes"],
+            "": {
+              "": {
+                "": "string",
+                "": "Class name",
+              "": {
+                "": "string",
+                "":
+                  "Class description. Instruct LLM how to identify the class from the context provided in the classification prompt.",
+              "": {
+                "": "array",
+                "": "Class few-shot examples",
+                "": "Few-shot examples",
+                "": "Few-shot example",
+                "": {
+                  "": "object",
+                  "": [
+                    "name",
+                    "classPrompt",
+                    "attributesPrompt",
+                    "imagePath",
+                  "": {
+                    "": {
+                      "": "string",
+                      "": "Example name",
+                      "": 0,
+                    "": {
+                      "": "string",
+                      "":
+                        "Classification prompt as few-shot classification example for this class",
+                      "": 2,
+                    "": {
+                      "": "string",
+                      "":
+                        "Extraction prompt as few-shot attribute value extraction example for this class.",
+                      "": 3,
+                    "": {
+                      "": "string",
+                      "":
+                        "Image(s) Path in the Configuration Bucket. Supports single files, or S3 prefixes for folders with multiple images. Optional but recommended for better visual understanding.",
+                      "": 4,
+              "": {
+                "": "array",
+                "": "Attributes",
+                "": "Attribute",
+                "": {
+                  "": "object",
+                  "": ["name", "description", "attributeType"],
+                  "": {
+                    "": {
+                      "": "string",
+                      "": "Attribute name",
+                      "": 0,
+                    "": {
+                      "": "string",
+                      "":
+                        "Attribute description. Instruct the LLM how to identify the attribute from the context provided in the extraction prompt. Include synonyms and positional infomation where it might help the LLM to resolve ambiquities.",
+                      "": 1,
+                    "": {
+                      "": "string",
+                      "": "Type of attribute",
+                      "": ["simple", "group", "list"],
+                      "": 2,
+                    // Simple attribute properties (existing fields)
+                    "": {
+                      "": "string",
+                      "": "Evaluation Method",
+                      "": [
+                        "",
+                        "LLM",
+                        "SEMANTIC",
+                        "FUZZY",
+                        "NUMERIC_EXACT",
+                        "EXACT",
+                      "": 3,
+                      "": {
+                        "": "attributeType",
+                        "": "simple",
+                    "": {
+                      "": "number",
+                      "":
+                        "Evaluation Threshold - used for SEMANTIC, and FUZZY methods",
+                      "": 0,
+                      "": 1,
+                      "": 5,
+                      "": {
+                        "": "evaluation_method",
+                        "": ["SEMANTIC", "FUZZY"],
+                    "": {
+                      "": "number",
+                      "":
+                        "Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.",
+                      "": 0,
+                      "": 1,
+                      "": 6,
+                      "": {
+                        "": "attributeType",
+                        "": "simple",
+                    // Group-specific properties
+                    "": {
+                      "": "array",
+                      "": "Group Attributes",
+                      "": "Attribute",
+                      "": 7,
+                      "": {
+                        "": "attributeType",
+                        "": "group",
+                      "": {
+                        "": "object",
+                        "": ["name", "description"],
+                        "": {
+                          "": {
+                            "": "string",
+                            "": "Attribute name",
+                            "": 0,
+                          "": {
+                            "": "string",
+                            "":
+                              "Attribute description. Instruct the LLM how to identify the attribute from the context provided in the extraction prompt. Include synonyms and positional infomation where it might help the LLM to resolve ambiquities.",
+                            "": 1,
+                          "": {
+                            "": "string",
+                            "": "Evaluation Method",
+                            "": [
+                              "",
+                              "LLM",
+                              "SEMANTIC",
+                              "FUZZY",
+                              "NUMERIC_EXACT",
+                              "EXACT",
+                            "": 2,
+                          "": {
+                            "": "number",
+                            "":
+                              "Evaluation Threshold - used for SEMANTIC, and FUZZY methods",
+                            "": 0,
+                            "": 1,
+                            "": 4,
+                            "": {
+                              "": "evaluation_method",
+                              "": ["SEMANTIC", "FUZZY"],
+                          "": {
+                            "": "number",
+                            "":
+                              "Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.",
+                            "": 0,
+                            "": 1,
+                            "": 5,
+                        "": 2,
+                    // List-specific properties
+                    "": {
+                      "": "object",
+                      "": "List Item Template",
+                      "": 8,
+                      "": {
+                        "": "attributeType",
+                        "": "list",
+                      "": ["itemAttributes"],
+                      "": {
+                        "": {
+                          "": "string",
+                          "":
+                            "Description of each list item. Instruct the LLM how to identify the list item (e.g. a transaction in a bank statement). ",
+                          "": 0,
+                        "": {
+                          "": "array",
+                          "": "Item Attributes",
+                          "": "Attribute",
+                          "": 1,
+                          "": {
+                            "": "object",
+                            "": ["name", "description"],
+                            "": {
+                              "": {
+                                "": "string",
+                                "": "Attribute name",
+                                "": 0,
+                              "": {
+                                "": "string",
+                                "":
+                                  "Attribute description. Instruct the LLM how to identify the attribute from the context provided in the extraction prompt. Include synonyms and positional infomation where it might help the LLM to resolve ambiquities.",
+                                "": 1,
+                              "": {
+                                "": "string",
+                                "": "Evaluation Method",
+                                "": [
+                                  "",
+                                  "LLM",
+                                  "SEMANTIC",
+                                  "FUZZY",
+                                  "NUMERIC_EXACT",
+                                  "EXACT",
+                                "": 2,
+                              "": {
+                                "": "number",
+                                "":
+                                  "Evaluation Threshold - used for SEMANTIC, and FUZZY methods",
+                                "": 0,
+                                "": 1,
+                                "": 4,
+                                "": {
+                                  "": "evaluation_method",
+                                  "": ["SEMANTIC", "FUZZY"],
+                              "": {
+                                "": "number",
+                                "":
+                                  "Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.",
+                                "": 0,
+                                "": 1,
+                                "": 5,
+                            "": 2,
+                  // This controls the layout of the form fields inside each attribute item
+                  "": 2,
+        "": {
+          "": 3,
+          "": "object",
+          "": "Classification Inference",
+          "": [
+            "model",
+            "temperature",
+            "top_k",
+            "top_p",
+            "max_tokens",
+            "system_prompt",
+            "task_prompt",
+          "": {
+            "": {
+              "": "object",
+              "": "Image Processing Settings",
+              "":
+                "Configure image resolution and processing options for image attachments in classification",
+              "": 0,
+              "": {
+                "": {
+                  "": "number",
+                  "":
+                    "Target image width in pixels. Images larger than this will be resized. "": 951",
+                  "": 951,
+                  "": 100,
+                  "": 3500,
+                  "": 0,
+                "": {
+                  "": "number",
+                  "":
+                    "Target image height in pixels. Images larger than this will be resized. "": 1268",
+                  "": 1268,
+                  "": 100,
+                  "": 3500,
+                  "": 1,
+            "": {
+              "": "string",
+              "": "Model identifier",
+              "": [
+                "us.amazon.nova-lite-"":0",
+                "us.amazon.nova-pro-"":0",
+                "us.amazon.nova-premier-"":0",
+                "us.anthropic.claude-3-haiku-20240307-"":0",
+                "us.anthropic.claude-3-5-sonnet-20241022-"":0",
+                "us.anthropic.claude-3-7-sonnet-20250219-"":0",
+                "us.anthropic.claude-sonnet-4-20250514-"":0",
+                "us.anthropic.claude-opus-4-20250514-"":0",
+              "": 1,
+            "": {
+              "": "string",
+              "": "Classification methodology to use",
+              "": [
+                "multimodalPageLevelClassification",
+                "textbasedHolisticClassification",
+              "": 2,
+            "": {
+              "": "number",
+              "": 0,
+              "": 1,
+              "": "Sampling temperature",
+              "": 3,
+            "": {
+              "": "integer",
+              "": 1,
+              "": "Sampling Top K",
+              "": 4,
+            "": {
+              "": "number",
+              "": "Sampling Top P",
+              "": 5,
+            "": {
+              "": "number",
+              "": "Max tokens",
+              "": 6,
+            "": {
+              "": "string",
+              "": "System prompt",
+              "": 7,
+            "": {
+              "": "string",
+              "":
+                "Task prompt - include placeholders {CLASS_NAMES_AND_DESCRIPTIONS} (replaced with the class names and descriptions for all specified classes), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and for multi-modal classification {DOCUMENT_IMAGE} (replaced by the page image attachment). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
+              "": 8,
+        "": {
+          "": 4,
+          "": "object",
+          "": "section",
+          "": "Extraction Inference",
+          "": [
+            "model",
+            "temperature",
+            "top_k",
+            "top_p",
+            "max_tokens",
+            "system_prompt",
+            "task_prompt",
+          "": {
+            "": {
+              "": "object",
+              "": "Image Processing Settings",
+              "":
+                "Configure image resolution and processing options for for image attachments in extraction",
+              "": 0,
+              "": {
+                "": {
+                  "": "number",
+                  "":
+                    "Target image width in pixels. Images larger than this will be resized. "": 951",
+                  "": 951,
+                  "": 100,
+                  "": 3500,
+                  "": 0,
+                "": {
+                  "": "number",
+                  "":
+                    "Target image height in pixels. Images larger than this will be resized. "": 1268",
+                  "": 1268,
+                  "": 100,
+                  "": 3500,
+                  "": 1,
+            "": {
+              "": "string",
+              "": "Model identifier",
+              "": [
+                "us.amazon.nova-lite-"":0",
+                "us.amazon.nova-pro-"":0",
+                "us.amazon.nova-premier-"":0",
+                "us.anthropic.claude-3-haiku-20240307-"":0",
+                "us.anthropic.claude-3-5-sonnet-20241022-"":0",
+                "us.anthropic.claude-3-7-sonnet-20250219-"":0",
+                "us.anthropic.claude-sonnet-4-20250514-"":0",
+                "us.anthropic.claude-opus-4-20250514-"":0",
+              "": 1,
+            "": {
+              "": "number",
+              "": 0,
+              "": 1,
+              "": "Sampling temperature",
+              "": 2,
+            "": {
+              "": "integer",
+              "": 1,
+              "": "Sampling Top K",
+              "": 3,
+            "": {
+              "": "number",
+              "": "Sampling Top P",
+              "": 4,
+            "": {
+              "": "number",
+              "": "Max tokens",
+              "": 5,
+            "": {
+              "": "string",
+              "": "System prompt",
+              "": 6,
+            "": {
+              "": "string",
+              "":
+                "Task prompt - supports placeholders {DOCUMENT_CLASS} (replaced with the detected class label), {ATTRIBUTE_NAMES_AND_DESCRIPTIONS} (replaced with the attribute names and descriptions for the detected class), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and {DOCUMENT_IMAGE} (replaced by the page image attachments for each page). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
+              "": 7,
+        "": {
+          "": 5,
+          "": "object",
+          "": "Assessment Inference",
+          "": {
+            "": {
+              "": "object",
+              "": "Image Processing Settings",
+              "":
+                "Configure image resolution and processing options for for image attachments in assessment",
+              "": 0,
+              "": {
+                "": {
+                  "": "number",
+                  "":
+                    "Target image width in pixels. Images larger than this will be resized. "": 951",
+                  "": 100,
+                  "": 3500,
+                  "": 0,
+                "": {
+                  "": "number",
+                  "":
+                    "Target image height in pixels. Images larger than this will be resized. "": 1268",
+                  "": 100,
+                  "": 3500,
+                  "": 1,
+            "": {
+              "": "object",
+              "": "Granular Assessment Configuration",
+              "":
+                "Configure granular assessment for improved accuracy and scalability with large documents",
+              "": 1,
+              "": {
+                "": {
+                  "": "boolean",
+                  "":
+                    "Enable granular assessment approach. When enabled, assessments are broken down into smaller, focused tasks for better accuracy and performance.",
+                  "": true,
+                  "": 0,
+                "": {
+                  "": "integer",
+                  "":
+                    "Maximum number of parallel workers for concurrent assessment tasks. Higher values increase throughput but consume more resources.",
+                  "": 1,
+                  "": 20,
+                  "": 4,
+                  "": 1,
+                  "": {
+                    "": "enabled",
+                    "": true,
+                "": {
+                  "": "integer",
+                  "":
+                    "Number of simple attributes to group together in each assessment task. Smaller batches provide more focused assessments.",
+                  "": 1,
+                  "": 10,
+                  "": 3,
+                  "": 2,
+                  "": {
+                    "": "enabled",
+                    "": true,
+                "": {
+                  "": "integer",
+                  "":
+                    "Number of list items to process in each assessment task. Usually 1 for best accuracy, can be increased for speed.",
+                  "": 1,
+                  "": 5,
+                  "": 1,
+                  "": 3,
+                  "": {
+                    "": "enabled",
+                    "": true,
+            "": {
+              "": "number",
+              "":
+                "Default confidence threshold for all attributes (0.0 to 1.0). If an attribute doesn"t have its own threshold, this default will be used for confidence threshold alerts.",
+              "": 0,
+              "": 1,
+              "": 2,
+            "": {
+              "": "string",
+              "": "Bedrock model ID",
+              "": [
+                "us.amazon.nova-lite-"":0",
+                "us.amazon.nova-pro-"":0",
+                "us.amazon.nova-premier-"":0",
+                "us.anthropic.claude-3-haiku-20240307-"":0",
+                "us.anthropic.claude-3-5-sonnet-20241022-"":0",
+                "us.anthropic.claude-3-7-sonnet-20250219-"":0",
+                "us.anthropic.claude-sonnet-4-20250514-"":0",
+                "us.anthropic.claude-opus-4-20250514-"":0",
+              "": 3,
+            "": {
+              "": "number",
+              "": "Sampling temperature",
+              "": 4,
+            "": {
+              "": "number",
+              "": "Sampling Top K",
+              "": 5,
+            "": {
+              "": "number",
+              "": "Sampling Top P",
+              "": 6,
+            "": {
+              "": "number",
+              "": "Max tokens",
+              "": 7,
+            "": {
+              "": "string",
+              "": "textarea",
+              "": "System prompt",
+              "": 8,
+            "": {
+              "": "string",
+              "": "textarea",
+              "":
+                "Task prompt - supports placeholders {DOCUMENT_TEXT} (markdown text), {OCR_TEXT_CONFIDENCE} (OCR text blocks with confidence), {DOCUMENT_CLASS}, {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}, {EXTRACTION_RESULTS}, {GRANULAR_CONTEXT} and {DOCUMENT_IMAGE}. Use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
+              "": 9,
+        "": {
+          "": 6,
+          "": "object",
+          "": "Summarization Inference",
+          "": {
+            "": {
+              "": "string",
+              "": "Bedrock model ID",
+              "": [
+                "us.amazon.nova-lite-"":0",
+                "us.amazon.nova-pro-"":0",
+                "us.amazon.nova-premier-"":0",
+                "us.anthropic.claude-3-haiku-20240307-"":0",
+                "us.anthropic.claude-3-5-sonnet-20241022-"":0",
+                "us.anthropic.claude-3-7-sonnet-20250219-"":0",
+                "us.anthropic.claude-sonnet-4-20250514-"":0",
+                "us.anthropic.claude-opus-4-20250514-"":0",
+              "": 1,
+            "": {
+              "": "number",
+              "": "Sampling temperature",
+              "": 2,
+            "": {
+              "": "number",
+              "": "Sampling Top K",
+              "": 3,
+            "": {
+              "": "number",
+              "": "Sampling Top P",
+              "": 4,
+            "": {
+              "": "number",
+              "": "Max tokens",
+              "": 5,
+            "": {
+              "": "string",
+              "": "textarea",
+              "": "System prompt",
+              "": 6,
+            "": {
+              "": "string",
+              "": "textarea",
+              "":
+                "Task prompt - supports parameter {DOCUMENT_TEXT}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
+              "": 7,
+        "": {
+          "": 7,
+          "": "object",
+          "": "Evaluation Inference",
+          "": {
+            "": {
+              "": "object",
+              "": {
+                "": {
+                  "": "string",
+                  "": "Bedrock model ID",
+                  "": [
+                    "us.amazon.nova-lite-"":0",
+                    "us.amazon.nova-pro-"":0",
+                    "us.amazon.nova-premier-"":0",
+                    "us.anthropic.claude-3-haiku-20240307-"":0",
+                    "us.anthropic.claude-3-5-sonnet-20241022-"":0",
+                    "us.anthropic.claude-3-7-sonnet-20250219-"":0",
+                    "us.anthropic.claude-sonnet-4-20250514-"":0",
+                    "us.anthropic.claude-opus-4-20250514-"":0",
+                  "": 1,
+                "": {
+                  "": "number",
+                  "": "Sampling temperature",
+                  "": 0.0,
+                  "": 2,
+                "": {
+                  "": "number",
+                  "": "Sampling Top K",
+                  "": 250,
+                  "": 3,
+                "": {
+                  "": "number",
+                  "": "Sampling Top P",
+                  "": 4,
+                "": {
+                  "": "number",
+                  "": "Max tokens",
+                  "": 5,
+                "": {
+                  "": "string",
+                  "": "textarea",
+                  "": "System prompt for LLM evaluation",
+                  "": 6,
+                "": {
+                  "": "string",
+                  "": "textarea",
+                  "":
+                    "Task prompt for LLM evaluation - supports placeholders {DOCUMENT_CLASS}, {ATTRIBUTE_NAME}, {ATTRIBUTE_DESCRIPTION}, {EXPECTED_VALUE} and {ACTUAL_VALUE}",
+                  "": 7,
+        "": {
+          "": 8,
+          "": "array",
+          "":
+            "Pricing (Estimates only - check ""://aws.amazon.com/bedrock/pricing/ & ""://aws.amazon.com/textract/pricing/)",
+          "": "Services",
+          "": "Service/API",
+          "": 2,
+          "": {
+            "": "object",
+            "": ["name", "units"],
+            "": {
+              "": {
+                "": "string",
+                "": "Service/API",
+              "": {
+                "": "array",
+                "": "Metered unit pricing",
+                "": "Metered Unit price",
+                "": {
+                  "": "object",
+                  "": ["name", "price"],
+                  "": {
+                    "": {
+                      "": "string",
+                      "": "Metered unit name",
+                    "": {
+                      "": "number",
+                      "": "Estimated cost/unit"
