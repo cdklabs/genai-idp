@@ -1311,6 +1311,11 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
               "Effect": "Allow",
               "Resource": "*",
             },
+            {
+              "Action": "appsync:GraphQL",
+              "Effect": "Allow",
+              "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
+            },
           ],
           "Version": "2012-10-17",
         },
@@ -1572,6 +1577,11 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                   "Arn",
                 ],
               },
+            },
+            {
+              "Action": "appsync:GraphQL",
+              "Effect": "Allow",
+              "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
             },
           ],
           "Version": "2012-10-17",
@@ -2755,6 +2765,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
         },
         "Environment": {
           "Variables": {
+            "APPSYNC_API_URL": "https://example.com/graphql",
             "CONFIGURATION_TABLE_NAME": {
               "Ref": "MockConfigTable9B38FA67",
             },

@@ -134,5 +134,8 @@ export class ProcessResultsFunction extends PythonFunction {
     Metric.grantPutMetricData(this);
     props.trackingTable.grantReadWriteData(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
+
+    // Grant AppSync permissions if API is provided
+    props.api?.grantMutation(this);
   }
 }

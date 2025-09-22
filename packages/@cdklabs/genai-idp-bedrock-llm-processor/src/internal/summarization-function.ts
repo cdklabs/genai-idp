@@ -141,6 +141,7 @@ export class SummarizationFunction extends PythonFunction {
         LOG_LEVEL: props.logLevel ?? LogLevel.INFO,
         TRACKING_TABLE: props.trackingTable.tableName,
         DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
+        ...(props.api && { APPSYNC_API_URL: props.api.graphqlUrl }),
       },
     });
 
