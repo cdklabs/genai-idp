@@ -52,6 +52,39 @@ export class AwsCdkTypeScriptWorkspace extends TypeScriptWorkspace {
         this.root.addGitIgnore(this.workspaceDirectory + "/assets");
         this.root.addGitIgnore(this.workspaceDirectory + "/test/integ/.tmp/");
         this.preCompileTask.spawn(this.bundleTask);
+
+        // Override unbump task to preserve exact workspace dependency versions in devDependencies
+        this.addUnbumpOverride();
+    }
+
+    private addUnbumpOverride(): void {
+        const unbumpTask = this.tasks.tryFind('unbump');
+        if (unbumpTask) {
+            this.tasks.removeTask('unbump');
+            this.addTask('unbump', {
+                description: 'Restores version to 0.0.0',
+                env: {
+                    OUTFILE: 'package.json',
+                    CHANGELOG: 'dist/changelog.md',
+                    BUMPFILE: 'dist/version.txt',
+                    RELEASETAG: 'dist/releasetag.txt',
+                    RELEASE_TAG_PREFIX: `${this.name}@`,
+                    VERSIONRCOPTIONS: '{"path":"."}',
+                    BUMP_PACKAGE: 'commit-and-tag-version@^12',
+                    RELEASABLE_COMMITS: 'git log --no-merges --oneline $LATEST_TAG..HEAD -E --grep "^(feat|fix){1}(\\([^()[:space:]]+\\))?(!)?:[[:blank:]]+.+" -- .',
+                },
+                steps: [
+                    { builtin: 'release/reset-version' },
+                    { 
+                        spawn: 'gather-versions',
+                        env: { RESET_VERSIONS: 'true' }
+                    },
+                    { 
+                        exec: 'node -e "const fs = require(\'fs\'); const pkg = JSON.parse(fs.readFileSync(\'package.json\', \'utf8\')); if (pkg.devDependencies && pkg.devDependencies[\'@cdklabs/genai-idp\']) { pkg.devDependencies[\'@cdklabs/genai-idp\'] = \'0.0.0\'; } fs.writeFileSync(\'package.json\', JSON.stringify(pkg, null, 2) + \'\\n\');"'
+                    }
+                ]
+            });
+        }
     }
 
     public get bundleTask(): Task {

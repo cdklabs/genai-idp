@@ -728,6 +728,9 @@
           "env": {
             "RESET_VERSIONS": "true"
           }
+        },
+        {
+          "exec": "node -e \"const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); if (pkg.devDependencies && pkg.devDependencies['@cdklabs/genai-idp']) { pkg.devDependencies['@cdklabs/genai-idp'] = '0.0.0'; } fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\\n');\""
         }
       ]
     },
