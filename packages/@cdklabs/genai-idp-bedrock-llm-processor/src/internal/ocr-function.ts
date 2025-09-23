@@ -179,5 +179,8 @@ export class OcrFunction extends PythonFunction {
         }),
       );
     }
+
+    // Grant AppSync permissions if API is provided
+    props.api?.grantMutation(this);
   }
 }
