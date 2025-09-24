@@ -13,61 +13,53 @@ jobs:
       id-token: none
       pull-requests: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set git identity
-        run: |-
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
       - name: Install dependencies
         run: yarn install --check-files --frozen-lockfile
-      - name: update-upstream-sources
-        run: npx projen update-upstream-sources
+      - name: Update upstream sources
+        run: |-
+          bash -c '
+          # Get latest release tag from GitHub API
+          LATEST_TAG=$(curl -s "https://api.github.com/repos/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/latest" | grep "tag_name" | cut -d ":" -f 2 | tr -d " ,\"")
+          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
+            echo "No releases found in upstream repository"
+            exit 0
+          fi
+          echo "Found latest release: $LATEST_TAG"
+
+          # Clone the specific release tag
+          git clone --depth 1 --branch $LATEST_TAG https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws.git temp-upstream
+          VERSION=$(cat temp-upstream/VERSION)
+          if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Skipping sync: VERSION '"'"'$VERSION'"'"' is not in X.Y.Z format (appears to be work-in-progress)"
+            rm -rf temp-upstream
+            exit 0
+          fi
+          rm -rf sources
+          mv temp-upstream sources
+          rm -rf sources/.git
+          echo "Successfully synced release $LATEST_TAG (VERSION: $VERSION)"
+          '
+      - name: Check for changes
+        id: check-changes
+        run: |-
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected in sources/"
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
+          fi
       - name: Create Pull Request
         id: create-pr
-        uses: peter-evans/create-pull-request@v6
+        if: steps.check-changes.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.PROJEN_GITHUB_TOKEN }}
-          commit-message: |-
-            feat(sources): update upstream sources
-
-            > ⚠️ This Pull Request updates weekly and will overwrite **all** manual changes pushed to the branch
-
-            Updates the sources from upstream repository latest release. See details in [workflow run].
-
-            [Workflow Run]: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            **Manual Review Required**: This PR requires manual testing and mapping of new changes to CDK constructs.
-
-            ## How to work with this PR
-
-            **⚠️ DO NOT work directly on this branch** - it will be overwritten by automation.
-
-            Instead, create a separate branch for your integration work:
-            ```bash
-            gh pr checkout <PR_NUMBER>
-            git switch -c integration/upstream-<VERSION>
-            git push -u origin HEAD
-            gh pr create --title "feat: integrate upstream <VERSION>" --body "Integrates changes from #<PR_NUMBER>"
-            ```
-
-            This keeps your integration work safe while allowing automation to continue updating the upstream sync.
-
-            ------
-
-            *Automatically created by projen via the "update-upstream-sources" workflow*. See details in [workflow run].
-
-            [Workflow Run]: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            ------
-
-            *Automatically created by projen via the "update-upstream-sources" workflow*
-          branch: update-upstream-sources
-          base: main
+          commit-message: "feat(sources): update upstream sources"
           title: "feat(sources): update upstream sources"
           body: |-
             > ⚠️ This Pull Request updates weekly and will overwrite **all** manual changes pushed to the branch
@@ -94,16 +86,9 @@ jobs:
 
             ------
 
-            *Automatically created by projen via the "update-upstream-sources" workflow*. See details in [workflow run].
-
-            [Workflow Run]: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            ------
-
             *Automatically created by projen via the "update-upstream-sources" workflow*
-          author: github-actions <github-actions@github.com>
-          committer: github-actions <github-actions@github.com>
-          signoff: true
+          branch: update-upstream-sources
+          base: main
       - name: add-instructions
         if: ${{ steps.create-pr.outputs.pull-request-number }}
         env:

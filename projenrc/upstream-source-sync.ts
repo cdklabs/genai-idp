@@ -14,7 +14,7 @@ export interface UpstreamSourceSyncOptions {
 
 export class UpstreamSourceSync extends Component {
   public readonly task: Task;
-  public readonly workflow: github.TaskWorkflow;
+  public readonly workflow: github.GithubWorkflow;
 
   public constructor(project: javascript.NodeProject, options: UpstreamSourceSyncOptions) {
     if (!project.github) {
@@ -56,53 +56,79 @@ echo "Successfully synced release $LATEST_TAG (VERSION: $VERSION)"
       ],
     });
 
-    this.workflow = new github.TaskWorkflow(project.github, {
-      jobId: UPDATE_JOB_ID,
-      name: workflowName,
+    this.workflow = new github.GithubWorkflow(project.github, workflowName);
+
+    this.workflow.on({
+      workflowDispatch: {},
+      schedule: [{ cron: options.schedule ?? '0 2 * * 1' }], // Weekly on Monday at 2 AM
+    });
+
+    this.workflow.addJob(UPDATE_JOB_ID, {
       permissions: {
         contents: github.workflows.JobPermission.READ,
         idToken: github.workflows.JobPermission.NONE,
         pullRequests: github.workflows.JobPermission.WRITE,
       },
-      task: this.task,
-      preBuildSteps: [
+      runsOn: ['ubuntu-latest'],
+      steps: [
         ...project.renderWorkflowSetup(),
-      ],
-      postBuildSteps: [
-        ...github.WorkflowActions.createPullRequest({
-          pullRequestTitle: 'feat(sources): update upstream sources',
-          pullRequestDescription: [
-            '> ⚠️ This Pull Request updates weekly and will overwrite **all** manual changes pushed to the branch',
-            '',
-            'Updates the sources from upstream repository latest release. See details in [workflow run].',
-            '',
-            '[Workflow Run]: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
-            '',
-            '**Manual Review Required**: This PR requires manual testing and mapping of new changes to CDK constructs.',
-            '',
-            '## How to work with this PR',
-            '',
-            '**⚠️ DO NOT work directly on this branch** - it will be overwritten by automation.',
-            '',
-            'Instead, create a separate branch for your integration work:',
-            '```bash',
-            'gh pr checkout <PR_NUMBER>',
-            'git switch -c integration/upstream-<VERSION>',
-            'git push -u origin HEAD',
-            'gh pr create --title "feat: integrate upstream <VERSION>" --body "Integrates changes from #<PR_NUMBER>"',
-            '```',
-            '',
-            'This keeps your integration work safe while allowing automation to continue updating the upstream sync.',
-            '',
-            '------',
-            '',
-            '*Automatically created by projen via the "update-upstream-sources" workflow*',
+        {
+          name: 'Update upstream sources',
+          run: this.task.steps.map(step => step.exec).join('\n'),
+        },
+        {
+          name: 'Check for changes',
+          id: 'check-changes',
+          run: [
+            'if [ -n "$(git status --porcelain)" ]; then',
+            '  echo "changes=true" >> $GITHUB_OUTPUT',
+            '  echo "Changes detected in sources/"',
+            'else',
+            '  echo "changes=false" >> $GITHUB_OUTPUT',
+            '  echo "No changes detected"',
+            'fi',
           ].join('\n'),
-          workflowName,
-          credentials: project.github.projenCredentials,
-          baseBranch: 'main',
-          branchName: 'update-upstream-sources',
-        }),
+        },
+        {
+          name: 'Create Pull Request',
+          id: 'create-pr',
+          if: 'steps.check-changes.outputs.changes == \'true\'',
+          uses: 'peter-evans/create-pull-request@v5',
+          with: {
+            'token': '${{ secrets.PROJEN_GITHUB_TOKEN }}',
+            'commit-message': 'feat(sources): update upstream sources',
+            'title': 'feat(sources): update upstream sources',
+            'body': [
+              '> ⚠️ This Pull Request updates weekly and will overwrite **all** manual changes pushed to the branch',
+              '',
+              'Updates the sources from upstream repository latest release. See details in [workflow run].',
+              '',
+              '[Workflow Run]: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+              '',
+              '**Manual Review Required**: This PR requires manual testing and mapping of new changes to CDK constructs.',
+              '',
+              '## How to work with this PR',
+              '',
+              '**⚠️ DO NOT work directly on this branch** - it will be overwritten by automation.',
+              '',
+              'Instead, create a separate branch for your integration work:',
+              '```bash',
+              'gh pr checkout <PR_NUMBER>',
+              'git switch -c integration/upstream-<VERSION>',
+              'git push -u origin HEAD',
+              'gh pr create --title "feat: integrate upstream <VERSION>" --body "Integrates changes from #<PR_NUMBER>"',
+              '```',
+              '',
+              'This keeps your integration work safe while allowing automation to continue updating the upstream sync.',
+              '',
+              '------',
+              '',
+              '*Automatically created by projen via the "update-upstream-sources" workflow*',
+            ].join('\n'),
+            'branch': 'update-upstream-sources',
+            'base': 'main',
+          },
+        },
         {
           if: '${{ steps.create-pr.outputs.pull-request-number }}',
           env: {
@@ -121,11 +147,6 @@ echo "Successfully synced release $LATEST_TAG (VERSION: $VERSION)"
           ].join(''),
         },
       ],
-    });
-
-    this.workflow.on({
-      workflowDispatch: {},
-      schedule: [{ cron: options.schedule ?? '0 2 * * 1' }], // Weekly on Monday at 2 AM
     });
   }
 }

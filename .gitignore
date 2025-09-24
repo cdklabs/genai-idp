@@ -58,5 +58,6 @@ packages/@cdklabs/genai-idp-sagemaker-udop-processor/test/integ/.tmp/
 .*.md
 !/.github/workflows/docs.yml
 !/.github/workflows/update-upstream-sources.yml
+!/.github/dependabot.yml
 !/.projenrc.ts
 !/.github/workflows/release.yml
