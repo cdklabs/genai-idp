@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT-0
 
 This pattern implements an intelligent document processing workflow that uses Amazon Bedrock with Nova or Claude models for both page classification/grouping and information extraction.
 
-<img src="../../images/IDP-Pattern2-Bedrock.drawio.png" alt="Architecture" width="800">
+<img src="../images/IDP-Pattern2-Bedrock.drawio.png" alt="Architecture" width="800">
 
 ## Table of Contents
 
@@ -16,6 +16,7 @@ This pattern implements an intelligent document processing workflow that uses Am
     - [Classification Function](#classification-function)
     - [Extraction Function](#extraction-function)
     - [ProcessResults Function](#processresults-function)
+  - [Human-in-the-Loop (HITL)](#human-in-the-loop-hitl)
   - [Monitoring and Metrics](#monitoring-and-metrics)
     - [Performance Metrics](#performance-metrics)
     - [Error Tracking](#error-tracking)
@@ -175,6 +176,17 @@ Each step includes comprehensive retry logic for handling transient errors:
     "PageCount": "<TOTAL_PAGES>"
   }
   ```
+
+### Human-in-the-Loop (HITL)
+
+Pattern-2 supports Human-in-the-Loop (HITL) review capabilities using Amazon SageMaker Augmented AI (A2I). This feature allows human reviewers to validate and correct extracted information when the system's confidence falls below a specified threshold.
+
+**Pattern-2 Specific Configuration:**
+- `EnableHITL`: Boolean parameter to enable/disable the HITL feature
+- `IsPattern2HITLEnabled`: Boolean parameter specific to Pattern-2 HITL enablement
+- `Pattern2 - Existing Private Workforce ARN`: Optional parameter to use existing private workforce
+
+For comprehensive HITL documentation including workflow details, configuration steps, best practices, and troubleshooting, see the [Human-in-the-Loop Review Guide](./human-review.md).
 
 ### Monitoring and Metrics
 

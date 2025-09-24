@@ -130,6 +130,28 @@ def sync_explainability(inference_data, explainability_info):
         return updated
     return explainability_info
 
+def clean_empty_values(data):
+    """
+    Recursively convert empty string values to None for DynamoDB compatibility
+    while preserving the field structure.
+    """
+    if isinstance(data, dict):
+        cleaned = {}
+        for key, value in data.items():
+            if key and key.strip():  # Ensure key is not empty
+                cleaned_value = clean_empty_values(value)
+                # Convert empty strings to None, but keep the field
+                if cleaned_value == '':
+                    cleaned[key] = None
+                else:
+                    cleaned[key] = cleaned_value
+        return cleaned
+    elif isinstance(data, list):
+        return [clean_empty_values(item) for item in data]
+    else:
+        # Convert empty strings to None for DynamoDB compatibility
+        return None if data == '' else data
+
 def decimal_default(obj):
     if isinstance(obj, Decimal):
         return float(obj)
@@ -330,10 +352,13 @@ def process_Completed_hitl(detail, execution_id, record_id, page_id, table, s3_c
                 'explainability_info': updated_explainability
             }
 
+            # Clean empty values to prevent DynamoDB validation errors
+            cleaned_update = clean_empty_values(final_update)
+
             table.update_item(
                 Key={'execution_id': execution_id, 'record_number': record_id},
                 UpdateExpression='SET hitl_corrected_result = :val',
-                ExpressionAttributeValues={':val': final_update},
+                ExpressionAttributeValues={':val': cleaned_update},
                 ReturnValues='UPDATED_NEW'
             )
             

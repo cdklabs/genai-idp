@@ -4,9 +4,14 @@ import json
 import boto3
 import os
 import uuid
-import urllib.request
-import urllib.error
+import cfnresponse
+import logging
 import time
+from botocore.exceptions import ClientError
+
+# Initialize logging
+logger = logging.getLogger()
+logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 sagemaker = boto3.client('sagemaker')
 sts = boto3.client('sts')
@@ -103,53 +108,12 @@ def get_account_id():
     try:
         return sts.get_caller_identity()['Account']
     except Exception as e:
-        print(f"Warning: Could not get account ID: {e}")
+        logger.warning(f"Warning: Could not get account ID: {e}")
         return ""
 
 def get_region():
     """Get the current AWS region"""
     return os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
-
-def send_cfn_response(event, context, response_status, response_data, physical_resource_id=None, no_echo=False):
-    """Send a response to CloudFormation to indicate success or failure"""
-    response_url = event['ResponseURL']
-    
-    print(f"CFN response URL: {response_url}")
-    
-    response_body = {
-        'Status': response_status,
-        'Reason': f"See details in CloudWatch Log Stream: {context.log_stream_name}",
-        'PhysicalResourceId': physical_resource_id or context.log_stream_name,
-        'StackId': event['StackId'],
-        'RequestId': event['RequestId'],
-        'LogicalResourceId': event['LogicalResourceId'],
-        'NoEcho': no_echo,
-        'Data': response_data
-    }
-    
-    json_response_body = json.dumps(response_body)
-    
-    print(f"Response body: {json_response_body}")
-    
-    headers = {
-        'content-type': '',
-        'content-length': str(len(json_response_body))
-    }
-    
-    try:
-        response = urllib.request.Request(response_url, 
-                                        data=json_response_body.encode('utf-8'),
-                                        headers=headers,
-                                        method='PUT')
-        
-        with urllib.request.urlopen(response) as response:
-            print(f"Status code: {response.getcode()}")
-            print(f"Status message: {response.msg}")
-            
-        return True
-    except Exception as e:
-        print(f"Error sending response to CloudFormation: {str(e)}")
-        return False
 
 def create_human_task_ui(human_task_ui_name):
     # human_task_ui_name = f'{stack_name}-bda-hitl-template'
@@ -205,21 +169,28 @@ def create_human_task_ui(human_task_ui_name):
                 border-radius: 6px; box-shadow: var(--shadow);
             }
             
-            .zoom-controls { 
-                display: flex; gap: 8px;
+            .image-controls { 
+                display: flex; gap: 8px; align-items: center;
             }
             
-            .zoom-controls button {
+            .image-controls button {
                 background: var(--primary-blue);
                 color: white; border: none;
                 padding: 6px 12px; border-radius: 4px;
                 cursor: pointer; font-size: 12px;
                 transition: all 0.2s ease;
+                min-width: 32px;
             }
             
-            .zoom-controls button:hover {
+            .image-controls button:hover {
                 background: var(--dark-blue);
                 transform: translateY(-1px);
+            }
+            
+            .image-controls button:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+                transform: none;
             }
             
             .image-container {
@@ -227,12 +198,27 @@ def create_human_task_ui(human_task_ui_name):
                 height: calc(100vh - 80px);
                 border: 1px solid var(--border-gray);
                 border-radius: 6px; background: white;
+                cursor: grab;
+            }
+            
+            .image-container:active {
+                cursor: grabbing;
+            }
+            
+            .image-wrapper {
+                display: inline-block;
+                min-width: 100%;
+                min-height: 100%;
+                text-align: center;
+                transition: width 0.2s ease, height 0.2s ease;
             }
             
             #documentImage { 
                 display: block; margin: 0 auto;
-                cursor: crosshair; border-radius: 4px;
-                transition: transform 0.3s ease;
+                max-width: none; max-height: none;
+                border-radius: 4px;
+                transition: transform 0.2s ease;
+                transform-origin: center center;
             }
             
             .highlight-box {
@@ -445,19 +431,21 @@ def create_human_task_ui(human_task_ui_name):
                 <!-- Image Pane -->
                 <div class="image-pane">
                     <div class="controls-bar">
-                        <div class="zoom-controls">
-                            <button type="button" onclick="zoom(1.2)">Zoom In (+)</button>
-                            <button type="button" onclick="zoom(0.8)">Zoom Out (-)</button>
-                            <button type="button" onclick="resetZoom()">Reset</button>
+                        <div class="image-controls">
+                            <button type="button" onclick="zoomIn()">Zoom In (+)</button>
+                            <button type="button" onclick="zoomOut()">Zoom Out (-)</button>
+                            <button type="button" onclick="resetView()">Reset</button>
                         </div>
                         <div style="color: var(--primary-blue); font-weight: 600;">
                             Document Viewer
                         </div>
                     </div>
                     <div class="image-container" id="imageContainer">
-                        <img id="documentImage" 
-                            src="{{ task.input.sourceDocument | grant_read_access }}" 
-                            onload="initImage()">
+                        <div class="image-wrapper" id="imageWrapper">
+                            <img id="documentImage" 
+                                src="{{ task.input.sourceDocument | grant_read_access }}" 
+                                onload="initImage()">
+                        </div>
                     </div>
                 </div>
 
@@ -593,7 +581,8 @@ def create_human_task_ui(human_task_ui_name):
                             id="submitButton"
                             class="submit-button"
                             form-action="submit" 
-                            variant="primary">
+                            variant="primary"
+                            disabled="true">
                             ✓ Submit Review
                         </crowd-button>
                     </div>
@@ -604,13 +593,16 @@ def create_human_task_ui(human_task_ui_name):
         <script>
             let currentZoom = 1;
             let currentHighlight = null;
+            let isDragging = false;
+            let dragStart = { x: 0, y: 0 };
+            let scrollStart = { x: 0, y: 0 };
+            
             const imgElement = document.getElementById('documentImage');
             const imageContainer = document.getElementById('imageContainer');
-            let imgRect = null;
+            const imageWrapper = document.getElementById('imageWrapper');
 
             function initImage() {
-                imgRect = imgElement.getBoundingClientRect();
-                // Fit image to container initially
+                // Set initial size to fit container
                 const containerRect = imageContainer.getBoundingClientRect();
                 const imgAspect = imgElement.naturalWidth / imgElement.naturalHeight;
                 const containerAspect = containerRect.width / containerRect.height;
@@ -622,27 +614,71 @@ def create_human_task_ui(human_task_ui_name):
                     imgElement.style.width = 'auto';
                     imgElement.style.height = '100%';
                 }
-                updateImageRect();
-            }
-
-            function updateImageRect() {
-                imgRect = imgElement.getBoundingClientRect();
-            }
-
-            function zoom(factor) {
-                currentZoom *= factor;
-                currentZoom = Math.max(0.1, Math.min(5, currentZoom)); // Limit zoom range
-                imgElement.style.transform = `scale(${currentZoom})`;
-                imgElement.style.transformOrigin = 'center center';
-                setTimeout(updateImageRect, 100);
+                
+                updateWrapperSize();
                 updateHighlight();
             }
 
-            function resetZoom() {
+            function updateWrapperSize() {
+                // Calculate the actual displayed size of the image
+                const imgRect = imgElement.getBoundingClientRect();
+                const baseWidth = imgElement.offsetWidth;
+                const baseHeight = imgElement.offsetHeight;
+                
+                // Calculate the size needed for the zoomed image
+                const scaledWidth = baseWidth * currentZoom;
+                const scaledHeight = baseHeight * currentZoom;
+                
+                // Set wrapper size to accommodate the scaled image
+                imageWrapper.style.width = `${scaledWidth}px`;
+                imageWrapper.style.height = `${scaledHeight}px`;
+            }
+
+            function zoomIn() {
+                const centerX = imageContainer.scrollLeft + imageContainer.clientWidth / 2;
+                const centerY = imageContainer.scrollTop + imageContainer.clientHeight / 2;
+                
+                currentZoom = Math.min(currentZoom * 1.25, 4);
+                applyZoom();
+                
+                // Maintain center point
+                setTimeout(() => {
+                    const newCenterX = centerX * 1.25;
+                    const newCenterY = centerY * 1.25;
+                    
+                    imageContainer.scrollLeft = newCenterX - imageContainer.clientWidth / 2;
+                    imageContainer.scrollTop = newCenterY - imageContainer.clientHeight / 2;
+                }, 50);
+            }
+
+            function zoomOut() {
+                const centerX = imageContainer.scrollLeft + imageContainer.clientWidth / 2;
+                const centerY = imageContainer.scrollTop + imageContainer.clientHeight / 2;
+                
+                currentZoom = Math.max(currentZoom / 1.25, 0.25);
+                applyZoom();
+                
+                // Maintain center point
+                setTimeout(() => {
+                    const newCenterX = centerX / 1.25;
+                    const newCenterY = centerY / 1.25;
+                    
+                    imageContainer.scrollLeft = newCenterX - imageContainer.clientWidth / 2;
+                    imageContainer.scrollTop = newCenterY - imageContainer.clientHeight / 2;
+                }, 50);
+            }
+
+            function resetView() {
                 currentZoom = 1;
-                imgElement.style.transform = 'scale(1)';
-                setTimeout(updateImageRect, 100);
-                updateHighlight();
+                applyZoom();
+                imageContainer.scrollLeft = 0;
+                imageContainer.scrollTop = 0;
+            }
+
+            function applyZoom() {
+                imgElement.style.transform = `scale(${currentZoom})`;
+                updateWrapperSize();
+                setTimeout(updateHighlight, 100);
             }
 
             function updateHighlight() {
@@ -666,7 +702,6 @@ def create_human_task_ui(human_task_ui_name):
                     const containerRect = imageContainer.getBoundingClientRect();
                     const imgRect = imgElement.getBoundingClientRect();
                     
-                    // Calculate position relative to the scaled image
                     const left = imgRect.left - containerRect.left + (bbox.left * imgRect.width);
                     const top = imgRect.top - containerRect.top + (bbox.top * imgRect.height);
                     const width = bbox.width * imgRect.width;
@@ -678,15 +713,60 @@ def create_human_task_ui(human_task_ui_name):
                     currentHighlight.style.height = `${height}px`;
 
                     imageContainer.appendChild(currentHighlight);
+                    
+                    // Auto-scroll to highlight
+                    const scrollX = left - (imageContainer.clientWidth / 2) + (width / 2);
+                    const scrollY = top - (imageContainer.clientHeight / 2) + (height / 2);
+                    
+                    imageContainer.scrollTo({
+                        left: Math.max(0, scrollX),
+                        top: Math.max(0, scrollY),
+                        behavior: 'smooth'
+                    });
                 }
             }
 
+            // Mouse drag for panning
+            imageContainer.addEventListener('mousedown', (e) => {
+                if (currentZoom > 1) {
+                    isDragging = true;
+                    dragStart = { x: e.clientX, y: e.clientY };
+                    scrollStart = { x: imageContainer.scrollLeft, y: imageContainer.scrollTop };
+                    e.preventDefault();
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaX = e.clientX - dragStart.x;
+                    const deltaY = e.clientY - dragStart.y;
+                    
+                    imageContainer.scrollLeft = scrollStart.x - deltaX;
+                    imageContainer.scrollTop = scrollStart.y - deltaY;
+                    e.preventDefault();
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            // Mouse wheel zoom
+            imageContainer.addEventListener('wheel', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    if (e.deltaY < 0) {
+                        zoomIn();
+                    } else {
+                        zoomOut();
+                    }
+                }
+            });
+
             function switchTab(tabName) {
-                // Remove active class from all tabs and buttons
                 document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
                 
-                // Add active class to selected tab and button
                 document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
                 document.getElementById(`${tabName}Tab`).classList.add('active');
             }
@@ -710,8 +790,10 @@ def create_human_task_ui(human_task_ui_name):
                 
                 if (checkbox.checked) {
                     submitButton.classList.add('enabled');
+                    submitButton.removeAttribute('disabled');
                 } else {
                     submitButton.classList.remove('enabled');
+                    submitButton.setAttribute('disabled', 'true');
                 }
             }
 
@@ -744,27 +826,25 @@ def create_human_task_ui(human_task_ui_name):
                 }
             });
 
-            window.addEventListener('resize', updateImageRect);
+            window.addEventListener('resize', () => {
+                updateWrapperSize();
+                updateHighlight();
+            });
             
             // Keyboard shortcuts
             document.addEventListener('keydown', (e) => {
                 if (e.ctrlKey || e.metaKey) {
                     if (e.key === '=' || e.key === '+') {
                         e.preventDefault();
-                        zoom(1.2);
+                        zoomIn();
                     } else if (e.key === '-') {
                         e.preventDefault();
-                        zoom(0.8);
+                        zoomOut();
                     } else if (e.key === '0') {
                         e.preventDefault();
-                        resetZoom();
+                        resetView();
                     }
                 }
-            });
-
-            // Initialize with minimized document info
-            document.addEventListener('DOMContentLoaded', () => {
-                // Document info starts minimized by default
             });
         </script>
     </body>
@@ -780,8 +860,9 @@ def create_human_task_ui(human_task_ui_name):
         )
         return response['HumanTaskUiArn']
     except Exception as e:
-        print(f"Error creating HumanTaskUI: {e}")
-        return None
+        logger.error(f"Error creating HumanTaskUI: {e}")
+        # Re-raise the exception with the original error details
+        raise Exception(f"Failed to create human task UI: {str(e)}")
 
 
 def create_flow_definition(stack_name, human_task_ui_arn, a2i_workteam_arn, flow_definition_name):
@@ -803,8 +884,9 @@ def create_flow_definition(stack_name, human_task_ui_arn, a2i_workteam_arn, flow
         )
         return response['FlowDefinitionArn']
     except Exception as e:
-        print(f"Error creating FlowDefinition: {e}")
-        return None
+        logger.error(f"Error creating FlowDefinition: {e}")
+        # Re-raise the exception with the original error details
+        raise Exception(f"Failed to create flow definition: {str(e)}")
 
 
 def comprehensive_workforce_cleanup(workteam_name, stack_name):
@@ -815,7 +897,7 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
     cleanup_results = []
     
     try:
-        print(f"Starting comprehensive workforce cleanup for workteam: {workteam_name}")
+        logger.info(f"Starting comprehensive workforce cleanup for workteam: {workteam_name}")
         
         # Step 1: Clean up any remaining human loops
         try:
@@ -845,7 +927,7 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
             cleanup_results.append(f"Human loop cleanup failed: {e}")
         
         # Step 2: Wait for operations to settle
-        print("Waiting for SageMaker operations to settle...")
+        logger.info("Waiting for SageMaker operations to settle...")
         time.sleep(10)
         
         # Step 3: Check if workteam exists and try direct deletion
@@ -853,7 +935,7 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
         try:
             sagemaker.describe_workteam(WorkteamName=workteam_name)
             workteam_exists = True
-            print(f"Workteam {workteam_name} exists, attempting deletion")
+            logger.info(f"Workteam {workteam_name} exists, attempting deletion")
             
             try:
                 sagemaker.delete_workteam(WorkteamName=workteam_name)
@@ -873,7 +955,7 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
         
         # Step 4: ALWAYS check for and clean up orphaned workforces
         # This is critical - we must check regardless of workteam status
-        print("Checking for orphaned workforce resources...")
+        logger.info("Checking for orphaned workforce resources...")
         try:
             workforces = sagemaker.list_workforces()
             
@@ -906,7 +988,7 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
                         )
                         
                         if is_our_workforce:
-                            print(f"Found associated workforce: {workforce_name}")
+                            logger.info(f"Found associated workforce: {workforce_name}")
                             cleanup_results.append(f"Found workforce associated with our stack: {workforce_name}")
                             
                             # Check if workforce has any remaining workteams
@@ -914,14 +996,14 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
                                 # If workteam still exists, we already tried to delete it above
                                 # If workteam doesn't exist, we can safely delete the workforce
                                 if not workteam_exists:
-                                    print(f"Workteam already deleted, cleaning up orphaned workforce: {workforce_name}")
+                                    logger.info(f"Workteam already deleted, cleaning up orphaned workforce: {workforce_name}")
                                     sagemaker.delete_workforce(WorkforceName=workforce_name)
                                     cleanup_results.append(f"Deleted orphaned workforce: {workforce_name}")
                                     time.sleep(5)
                                     break
                                 else:
                                     # Workteam exists but deletion might have failed, try workforce deletion as fallback
-                                    print(f"Attempting workforce-level cleanup for: {workforce_name}")
+                                    logger.info(f"Attempting workforce-level cleanup for: {workforce_name}")
                                     sagemaker.delete_workforce(WorkforceName=workforce_name)
                                     cleanup_results.append(f"Deleted workforce (workteam deletion fallback): {workforce_name}")
                                     time.sleep(5)
@@ -940,7 +1022,7 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
                         # This handles cases where the workforce is in a bad state
                         if 'private-crowd' in workforce_name.lower():
                             try:
-                                print(f"Attempting cleanup of potentially orphaned workforce: {workforce_name}")
+                                logger.info(f"Attempting cleanup of potentially orphaned workforce: {workforce_name}")
                                 sagemaker.delete_workforce(WorkforceName=workforce_name)
                                 cleanup_results.append(f"Deleted potentially orphaned workforce: {workforce_name}")
                                 time.sleep(5)
@@ -953,10 +1035,10 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
             cleanup_results.append(f"Workforce listing/cleanup failed: {workforce_list_error}")
         
         # Step 5: Clean up default workforce if it exists
-        print("Checking for default workforce...")
+        logger.info("Checking for default workforce...")
         try:
             sagemaker.describe_workforce(WorkforceName='default')
-            print("Default workforce found, attempting cleanup...")
+            logger.info("Default workforce found, attempting cleanup...")
             try:
                 sagemaker.delete_workforce(WorkforceName='default')
                 cleanup_results.append("Successfully deleted default workforce")
@@ -970,7 +1052,7 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
                 cleanup_results.append(f"Error checking default workforce: {e}")
         
         # Step 6: Final verification - check both workteam and workforce status
-        print("Performing final verification...")
+        logger.info("Performing final verification...")
         try:
             time.sleep(5)
             sagemaker.describe_workteam(WorkteamName=workteam_name)
@@ -994,14 +1076,14 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
         except Exception as verification_error:
             cleanup_results.append(f"Could not verify workforce cleanup: {verification_error}")
         
-        print("Workforce cleanup completed")
-        print("Cleanup results:", cleanup_results)
+        logger.info("Workforce cleanup completed")
+        logger.info("Cleanup results:", cleanup_results)
         return cleanup_results
         
     except Exception as e:
         error_msg = f"Comprehensive workforce cleanup failed: {e}"
         cleanup_results.append(error_msg)
-        print(error_msg)
+        logger.info(error_msg)
         return cleanup_results
 
 
@@ -1022,10 +1104,10 @@ def wait_for_flow_definition_deletion(flow_definition_name, max_wait_time=180, c
     if context:
         safe_wait_time = calculate_safe_wait_time(context, max_wait_time, buffer_time=60)
         if safe_wait_time < max_wait_time:
-            print(f"Adjusting flow definition wait time from {max_wait_time}s to {safe_wait_time}s due to Lambda timeout constraints")
+            logger.info(f"Adjusting flow definition wait time from {max_wait_time}s to {safe_wait_time}s due to Lambda timeout constraints")
             max_wait_time = safe_wait_time
     
-    print(f"Waiting for flow definition '{flow_definition_name}' to be completely deleted (max {max_wait_time}s)...")
+    logger.info(f"Waiting for flow definition '{flow_definition_name}' to be completely deleted (max {max_wait_time}s)...")
     start_time = time.time()
     
     while time.time() - start_time < max_wait_time:
@@ -1033,22 +1115,22 @@ def wait_for_flow_definition_deletion(flow_definition_name, max_wait_time=180, c
             # Try to describe the flow definition
             sagemaker.describe_flow_definition(FlowDefinitionName=flow_definition_name)
             elapsed = int(time.time() - start_time)
-            print(f"Flow definition still exists, waiting... ({elapsed}s elapsed)")
+            logger.info(f"Flow definition still exists, waiting... ({elapsed}s elapsed)")
             time.sleep(check_interval)
         except sagemaker.exceptions.ResourceNotFound:
             elapsed = int(time.time() - start_time)
-            print(f"Flow definition '{flow_definition_name}' successfully deleted after {elapsed}s")
+            logger.info(f"Flow definition '{flow_definition_name}' successfully deleted after {elapsed}s")
             return True
         except Exception as e:
             if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
                 elapsed = int(time.time() - start_time)
-                print(f"Flow definition '{flow_definition_name}' successfully deleted after {elapsed}s")
+                logger.info(f"Flow definition '{flow_definition_name}' successfully deleted after {elapsed}s")
                 return True
             else:
-                print(f"Error checking flow definition status: {e}")
+                logger.error(f"Error checking flow definition status: {e}")
                 time.sleep(check_interval)
     
-    print(f"Timeout waiting for flow definition deletion after {max_wait_time}s")
+    logger.info(f"Timeout waiting for flow definition deletion after {max_wait_time}s")
     return False
 
 
@@ -1069,10 +1151,10 @@ def wait_for_human_task_ui_deletion(human_task_ui_name, max_wait_time=120, check
     if context:
         safe_wait_time = calculate_safe_wait_time(context, max_wait_time, buffer_time=30)
         if safe_wait_time < max_wait_time:
-            print(f"Adjusting human task UI wait time from {max_wait_time}s to {safe_wait_time}s due to Lambda timeout constraints")
+            logger.info(f"Adjusting human task UI wait time from {max_wait_time}s to {safe_wait_time}s due to Lambda timeout constraints")
             max_wait_time = safe_wait_time
     
-    print(f"Waiting for human task UI '{human_task_ui_name}' to be completely deleted (max {max_wait_time}s)...")
+    logger.info(f"Waiting for human task UI '{human_task_ui_name}' to be completely deleted (max {max_wait_time}s)...")
     start_time = time.time()
     
     while time.time() - start_time < max_wait_time:
@@ -1080,22 +1162,22 @@ def wait_for_human_task_ui_deletion(human_task_ui_name, max_wait_time=120, check
             # Try to describe the human task UI
             sagemaker.describe_human_task_ui(HumanTaskUiName=human_task_ui_name)
             elapsed = int(time.time() - start_time)
-            print(f"Human task UI still exists, waiting... ({elapsed}s elapsed)")
+            logger.info(f"Human task UI still exists, waiting... ({elapsed}s elapsed)")
             time.sleep(check_interval)
         except sagemaker.exceptions.ResourceNotFound:
             elapsed = int(time.time() - start_time)
-            print(f"Human task UI '{human_task_ui_name}' successfully deleted after {elapsed}s")
+            logger.info(f"Human task UI '{human_task_ui_name}' successfully deleted after {elapsed}s")
             return True
         except Exception as e:
             if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
                 elapsed = int(time.time() - start_time)
-                print(f"Human task UI '{human_task_ui_name}' successfully deleted after {elapsed}s")
+                logger.info(f"Human task UI '{human_task_ui_name}' successfully deleted after {elapsed}s")
                 return True
             else:
-                print(f"Error checking human task UI status: {e}")
+                logger.error(f"Error checking human task UI status: {e}")
                 time.sleep(check_interval)
     
-    print(f"Timeout waiting for human task UI deletion after {max_wait_time}s")
+    logger.info(f"Timeout waiting for human task UI deletion after {max_wait_time}s")
     return False
 
 
@@ -1115,22 +1197,22 @@ def delete_flow_definition(flow_definition_name, context=None):
         try:
             sagemaker.describe_flow_definition(FlowDefinitionName=flow_definition_name)
         except sagemaker.exceptions.ResourceNotFound:
-            print(f"Flow Definition '{flow_definition_name}' does not exist, skipping deletion.")
+            logger.info(f"Flow Definition '{flow_definition_name}' does not exist, skipping deletion.")
             return True
         except Exception as e:
             if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
-                print(f"Flow Definition '{flow_definition_name}' does not exist, skipping deletion.")
+                logger.info(f"Flow Definition '{flow_definition_name}' does not exist, skipping deletion.")
                 return True
         
         # Attempt deletion
         sagemaker.delete_flow_definition(FlowDefinitionName=flow_definition_name)
-        print(f"Flow Definition '{flow_definition_name}' deletion initiated.")
+        logger.info(f"Flow Definition '{flow_definition_name}' deletion initiated.")
         
         # Wait for deletion to complete
         return wait_for_flow_definition_deletion(flow_definition_name, context=context)
         
     except Exception as e:
-        print(f"Error deleting Flow Definition '{flow_definition_name}': {e}")
+        logger.error(f"Error deleting Flow Definition '{flow_definition_name}': {e}")
         return False
 
 
@@ -1145,21 +1227,21 @@ def delete_default_workforce():
         # First check if the default workforce exists
         try:
             workforce_response = sagemaker.describe_workforce(WorkforceName='default')
-            print("Default workforce found, attempting deletion...")
+            logger.info("Default workforce found, attempting deletion...")
         except sagemaker.exceptions.ResourceNotFound:
-            print("Default workforce does not exist, skipping deletion.")
+            logger.info("Default workforce does not exist, skipping deletion.")
             return True
         except Exception as e:
             if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
-                print("Default workforce does not exist, skipping deletion.")
+                logger.info("Default workforce does not exist, skipping deletion.")
                 return True
             else:
-                print(f"Error checking default workforce existence: {e}")
+                logger.error(f"Error checking default workforce existence: {e}")
                 return False
         
         # Attempt to delete the default workforce
         sagemaker.delete_workforce(WorkforceName='default')
-        print("Default workforce deletion initiated successfully.")
+        logger.info("Default workforce deletion initiated successfully.")
         
         # Wait a bit for the deletion to propagate
         time.sleep(5)
@@ -1167,21 +1249,21 @@ def delete_default_workforce():
         # Verify deletion
         try:
             sagemaker.describe_workforce(WorkforceName='default')
-            print("Warning: Default workforce still exists after deletion attempt")
+            logger.info("Warning: Default workforce still exists after deletion attempt")
             return False
         except sagemaker.exceptions.ResourceNotFound:
-            print("Default workforce successfully deleted.")
+            logger.info("Default workforce successfully deleted.")
             return True
         except Exception as e:
             if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
-                print("Default workforce successfully deleted.")
+                logger.info("Default workforce successfully deleted.")
                 return True
             else:
-                print(f"Error verifying default workforce deletion: {e}")
+                logger.error(f"Error verifying default workforce deletion: {e}")
                 return False
                 
     except Exception as e:
-        print(f"Error deleting default workforce: {e}")
+        logger.error(f"Error deleting default workforce: {e}")
         return False
 
 
@@ -1201,196 +1283,195 @@ def delete_human_task_ui(human_task_ui_name, context=None):
         try:
             sagemaker.describe_human_task_ui(HumanTaskUiName=human_task_ui_name)
         except sagemaker.exceptions.ResourceNotFound:
-            print(f"HumanTaskUI '{human_task_ui_name}' does not exist, skipping deletion.")
+            logger.info(f"HumanTaskUI '{human_task_ui_name}' does not exist, skipping deletion.")
             return True
         except Exception as e:
             if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
-                print(f"HumanTaskUI '{human_task_ui_name}' does not exist, skipping deletion.")
+                logger.info(f"HumanTaskUI '{human_task_ui_name}' does not exist, skipping deletion.")
                 return True
         
         # Attempt deletion
         sagemaker.delete_human_task_ui(HumanTaskUiName=human_task_ui_name)
-        print(f"HumanTaskUI '{human_task_ui_name}' deletion initiated.")
+        logger.info(f"HumanTaskUI '{human_task_ui_name}' deletion initiated.")
         
         # Wait for deletion to complete
         return wait_for_human_task_ui_deletion(human_task_ui_name, context=context)
         
     except Exception as e:
-        print(f"Error deleting HumanTaskUI '{human_task_ui_name}': {e}")
+        logger.error(f"Error deleting HumanTaskUI '{human_task_ui_name}': {e}")
         return False
 
 def handler(event, context):
-    stack_name = os.environ['STACK_NAME']
-    a2i_workteam_arn = os.environ['A2I_WORKTEAM_ARN']
-    
-    # Generate AWS-compliant resource names
-    resource_names = generate_resource_names(stack_name)
-    human_task_ui_name = resource_names['human_task_ui']
-    flow_definition_name = resource_names['flow_definition']
-    
-    # Create a consistent Physical Resource ID based on stack name
-    # This ensures CloudFormation recognizes this as the same resource across updates
+    """
+    Lambda handler for A2I resources management.
+    Ensures all exceptions are captured and proper CFN responses are sent.
+    """
+    # Initialize variables for exception handling
+    stack_name = os.environ.get('STACK_NAME', 'unknown')
     physical_resource_id = f"A2IResources-{stack_name}"
     
-    ssm = boto3.client('ssm')
-    
-    # For debugging
-    print(f"Event received: {json.dumps(event)}")
-    print(f"Request Type: {event.get('RequestType')}")
-    print(f"Physical Resource ID: {physical_resource_id}")
-    print(f"Using AWS-compliant names: HumanTaskUI={human_task_ui_name}, FlowDefinition={flow_definition_name}")
-    
-    response_data = {}
-    
     try:
-        # Handle CloudFormation lifecycle events
-        if event.get('RequestType') == 'Create':
-            print("Creating A2I Resources...")
-            # Ignore the SourceCodeHash property as it's only used to force updates
-            _ = event['ResourceProperties'].get('SourceCodeHash')
-            human_task_ui_arn = create_human_task_ui(human_task_ui_name)
-            if human_task_ui_arn:
-                flow_definition_arn = create_flow_definition(stack_name, human_task_ui_arn, a2i_workteam_arn,flow_definition_name)
-                if flow_definition_arn:
-                    # Store the Flow Definition ARN in SSM
-                    ssm.put_parameter(
-                        Name=f"/{stack_name}/FlowDefinitionArn",
-                        Value=flow_definition_arn,
-                        Type='String',
-                        Overwrite=True
-                    )
-                    
-                    # Create HITL confidence threshold SSM parameter with default value 80
-                    try:
-                        ssm.put_parameter(
-                            Name=f"/{stack_name}/hitl_confidence_threshold",
-                            Value="80",
-                            Type='String',
-                            Overwrite=True,
-                            Description="HITL confidence threshold for Pattern-1 BDA processing"
-                        )
-                        print(f"Created SSM parameter /{stack_name}/hitl_confidence_threshold with default value 80")
-                    except Exception as e:
-                        print(f"Warning: Failed to create HITL confidence threshold SSM parameter: {e}")
-                        # Don't fail the entire operation if SSM parameter creation fails
-                    
-                    response_data['HumanTaskUiArn'] = human_task_ui_arn
-                    response_data['FlowDefinitionArn'] = flow_definition_arn
-                    send_cfn_response(event, context, 'SUCCESS', response_data, physical_resource_id)
-                else:
-                    print("Failed to create flow definition")
-                    send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create flow definition'}, physical_resource_id)
-                    return
-            else:
-                print("Failed to create human task UI")
-                send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create human task UI'}, physical_resource_id)
-                return
+        logger.info(f"Event received: {json.dumps(event)}")
         
-        elif event.get('RequestType') == 'Update':
-            print("Updating A2I Resources...")
-            # Ignore the SourceCodeHash property as it's only used to force updates
-            _ = event['ResourceProperties'].get('SourceCodeHash')
+        # Validate required environment variables
+        a2i_workteam_arn = os.environ['A2I_WORKTEAM_ARN']
+        
+        # Generate resource names
+        resource_names = generate_resource_names(stack_name)
+        human_task_ui_name = resource_names['human_task_ui']
+        flow_definition_name = resource_names['flow_definition']
+        
+        logger.info(f"Request: {event.get('RequestType')}, Stack: {stack_name}")
+        logger.info(f"Resources: UI={human_task_ui_name}, Flow={flow_definition_name}")
+        
+        request_type = event.get('RequestType')
+        
+        if request_type == 'Create':
+            response_data = _handle_create(stack_name, human_task_ui_name, flow_definition_name, a2i_workteam_arn, event)
             
-            # Step 1: Delete existing resources and wait for completion
-            print("Deleting existing Flow Definition...")
-            flow_deletion_success = delete_flow_definition(flow_definition_name, context)
+        elif request_type == 'Update':
+            response_data = _handle_update(stack_name, human_task_ui_name, flow_definition_name, a2i_workteam_arn, event, context)
             
-            print("Deleting existing Human Task UI...")
-            ui_deletion_success = delete_human_task_ui(human_task_ui_name, context)
+        elif request_type == 'Delete':
+            response_data = _handle_delete(human_task_ui_name, flow_definition_name, context)
             
-            # Step 2: Verify deletions were successful
-            if not flow_deletion_success:
-                error_msg = f"Failed to delete existing Flow Definition '{flow_definition_name}' within timeout period"
-                print(error_msg)
-                send_cfn_response(event, context, 'FAILED', {'Error': error_msg}, physical_resource_id)
-                return
-                
-            if not ui_deletion_success:
-                error_msg = f"Failed to delete existing Human Task UI '{human_task_ui_name}' within timeout period"
-                print(error_msg)
-                send_cfn_response(event, context, 'FAILED', {'Error': error_msg}, physical_resource_id)
-                return
-            
-            print("All existing resources successfully deleted. Proceeding with recreation...")
-            
-            # Step 3: Add additional buffer time to ensure AWS services are ready
-            print("Adding buffer time for AWS service consistency...")
-            time.sleep(10)
-            
-            # Step 4: Create new resources
-            human_task_ui_arn = create_human_task_ui(human_task_ui_name)
-            if human_task_ui_arn:
-                flow_definition_arn = create_flow_definition(stack_name, human_task_ui_arn, a2i_workteam_arn, flow_definition_name)
-                if flow_definition_arn:
-                    # Store the Flow Definition ARN in SSM
-                    ssm.put_parameter(
-                        Name=f"/{stack_name}/FlowDefinitionArn",
-                        Value=flow_definition_arn,
-                        Type='String',
-                        Overwrite=True
-                    )
-                    response_data['HumanTaskUiArn'] = human_task_ui_arn
-                    response_data['FlowDefinitionArn'] = flow_definition_arn
-                    print("A2I Resources updated successfully")
-                    send_cfn_response(event, context, 'SUCCESS', response_data, physical_resource_id)
-                else:
-                    print("Failed to create new flow definition during update")
-                    send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create new flow definition during update'}, physical_resource_id)
-                    return
-            else:
-                print("Failed to create new human task UI during update")
-                send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create new human task UI during update'}, physical_resource_id)
-                return
-                
-        elif event.get('RequestType') == 'Delete':
-            print("Deleting A2I Resources...")
-            
-            # Step 1: Delete Flow Definition and Human Task UI with proper wait
-            print("Deleting Flow Definition...")
-            flow_deletion_success = delete_flow_definition(flow_definition_name, context)
-            
-            print("Deleting Human Task UI...")
-            ui_deletion_success = delete_human_task_ui(human_task_ui_name, context)
-            
-            # Log deletion results but don't fail the stack deletion if resources are already gone
-            if not flow_deletion_success:
-                print(f"Warning: Flow Definition '{flow_definition_name}' deletion may not have completed within timeout")
-            if not ui_deletion_success:
-                print(f"Warning: Human Task UI '{human_task_ui_name}' deletion may not have completed within timeout")
-            
-            # Step 2: Delete the default SageMaker workforce
-            print("Deleting default SageMaker workforce...")
-            default_workforce_deletion_success = delete_default_workforce()
-            if not default_workforce_deletion_success:
-                print("Warning: Default workforce deletion may not have completed successfully")
-            
-            # Step 3: Perform comprehensive workforce cleanup
-            # Extract workteam name from environment or construct it
-            workteam_arn = os.environ.get('A2I_WORKTEAM_ARN', '')
-            if workteam_arn:
-                # Extract workteam name from ARN
-                workteam_name = workteam_arn.split('/')[-1] if '/' in workteam_arn else ''
-                if workteam_name:
-                    print(f"Performing workforce cleanup for workteam: {workteam_name}")
-                    cleanup_results = comprehensive_workforce_cleanup(workteam_name, stack_name)
-                    print(f"Workforce cleanup completed with results: {len(cleanup_results)} operations")
-                else:
-                    print("Could not extract workteam name from ARN")
-            else:
-                print("No workteam ARN found in environment - skipping workforce cleanup")
-            
-            print("Success in deleting all A2I resources (Flow Definition, Human Task UI, and Workforce)")
-            send_cfn_response(event, context, 'SUCCESS', {}, physical_resource_id)
-            return
-            
-        # In case RequestType is not provided or recognized
         else:
-            print(f"Unknown RequestType: {event.get('RequestType')}")
-            send_cfn_response(event, context, 'FAILED', {'Error': f"Unknown RequestType: {event.get('RequestType')}"}, physical_resource_id)
-            return
+            raise ValueError(f"Unknown RequestType: {request_type}")
+        
+        logger.info(f"A2I Resources {request_type.lower()} completed successfully")
+        cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, physical_resource_id)
+        
+    except KeyError as e:
+        error_msg = f"Missing required environment variable: {str(e)}"
+        logger.error(error_msg)
+        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': error_msg}, physical_resource_id, reason=error_msg)
+        
+    except ValueError as e:
+        error_msg = f"Invalid request: {str(e)}"
+        logger.error(error_msg)
+        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': error_msg}, physical_resource_id, reason=error_msg)
+        
+    except ClientError as e:
+        error_msg = f"AWS service error: {str(e)}"
+        logger.error(error_msg)
+        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': error_msg}, physical_resource_id, reason=error_msg)
+        
     except Exception as e:
-        print(f"Error: {str(e)}")
-        # Use a fallback physical resource ID if the main one isn't available
-        fallback_physical_resource_id = f"A2IResources-{os.environ.get('STACK_NAME', 'unknown')}"
-        send_cfn_response(event, context, 'FAILED', {'Error': str(e)}, fallback_physical_resource_id)
-        return
+        error_msg = f"Unexpected error: {str(e)}"
+        logger.error(error_msg, exc_info=True)  # Include stack trace
+        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': error_msg}, physical_resource_id, reason=error_msg)
+
+
+def _handle_create(stack_name, human_task_ui_name, flow_definition_name, a2i_workteam_arn, event):
+    """Handle CREATE request"""
+    logger.info("Creating A2I Resources...")
+    
+    # Create resources (functions will raise exceptions on failure)
+    human_task_ui_arn = create_human_task_ui(human_task_ui_name)
+    flow_definition_arn = create_flow_definition(stack_name, human_task_ui_arn, a2i_workteam_arn, flow_definition_name)
+    
+    # Store ARN in SSM
+    ssm = boto3.client('ssm')
+    ssm.put_parameter(
+        Name=f"/{stack_name}/FlowDefinitionArn",
+        Value=flow_definition_arn,
+        Type='String',
+        Overwrite=True
+    )
+    
+    # Create HITL threshold parameter (non-critical)
+    try:
+        ssm.put_parameter(
+            Name=f"/{stack_name}/hitl_confidence_threshold",
+            Value="80",
+            Type='String',
+            Overwrite=True,
+            Description="HITL confidence threshold for Pattern-1 BDA processing"
+        )
+        logger.info("Created HITL confidence threshold parameter")
+    except Exception as e:
+        logger.warning(f"Failed to create HITL threshold parameter: {e}")
+    
+    return {
+        'HumanTaskUiArn': human_task_ui_arn,
+        'FlowDefinitionArn': flow_definition_arn
+    }
+
+
+def _handle_update(stack_name, human_task_ui_name, flow_definition_name, a2i_workteam_arn, event, context):
+    """Handle UPDATE request"""
+    logger.info("Updating A2I Resources...")
+    
+    # Delete existing resources
+    logger.info("Deleting existing resources...")
+    flow_success = delete_flow_definition(flow_definition_name, context)
+    ui_success = delete_human_task_ui(human_task_ui_name, context)
+    
+    if not flow_success:
+        raise Exception(f"Failed to delete existing Flow Definition '{flow_definition_name}' within timeout period")
+    if not ui_success:
+        raise Exception(f"Failed to delete existing Human Task UI '{human_task_ui_name}' within timeout period")
+    
+    logger.info("Existing resources deleted, recreating...")
+    time.sleep(10)  # Buffer time
+    
+    # Recreate resources (functions will raise exceptions on failure)
+    human_task_ui_arn = create_human_task_ui(human_task_ui_name)
+    flow_definition_arn = create_flow_definition(stack_name, human_task_ui_arn, a2i_workteam_arn, flow_definition_name)
+    
+    # Update SSM parameter
+    ssm = boto3.client('ssm')
+    ssm.put_parameter(
+        Name=f"/{stack_name}/FlowDefinitionArn",
+        Value=flow_definition_arn,
+        Type='String',
+        Overwrite=True
+    )
+    
+    return {
+        'HumanTaskUiArn': human_task_ui_arn,
+        'FlowDefinitionArn': flow_definition_arn
+    }
+
+
+def _handle_delete(human_task_ui_name, flow_definition_name, context):
+    """Handle DELETE request"""
+    logger.info("Deleting A2I Resources...")
+    
+    # Only delete A2I resources (Flow Definition and Human Task UI)
+    # Never delete workforce/workteam as they may be shared across deployments
+    flow_success = delete_flow_definition(flow_definition_name, context)
+    ui_success = delete_human_task_ui(human_task_ui_name, context)
+    
+    if not flow_success:
+        logger.warning(f"Flow Definition '{flow_definition_name}' deletion incomplete")
+    if not ui_success:
+        logger.warning(f"Human Task UI '{human_task_ui_name}' deletion incomplete")
+    
+    # Check if we're using an existing workforce (don't delete shared resources)
+    workteam_arn = os.environ.get('A2I_WORKTEAM_ARN', '')
+    stack_name = os.environ.get('STACK_NAME', '')
+    
+    # Only delete workforce if this stack created it (not using existing ARN)
+    # If workteam ARN contains the stack name, it was created by this stack
+    if workteam_arn and stack_name and stack_name.lower() in workteam_arn.lower():
+        logger.info("Deleting workforce created by this stack...")
+        
+        # Delete the default SageMaker workforce
+        workforce_success = delete_default_workforce()
+        if not workforce_success:
+            logger.warning("Default workforce deletion incomplete")
+        
+        # Cleanup workteam
+        if '/' in workteam_arn:
+            workteam_name = workteam_arn.split('/')[-1]
+            try:
+                cleanup_results = comprehensive_workforce_cleanup(workteam_name, stack_name)
+                logger.info(f"Workforce cleanup completed: {len(cleanup_results)} operations")
+            except Exception as e:
+                logger.warning(f"Workforce cleanup failed: {e}")
+    else:
+        logger.info("Using existing workforce - skipping workforce deletion to preserve shared resources")
+    
+    logger.info("A2I resources deletion completed")
+    return {}

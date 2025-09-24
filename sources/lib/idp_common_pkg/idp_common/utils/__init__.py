@@ -602,3 +602,34 @@ def extract_structured_data_from_text(text: str, preferred_format: str = 'auto')
         # If both fail, return original text
         logger.warning("Could not parse as either JSON or YAML, returning original text")
         return text, 'unknown'
+
+def check_token_limit(document_text: str, extraction_results: Dict[str, Any], config: Dict[str, Any]) -> \
+Optional[str]:
+    """
+    Create token limit warning message based on the configured value of max_tokens
+
+    Args:
+        document_text: The document text content
+        extraction_results: Extraction results dictionary
+        config: Configuration dictionary containing model and assessment settings
+
+    Returns:
+        Error message based on the configured_max_tokens, None otherwise
+    """
+    # Information for logging and troubleshooting
+    assessment_config = config.get("assessment", {})
+    logger.info(f"assessment_config: {assessment_config}")
+    model_id = config.get("model_id") or assessment_config.get("model", "unknown")
+    logger.info(f"model_id: {model_id}")
+    configured_max_tokens = assessment_config.get("max_tokens")
+    logger.info(f"configured_max_tokens: {configured_max_tokens}")
+    estimated_tokens = (len(document_text) + len(str(extraction_results))) / 4
+    logger.info(f"Estimated tokens: {estimated_tokens}")
+    if configured_max_tokens and int(configured_max_tokens) < estimated_tokens:
+        return (
+            f"The max_tokens value of {configured_max_tokens} is too low for this document."
+        )
+    else:
+        logger.info(f"This document is configured with {int(configured_max_tokens)} max_tokens, "
+                    f" requires approximately {int(estimated_tokens)} tokens.")
+    return None

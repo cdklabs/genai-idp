@@ -7,6 +7,15 @@ This guide covers how to deploy, build, publish, and test the GenAI Intelligent 
 
 ## Deployment Options
 
+### Administrator Access Requirements
+
+**Important**: Deploying the GenAI IDP Accelerator requires administrator access to your AWS account. However, for organizations that want to enable non-administrator users to deploy and manage IDP stacks, we provide an optional CloudFormation service role approach:
+
+- **For Administrators**: Use the deployment options below with your existing administrator privileges
+- **For Delegated Access**: See [iam-roles/cloudformation-management/README.md](../iam-roles/cloudformation-management/README.md) for instructions on provisioning a CloudFormation service role that allows non-administrator users to deploy and maintain IDP stacks without requiring administrator permissions
+
+### One-Click Deployment
+
 | US East (N.Virginia)      | us-east-1   | [![Launch Stack](https://cdn.rawgit.com/buildkite/cloudformation-launch-stack-button-svg/master/launch-stack.svg)](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/create/review?templateURL=https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main.yaml&stackName=IDP) |
 
 3. Review the template parameters and provide values as needed
@@ -26,9 +35,12 @@ You need to have the following packages installed on your computer:
 3. [sam (AWS SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
 4. python 3.11 or later
 5. A local Docker daemon
-6. Python packages for publish.py: `pip install boto3 typer rich botocore`
+6. Python packages for publish.py: `pip install boto3 rich typer PyYAML botocore setuptools`
 
-For guidance on setting up a development environment, see: [Development Environment Setup Guide on Linux](./setup-development-env-linux.md) or [Development Environment Setup Guide on MacOS](./setup-development-env-macos.md)
+For guidance on setting up a development environment, see:
+- [Development Environment Setup Guide on Linux](./setup-development-env-linux.md) 
+- [Development Environment Setup Guide on macOS](./setup-development-env-macos.md)
+- [Development Environment Setup Guide on Windows (WSL)](./setup-development-env-WSL.md)
 
 Copy the repo to your computer. Either:
 - Use the git command to clone the repo, if you have access

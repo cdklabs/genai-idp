@@ -40,7 +40,7 @@ print_error() {
 
 # Print usage information
 print_usage() {
-    echo "Usage: $0 <cfn_bucket_basename> <cfn_prefix> <region> [public] [--max-workers N] [--verbose]"
+    echo "Usage: $0 <cfn_bucket_basename> <cfn_prefix> <region> [public] [--max-workers N] [--verbose] [--no-validate] [--clean-build]"
     echo ""
     echo "Arguments:"
     echo "  <cfn_bucket_basename>  Base name for the CloudFormation artifacts bucket"
@@ -51,11 +51,13 @@ print_usage() {
     echo "  public                Make artifacts publicly readable"
     echo "  --max-workers N       Maximum number of concurrent workers"
     echo "  --verbose, -v         Enable verbose output"
+    echo "  --no-validate         Skip CloudFormation template validation"
+    echo "  --clean-build         Delete all .checksum files to force full rebuild"
     echo ""
     echo "Examples:"
     echo "  $0 my-bucket idp us-east-1"
     echo "  $0 my-bucket idp us-west-2 public --verbose"
-    echo "  $0 my-bucket idp us-east-1 --max-workers 2"
+    echo "  $0 my-bucket idp us-east-1 --max-workers 2 --clean-build"
 }
 
 # Check if Python 3.12+ is available
@@ -88,14 +90,21 @@ check_python_version() {
 check_and_install_packages() {
     print_info "Checking required Python packages..."
     
-    # List of required packages
-    required_packages=("typer" "rich" "boto3")
+    # List of required packages (import_name:package_name pairs)
+    required_packages=(
+        "typer:typer"
+        "rich:rich"
+        "boto3:boto3"
+        "yaml:PyYAML"
+    )
     missing_packages=()
     
     # Check each package
-    for package in "${required_packages[@]}"; do
-        if ! $PYTHON_CMD -c "import $package" >/dev/null 2>&1; then
-            missing_packages+=("$package")
+    for package_pair in "${required_packages[@]}"; do
+        import_name="${package_pair%%:*}"
+        package_name="${package_pair##*:}"
+        if ! $PYTHON_CMD -c "import $import_name" >/dev/null 2>&1; then
+            missing_packages+=("$package_name")
         fi
     done
     

@@ -104,6 +104,11 @@ The "Chat with Document" feature is available at the bottom of the Document Deta
 
 Your chat history will be saved as you continue your chat but if you leave the document details screen, your chat history is erased. This feature uses prompt caching for the document contents for repeated chat requests for each document.
 
+See the feature in action in this video:  
+ 
+https://github.com/user-attachments/assets/50607084-96d6-4833-85a6-3dc0e72b28ac
+
+
 ### How to Use
 
 1. Navigate to a document's detail page and scroll to the bottom

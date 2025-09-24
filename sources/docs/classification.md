@@ -20,66 +20,7 @@ The solution supports multiple classification approaches that vary by pattern:
 
 Pattern 2 offers two main classification approaches, configured through different templates:
 
-#### Text-Based Holistic Classification (Default)
-
-- Analyzes entire document packets to identify logical boundaries
-- Identifies distinct document segments within multi-page documents
-- Determines document type for each segment
-- Better suited for multi-document packets where context spans multiple pages
-- Deployed when you select the default pattern-2 configuration during stack deployment or update
-
-The default configuration in `config_library/pattern-2/default/config.yaml` implements this approach with a task prompt that instructs the model to:
-
-1. Read through the entire document package to understand its contents
-2. Identify page ranges that form complete, distinct documents
-3. Match each document segment to one of the defined document types
-4. Record the start and end pages for each identified segment
-
-Example configuration:
-
-```yaml
-classification:
-  classificationMethod: textbasedHolisticClassification
-  model: us.amazon.nova-pro-v1:0
-  task_prompt: >-
-    <task-description>
-    You are a document classification system. Your task is to analyze a document package 
-    containing multiple pages and identify distinct document segments, classifying each 
-    segment according to the predefined document types provided below.
-    </task-description>
-
-    <document-types>
-    {CLASS_NAMES_AND_DESCRIPTIONS}
-    </document-types>
-
-    <document-boundary-rules>
-    Rules for determining document boundaries:
-    - Content continuity: Pages with continuing paragraphs, numbered sections, or ongoing narratives belong to the same document
-    - Visual consistency: Similar layouts, headers, footers, and styling indicate pages belong together
-    - Logical structure: Documents typically have clear beginning, middle, and end sections
-    - New document indicators: Title pages, cover sheets, or significantly different subject matter signal a new document
-    </document-boundary-rules>
-
-    <<CACHEPOINT>>
-
-    <document-text>
-    {DOCUMENT_TEXT}
-    </document-text>
-  ```
-
-## Limitations of Text-Based Holistic Classification
-
-Despite its strengths in handling full-document context, this method has several limitations:
-
-**Context & Model Constraints:**: 
-- Long documents can exceed the context window of smaller models, resulting in request failure.
-- Lengthy inputs may dilute the model’s focus, leading to inaccurate or inconsistent classifications.
-- Requires high-context models such as Amazon Nova Premier, which supports up to 1 million tokens. Smaller models are not suitable for this method.
-- For more details on supported models and their context limits, refer to the [Amazon Bedrock Supported Models documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html).
-
-**Scalability Challenges**: Not ideal for very large or visually complex document sets. In such cases, the Multi-Modal Page-Level Classification method is more appropriate.
-
-#### MultiModal Page-Level Classification with Sequence Segmentation
+#### MultiModal Page-Level Classification with Sequence Segmentation (default)
 
 - Classifies each page independently using both text and image data
 - **Uses sequence segmentation with BIO-like tagging for document boundary detection**
@@ -141,6 +82,64 @@ The boundary detection is automatically included in the classification results. 
   }
 }
 ```
+#### Text-Based Holistic Classification
+
+- Analyzes entire document packets to identify logical boundaries
+- Identifies distinct document segments within multi-page documents
+- Determines document type for each segment
+- Better suited for multi-document packets where context spans multiple pages
+- Deployed when you select the default pattern-2 configuration during stack deployment or update
+
+The default configuration in `config_library/pattern-2/default/config.yaml` implements this approach with a task prompt that instructs the model to:
+
+1. Read through the entire document package to understand its contents
+2. Identify page ranges that form complete, distinct documents
+3. Match each document segment to one of the defined document types
+4. Record the start and end pages for each identified segment
+
+Example configuration:
+
+```yaml
+classification:
+  classificationMethod: textbasedHolisticClassification
+  model: us.amazon.nova-pro-v1:0
+  task_prompt: >-
+    <task-description>
+    You are a document classification system. Your task is to analyze a document package 
+    containing multiple pages and identify distinct document segments, classifying each 
+    segment according to the predefined document types provided below.
+    </task-description>
+
+    <document-types>
+    {CLASS_NAMES_AND_DESCRIPTIONS}
+    </document-types>
+
+    <document-boundary-rules>
+    Rules for determining document boundaries:
+    - Content continuity: Pages with continuing paragraphs, numbered sections, or ongoing narratives belong to the same document
+    - Visual consistency: Similar layouts, headers, footers, and styling indicate pages belong together
+    - Logical structure: Documents typically have clear beginning, middle, and end sections
+    - New document indicators: Title pages, cover sheets, or significantly different subject matter signal a new document
+    </document-boundary-rules>
+
+    <<CACHEPOINT>>
+
+    <document-text>
+    {DOCUMENT_TEXT}
+    </document-text>
+  ```
+
+##### Limitations of Text-Based Holistic Classification
+
+Despite its strengths in handling full-document context, this method has several limitations:
+
+**Context & Model Constraints:**: 
+- Long documents can exceed the context window of smaller models, resulting in request failure.
+- Lengthy inputs may dilute the model’s focus, leading to inaccurate or inconsistent classifications.
+- Requires high-context models such as Amazon Nova Premier, which supports up to 1 million tokens. Smaller models are not suitable for this method.
+- For more details on supported models and their context limits, refer to the [Amazon Bedrock Supported Models documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html).
+
+**Scalability Challenges**: Not ideal for very large or visually complex document sets. In such cases, the Multi-Modal Page-Level Classification method is more appropriate.
 
 ### Pattern 3: UDOP-Based Classification
 
@@ -181,6 +180,22 @@ When deciding between Text-Based Holistic Classification and MultiModal Page-Lev
 | Large Documents | Limited by context | No practical limit |
 
 ## Customizing Classification in Pattern 2
+
+### Configuration Settings
+
+#### Page Limit Configuration
+
+Control how many pages are used for classification:
+
+```yaml
+classification:
+  maxPagesForClassification: "ALL"  # Default: use all pages
+  # Or: "1", "2", "3", etc. - use only first N pages
+```
+
+**Important**: When set to a number (e.g., `"3"`), only the first N pages are classified, but the result is applied to ALL pages in the document. This forces the entire document to be assigned a single class with one section.
+
+### Prompt Components
 
 In Pattern 2, you can customize classification behavior through various prompt components:
 
@@ -577,6 +592,143 @@ The classification service uses the new `extract_structured_data_from_text()` fu
 - Handles malformed content gracefully
 - Returns both parsed data and detected format for logging
 
+## Regex-Based Classification for Performance Optimization
+
+Pattern 2 now supports optional regex-based classification that can provide significant performance improvements and cost savings by bypassing LLM calls when document patterns are recognized.
+
+### Document Name Regex (All Pages Same Class)
+
+When you want all pages of a document to be classified as the same class, you can use document name regex to instantly classify entire documents based on their filename or ID:
+
+```yaml
+classes:
+  - name: Payslip
+    description: "Employee wage statement showing earnings and deductions"
+    document_name_regex: "(?i).*(payslip|paystub|salary|wage).*"
+    attributes:
+      - name: EmployeeName
+        description: "Name of the employee"
+        attributeType: simple
+```
+
+**Benefits:**
+- **Instant Classification**: Entire document classified without any LLM calls
+- **Massive Performance Gains**: ~100-1000x faster than LLM classification
+- **Zero Token Usage**: Complete elimination of API costs for matched documents
+- **Deterministic Results**: Consistent classification for known patterns
+
+**When document ID matches the pattern:**
+- All pages are immediately classified as the matching class
+- Single section is created containing all pages
+- No backend service calls are made
+- Info logging confirms regex match
+
+### Page Content Regex (Multi-Modal Page-Level Classification)
+
+For multi-class configurations using page-level classification, you can use page content regex to classify individual pages based on text patterns:
+
+```yaml
+classification:
+  classificationMethod: multimodalPageLevelClassification
+
+classes:
+  - name: Invoice
+    description: "Business invoice document"
+    document_page_content_regex: "(?i)(invoice\\s+number|bill\\s+to|amount\\s+due)"
+    attributes:
+      - name: InvoiceNumber
+        description: "Invoice number"
+        attributeType: simple
+  - name: Payslip
+    description: "Employee wage statement"
+    document_page_content_regex: "(?i)(gross\\s+pay|net\\s+pay|employee\\s+id)"
+    attributes:
+      - name: EmployeeName
+        description: "Employee name"
+        attributeType: simple
+  - name: Other
+    description: "Documents that don't match specific patterns"
+    # No regex - will always use LLM
+    attributes: []
+```
+
+**Benefits:**
+- **Selective Performance Gains**: Pages matching patterns are classified instantly
+- **Mixed Processing**: Some pages use regex, others fall back to LLM
+- **Cost Optimization**: Reduced token usage proportional to regex matches
+- **Maintained Accuracy**: LLM fallback ensures all pages are properly classified
+
+**How it works:**
+- Each page's text content is checked against all class regex patterns
+- First matching pattern wins and classifies the page instantly
+- Pages with no matches use standard LLM classification
+- Results are seamlessly integrated into document sections
+
+### Regex Pattern Best Practices
+
+1. **Case-Insensitive Matching**: Always use `(?i)` flag
+   ```regex
+   (?i).*(invoice|bill).*  # Matches any case variation
+   ```
+
+2. **Flexible Whitespace**: Use `\\s+` for varying spaces/tabs
+   ```regex
+   (?i)(gross\\s+pay|net\\s+pay)  # Handles "gross pay", "gross  pay"
+   ```
+
+3. **Multiple Alternatives**: Use `|` for different terms
+   ```regex
+   (?i).*(payslip|paystub|salary|wage).*  # Any of these terms
+   ```
+
+4. **Balanced Specificity**: Specific enough to avoid false matches
+   ```regex
+   # Good: Specific to W2 forms
+   (?i)(form\\s+w-?2|wage\\s+and\\s+tax|employer\\s+identification)
+   
+   # Too broad: Could match many documents
+   (?i)(form|wage|tax)
+   ```
+
+### Performance Analysis
+
+Use `notebooks/examples/step2_classification_with_regex.ipynb` to:
+- Test regex patterns against your documents
+- Compare processing speeds (regex vs LLM)
+- Analyze cost savings through token usage reduction
+- Validate classification accuracy
+- Debug pattern matching behavior
+
+### Error Handling
+
+The regex system includes robust error handling:
+- **Invalid Patterns**: Compilation errors are logged, system falls back to LLM
+- **Runtime Failures**: Pattern matching errors default to LLM classification  
+- **Graceful Degradation**: Service continues working with invalid regex
+- **Comprehensive Logging**: Detailed logs for debugging pattern issues
+
+### Configuration Examples
+
+**Common Document Types:**
+```yaml
+classes:
+  # W2 Tax Forms
+  - name: W2
+    document_page_content_regex: "(?i)(form\\s+w-?2|wage\\s+and\\s+tax|social\\s+security)"
+    
+  # Bank Statements  
+  - name: Bank-Statement
+    document_page_content_regex: "(?i)(account\\s+number|statement\\s+period|beginning\\s+balance)"
+    
+  # Driver Licenses
+  - name: US-drivers-licenses
+    document_page_content_regex: "(?i)(driver\\s+license|state\\s+id|date\\s+of\\s+birth)"
+    
+  # Invoices
+  - name: Invoice
+    document_page_content_regex: "(?i)(invoice\\s+number|bill\\s+to|remit\\s+payment)"
+```
+
 ## Best Practices for Classification
 
 1. **Provide Clear Class Descriptions**: Include distinctive features and common elements
@@ -595,3 +747,7 @@ The classification service uses the new `extract_structured_data_from_text()` fu
 14. **Test Segmentation Logic**: Verify that documents are correctly separated by reviewing section boundaries in the results
 15. **Consider Document Flow**: Ensure your document classes account for typical document structures (headers, body, footers)
 16. **Leverage BIO-like Tagging**: Take advantage of the automatic boundary detection to eliminate manual document splitting
+17. **Use Regex for Known Patterns**: Add regex patterns for document types with predictable content or naming conventions
+18. **Test Regex Thoroughly**: Validate regex patterns against diverse document samples before production use
+19. **Balance Regex Specificity**: Make patterns specific enough to avoid false matches but flexible enough to catch variations
+20. **Monitor Regex Performance**: Track how often regex patterns match vs fall back to LLM classification

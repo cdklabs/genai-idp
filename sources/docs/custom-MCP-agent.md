@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT-0
 
 The GenAI IDP solution includes support for External MCP (Model Context Protocol) Agents that can connect to your own MCP servers to provide additional tools and capabilities. This enables you to extend the IDP system with custom functionality hosted in your own infrastructure.
 
+
+https://github.com/user-attachments/assets/630ec15d-6aef-4e57-aa01-40c8663a5510
+
+
 ## Overview
 
 The External MCP Agent allows you to:
@@ -16,23 +20,9 @@ The External MCP Agent allows you to:
 - **Real-time Integration**: Tools are available immediately through the IDP web interface
 
 ## Architecture
+An example architecture demonstrating the authentication flow and connections between the MCP Client (running in the IDP application) and an external MCP Server (deployed outside of the IDP application) can be seen below. The `get_client_address` and `send_verification_email` APIs drawn are just for demonstration purposes.
 
-```
-┌─────────────────────┐    ┌──────────────────────┐    ┌─────────────────────┐
-│   IDP Solution      │    │   Your AWS Account   │    │   Your MCP Server   │
-│                     │    │                      │    │                     │
-│ ┌─────────────────┐ │    │ ┌──────────────────┐ │    │ ┌─────────────────┐ │
-│ │ External MCP    │ │    │ │ AWS Cognito      │ │    │ │ Custom Tools    │ │
-│ │ Agent           │◄┼────┼─┤ User Pool        │◄┼────┼─┤ - Calculator    │ │
-│ │                 │ │    │ │                  │ │    │ │ - Weather API   │ │
-│ └─────────────────┘ │    │ └──────────────────┘ │    │ │ - Database      │ │
-│                     │    │                      │    │ │ - Custom Logic  │ │
-│ ┌─────────────────┐ │    │                      │    │ └─────────────────┘ │
-│ │ AWS Secrets     │ │    │                      │    │                     │
-│ │ Manager         │ │    │                      │    │                     │
-│ └─────────────────┘ │    │                      │    │                     │
-└─────────────────────┘    └──────────────────────┘    └─────────────────────┘
-```
+![Architecture Diagram](../images/IDP-external-mcp-example.drawio.png)
 
 ## Prerequisites
 

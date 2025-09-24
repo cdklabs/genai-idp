@@ -56,14 +56,15 @@ integration_tests:
   #   AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
   #   IDP_ACCOUNT_ID: ${IDP_ACCOUNT_ID}
   
-  # Add rules to only run on develop branch
+ # Add rules to only run on develop branch
+ # Add rules to only run on develop branch
   rules:
     - if: $CI_COMMIT_BRANCH == "develop"
-      when: manual # always # When idp-accelerator CICD is reconfigured
+      when: always # always # When idp-accelerator CICD is reconfigured
     - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
-      when: manual
+      when: always
     - if: $CI_COMMIT_BRANCH =~ /^fix\/.*/
-      when: manual
+      when: always
     - if: $CI_COMMIT_BRANCH =~ /^hotfix\/.*/
       when: manual
     - if: $CI_COMMIT_BRANCH =~ /^release\/.*/

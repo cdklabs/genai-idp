@@ -39,6 +39,8 @@ White-glove customization, deployment, and integration support for production us
 - **Cost Optimization**: Pay-per-use pricing model with built-in controls
 - **Comprehensive Monitoring**: Rich CloudWatch dashboard with detailed metrics and logs
 - **Web User Interface**: Modern UI for inspecting document workflow status and results
+- **Human-in-the-Loop (HITL)**: Amazon A2I integration for human review workflows (Pattern 1 & Pattern 2)
+  - **Note**: When deploying multiple patterns with HITL, reuse existing private workteam ARN due to AWS account limits
 - **AI-Powered Evaluation**: Framework to assess accuracy against baseline data
 - **Extraction Confidence Assessment**: LLM-powered assessment of extraction confidence with multimodal document analysis
 - **Document Knowledge Base Query**: Ask questions about your processed documents
@@ -126,8 +128,10 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Agent Analysis](./docs/agent-analysis.md) - Natural language analytics and data visualization feature
 - [Custom MCP Agent](./docs/custom-MCP-agent.md) - Integrating external MCP servers for custom tools and capabilities
 - [Configuration](./docs/configuration.md) - Configuration and customization options
+- [Discovery](./docs/discovery.md) - Pattern-neutral discovery process and BDA blueprint automation
 - [Classification](./docs/classification.md) - Customizing document classification
 - [Extraction](./docs/extraction.md) - Customizing information extraction
+- [Human-in-the-Loop Review](./docs/human-review.md) - Human review workflows with Amazon A2I
 - [Assessment](./docs/assessment.md) - Extraction confidence evaluation using LLMs
 - [Evaluation Framework](./docs/evaluation.md) - Accuracy assessment system with analytics database and reporting
 - [Knowledge Base](./docs/knowledge-base.md) - Document knowledge base query feature

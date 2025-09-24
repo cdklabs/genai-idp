@@ -79,6 +79,13 @@ extras_require = {
         "ipykernel>=6.29.5,<7.0.0",
         "jupyter>=1.1.1,<2.0.0",
     ],
+    # Agents module dependencies
+    "agents": [
+        "strands-agents>=1.0.0",
+        "strands-agents-tools>=0.2.2",
+        "bedrock-agentcore>=0.1.1",  # Specifically for the code interpreter tool
+        "regex>=2024.0.0,<2026.0.0",  # Pin regex version to avoid conflicts
+    ],
     # Full package with all dependencies
     "all": [
         "Pillow==11.2.1",
@@ -91,6 +98,10 @@ extras_require = {
         "pyarrow==20.0.0",
         "openpyxl==3.1.5",
         "python-docx==1.2.0",
+        "strands-agents>=1.0.0",
+        "strands-agents-tools>=0.2.2",
+        "bedrock-agentcore>=0.1.1",
+        "regex>=2024.0.0,<2026.0.0",
     ],
 }
 
