@@ -1,6 +1,7 @@
 {
   "files": [
     ".gitattributes",
+    ".github/dependabot.yml",
     ".github/pull_request_template.md",
     ".github/workflows/auto-approve.yml",
     ".github/workflows/auto-queue.yml",
