@@ -1381,7 +1381,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "1fe8e90d565f5dad7cc5a2a2c4de85299e6d598f55be41b613da1f088c59c54d.zip"
+     "S3Key": "bd407025befb1de25f03591dbcab67a671c2e33dc7b924c2c93a456f6f577b1e.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service"
    },
@@ -5127,7 +5127,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "aa6da71ebf7c59fe0852ef95851248e982474d2ab3e2c80d3317b66bf920eadb.zip"
+     "S3Key": "b6eeb40628d7247f5e2ca6d354e65a0cd91ee235d3412a40f1b9df9a7b1c5a31.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr"
    },
@@ -5144,7 +5144,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "bcc3308fc98b29e514ad89681cf5f7b8388da5b6816b38964b44942577704142.zip"
+     "S3Key": "67c203203e8f3292916315e76aa6cec45825440f736bcb9854d89dd834d905d8.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service"
    },
@@ -5161,7 +5161,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "44d473a36325e6afd18972211edc3b08e0ef958ba4ecd5c342d60c99cbbb1d1c.zip"
+     "S3Key": "4d038b5ee6c28a6a9ec57f6fcbb3f8e7c961a7f8a1de35e58aa7cd03da8f5864.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction"
    },
@@ -5178,7 +5178,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "551b87244f3d5e688f258876c8d7ac0dd286490f918a9d877719bffa2dc0995a.zip"
+     "S3Key": "df43f488c20411ad3f15e82d3df832634519a99c34cff139bfe6a446cb8ca65c.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service"
    },

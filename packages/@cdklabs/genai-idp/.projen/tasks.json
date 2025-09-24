@@ -81,6 +81,12 @@
           "spawn": "bundle:handler:delete_document_resolver"
         },
         {
+          "spawn": "bundle:handler:discovery_processor"
+        },
+        {
+          "spawn": "bundle:handler:discovery_upload_resolver"
+        },
+        {
           "spawn": "bundle:handler:evaluation_function"
         },
         {
@@ -103,6 +109,9 @@
         },
         {
           "spawn": "bundle:handler:lookup_function"
+        },
+        {
+          "spawn": "bundle:handler:process_changes_resolver"
         },
         {
           "spawn": "bundle:handler:publish_stepfunction_update_resolver"
@@ -269,6 +278,28 @@
         }
       ]
     },
+    "bundle:handler:discovery_processor": {
+      "name": "bundle:handler:discovery_processor",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/discovery_processor"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/discovery_processor/ assets/lambdas/discovery_processor/."
+        }
+      ]
+    },
+    "bundle:handler:discovery_upload_resolver": {
+      "name": "bundle:handler:discovery_upload_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/discovery_upload_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/discovery_upload_resolver/ assets/lambdas/discovery_upload_resolver/."
+        }
+      ]
+    },
     "bundle:handler:evaluation_function": {
       "name": "bundle:handler:evaluation_function",
       "steps": [
@@ -354,6 +385,17 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/src/lambda/lookup_function/ assets/lambdas/lookup_function/."
+        }
+      ]
+    },
+    "bundle:handler:process_changes_resolver": {
+      "name": "bundle:handler:process_changes_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/process_changes_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/process_changes_resolver/ assets/lambdas/process_changes_resolver/."
         }
       ]
     },

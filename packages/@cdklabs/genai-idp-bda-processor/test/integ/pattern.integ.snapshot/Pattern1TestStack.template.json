@@ -1381,7 +1381,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "1fe8e90d565f5dad7cc5a2a2c4de85299e6d598f55be41b613da1f088c59c54d.zip"
+     "S3Key": "bd407025befb1de25f03591dbcab67a671c2e33dc7b924c2c93a456f6f577b1e.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service"
    },
@@ -4769,7 +4769,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "14041c432454ed4a2356dcbf0daf363fe0220263a67212926bbf724856875c64.zip"
+     "S3Key": "c341bb13a73f2698c3795dadfc76f92348e523b5280d5b429ba0d617830812dd.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only)"
    },
@@ -4786,7 +4786,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "8e2eefd7aadff4c66f06900f0f8b661c23488b3f3a731b51878a8cfe5f9ddec1.zip"
+     "S3Key": "2f5faad137f3adfdbdcc004ba35be0be42786564acb9a56b0491202b0d0e18ef.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: appsync, summarization"
    },

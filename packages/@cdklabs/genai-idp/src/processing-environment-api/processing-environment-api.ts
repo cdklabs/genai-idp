@@ -22,6 +22,7 @@ import { AgentAnalytics } from "../agent-analytics";
 import { LogLevel } from "../log-level";
 import { ProcessingEnvironmentApiBaseProps } from "./processing-environment-api-base-props";
 import { IConfigurationTable } from "../configuration-table";
+import { IDocumentDiscovery } from "../document-discovery";
 import { VpcConfiguration } from "../vpc-configuration";
 import * as functions from "./functions";
 import { IReportingEnvironment } from "../reporting/reporting-environment";
@@ -129,6 +130,13 @@ export interface ProcessingEnvironmentApiProps
    * processing status through the GraphQL API.
    */
   readonly stateMachine?: stepfunctions.IStateMachine;
+
+  /**
+   * Optional document discovery for automated document analysis.
+   * When provided, enables document discovery capabilities including
+   * automated configuration generation and document structure analysis.
+   */
+  readonly documentDiscovery?: IDocumentDiscovery;
 }
 
 /**
@@ -264,6 +272,11 @@ export class ProcessingEnvironmentApi
       props.outputBucket,
     );
     this.addConfigurationTable(props.configurationTable);
+
+    // Add optional Discovery functionality
+    if (props.documentDiscovery) {
+      this.addDocumentDiscovery(props.documentDiscovery);
+    }
   }
 
   /**
@@ -291,41 +304,6 @@ export class ProcessingEnvironmentApi
       );
     this.createGetStepFunctionExecutionQueryResolver(
       getStepFunctionExecutionDataSource,
-    );
-
-    // Add Step Function update publisher mutation resolver
-    const publishStepFunctionUpdateDataSource =
-      this.addPublishStepFunctionUpdateDataSource(
-        this._encryptionKey,
-        this._logLevel,
-        this._logRetention,
-        this._vpcConfiguration,
-      );
-    this.createPublishStepFunctionUpdateMutationResolver(
-      publishStepFunctionUpdateDataSource,
-    );
-
-    // Add automatic Step Function subscription publisher (EventBridge-triggered)
-    // This function automatically publishes execution updates when Step Functions status changes
-    new functions.StepFunctionSubscriptionPublisherFunction(
-      this,
-      "StepFunctionSubscriptionPublisher",
-      {
-        stateMachine: stateMachine,
-        graphqlApiUrl: this.graphqlUrl,
-        graphqlApiArn: this.arn,
-        logLevel: this._logLevel,
-        encryptionKey: this._encryptionKey,
-        logGroup: new logs.LogGroup(
-          this,
-          "StepFunctionSubscriptionPublisherLogGroup",
-          {
-            encryptionKey: this._encryptionKey,
-            retention: this._logRetention || logs.RetentionDays.ONE_WEEK,
-          },
-        ),
-        ...this._vpcConfiguration,
-      },
     );
   }
 
@@ -906,74 +884,6 @@ export class ProcessingEnvironmentApi
       dataSource: dataSource,
       typeName: "Query",
       fieldName: "getStepFunctionExecution",
-    });
-  }
-
-  /**
-   * Add Publish Step Function Update Data Source to the GraphQL API.
-   *
-   * This method creates a Lambda data source for publishing Step Functions execution updates.
-   * The data source can be used to create resolvers that allow clients to publish
-   * execution updates that trigger GraphQL subscriptions for real-time monitoring.
-   *
-   * @param encryptionKey The KMS key for encryption
-   * @param logLevel The log level for the function
-   * @param logRetention The log retention period
-   * @param vpcConfiguration The VPC configuration
-   * @returns The created Lambda data source
-   */
-  private addPublishStepFunctionUpdateDataSource(
-    encryptionKey?: kms.IKey,
-    logLevel?: LogLevel,
-    logRetention?: logs.RetentionDays,
-    vpcConfiguration?: VpcConfiguration,
-  ): appsync.LambdaDataSource {
-    const publishStepFunctionUpdateResolverFunction =
-      new functions.PublishStepFunctionUpdateResolverFunction(
-        this,
-        "PublishStepFunctionUpdateResolverFunction",
-        {
-          logLevel: logLevel,
-          encryptionKey: encryptionKey,
-          logGroup: new logs.LogGroup(
-            this,
-            "PublishStepFunctionUpdateResolverLogGroup",
-            {
-              encryptionKey: encryptionKey,
-              retention: logRetention || logs.RetentionDays.ONE_WEEK,
-            },
-          ),
-          ...vpcConfiguration,
-        },
-      );
-
-    return this.addLambdaDataSource(
-      "PublishStepFunctionUpdateDataSource",
-      publishStepFunctionUpdateResolverFunction,
-      {
-        name: "PublishStepFunctionUpdateResolver",
-        description:
-          "Publish Step Functions execution updates for GraphQL subscriptions",
-      },
-    );
-  }
-
-  /**
-   * Create Publish Step Function Update Mutation Resolver using the provided data source.
-   *
-   * This method creates a resolver that handles Step Functions execution update mutations
-   * using the specified Lambda data source. This enables real-time updates through subscriptions.
-   *
-   * @param dataSource The Lambda data source for Step Functions update publishing
-   * @returns The created resolver
-   */
-  private createPublishStepFunctionUpdateMutationResolver(
-    dataSource: appsync.LambdaDataSource,
-  ): appsync.Resolver {
-    return this.createResolver("PublishStepFunctionUpdateResolver", {
-      dataSource: dataSource,
-      typeName: "Mutation",
-      fieldName: "publishStepFunctionExecutionUpdate",
     });
   }
 
@@ -1567,5 +1477,97 @@ export class ProcessingEnvironmentApi
       typeName: "Query",
       fieldName: "chatWithDocument",
     });
+  }
+
+  /**
+   * Add Document Discovery capabilities to the GraphQL API.
+   *
+   * This method adds document discovery functionality including automated
+   * document analysis and configuration generation capabilities.
+   *
+   * @param documentDiscovery The document discovery construct with table, queue, and functions
+   */
+  public addDocumentDiscovery(documentDiscovery: IDocumentDiscovery): void {
+    // Add upload discovery document resolver
+    const discoveryUploadDataSource = this.addLambdaDataSource(
+      "DiscoveryUploadDataSource",
+      documentDiscovery.uploadResolverFunction,
+      {
+        name: "DiscoveryUploadResolver",
+        description: "Lambda function for discovery document uploads",
+      },
+    );
+
+    this.createResolver("UploadDiscoveryDocumentResolver", {
+      dataSource: discoveryUploadDataSource,
+      typeName: "Mutation",
+      fieldName: "uploadDiscoveryDocument",
+    });
+
+    // Add discovery table data source for queries
+    const discoveryTableDataSource = this.addDynamoDbDataSource(
+      "DiscoveryTableDataSource",
+      documentDiscovery.discoveryTable,
+    );
+
+    // Create list discovery jobs resolver
+    discoveryTableDataSource.createResolver("ListDiscoveryJobsResolver", {
+      typeName: "Query",
+      fieldName: "listDiscoveryJobs",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "version": "2017-02-28",
+          "operation": "Scan",
+          "limit": $util.defaultIfNull($ctx.args.limit, 20),
+          "nextToken": $util.toJson($util.defaultIfNullOrBlank($ctx.args.nextToken, null))
+        }
+      `),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "DiscoveryJobs": $util.toJson($ctx.result.items),
+          "nextToken": $util.toJson($util.defaultIfNullOrBlank($ctx.result.nextToken, null))
+        }
+      `),
+    });
+
+    // Create update discovery job status resolver (for internal use)
+    discoveryTableDataSource.createResolver(
+      "UpdateDiscoveryJobStatusResolver",
+      {
+        typeName: "Mutation",
+        fieldName: "updateDiscoveryJobStatus",
+        requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "version": "2017-02-28",
+          "operation": "UpdateItem",
+          "key": {
+            "jobId": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          },
+          "update": {
+            "expression": "SET #status = :status, updatedAt = :updatedAt",
+            "expressionNames": {
+              "#status": "status"
+            },
+            "expressionValues": {
+              ":status": $util.dynamodb.toDynamoDBJson($ctx.args.status),
+              ":updatedAt": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601())
+            }
+          }
+        }
+        #if($ctx.args.errorMessage)
+          $util.qr($ctx.stash.put("errorMessage", $ctx.args.errorMessage))
+          $util.qr($ctx.stash.get("update").put("expression", "SET #status = :status, updatedAt = :updatedAt, errorMessage = :errorMessage"))
+          $util.qr($ctx.stash.get("update").get("expressionValues").put(":errorMessage", $util.dynamodb.toDynamoDBJson($ctx.args.errorMessage)))
+        #end
+      `),
+        responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "jobId": "$ctx.result.jobId",
+          "status": "$ctx.result.status",
+          "errorMessage": "$util.defaultIfNull($ctx.result.errorMessage, null)"
+        }
+      `),
+      },
+    );
   }
 }

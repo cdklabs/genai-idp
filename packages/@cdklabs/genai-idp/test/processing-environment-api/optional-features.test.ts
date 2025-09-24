@@ -292,7 +292,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
       });
 
       // Verify Lambda functions are created for all features
-      template.resourceCountIs("AWS::Lambda::Function", 9);
+      template.resourceCountIs("AWS::Lambda::Function", 7);
     });
 
     test("public methods can be called after construction", () => {
