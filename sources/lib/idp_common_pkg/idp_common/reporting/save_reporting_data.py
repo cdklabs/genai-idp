@@ -376,7 +376,7 @@ class SaveReportingData:
             return False
 
         # Escape section_type to make it table-name-safe
-        escaped_section_type = re.sub(r"[/\\:*?\"<>|]", "_", section_type.lower())
+        escaped_section_type = re.sub(r"[/\\:*?\"<>|-]", "_", section_type.lower())
         table_name = f"document_sections_{escaped_section_type}"
 
         # Convert schema to Glue columns

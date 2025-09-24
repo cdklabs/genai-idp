@@ -110,7 +110,13 @@ class GovCloudTemplateGenerator:
             'UpdateAgentJobStatusResolver',
             'DeleteAgentJobResolver',
             'ListAvailableAgentsResolver',
-            'ListAvailableAgentsDataSource'
+            'ListAvailableAgentsDataSource',
+            'DiscoveryJobsResolver',
+            'DiscoveryProcessorFunction',
+            'DiscoveryTableDataSource',
+            'DiscoveryUploadDocumentResolver',
+            'DiscoveryUploadResolverDataSource',
+            'UpdateDiscoveryJobStatusResolver'
         }
         
         self.auth_resources = {
@@ -194,7 +200,8 @@ class GovCloudTemplateGenerator:
             'WebUITestEnvFile',
             'SageMakerA2IReviewPortalURL',
             'LabelingConsoleURL',
-            'ExternalMCPAgentsSecretName'
+            'ExternalMCPAgentsSecretName',
+            'PrivateWorkteamArn'
         }
 
     def setup_logging(self):
@@ -508,11 +515,112 @@ class GovCloudTemplateGenerator:
         
         return template
 
+    def clean_cloudfront_policy_statements(self, template: Dict[str, Any]) -> Dict[str, Any]:
+        """Remove CloudFront-related policy statements from remaining resources"""
+        self.logger.info("Removing CloudFront policy statements from remaining resources")
+        
+        resources = template.get('Resources', {})
+        
+        for resource_name, resource_def in resources.items():
+            if not isinstance(resource_def, dict):
+                continue
+                
+            # Handle S3 Bucket Policies
+            if resource_def.get('Type') == 'AWS::S3::BucketPolicy':
+                policy_doc = resource_def.get('Properties', {}).get('PolicyDocument', {})
+                if self._clean_policy_document(policy_doc, resource_name):
+                    self.logger.debug(f"Cleaned CloudFront policy statements from {resource_name}")
+            
+            # Handle IAM Role policies
+            elif resource_def.get('Type') == 'AWS::IAM::Role':
+                policies = resource_def.get('Properties', {}).get('Policies', [])
+                for policy in policies:
+                    if isinstance(policy, dict) and 'PolicyDocument' in policy:
+                        policy_name = policy.get('PolicyName', 'unnamed')
+                        if self._clean_policy_document(policy['PolicyDocument'], f"{resource_name}.{policy_name}"):
+                            self.logger.debug(f"Cleaned CloudFront policy statements from {resource_name}.{policy_name}")
+        
+        return template
+
+    def _clean_policy_document(self, policy_doc: Dict[str, Any], resource_identifier: str) -> bool:
+        """Clean CloudFront-related statements from a policy document. Returns True if changes were made."""
+        if not isinstance(policy_doc, dict) or 'Statement' not in policy_doc:
+            return False
+        
+        statements = policy_doc['Statement']
+        if not isinstance(statements, list):
+            return False
+        
+        original_count = len(statements)
+        cleaned_statements = []
+        
+        for statement in statements:
+            if not isinstance(statement, dict):
+                cleaned_statements.append(statement)
+                continue
+            
+            # Check if this statement has CloudFront service principal
+            principal = statement.get('Principal', {})
+            should_remove = False
+            
+            if isinstance(principal, dict):
+                service = principal.get('Service')
+                if isinstance(service, str):
+                    # Check for cloudfront service reference
+                    if 'cloudfront.' in service.lower():
+                        should_remove = True
+                        self.logger.debug(f"Removing CloudFront policy statement from {resource_identifier}: {statement.get('Sid', 'unnamed')}")
+                elif isinstance(service, dict):
+                    # Handle CloudFormation intrinsic functions like Fn::Sub
+                    if 'Fn::Sub' in service:
+                        fn_sub_value = service['Fn::Sub']
+                        if isinstance(fn_sub_value, str) and 'cloudfront.' in fn_sub_value.lower():
+                            should_remove = True
+                            self.logger.debug(f"Removing CloudFront policy statement (Fn::Sub) from {resource_identifier}: {statement.get('Sid', 'unnamed')}")
+                elif isinstance(service, list):
+                    # Filter out cloudfront services from service list
+                    filtered_services = []
+                    for s in service:
+                        should_filter = False
+                        if isinstance(s, str) and 'cloudfront.' in s.lower():
+                            should_filter = True
+                        elif isinstance(s, dict) and 'Fn::Sub' in s:
+                            fn_sub_value = s['Fn::Sub']
+                            if isinstance(fn_sub_value, str) and 'cloudfront.' in fn_sub_value.lower():
+                                should_filter = True
+                        
+                        if not should_filter:
+                            filtered_services.append(s)
+                    
+                    if len(filtered_services) != len(service):
+                        if len(filtered_services) == 0:
+                            # If no services left, remove the entire statement
+                            should_remove = True
+                            self.logger.debug(f"Removing CloudFront-only policy statement from {resource_identifier}: {statement.get('Sid', 'unnamed')}")
+                        else:
+                            # Update the service list
+                            statement = statement.copy()
+                            statement['Principal'] = principal.copy()
+                            statement['Principal']['Service'] = filtered_services
+                            self.logger.debug(f"Filtered CloudFront services from policy statement in {resource_identifier}: {statement.get('Sid', 'unnamed')}")
+            
+            if not should_remove:
+                cleaned_statements.append(statement)
+        
+        # Update the policy document with cleaned statements
+        policy_doc['Statement'] = cleaned_statements
+        
+        # Return whether changes were made
+        return len(cleaned_statements) != original_count
+
     def clean_template_for_headless_deployment(self, template: Dict[str, Any]) -> Dict[str, Any]:
         """Clean template for headless GovCloud deployment by working with parsed YAML directly"""
         self.logger.info("Cleaning template for headless GovCloud deployment")
         
         resources = template.get('Resources', {})
+        
+        # Remove CloudFront policy statements from remaining resources
+        template = self.clean_cloudfront_policy_statements(template)
         
         # Remove CORS configurations from all S3 buckets since no web UI in GovCloud
         s3_bucket_types = ['AWS::S3::Bucket']
@@ -789,7 +897,7 @@ class GovCloudTemplateGenerator:
                 self.logger.debug(traceback.format_exc())
             return False
 
-    def print_deployment_summary(self, bucket_name: str, prefix: str, region: str, standard_url: str, govcloud_url: str = ""):
+    def print_deployment_summary(self, bucket_name: str, prefix: str, region: str, govcloud_url: str = ""):
         """Print deployment outputs in the same format as the original publish script"""
         from urllib.parse import quote
         
@@ -801,35 +909,22 @@ class GovCloudTemplateGenerator:
         print(f"  • GovCloud Template Path: {prefix}/idp-govcloud.yaml")
         
         print(f"\nDeployment Outputs")
-        
-        # Standard template outputs
-        print(f"\n🌐 Standard AWS Template:")
-        
-        # 1-Click Launch for standard template
-        encoded_standard_url = quote(standard_url, safe=":/?#[]@!$&'()*+,;=")
-        standard_launch_url = f"https://{region}.console.aws.amazon.com/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_standard_url}&stackName=IDP"
-        print(f"1-Click Launch (creates new stack):")
-        print(f"  {standard_launch_url}")
-        print(f"Template URL (for updating existing stack):")
-        print(f"  {standard_url}")
-        
+                     
         # GovCloud template outputs (if available)
         if govcloud_url:
             print(f"\n🏛️  GovCloud Template:")
             
             # 1-Click Launch for GovCloud template
             encoded_govcloud_url = quote(govcloud_url, safe=":/?#[]@!$&'()*+,;=")
-            govcloud_launch_url = f"https://{region}.console.aws.amazon.com/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_govcloud_url}&stackName=IDP-GovCloud"
+            if "us-gov" in region:
+                domain="aws.amazonaws-us-gov.com"
+            else:
+                domain="aws.amazon.com"
+            govcloud_launch_url = f"https://{region}.console.{domain}/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_govcloud_url}&stackName=IDP-GovCloud"
             print(f"1-Click Launch (creates new stack):")
             print(f"  {govcloud_launch_url}")
             print(f"Template URL (for updating existing stack):")
             print(f"  {govcloud_url}")
-            
-            print(f"\nGovCloud Features:")
-            print(f"  • Headless operation (no web UI)")
-            print(f"  • Direct S3/CLI access for documents")
-            print(f"  • All 3 processing patterns supported")
-            print(f"  • Complete monitoring and alerting")
 
 
 def main():
@@ -855,6 +950,12 @@ Examples:
     # With verbose output and concurrency control
     python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --verbose --max-workers 4
 
+    # With clean build (forces full rebuild)
+    python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --clean-build
+
+    # With clean build (forces full rebuild)
+    python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --clean-build
+
     # Public artifacts
     python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 public
         """
@@ -868,6 +969,7 @@ Examples:
     parser.add_argument('--max-workers', type=int, help='Maximum number of concurrent workers')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose output')
     parser.add_argument('--skip-build', action='store_true', help='Skip the build step and only generate/upload GovCloud template')
+    parser.add_argument('--clean-build', action='store_true', help='Delete all .checksum files to force full rebuild')
     
     # Parse known args to handle the flexible argument structure
     args, unknown = parser.parse_known_args()
@@ -883,6 +985,12 @@ Examples:
     
     if args.verbose:
         publish_args.append('--verbose')
+    
+    if args.clean_build:
+        publish_args.append('--clean-build')
+    
+    # Always skip validation in publish.py since we validate the GovCloud template separately
+    publish_args.append('--no-validate')
     
     # Add any unknown arguments
     publish_args.extend(unknown)
@@ -943,10 +1051,8 @@ Examples:
         print("STEP 4: Deployment Summary")
         print("=" * 60)
         
-        # Generate standard template URL (using standard format - works for both AWS and GovCloud)
-        standard_url = f"https://s3.{args.region}.amazonaws.com/{bucket_name}/{args.cfn_prefix}/idp-main.yaml"
-        
-        generator.print_deployment_summary(bucket_name, args.cfn_prefix, args.region, standard_url, govcloud_url)
+       
+        generator.print_deployment_summary(bucket_name, args.cfn_prefix, args.region, govcloud_url)
         
         print("✅ Complete GovCloud publication process finished successfully!")
         print("   Both standard and GovCloud templates are ready for deployment.")

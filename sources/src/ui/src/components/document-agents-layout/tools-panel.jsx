@@ -14,7 +14,7 @@ const ToolsPanel = () => {
           </h3>
           <ul>
             <li>
-              <a href="https://gitlab.aws.dev/genaiic-reusable-assets/engagement-artifacts/genaiic-idp-accelerator/-/blob/main/README.md">
+              <a href="https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/blob/main/README.md">
                 GenAI IDP Accelerator Documentation
               </a>
             </li>

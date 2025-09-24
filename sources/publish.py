@@ -13,17 +13,16 @@ import concurrent.futures
 import hashlib
 import json
 import os
-import platform
 import shutil
 import subprocess
 import sys
-import threading
 import time
 import zipfile
 from pathlib import Path
 from urllib.parse import quote
 
 import boto3
+import yaml
 from botocore.exceptions import ClientError
 from rich.console import Console
 from rich.progress import (
@@ -34,6 +33,8 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
+
+LIB_DEPENDENCY = "./lib/idp_common_pkg/idp_common"
 
 
 class IDPPublisher:
@@ -52,11 +53,50 @@ class IDPPublisher:
         self.public = False
         self.main_template = "idp-main.yaml"
         self.use_container_flag = ""
-        self.stat_cmd = None
+
         self.s3_client = None
         self.cf_client = None
-        self._print_lock = threading.Lock()  # Thread-safe printing
-        self.skip_validation = False  # Flag to skip lambda validation
+        self._is_lib_changed = False
+        self.skip_validation = False
+
+    def clean_checksums(self):
+        """Delete all .checksum files in main, patterns, options, and lib directories"""
+        self.console.print("[yellow]🧹 Cleaning all .checksum files...[/yellow]")
+
+        checksum_paths = [
+            ".checksum",  # main
+            "lib/.checksum",  # lib
+        ]
+
+        # Add patterns checksum files
+        patterns_dir = "patterns"
+        if os.path.exists(patterns_dir):
+            for item in os.listdir(patterns_dir):
+                pattern_path = os.path.join(patterns_dir, item)
+                if os.path.isdir(pattern_path):
+                    checksum_paths.append(f"{pattern_path}/.checksum")
+
+        # Add options checksum files
+        options_dir = "options"
+        if os.path.exists(options_dir):
+            for item in os.listdir(options_dir):
+                option_path = os.path.join(options_dir, item)
+                if os.path.isdir(option_path):
+                    checksum_paths.append(f"{option_path}/.checksum")
+
+        deleted_count = 0
+        for checksum_path in checksum_paths:
+            if os.path.exists(checksum_path):
+                os.remove(checksum_path)
+                self.console.print(f"[green]  ✓ Deleted {checksum_path}[/green]")
+                deleted_count += 1
+
+        if deleted_count == 0:
+            self.console.print("[dim]  No .checksum files found to delete[/dim]")
+        else:
+            self.console.print(
+                f"[green]✅ Deleted {deleted_count} .checksum files - full rebuild will be triggered[/green]"
+            )
 
     def log_verbose(self, message, style="dim"):
         """Log verbose messages if verbose mode is enabled"""
@@ -75,6 +115,24 @@ class IDPPublisher:
             self.console.print(
                 f"[red]❌ {component} build failed (use --verbose for details)[/red]"
             )
+
+    def run_subprocess_with_logging(self, cmd, component_name, cwd=None):
+        """Run subprocess with standardized logging"""
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+        if result.returncode != 0:
+            error_msg = f"""Command failed: {" ".join(cmd)}
+Working directory: {cwd or os.getcwd()}
+Return code: {result.returncode}
+
+STDOUT:
+{result.stdout}
+
+STDERR:
+{result.stderr}"""
+            print(error_msg)
+            self.log_error_details(component_name, error_msg)
+            return False, error_msg
+        return True, result
 
     def print_error_summary(self):
         """Print summary of all build errors"""
@@ -101,7 +159,7 @@ class IDPPublisher:
         """Print usage information with Rich formatting"""
         self.console.print("\n[bold cyan]Usage:[/bold cyan]")
         self.console.print(
-            "  python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [public] [--max-workers N] [--verbose]"
+            "  python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [public] [--max-workers N] [--verbose] [--no-validate] [--clean-build]"
         )
 
         self.console.print("\n[bold cyan]Parameters:[/bold cyan]")
@@ -121,6 +179,12 @@ class IDPPublisher:
         )
         self.console.print(
             "  [yellow][--verbose, -v][/yellow]: Optional. Enable verbose output for debugging"
+        )
+        self.console.print(
+            "  [yellow][--no-validate][/yellow]: Optional. Skip CloudFormation template validation"
+        )
+        self.console.print(
+            "  [yellow][--clean-build][/yellow]: Optional. Delete all .checksum files to force full rebuild"
         )
 
     def check_parameters(self, args):
@@ -179,6 +243,13 @@ class IDPPublisher:
             elif arg in ["--verbose", "-v"]:
                 # Verbose flag is already handled by Typer, just acknowledge it here
                 pass
+            elif arg == "--no-validate":
+                self.skip_validation = True
+                self.console.print(
+                    "[yellow]CloudFormation template validation will be skipped[/yellow]"
+                )
+            elif arg == "--clean-build":
+                self.clean_checksums()
             else:
                 self.console.print(
                     f"[yellow]Warning: Unknown argument '{arg}' ignored[/yellow]"
@@ -210,19 +281,8 @@ class IDPPublisher:
         self.prefix_and_version = f"{self.prefix}/{self.version}"
         self.bucket = f"{self.bucket_basename}-{self.region}"
 
-        # Set platform-specific commands
-        if platform.machine() == "x86_64":
-            self.stat_cmd = "stat --format='%Y'"
-        else:
-            self.stat_cmd = "stat -f %m"
-
         # Set UDOP model path based on region
-        if self.region == "us-east-1":
-            self.public_sample_udop_model = "s3://aws-ml-blog-us-east-1/artifacts/genai-idp/udop-finetuning/rvl-cdip/model.tar.gz"
-        elif self.region == "us-west-2":
-            self.public_sample_udop_model = "s3://aws-ml-blog-us-west-2/artifacts/genai-idp/udop-finetuning/rvl-cdip/model.tar.gz"
-        else:
-            self.public_sample_udop_model = ""
+        self.public_sample_udop_model = f"s3://aws-ml-blog-{self.region}/artifacts/genai-idp/udop-finetuning/rvl-cdip/model.tar.gz"
 
     def check_prerequisites(self):
         """Check for required commands and versions"""
@@ -262,22 +322,6 @@ class IDPPublisher:
                 f"[red]Error: Python version >= {min_python_version} is required. (Installed version is {python_version})[/red]"
             )
             sys.exit(1)
-
-    def ensure_aws_sam_directory(self):
-        """Ensure .aws-sam directory exists"""
-        aws_sam_dir = ".aws-sam"
-
-        if not os.path.exists(aws_sam_dir):
-            self.console.print(
-                "[yellow].aws-sam directory not found. Creating it...[/yellow]"
-            )
-            os.makedirs(aws_sam_dir, exist_ok=True)
-            self.console.print(
-                "[green]✅ Successfully created .aws-sam directory[/green]"
-            )
-        else:
-            if self.verbose:
-                self.console.print("[dim].aws-sam directory already exists[/dim]")
 
     def version_compare(self, version1, version2):
         """Compare two version strings. Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2"""
@@ -333,7 +377,8 @@ class IDPPublisher:
                     )
                     sys.exit(1)
             else:
-                self.console.print(f"[red]Error accessing bucket: {e}[/red]")
+                self.console.print("[red]Error accessing bucket:[/red]")
+                self.console.print(str(e), style="red", markup=False)
                 sys.exit(1)
 
     def get_file_checksum(self, file_path):
@@ -444,104 +489,12 @@ class IDPPublisher:
         combined = "".join(checksums)
         return hashlib.sha256(combined.encode()).hexdigest()
 
-    def clean_and_build(self, template_path):
-        """Clean previous build artifacts and run sam build"""
-        dir_path = os.path.dirname(template_path)
-
-        # If dir_path is empty (template.yaml in current directory), use current directory
-        if not dir_path:
-            dir_path = "."
-
-        # Only clean build artifacts if lib changed, otherwise preserve cache
-        lib_changed = hasattr(self, "_lib_changed") and self._lib_changed
-        aws_sam_dir = os.path.join(dir_path, ".aws-sam")
-
-        if lib_changed and os.path.exists(aws_sam_dir):
-            build_dir = os.path.join(aws_sam_dir, "build")
-            cache_dir = os.path.join(aws_sam_dir, "cache")
-
-            if os.path.exists(build_dir):
-                print(f"Cleaning build artifacts in {build_dir} (lib changed)")
-                shutil.rmtree(build_dir)
-
-            if os.path.exists(cache_dir):
-                print(f"Clearing SAM cache in {cache_dir} (lib changed)")
-                shutil.rmtree(cache_dir)
-
-        # Check if this template has idp_common dependencies
-        has_idp_common_deps = self._check_template_for_idp_common_deps(template_path)
-
-        # Run sam build with cwd parameter (thread-safe)
-        abs_dir_path = os.path.abspath(dir_path)
-
-        # For patterns and options, use template.yaml directly
-        # For main template, use the full template path
-        if dir_path == "." or template_path == "template.yaml":
-            template_filename = "template.yaml"
-        else:
-            template_filename = (
-                "template.yaml"  # Always use template.yaml for consistency
-            )
-
-        # Ensure we're using the correct template file
-        template_full_path = os.path.join(abs_dir_path, template_filename)
-        if not os.path.exists(template_full_path):
-            print(f"Error: Template file not found: {template_full_path}")
-            sys.exit(1)
-
-        cmd = [
-            "sam",
-            "build",
-            "--template-file",
-            template_filename,
-        ]
-
-        # Only add --parallel if no idp_common dependencies to prevent race conditions
-        if not has_idp_common_deps:
-            cmd.append("--parallel")
-
-        if self.use_container_flag and self.use_container_flag.strip():
-            cmd.append(self.use_container_flag)
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print("Error running sam build")
-            sys.exit(1)
-
-    def _check_template_for_idp_common_deps(self, template_path):
-        """Check if a template has Lambda functions with idp_common dependencies."""
-        template_dir = Path(template_path).parent
-
-        # For main template, check src/lambda directory
-        if template_path == "template.yaml":
-            src_dir = Path("src/lambda")
-        else:
-            # For pattern/option templates, check src directory
-            src_dir = template_dir / "src"
-
-        if src_dir.exists():
-            for func_dir in src_dir.iterdir():
-                if func_dir.is_dir():
-                    requirements_file = func_dir / "requirements.txt"
-                    if requirements_file.exists():
-                        try:
-                            content = requirements_file.read_text(encoding="utf-8")
-                            if "idp_common" in content:
-                                return True
-                        except Exception:
-                            continue
-        return False
-
     def build_and_package_template(self, directory, force_rebuild=False):
         """Build and package a template directory with smart rebuild detection"""
-        # Use absolute paths to avoid directory changing issues
-        abs_directory = os.path.abspath(directory)
-
         # Track build time
         build_start = time.time()
 
         try:
-            # Build the template from the pattern directory
             cmd = ["sam", "build", "--template-file", "template.yaml"]
 
             # Add container flag if needed
@@ -549,28 +502,30 @@ class IDPPublisher:
                 cmd.append(self.use_container_flag)
 
             sam_build_start = time.time()
+
+            # Validate Python syntax before building
+            if not self._validate_python_syntax(directory):
+                raise Exception("Python syntax validation failed")
+
             self.log_verbose(
                 f"Running SAM build command in {directory}: {' '.join(cmd)}"
             )
             # Run SAM build from the pattern directory
-            result = subprocess.run(
-                cmd, cwd=abs_directory, capture_output=True, text=True
+            success, result = self.run_subprocess_with_logging(
+                cmd, f"SAM build for {directory}", directory
             )
             sam_build_time = time.time() - sam_build_start
 
-            if result.returncode != 0:
-                # Log detailed error information
-                error_output = f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
-                self.log_error_details(f"SAM build for {directory}", error_output)
-                return False
+            if not success:
+                raise Exception("SAM build failed")
 
             # Package the template (using absolute paths)
             build_template_path = os.path.join(
-                abs_directory, ".aws-sam", "build", "template.yaml"
+                directory, ".aws-sam", "build", "template.yaml"
             )
             # Use standard packaged.yaml name
             packaged_template_path = os.path.join(
-                abs_directory, ".aws-sam", "packaged.yaml"
+                directory, ".aws-sam", "packaged.yaml"
             )
 
             cmd = [
@@ -589,18 +544,18 @@ class IDPPublisher:
             sam_package_start = time.time()
             self.log_verbose(f"Running SAM package command: {' '.join(cmd)}")
             # Run SAM package from project root (no cwd change needed)
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            success, result = self.run_subprocess_with_logging(
+                cmd, f"SAM package for {directory}"
+            )
             sam_package_time = time.time() - sam_package_start
 
-            if result.returncode != 0:
-                # Log detailed error information
-                error_output = f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
-                self.log_error_details(f"SAM package for {directory}", error_output)
-                return False
+            if not success:
+                raise Exception("SAM package failed")
 
-            # Log S3 upload location
-            template_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{self.prefix}/{directory}/template.yaml"
-            self.console.print(f"[dim]  📤 Template uploaded: {template_url}[/dim]")
+            # Log S3 upload location for Lambda artifacts
+            self.console.print(
+                f"[dim]  📤 Lambda artifacts uploaded to s3://{self.bucket}/{self.prefix_and_version}/[/dim]"
+            )
 
             # Log timing information
             total_time = time.time() - build_start
@@ -612,70 +567,53 @@ class IDPPublisher:
         except Exception as e:
             import traceback
 
-            self.log_verbose(f"Exception in build_and_package_template: {e}")
+            # Delete checksum on any failure to force rebuild next time
+            self._delete_checksum_file(directory)
+            self.log_verbose(f"Exception in build_and_package_template: {str(e)}")
             self.log_verbose(f"Traceback: {traceback.format_exc()}")
-            return False
+            self.console.print(f"[red]❌ Build failed for {directory}:[/red]")
+            self.console.print(str(e), style="red", markup=False)
+            sys.exit(1)
 
         return True
 
-    def build_patterns_with_smart_detection(
-        self, components_needing_rebuild, max_workers=None
+    def build_components_with_smart_detection(
+        self, components_needing_rebuild, component_type, max_workers=None
     ):
-        """Build patterns with smart dependency detection"""
-        # Filter to only patterns that need rebuilding
-        patterns_to_build = []
+        """Build patterns or options with smart detection and lib dependency handling"""
+        # Filter components by type
+        components_to_build = []
         for item in components_needing_rebuild:
-            if "patterns" in item["component"]:
-                patterns_to_build.append(item["component"])
+            if component_type in item["component"]:
+                if (
+                    self._is_lib_changed
+                    and LIB_DEPENDENCY in item["dependencies"]
+                    and max_workers != 1
+                ):
+                    max_workers = 1
+                components_to_build.append(item["component"])
 
-        if not patterns_to_build:
-            self.console.print("[green]✅ All patterns are up to date[/green]")
+        if not components_to_build:
+            self.console.print(f"[green]✅ All {component_type} are up to date[/green]")
             return True
 
-        # Check if any patterns have lib dependencies (force sequential if so)
-        # Check if lib actually changed (not just dependencies exist)
-        lib_changed = any(
-            comp["component"] == "lib" for comp in components_needing_rebuild
-        )
-
-        if lib_changed:
+        # Force sequential builds if lib changed
+        if self._is_lib_changed and max_workers == 1:
             self.console.print(
-                "[yellow]⚠️  lib dependencies detected - using sequential builds to prevent race conditions[/yellow]"
+                f"[yellow]⚠️  lib dependencies detected - using sequential builds for {component_type}[/yellow]"
             )
-            max_workers = 1
 
-        self.console.print(
-            f"[cyan]Building {len(patterns_to_build)} patterns with {max_workers} workers...[/cyan]"
-        )
+        if max_workers == 1:
+            self.console.print(
+                f"[cyan]Building {len(components_to_build)} {component_type} with 1 worker...[/cyan]"
+            )
+        else:
+            self.console.print(
+                f"[cyan]Building {len(components_to_build)} {component_type} with {max_workers} workers...[/cyan]"
+            )
 
-        # Build using the existing concurrent infrastructure
         return self._build_components_concurrently(
-            patterns_to_build, "patterns", max_workers
-        )
-
-    def build_options_with_smart_detection(
-        self, components_needing_rebuild, max_workers=None
-    ):
-        """Build options with smart dependency detection"""
-
-        # Filter to only options that need rebuilding
-        options_to_build = []
-
-        for item in components_needing_rebuild:
-            if "options" in item["component"]:
-                options_to_build.append(item["component"])
-
-        if not options_to_build:
-            self.console.print("[green]✅ All options are up to date[/green]")
-            return True
-
-        self.console.print(
-            f"[cyan]Building {len(options_to_build)} options with {max_workers} workers...[/cyan]"
-        )
-
-        # Build using the existing concurrent infrastructure
-        return self._build_components_concurrently(
-            options_to_build, "options", max_workers
+            components_to_build, component_type, max_workers
         )
 
     def _build_components_concurrently(self, components, component_type, max_workers):
@@ -767,123 +705,6 @@ class IDPPublisher:
 
         return all_successful
 
-    def _check_patterns_for_idp_common_deps(self, patterns):
-        """Check if any patterns have idp_common dependencies in their Lambda functions."""
-        for pattern in patterns:
-            pattern_path = Path(pattern)
-            src_dir = pattern_path / "src"
-            if src_dir.exists():
-                for func_dir in src_dir.iterdir():
-                    if func_dir.is_dir():
-                        requirements_file = func_dir / "requirements.txt"
-                        if requirements_file.exists():
-                            try:
-                                content = requirements_file.read_text(encoding="utf-8")
-                                if "idp_common" in content:
-                                    return True
-                            except Exception:
-                                continue
-        return False
-
-    def build_options_concurrently(self, max_workers=None):
-        """Build options concurrently with rich progress display"""
-        options = ["options/bda-lending-project", "options/bedrockkb"]
-        existing_options = [option for option in options if os.path.exists(option)]
-
-        if not existing_options:
-            self.console.print("[yellow]No options found to build[/yellow]")
-            return True
-
-        self.console.print(
-            f"[cyan]Building {len(existing_options)} options concurrently with {max_workers} workers...[/cyan]"
-        )
-
-        # Create progress display
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=self.console,
-            transient=False,
-        ) as progress:
-            # Create main task for overall progress
-            main_task = progress.add_task(
-                "[cyan]Building options...", total=len(existing_options)
-            )
-
-            # Create individual tasks for each option
-            option_tasks = {}
-            for option in existing_options:
-                task_id = progress.add_task(
-                    f"[yellow]{option}[/yellow] - Waiting...", total=1
-                )
-                option_tasks[option] = task_id
-
-            # Use ThreadPoolExecutor for I/O bound operations (sam build/package)
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=max_workers
-            ) as executor:
-                # Submit all option build tasks
-                future_to_option = {}
-                for option in existing_options:
-                    # Update task status to building
-                    progress.update(
-                        option_tasks[option],
-                        description=f"[yellow]{option}[/yellow] - Building...",
-                    )
-                    future = executor.submit(self.build_and_package_template, option)
-                    future_to_option[future] = option
-
-                # Wait for all tasks to complete and check results
-                all_successful = True
-                completed = 0
-
-                for future in concurrent.futures.as_completed(future_to_option):
-                    option = future_to_option[future]
-                    completed += 1
-
-                    try:
-                        success = future.result()
-                        if not success:
-                            progress.update(
-                                option_tasks[option],
-                                description=f"[red]{option}[/red] - Failed!",
-                                completed=1,
-                            )
-                            all_successful = False
-                        else:
-                            progress.update(
-                                option_tasks[option],
-                                description=f"[green]{option}[/green] - Complete!",
-                                completed=1,
-                            )
-
-                        # Update main progress
-                        progress.update(main_task, completed=completed)
-
-                    except Exception as e:
-                        # Log detailed error information
-                        import traceback
-
-                        error_output = f"Exception: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                        self.log_error_details(
-                            f"Option {option} build exception", error_output
-                        )
-
-                        progress.update(
-                            option_tasks[option],
-                            description=f"[red]{option}[/red] - Error: {str(e)[:30]}...",
-                            completed=1,
-                        )
-                        all_successful = False
-                        progress.update(main_task, completed=completed)
-
-        # Store the result for checksum update decision
-        self._options_build_successful = all_successful
-        return all_successful
-
     def generate_config_file_list(self):
         """Generate list of configuration files for explicit copying"""
         config_dir = "config_library"
@@ -896,44 +717,6 @@ class IDPPublisher:
                 file_list.append(relative_path)
 
         return sorted(file_list)
-
-    def validate_dependency_configuration(self):
-        """Validate that component dependencies are correctly configured."""
-        self.console.print(
-            "\n[bold cyan]🔍 VALIDATING component dependency configuration[/bold cyan]"
-        )
-
-        try:
-            deps = self.get_component_dependencies()
-            main_deps = deps.get("main", [])
-            lib_dependency = "./lib/idp_common_pkg/idp_common"
-            # Check if main has lib dependency
-            has_lib_dep = lib_dependency in main_deps
-
-            if has_lib_dep:
-                self.console.print(
-                    "[green]✅ Main template correctly includes ./lib dependency[/green]"
-                )
-                self.log_verbose(f"Main dependencies: {main_deps}")
-            else:
-                self.console.print(
-                    "[red]❌ Main template missing ./lib dependency[/red]"
-                )
-                self.console.print(
-                    "[red]This will cause main template to not rebuild when lib changes[/red]"
-                )
-                self.console.print(
-                    f"[yellow]Current main dependencies: {main_deps}[/yellow]"
-                )
-                return False
-
-            return True
-
-        except Exception as e:
-            self.console.print(
-                f"[red]❌ Error validating dependency configuration: {e}[/red]"
-            )
-            return False
 
     def validate_lambda_builds(self):
         """Validate that Lambda functions with idp_common_pkg in requirements.txt have the library included."""
@@ -1035,9 +818,8 @@ class IDPPublisher:
                 sys.exit(1)
 
         except Exception as e:
-            self.console.print(
-                f"[red]❌ Error running lambda build validation: {e}[/red]"
-            )
+            self.console.print("[red]❌ Error running lambda build validation:[/red]")
+            self.console.print(str(e), style="red", markup=False)
             if self.verbose:
                 import traceback
 
@@ -1140,18 +922,26 @@ class IDPPublisher:
 
             return False, "No idp_common_pkg found in requirements.txt"
         except Exception as e:
-            return False, f"Error reading requirements.txt: {e}"
+            self.console.print(
+                f"[red]❌ Error reading requirements.txt in {func_dir}:[/red]"
+            )
+            self.console.print(str(e), style="red", markup=False)
+            sys.exit(1)
 
     def _extract_function_name(self, dir_name, template_path):
         """Extract CloudFormation function name from template by matching CodeUri."""
         try:
-            import yaml
-
             # Create a custom loader that ignores CloudFormation intrinsic functions
             class CFLoader(yaml.SafeLoader):
                 pass
 
             def construct_unknown(loader, node):
+                if isinstance(node, yaml.ScalarNode):
+                    return loader.construct_scalar(node)
+                elif isinstance(node, yaml.SequenceNode):
+                    return loader.construct_sequence(node)
+                elif isinstance(node, yaml.MappingNode):
+                    return loader.construct_mapping(node)
                 return None
 
             # Add constructors for CloudFormation intrinsic functions
@@ -1177,17 +967,21 @@ class IDPPublisher:
             for func in cf_functions:
                 CFLoader.add_constructor(func, construct_unknown)
 
-            with open(template_path, "r") as f:
+            with open(template_path, "r", encoding="utf-8") as f:
                 template = yaml.load(f, Loader=CFLoader)
+
+            if not template or not isinstance(template, dict):
+                raise Exception(f"Failed to parse YAML template: {template_path}")
 
             resources = template.get("Resources", {})
             for resource_name, resource_config in resources.items():
                 if (
                     resource_config
+                    and isinstance(resource_config, dict)
                     and resource_config.get("Type") == "AWS::Serverless::Function"
                 ):
                     properties = resource_config.get("Properties", {})
-                    if properties:
+                    if properties and isinstance(properties, dict):
                         code_uri = properties.get("CodeUri", "")
                         if isinstance(code_uri, str):
                             code_uri = code_uri.rstrip("/")
@@ -1196,12 +990,16 @@ class IDPPublisher:
                             )
                             if code_dir == dir_name:
                                 return resource_name
-
-            return dir_name
+            raise Exception(
+                f"No CloudFormation function found for directory {dir_name} in template {template_path}"
+            )
 
         except Exception as e:
-            self.log_verbose(f"Error reading template {template_path}: {e}")
-            return dir_name
+            self.console.print(
+                f"[red]❌ Error extracting function name for {dir_name} from {template_path}:[/red]"
+            )
+            self.console.print(str(e), style="red", markup=False)
+            sys.exit(1)
 
     def _validate_idp_common_in_build(self, template_dir, function_name, source_path):
         """Validate that idp_common package exists in the built Lambda function."""
@@ -1246,10 +1044,10 @@ try:
     from idp_common import models
     print("SUCCESS: All imports working")
 except ImportError as e:
-    print(f"IMPORT_ERROR: {e}")
+    print(f"IMPORT_ERROR: {str(e)}")
     sys.exit(1)
 except Exception as e:
-    print(f"ERROR: {e}")
+    print(f"ERROR: {str(e)}")
     sys.exit(1)
 """
 
@@ -1273,7 +1071,7 @@ except Exception as e:
         except Exception as e:
             if test_script.exists():
                 test_script.unlink()
-            return False, f"Test execution failed: {e}"
+            return False, f"Test execution failed: {str(e)}"
 
     def upload_config_library(self):
         """Upload configuration library to S3"""
@@ -1298,7 +1096,8 @@ except Exception as e:
                 try:
                     self.s3_client.upload_file(local_path, self.bucket, s3_key)
                 except ClientError as e:
-                    self.console.print(f"[red]Error uploading {local_path}: {e}[/red]")
+                    self.console.print(f"[red]Error uploading {local_path}:[/red]")
+                    self.console.print(str(e), style="red", markup=False)
                     sys.exit(1)
 
         self.console.print(
@@ -1344,8 +1143,14 @@ except Exception as e:
 
             with zipfile.ZipFile(zipfile_path, "w", zipfile.ZIP_DEFLATED) as zipf:
                 ui_dir = "src/ui"
+                exclude_dirs = {"node_modules", "build", ".aws-sam"}
                 for root, dirs, files in os.walk(ui_dir):
+                    # Exclude specified directories from zipping
+                    dirs[:] = [d for d in dirs if d not in exclude_dirs]
                     for file in files:
+                        # Skip .env files
+                        if file == ".env" or file.startswith(".env."):
+                            continue
                         file_path = os.path.join(root, file)
                         arcname = os.path.relpath(file_path, ui_dir)
                         zipf.write(file_path, arcname)
@@ -1371,94 +1176,143 @@ except Exception as e:
                     )
                     sys.exit(1)
             else:
-                self.console.print(f"[red]Error checking S3 for UI zipfile: {e}[/red]")
+                self.console.print("[red]Error checking S3 for UI zipfile:[/red]")
+                self.console.print(str(e), style="red", markup=False)
                 sys.exit(1)
 
         return zipfile_name
 
+    def _upload_template_to_s3(self, template_path, s3_key, description):
+        """Helper method to upload template to S3 with error handling"""
+        self.console.print(f"[cyan]Uploading {description} to S3: {s3_key}[/cyan]")
+        try:
+            self.s3_client.upload_file(template_path, self.bucket, s3_key)
+            self.console.print(f"[green]✅ {description} uploaded successfully[/green]")
+        except Exception as e:
+            self.console.print(f"[red]Failed to upload {description}:[/red]")
+            self.console.print(str(e), style="red", markup=False)
+            sys.exit(1)
+
+    def _check_and_upload_template(self, template_path, s3_key, description):
+        """Helper method to check if template exists in S3 and upload if missing"""
+        try:
+            self.s3_client.head_object(Bucket=self.bucket, Key=s3_key)
+            self.console.print(f"[green]✅ {description} already exists in S3[/green]")
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                self.console.print(
+                    f"[yellow]{description} missing from S3, uploading: {s3_key}[/yellow]"
+                )
+                if not os.path.exists(template_path):
+                    self.console.print(
+                        f"[red]Error: No template to upload at {template_path}[/red]"
+                    )
+                    sys.exit(1)
+                self._upload_template_to_s3(template_path, s3_key, description)
+            else:
+                self.console.print(
+                    f"[yellow]Could not check {description} existence:[/yellow]"
+                )
+                self.console.print(str(e), style="red", markup=False)
+
     def build_main_template(self, webui_zipfile, components_needing_rebuild):
         """Build and package main template with smart detection"""
-        self.console.print("[bold cyan]BUILDING main[/bold cyan]")
+        try:
+            self.console.print("[bold cyan]BUILDING main[/bold cyan]")
+            # Main template needs rebuilding, if any component needs rebuilding
+            if components_needing_rebuild:
+                self.console.print("[yellow]Main template needs rebuilding[/yellow]")
+                # Validate Python syntax in src directory before building
+                if not self._validate_python_syntax("src"):
+                    raise Exception("Python syntax validation failed")
 
-        # Check if main template needs rebuilding
-        main_needs_build = any(
-            comp["component"] == "main" for comp in components_needing_rebuild
-        )
+                # Build main template
+                """run sam build"""
+                cmd = [
+                    "sam",
+                    "build",
+                    "--template-file",
+                    "template.yaml",
+                ]
+                if self.use_container_flag and self.use_container_flag.strip():
+                    cmd.append(self.use_container_flag)
 
-        if main_needs_build:
-            self.console.print("[yellow]Main template needs rebuilding[/yellow]")
-
-            # Build main template
-            self.clean_and_build("template.yaml")
-
-            self.console.print("[bold cyan]PACKAGING main[/bold cyan]")
-
-            # Read the template
-            with open(".aws-sam/build/template.yaml", "r") as f:
-                template_content = f.read()
-
-            # Get configuration file list
-            config_files_list = self.generate_config_file_list()
-            config_files_json = json.dumps(config_files_list)
-
-            # Get various hashes
-            workforce_url_file = "src/lambda/get-workforce-url/index.py"
-            a2i_resources_file = "src/lambda/create_a2i_resources/index.py"
-            cognito_client_file = "src/lambda/cognito_updater_hitl/index.py"
-
-            workforce_url_hash = (
-                self.get_file_checksum(workforce_url_file)[:16]
-                if os.path.exists(workforce_url_file)
-                else ""
-            )
-            a2i_resources_hash = (
-                self.get_file_checksum(a2i_resources_file)[:16]
-                if os.path.exists(a2i_resources_file)
-                else ""
-            )
-            cognito_client_hash = (
-                self.get_file_checksum(cognito_client_file)[:16]
-                if os.path.exists(cognito_client_file)
-                else ""
-            )
-
-            # Replace tokens in template
-            from datetime import datetime, timezone
-
-            build_date_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-            replacements = {
-                "<VERSION>": self.version,
-                "<BUILD_DATE_TIME>": build_date_time,
-                "<PUBLIC_SAMPLE_UDOP_MODEL>": self.public_sample_udop_model,
-                "<ARTIFACT_BUCKET_TOKEN>": self.bucket,
-                "<ARTIFACT_PREFIX_TOKEN>": self.prefix_and_version,
-                "<WEBUI_ZIPFILE_TOKEN>": webui_zipfile,
-                "<HASH_TOKEN>": self.get_directory_checksum("./lib")[:16],
-                "<CONFIG_LIBRARY_HASH_TOKEN>": self.get_directory_checksum(
-                    "config_library"
-                )[:16],
-                "<CONFIG_FILES_LIST_TOKEN>": config_files_json,
-                "<WORKFORCE_URL_HASH_TOKEN>": workforce_url_hash,
-                "<A2I_RESOURCES_HASH_TOKEN>": a2i_resources_hash,
-                "<COGNITO_CLIENT_HASH_TOKEN>": cognito_client_hash,
-            }
-
-            self.console.print("[cyan]Inline edit main template to replace:[/cyan]")
-            for token, value in replacements.items():
-                self.console.print(
-                    f"   [yellow]{token}[/yellow] with: [green]{value}[/green]"
+                success, result = self.run_subprocess_with_logging(
+                    cmd, "Main template SAM build"
                 )
-                template_content = template_content.replace(token, value)
+                if not success:
+                    # Delete main template checksum on build failure
+                    raise Exception("SAM build failed")
 
-            # Write the modified template to the build directory
-            build_packaged_template_path = ".aws-sam/build/idp-main.yaml"
-            with open(build_packaged_template_path, "w") as f:
-                f.write(template_content)
+                self.console.print("[bold cyan]PACKAGING main[/bold cyan]")
 
-            # Package the template from the build directory
-            original_cwd = os.getcwd()
-            try:
+                # Read the template
+                with open(".aws-sam/build/template.yaml", "r") as f:
+                    template_content = f.read()
+
+                # Get configuration file list
+                config_files_list = self.generate_config_file_list()
+                config_files_json = json.dumps(config_files_list)
+
+                # Get various hashes
+                workforce_url_file = "src/lambda/get-workforce-url/index.py"
+                a2i_resources_file = "src/lambda/create_a2i_resources/index.py"
+                cognito_client_file = "src/lambda/cognito_updater_hitl/index.py"
+
+                workforce_url_hash = (
+                    self.get_file_checksum(workforce_url_file)[:16]
+                    if os.path.exists(workforce_url_file)
+                    else ""
+                )
+                a2i_resources_hash = (
+                    self.get_file_checksum(a2i_resources_file)[:16]
+                    if os.path.exists(a2i_resources_file)
+                    else ""
+                )
+                cognito_client_hash = (
+                    self.get_file_checksum(cognito_client_file)[:16]
+                    if os.path.exists(cognito_client_file)
+                    else ""
+                )
+
+                # Replace tokens in template
+                from datetime import datetime, timezone
+
+                build_date_time = datetime.now(timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+                replacements = {
+                    "<VERSION>": self.version,
+                    "<BUILD_DATE_TIME>": build_date_time,
+                    "<PUBLIC_SAMPLE_UDOP_MODEL>": self.public_sample_udop_model,
+                    "<ARTIFACT_BUCKET_TOKEN>": self.bucket,
+                    "<ARTIFACT_PREFIX_TOKEN>": self.prefix_and_version,
+                    "<WEBUI_ZIPFILE_TOKEN>": webui_zipfile,
+                    "<HASH_TOKEN>": self.get_directory_checksum("./lib")[:16],
+                    "<CONFIG_LIBRARY_HASH_TOKEN>": self.get_directory_checksum(
+                        "config_library"
+                    )[:16],
+                    "<CONFIG_FILES_LIST_TOKEN>": config_files_json,
+                    "<WORKFORCE_URL_HASH_TOKEN>": workforce_url_hash,
+                    "<A2I_RESOURCES_HASH_TOKEN>": a2i_resources_hash,
+                    "<COGNITO_CLIENT_HASH_TOKEN>": cognito_client_hash,
+                }
+
+                self.console.print("[cyan]Inline edit main template to replace:[/cyan]")
+                for token, value in replacements.items():
+                    self.console.print(
+                        f"   [yellow]{token}[/yellow] with: [green]{value}[/green]"
+                    )
+                    template_content = template_content.replace(token, value)
+
+                # Write the modified template to the build directory
+                build_packaged_template_path = ".aws-sam/build/idp-main.yaml"
+                with open(build_packaged_template_path, "w") as f:
+                    f.write(template_content)
+
+                # Package the template from the build directory
+                original_cwd = os.getcwd()
                 os.chdir(".aws-sam/build")
                 cmd = [
                     "sam",
@@ -1472,98 +1326,67 @@ except Exception as e:
                     "--s3-prefix",
                     self.prefix_and_version,
                 ]
-
                 self.log_verbose(
                     f"Running main template SAM package command: {' '.join(cmd)}"
                 )
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                if result.returncode != 0:
-                    error_output = (
-                        f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
-                    )
-                    self.log_error_details("Main template SAM package", error_output)
-                    self.console.print("[red]Error packaging main template[/red]")
-                    sys.exit(1)
-            finally:
+                success, result = self.run_subprocess_with_logging(
+                    cmd, "Main template SAM package"
+                )
                 os.chdir(original_cwd)
+                if not success:
+                    raise Exception("SAM package failed")
+            else:
+                self.console.print("[green]✅ Main template is up to date[/green]")
 
-        else:
-            self.console.print("[green]✅ Main template is up to date[/green]")
+            # Upload templates
+            packaged_template_path = ".aws-sam/idp-main.yaml"
+            templates = [
+                (f"{self.prefix}/{self.main_template}", "Main template"),
+                (
+                    f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
+                    "Versioned main template",
+                ),
+            ]
 
-        # Upload main template based on whether build was required
-        final_template_key = f"{self.prefix}/{self.main_template}"
-        packaged_template_path = ".aws-sam/idp-main.yaml"
-
-        if main_needs_build:
-            # Main was rebuilt, so upload the new template
-            if not os.path.exists(packaged_template_path):
-                self.console.print(
-                    f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
-                )
-                sys.exit(1)
-
-            self.console.print(
-                f"[cyan]Uploading main template to S3: {final_template_key}[/cyan]"
-            )
-            try:
-                self.s3_client.upload_file(
-                    packaged_template_path,
-                    self.bucket,
-                    final_template_key,
-                )
-                self.console.print(
-                    "[green]✅ Main template uploaded successfully[/green]"
-                )
-            except Exception as e:
-                self.console.print(f"[red]Failed to upload main template: {e}[/red]")
-                sys.exit(1)
-        else:
-            # Main was not rebuilt, check if template exists in S3
-            try:
-                self.s3_client.head_object(Bucket=self.bucket, Key=final_template_key)
-                self.console.print(
-                    "[green]✅ Main template already exists in S3[/green]"
-                )
-            except self.s3_client.exceptions.NoSuchKey:
-                self.console.print(
-                    f"[yellow]Main template missing from S3, uploading: {final_template_key}[/yellow]"
-                )
-                if not os.path.exists(packaged_template_path):
-                    self.console.print(
-                        f"[red]Error: No packaged template to upload at {packaged_template_path}[/red]"
+            for s3_key, description in templates:
+                if components_needing_rebuild:
+                    if not os.path.exists(packaged_template_path):
+                        self.console.print(
+                            f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
+                        )
+                        raise Exception(packaged_template_path + " missing")
+                    self._upload_template_to_s3(
+                        packaged_template_path, s3_key, description
                     )
-                    sys.exit(1)
-                try:
-                    self.s3_client.upload_file(
-                        packaged_template_path,
-                        self.bucket,
-                        final_template_key,
+                else:
+                    self._check_and_upload_template(
+                        packaged_template_path, s3_key, description
                     )
-                    self.console.print(
-                        "[green]✅ Main template uploaded successfully[/green]"
-                    )
-                except Exception as e:
-                    self.console.print(
-                        f"[red]Failed to upload main template: {e}[/red]"
-                    )
-                    sys.exit(1)
-            except Exception as e:
+
+            # Validate the template
+            if self.skip_validation:
                 self.console.print(
-                    f"[yellow]Could not check S3 template existence: {e}[/yellow]"
+                    "[yellow]⚠️  Skipping CloudFormation template validation[/yellow]"
                 )
-                self.console.print("[yellow]Proceeding without upload[/yellow]")
+            else:
+                template_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
+                self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
+                self.cf_client.validate_template(TemplateURL=template_url)
+                self.console.print("[green]✅ Template validation passed[/green]")
 
-        # Validate the template
-        template_url = (
-            f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{final_template_key}"
-        )
-        self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
-
-        try:
-            self.cf_client.validate_template(TemplateURL=template_url)
-            self.console.print("[green]✅ Template validation passed[/green]")
         except ClientError as e:
-            self.console.print(f"[red]Template validation failed: {e}[/red]")
+            # Delete checksum on template validation failure
+            self._delete_checksum_file(".checksum")
+            self.console.print(
+                "[red]❌ CloudFormation template validation failed[/red]"
+            )
+            self.console.print(str(e), style="red", markup=False)
+            sys.exit(1)
+        except Exception as e:
+            # Delete checksum on any failure to force rebuild next time
+            self._delete_checksum_file(".checksum")
+            self.console.print("[red]❌ Main template build failed:[/red]")
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
 
     def get_source_files_checksum(self, directory):
@@ -1718,23 +1541,22 @@ except Exception as e:
 
     def get_component_dependencies(self):
         """Map each component to its dependencies for smart rebuild detection"""
-        lib_dependency = "./lib/idp_common_pkg/idp_common"
         dependencies = {
             # Main template components
-            "main": ["./src", "template.yaml", "./config_library", lib_dependency],
+            "main": ["./src", "template.yaml", "./config_library", LIB_DEPENDENCY],
             # Pattern components
             "patterns/pattern-1": [
-                lib_dependency,
+                LIB_DEPENDENCY,
                 "patterns/pattern-1/src",
                 "patterns/pattern-1/template.yaml",
             ],
             "patterns/pattern-2": [
-                lib_dependency,
+                LIB_DEPENDENCY,
                 "patterns/pattern-2/src",
                 "patterns/pattern-2/template.yaml",
             ],
             "patterns/pattern-3": [
-                lib_dependency,
+                LIB_DEPENDENCY,
                 "patterns/pattern-3/src",
                 "patterns/pattern-3/template.yaml",
             ],
@@ -1747,7 +1569,7 @@ except Exception as e:
                 "options/bedrockkb/src",
                 "options/bedrockkb/template.yaml",
             ],
-            "lib": [lib_dependency],
+            "lib": [LIB_DEPENDENCY],
         }
         return dependencies
 
@@ -1784,6 +1606,8 @@ except Exception as e:
                         "current_checksum": current_checksum,
                     }
                 )
+                if component == "lib":  # update _is_lib_changed
+                    self._is_lib_changed = True
 
                 self.console.print(
                     f"[yellow]📝 {component} needs rebuild due to changes in any of these dependencies:[/yellow]"
@@ -1804,8 +1628,65 @@ except Exception as e:
             self.log_verbose(f"Clearing entire SAM cache for {component}: {sam_dir}")
             shutil.rmtree(sam_dir)
 
+    def _validate_python_syntax(self, directory):
+        """Validate Python syntax in all .py files in the directory"""
+        import py_compile
+
+        for root, dirs, files in os.walk(directory):
+            for file in files:
+                if file.endswith(".py"):
+                    file_path = os.path.join(root, file)
+                    try:
+                        py_compile.compile(file_path, doraise=True)
+                    except py_compile.PyCompileError as e:
+                        self.console.print(
+                            f"[red]❌ Python syntax error in {file_path}[/red]"
+                        )
+                        self.console.print(str(e), style="red", markup=False)
+                        return False
+        return True
+
+    def build_lib_package(self):
+        """Build lib package with syntax validation"""
+        try:
+            self.console.print("[bold yellow]📚 Building lib package[/bold yellow]")
+            lib_dir = "lib/idp_common_pkg"
+
+            # Validate Python syntax in lib source code before building
+            if not self._validate_python_syntax("lib/idp_common_pkg/idp_common"):
+                raise Exception("Python syntax validation failed")
+
+            result = subprocess.run(
+                ["python", "setup.py", "build"],
+                cwd=lib_dir,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise Exception(f"Build failed: {result.stderr}")
+            self.console.print("[green]✅ Lib package built successfully[/green]")
+
+        except Exception as e:
+            self._delete_checksum_file("lib/.checksum")
+            self.console.print("[red]❌ Failed to build lib package:[/red]")
+            self.console.print(str(e), style="red", markup=False)
+            sys.exit(1)
+
+    def _delete_checksum_file(self, checksum_path):
+        """Delete checksum file - handles both component paths and direct file paths"""
+        if os.path.isdir(checksum_path):
+            # If it's a directory, look for .checksum inside it
+            checksum_file = os.path.join(checksum_path, ".checksum")
+        else:
+            # If it's already a file path, use it directly
+            checksum_file = checksum_path
+
+        if os.path.exists(checksum_file):
+            os.remove(checksum_file)
+            self.log_verbose(f"Deleted checksum file: {checksum_file}")
+
     def update_component_checksum(self, components_needing_rebuild):
-        """Update checksum for a successfully built component"""
+        """Update checksum"""
         for item in components_needing_rebuild:
             current_checksum = item["current_checksum"]
             checksum_file = item["checksum_file"]
@@ -1894,75 +1775,33 @@ except Exception as e:
                 return
 
             total_files = len(objects)
-            successful_acls = 0
-            failed_acls = 0
-
             self.console.print(f"[cyan]Setting ACLs on {total_files} files...[/cyan]")
 
             for i, obj in enumerate(objects, 1):
-                try:
-                    self.s3_client.put_object_acl(
-                        Bucket=self.bucket, Key=obj["Key"], ACL="public-read"
+                self.s3_client.put_object_acl(
+                    Bucket=self.bucket, Key=obj["Key"], ACL="public-read"
+                )
+                if i % 10 == 0 or i == total_files:
+                    self.console.print(
+                        f"[cyan]Progress: {i}/{total_files} files processed[/cyan]"
                     )
-                    successful_acls += 1
-                    if i % 10 == 0 or i == total_files:  # Progress every 10 files
-                        self.console.print(
-                            f"[cyan]Progress: {i}/{total_files} files processed[/cyan]"
-                        )
-                except ClientError as e:
-                    failed_acls += 1
-                    if "AccessDenied" in str(e) or "BlockPublicAcls" in str(e):
-                        # Don't spam with individual permission error messages
-                        pass
-                    else:
-                        self.console.print(
-                            f"[yellow]Warning: Could not set ACL for {obj['Key']}: {e}[/yellow]"
-                        )
 
-            # Also set ACL for main template files
+            # Set ACL for main template files
             main_template_keys = [
                 f"{self.prefix}/{self.main_template}",
                 f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
             ]
 
             for key in main_template_keys:
-                try:
-                    self.s3_client.put_object_acl(
-                        Bucket=self.bucket, Key=key, ACL="public-read"
-                    )
-                    successful_acls += 1
-                except ClientError as e:
-                    failed_acls += 1
-                    if "AccessDenied" not in str(e) and "BlockPublicAcls" not in str(e):
-                        self.console.print(
-                            f"[yellow]Warning: Could not set ACL for {key}: {e}[/yellow]"
-                        )
+                self.s3_client.head_object(Bucket=self.bucket, Key=key)
+                self.s3_client.put_object_acl(
+                    Bucket=self.bucket, Key=key, ACL="public-read"
+                )
 
-            # Report accurate final status
-            if failed_acls == 0:
-                self.console.print("[green]✅ Public ACLs set successfully[/green]")
-            elif successful_acls == 0:
-                self.console.print(
-                    f"[red]❌ Could not set public ACLs on any files ({failed_acls} failed)[/red]"
-                )
-                self.console.print(
-                    "[yellow]Files uploaded successfully but are NOT publicly accessible[/yellow]"
-                )
-                self.console.print(
-                    "[yellow]This is usually due to 'Block Public Access' settings or insufficient permissions[/yellow]"
-                )
-            else:
-                self.console.print(
-                    f"[yellow]⚠️  Partial ACL success: {successful_acls} succeeded, {failed_acls} failed[/yellow]"
-                )
+            self.console.print("[green]✅ Public ACLs set successfully[/green]")
 
         except Exception as e:
-            self.console.print(
-                f"[yellow]Warning: Failed to set public ACLs: {e}[/yellow]"
-            )
-            self.console.print(
-                "[yellow]Files were uploaded successfully but may not be publicly accessible[/yellow]"
-            )
+            raise Exception(f"Failed to set public ACLs: {str(e)}")
 
     def run(self, args):
         """Main execution method"""
@@ -1976,39 +1815,20 @@ except Exception as e:
             # Check prerequisites
             self.check_prerequisites()
 
-            # Ensure .aws-sam directory exists
-            self.ensure_aws_sam_directory()
-
             # Set up S3 bucket
             self.setup_artifacts_bucket()
 
             # Perform smart rebuild detection and cache management
             components_needing_rebuild = self.smart_rebuild_detection()
 
-            # Build lib package if it changed
-            lib_changed = any(
-                comp["component"] == "lib" for comp in components_needing_rebuild
-            )
-            if lib_changed:
-                self.console.print("[bold yellow]📚 Building lib package[/bold yellow]")
-                lib_dir = "lib/idp_common_pkg"
-                result = subprocess.run(
-                    ["python", "setup.py", "build"],
-                    cwd=lib_dir,
-                    capture_output=True,
-                    text=True,
-                )
-                if result.returncode != 0:
-                    self.console.print(
-                        f"[red]❌ Failed to build lib package: {result.stderr}[/red]"
-                    )
-                    sys.exit(1)
-                self.console.print("[green]✅ Lib package built successfully[/green]")
-
             # clear component cache
             for comp_info in components_needing_rebuild:
                 if comp_info["component"] != "lib":  # lib doesnt have sam build
                     self.clear_component_cache(comp_info["component"])
+
+            # Build lib package if changed
+            if self._is_lib_changed:
+                self.build_lib_package()
 
             # Build patterns and options with smart detection
             self.console.print(
@@ -2027,8 +1847,8 @@ except Exception as e:
             # Build patterns with smart detection
             self.console.print("\n[bold yellow]📦 Building Patterns[/bold yellow]")
             patterns_start = time.time()
-            patterns_success = self.build_patterns_with_smart_detection(
-                components_needing_rebuild, max_workers=self.max_workers
+            patterns_success = self.build_components_with_smart_detection(
+                components_needing_rebuild, "patterns", max_workers=self.max_workers
             )
             patterns_time = time.time() - patterns_start
 
@@ -2046,8 +1866,8 @@ except Exception as e:
             # Build options with smart detection
             self.console.print("\n[bold yellow]⚙️  Building Options[/bold yellow]")
             options_start = time.time()
-            options_success = self.build_options_with_smart_detection(
-                components_needing_rebuild, max_workers=self.max_workers
+            options_success = self.build_components_with_smart_detection(
+                components_needing_rebuild, "options", max_workers=self.max_workers
             )
             options_time = time.time() - options_start
 
@@ -2069,8 +1889,9 @@ except Exception as e:
             self.console.print(f"   [dim]• Patterns: {patterns_time:.2f}s[/dim]")
             self.console.print(f"   [dim]• Options: {options_time:.2f}s[/dim]")
 
-            # Upload configuration library
-            self.upload_config_library()
+            if components_needing_rebuild:
+                # Upload configuration library
+                self.upload_config_library()
 
             # Package UI
             webui_zipfile = self.package_ui()
@@ -2078,21 +1899,15 @@ except Exception as e:
             # Build main template
             self.build_main_template(webui_zipfile, components_needing_rebuild)
 
-            # Validate dependency configuration
-            if not self.validate_dependency_configuration():
-                self.console.print(
-                    "[bold red]🚫 Publish process aborted due to dependency configuration error![/bold red]"
-                )
-                sys.exit(1)
-
             # Validate Lambda builds for idp_common inclusion (after all builds complete)
             self.validate_lambda_builds()
 
             # All builds completed successfully if we reach here
             self.console.print("[green]✅ All builds completed successfully[/green]")
 
-            # update checksum
+            # Update checksum for components needing rebuild upon success
             self.update_component_checksum(components_needing_rebuild)
+
             # Print outputs
             self.print_outputs()
 
@@ -2102,7 +1917,8 @@ except Exception as e:
             self.console.print("\n[yellow]Operation cancelled by user[/yellow]")
             sys.exit(1)
         except Exception as e:
-            self.console.print(f"[red]Error: {e}[/red]")
+            self.console.print("[red]Error:[/red]")
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
 
 
