@@ -13,6 +13,7 @@ import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
+import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
 import { IDiscoveryTable } from "../discovery-table";
 
 /**
@@ -59,20 +60,48 @@ export class DiscoveryProcessorFunction extends lambda_python.PythonFunction {
     props: DiscoveryProcessorFunctionProps,
   ) {
     super(scope, id, {
+      ...props,
       entry: path.join(
         __dirname,
         "../../../assets/lambdas/discovery_processor",
       ),
-      handler: "index.handler",
       runtime: lambda.Runtime.PYTHON_3_12,
       memorySize: 1024,
       timeout: cdk.Duration.minutes(2),
+      bundling: {
+        command: [
+          "bash",
+          "-c",
+          [
+            // Create temporary directory for dependencies
+            `mkdir -p /tmp/builddir`,
+            // Copy source files directly to output
+            `mkdir -p /asset-output`,
+            // `rsync -rLv /asset-input/${indexPath}/ /asset-output/${indexPath}`,
+            `rsync -rL /asset-input/ /tmp/builddir`,
+            // Install dependencies to temporary directory
+            `cd /tmp/builddir`,
+            `sed -i '/\\.\\/lib/d' requirements.txt || true`,
+            `python -m pip install -r requirements.txt -t /tmp/builddir || true`,
+            // Clean up unnecessary files in the temp directory
+            `find /tmp/builddir -type d -name "*.egg-info" -exec rm -rf {} +`,
+            `find /tmp/builddir -type d -name "__pycache__" -exec rm -rf {} +`,
+            `find /tmp/builddir -type d -name "build" -exec rm -rf {} +`,
+            `find /tmp/builddir -type d -name "tests" -exec rm -rf {} +`,
+            // Copy only necessary dependencies to the output
+            `rsync -rL /tmp/builddir/ /asset-output`,
+            // Clean up temporary directory
+            `rm -rf /tm p/builddir`,
+            `cd /asset-output`,
+          ].join(" && "),
+        ],
+      },
+      layers: [IdpPythonLayerVersion.getOrCreate(scope, "image")],
       environment: {
         DISCOVERY_TABLE_NAME: props.discoveryTable.tableName,
         INPUT_BUCKET_NAME: props.inputBucket.bucketName,
         APPSYNC_API_URL: props.appSyncApiUrl,
       },
-      ...props,
     });
 
     // Grant permissions

@@ -2,6 +2,7 @@ import path from "path";
 import { Database } from "@aws-cdk/aws-glue-alpha";
 import {
   ConfigurationTable,
+  DocumentDiscovery,
   ProcessingEnvironment,
   ProcessingEnvironmentApi,
   ReportingEnvironment,
@@ -229,6 +230,11 @@ export class BdaLendingStack extends Stack {
       }),
       reportingEnvironment,
     );
+
+    api.addDocumentDiscovery(new DocumentDiscovery(this, "Discovery", {
+      inputBucket,
+      appSyncApiUrl: api.graphqlUrl
+    }));
 
     new CfnOutput(this, "WebSiteUrl", {
       value: `https://${webApplication.distribution.distributionDomainName}`,
