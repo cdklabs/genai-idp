@@ -122,6 +122,7 @@ export class MockBedrockLlmProcessorConfiguration
         ClassificationMethod.TEXTBASED_HOLISTIC_CLASSIFICATION,
       classificationModel,
       extractionModel,
+      ocrBackend: "textract" as const,
       assessmentModel: this.includeOptionalModels
         ? new MockInvokable(
             "anthropic.claude-3-sonnet-20240229-v1:0",

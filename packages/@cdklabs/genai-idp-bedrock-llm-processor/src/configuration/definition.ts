@@ -126,6 +126,14 @@ export interface IBedrockLlmProcessorConfigurationDefinition
    * @default - as defined in the definition file
    */
   readonly ocrModel?: IInvokable;
+
+  /**
+   * OCR backend to use for text extraction.
+   * Determines whether to use Amazon Textract or Bedrock for OCR processing.
+   *
+   * @default "textract"
+   */
+  readonly ocrBackend: "textract" | "bedrock";
 }
 
 /**
@@ -367,6 +375,7 @@ export class BedrockLlmProcessorConfigurationDefinition {
     let _assessmentInvokable: IInvokable | undefined;
     let _evaluationInvokable: IInvokable | undefined;
     let _ocrInvokable: IInvokable | undefined;
+    let _ocrBackend: "textract" | "bedrock";
 
     const def = new ConfigurationDefinition({
       configurationObject: ConfigurationDefinitionLoader.fromFile(filePath),
@@ -470,6 +479,13 @@ export class BedrockLlmProcessorConfigurationDefinition {
           },
         },
         {
+          flatPath: "ocr.backend",
+          transform: (backend?: string) => {
+            _ocrBackend = (backend as "textract" | "bedrock") || "textract";
+            return _ocrBackend;
+          },
+        },
+        {
           flatPath: "ocr.model_id",
           transform: (modelName?: string) => {
             if (options?.ocrModel) {
@@ -479,7 +495,8 @@ export class BedrockLlmProcessorConfigurationDefinition {
                 ArnFormat.SLASH_RESOURCE_NAME,
               ).resourceName;
             } else {
-              if (modelName) {
+              // Only create Bedrock model if backend is set to "bedrock"
+              if (_ocrBackend === "bedrock" && modelName) {
                 _ocrInvokable = modelNameToInvokable(modelName);
               }
               return modelName;
@@ -499,6 +516,7 @@ export class BedrockLlmProcessorConfigurationDefinition {
       public readonly classificationModel = _classificationInvokable;
       public readonly assessmentModel = _assessmentInvokable;
       public readonly ocrModel = _ocrInvokable;
+      public readonly ocrBackend = _ocrBackend;
 
       raw(): { [key: string]: any } {
         return def.raw();
