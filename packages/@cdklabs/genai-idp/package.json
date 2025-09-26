@@ -93,7 +93,7 @@
     "jsii-diff": "^1.112.0",
     "jsii-docgen": "^10.7.4",
     "jsii-pacmak": "^1.112.0",
-    "jsii-rosetta": "~5.8",
+    "jsii-rosetta": "~5.9",
     "prettier": "^3.5.3",
     "ts-jest": "^29.3.2",
     "typescript": "^5.8.3"
