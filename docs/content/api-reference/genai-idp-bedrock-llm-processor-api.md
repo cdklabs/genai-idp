@@ -1622,6 +1622,7 @@ The Bedrock LLM document processor to apply to.
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationMethod">classificationMethod</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.ClassificationMethod">ClassificationMethod</a></code> | The method used for document classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationModel">classificationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The invokable model used for document classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.extractionModel">extractionModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The invokable model used for information extraction. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrBackend">ocrBackend</a></code> | <code>string</code> | OCR backend to use for text extraction. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.assessmentModel">assessmentModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for evaluating assessment results. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for evaluating extraction results. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrModel">ocrModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for OCR when using Bedrock-based OCR. |
@@ -1676,6 +1677,21 @@ The invokable model used for information extraction.
 Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
 Extracts structured data from documents based on defined schemas,
 transforming unstructured content into structured information.
+
+---
+
+##### `ocrBackend`<sup>Required</sup> <a name="ocrBackend" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrBackend"></a>
+
+```typescript
+public readonly ocrBackend: string;
+```
+
+- *Type:* string
+- *Default:* "textract"
+
+OCR backend to use for text extraction.
+
+Determines whether to use Amazon Textract or Bedrock for OCR processing.
 
 ---
 
