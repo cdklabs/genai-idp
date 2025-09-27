@@ -21,7 +21,7 @@ jobs:
       CI: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set git identity
@@ -58,7 +58,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp
       - name: "@cdklabs/genai-idp: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.4.0
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: cdklabs-genai-idp_build-artifact
           path: packages/@cdklabs/genai-idp/dist
@@ -70,7 +70,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp-bda-processor
       - name: "@cdklabs/genai-idp-bda-processor: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.4.0
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: packages/@cdklabs/genai-idp-bda-processor/dist
@@ -82,7 +82,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp-bedrock-llm-processor
       - name: "@cdklabs/genai-idp-bedrock-llm-processor: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.4.0
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: packages/@cdklabs/genai-idp-bedrock-llm-processor/dist
@@ -94,7 +94,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp-sagemaker-udop-processor
       - name: "@cdklabs/genai-idp-sagemaker-udop-processor: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.4.0
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: packages/@cdklabs/genai-idp-sagemaker-udop-processor/dist
@@ -111,11 +111,11 @@ jobs:
       contents: write
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp_build-artifact
           path: dist
@@ -135,11 +135,11 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp_build-artifact
           path: dist
@@ -161,14 +161,14 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp_build-artifact
           path: dist
@@ -188,14 +188,14 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 6.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp_build-artifact
           path: dist
@@ -218,11 +218,11 @@ jobs:
       contents: write
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
@@ -242,11 +242,11 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
@@ -268,14 +268,14 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
@@ -295,14 +295,14 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 6.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
@@ -325,11 +325,11 @@ jobs:
       contents: write
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
@@ -349,11 +349,11 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
@@ -375,14 +375,14 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
@@ -402,14 +402,14 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 6.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
@@ -432,11 +432,11 @@ jobs:
       contents: write
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
@@ -456,11 +456,11 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
@@ -482,14 +482,14 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
@@ -509,14 +509,14 @@ jobs:
       contents: read
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 6.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
