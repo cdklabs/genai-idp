@@ -503,7 +503,7 @@ describe("BedrockLlmProcessor Tests", () => {
       const template = Template.fromStack(stack);
 
       // Should create multiple log groups
-      template.resourceCountIs("AWS::Logs::LogGroup", 7); // Updated: Always creates assessment and summarization functions
+      template.resourceCountIs("AWS::Logs::LogGroup", 10); // Updated: Added 3 HITL function log groups
     });
   });
 
@@ -520,7 +520,7 @@ describe("BedrockLlmProcessor Tests", () => {
       const template = Template.fromStack(stack);
 
       // Should create assessment function (check by counting functions)
-      template.resourceCountIs("AWS::Lambda::Function", 7); // 5 base + 1 mock + 1 assessment
+      template.resourceCountIs("AWS::Lambda::Function", 10); // Updated: Added 3 HITL functions
     });
 
     test("creates summarization function when summarization model is provided", () => {
@@ -535,7 +535,7 @@ describe("BedrockLlmProcessor Tests", () => {
       const template = Template.fromStack(stack);
 
       // Should create summarization function (check by counting functions)
-      template.resourceCountIs("AWS::Lambda::Function", 7); // 5 base + 1 mock + 1 summarization
+      template.resourceCountIs("AWS::Lambda::Function", 10); // Updated: Added 3 HITL functions
     });
   });
 });

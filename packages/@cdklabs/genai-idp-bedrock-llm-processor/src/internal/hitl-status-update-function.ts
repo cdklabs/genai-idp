@@ -15,7 +15,8 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
-export interface HitlStatusUpdateFunctionProps extends IdpPythonFunctionOptions {
+export interface HitlStatusUpdateFunctionProps
+  extends IdpPythonFunctionOptions {
   /**
    * The S3 bucket used for storing intermediate processing artifacts.
    * Serves as a temporary storage location during document processing

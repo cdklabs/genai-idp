@@ -471,7 +471,9 @@ export class BedrockLlmProcessor
     });
 
     // Add Lambda function as a target for the EventBridge rule
-    hitlEventRule.addTarget(new eventtargets.LambdaFunction(hitlProcessFunction));
+    hitlEventRule.addTarget(
+      new eventtargets.LambdaFunction(hitlProcessFunction),
+    );
 
     this.environment.attach(this);
   }

@@ -95,7 +95,8 @@ export class HitlWaitFunction extends PythonFunction {
         LOG_LEVEL: props.logLevel ?? LogLevel.INFO,
         TRACKING_TABLE: props.trackingTable.tableName,
         WORKING_BUCKET: props.workingBucket.bucketName,
-        SAGEMAKER_A2I_REVIEW_PORTAL_URL: props.sageMakerA2IReviewPortalUrl ?? "",
+        SAGEMAKER_A2I_REVIEW_PORTAL_URL:
+          props.sageMakerA2IReviewPortalUrl ?? "",
         ...(props.api && {
           APPSYNC_API_URL: props.api.graphqlUrl,
           DOCUMENT_TRACKING_MODE: "appsync",

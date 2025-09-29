@@ -145,7 +145,8 @@ export class ProcessResultsFunction extends PythonFunction {
         OUTPUT_BUCKET: props.outputBucket.bucketName,
         CONFIGURATION_TABLE_NAME: props.configurationTable.tableName,
         ENABLE_HITL: props.enableHitl ? "true" : "false",
-        SAGEMAKER_A2I_REVIEW_PORTAL_URL: props.sageMakerA2IReviewPortalUrl ?? "",
+        SAGEMAKER_A2I_REVIEW_PORTAL_URL:
+          props.sageMakerA2IReviewPortalUrl ?? "",
         DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
         ...(props.api && { APPSYNC_API_URL: props.api.graphqlUrl }),
       },

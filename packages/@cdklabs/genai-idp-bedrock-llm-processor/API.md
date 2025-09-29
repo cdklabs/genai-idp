@@ -753,10 +753,12 @@ const bedrockLlmProcessorProps: BedrockLlmProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationMaxWorkers">classificationMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for document classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.customPromptGenerator">customPromptGenerator</a></code> | <code>@cdklabs/genai-idp.ICustomPromptGenerator</code> | Optional custom prompt generator for injecting business logic into extraction processing. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableHitl">enableHitl</a></code> | <code>boolean</code> | Enable Human In The Loop (A2I) for document review. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline documents for evaluation. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.extractionGuardrail">extractionGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to extraction model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.ocrGuardrail">ocrGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to OCR model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.ocrMaxWorkers">ocrMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for OCR processing. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.sageMakerA2IReviewPortalUrl">sageMakerA2IReviewPortalUrl</a></code> | <code>string</code> | Optional SageMaker A2I Review Portal URL for HITL workflows. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
 
 ---
@@ -870,6 +872,19 @@ document content, business rules, or external system integrations.
 
 ---
 
+##### `enableHitl`<sup>Optional</sup> <a name="enableHitl" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableHitl"></a>
+
+```typescript
+public readonly enableHitl: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Enable Human In The Loop (A2I) for document review.
+
+---
+
 ##### `evaluationBaselineBucket`<sup>Optional</sup> <a name="evaluationBaselineBucket" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.evaluationBaselineBucket"></a>
 
 ```typescript
@@ -931,6 +946,22 @@ The maximum number of concurrent workers for OCR processing.
 
 Controls parallelism during the text extraction phase to optimize
 throughput while managing resource utilization.
+
+---
+
+##### `sageMakerA2IReviewPortalUrl`<sup>Optional</sup> <a name="sageMakerA2IReviewPortalUrl" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.sageMakerA2IReviewPortalUrl"></a>
+
+```typescript
+public readonly sageMakerA2IReviewPortalUrl: string;
+```
+
+- *Type:* string
+- *Default:* No A2I review portal URL is configured
+
+Optional SageMaker A2I Review Portal URL for HITL workflows.
+
+Used to provide human reviewers with access to the A2I review interface
+for document validation and correction workflows.
 
 ---
 
