@@ -139,12 +139,12 @@ export class BdaLendingStack extends Stack {
       },
     );
 
-    const discoveryBucket = new Bucket(this, 'DiscoveryBucket', {
+    const discoveryBucket = new Bucket(this, "DiscoveryBucket", {
       removalPolicy: RemovalPolicy.DESTROY,
-      autoDeleteObjects: true
-    })
+      autoDeleteObjects: true,
+    });
     const documentDiscovery = new DocumentDiscovery(this, "Discovery", {
-      discoveryBucket
+      discoveryBucket,
     });
 
     const environment = new ProcessingEnvironment(this, "Environment", {
@@ -157,7 +157,7 @@ export class BdaLendingStack extends Stack {
       api,
       metricNamespace,
       reportingEnvironment,
-      documentDiscovery
+      documentDiscovery,
       // vpcConfiguration: {
       //   vpc,
       //   vpcSubnets,
