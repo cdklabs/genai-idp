@@ -13,17 +13,6 @@ properties:
     order: 1
     type: object
     sectionLabel: OCR Configuration
-    anyOf:
-      - properties:
-          backend:
-            const: textract
-        required:
-          - features
-      - properties:
-          backend:
-            enum:
-              - bedrock
-              - none
     properties:
       image:
         type: object

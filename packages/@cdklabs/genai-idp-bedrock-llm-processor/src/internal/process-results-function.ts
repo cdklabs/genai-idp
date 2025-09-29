@@ -14,6 +14,8 @@ import {
 } from "@cdklabs/genai-idp";
 import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
+import { ITable } from "aws-cdk-lib/aws-dynamodb";
+import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { IKey } from "aws-cdk-lib/aws-kms";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
@@ -44,6 +46,12 @@ export interface ProcessResultsFunctionProps extends IdpPythonFunctionOptions {
   readonly trackingTable: ITrackingTable;
 
   /**
+   * The DynamoDB table that stores configuration data.
+   * Contains settings and parameters for the processing workflow.
+   */
+  readonly configurationTable: ITable;
+
+  /**
    * The S3 bucket containing input documents to be processed.
    * Source of documents that need results processing.
    */
@@ -67,6 +75,18 @@ export interface ProcessResultsFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * Enable Human In The Loop (A2I) for document review.
+   *
+   * @default false
+   */
+  readonly enableHitl?: boolean;
+
+  /**
+   * SageMaker A2I Review Portal URL for HITL workflows.
+   */
+  readonly sageMakerA2IReviewPortalUrl?: string;
 }
 
 export class ProcessResultsFunction extends PythonFunction {
@@ -122,6 +142,10 @@ export class ProcessResultsFunction extends PythonFunction {
         LOG_LEVEL: props.logLevel ?? LogLevel.INFO,
         TRACKING_TABLE: props.trackingTable.tableName,
         WORKING_BUCKET: props.workingBucket.bucketName,
+        OUTPUT_BUCKET: props.outputBucket.bucketName,
+        CONFIGURATION_TABLE_NAME: props.configurationTable.tableName,
+        ENABLE_HITL: props.enableHitl ? "true" : "false",
+        SAGEMAKER_A2I_REVIEW_PORTAL_URL: props.sageMakerA2IReviewPortalUrl ?? "",
         DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
         ...(props.api && { APPSYNC_API_URL: props.api.graphqlUrl }),
       },
@@ -133,7 +157,41 @@ export class ProcessResultsFunction extends PythonFunction {
     props.workingBucket.grantReadWrite(this);
     Metric.grantPutMetricData(this);
     props.trackingTable.grantReadWriteData(this);
+    props.configurationTable.grantReadData(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
+
+    // SSM permissions for A2I FlowDefinition ARN
+    this.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ssm:GetParameter"],
+        resources: [
+          `arn:${Stack.of(this).partition}:ssm:${Stack.of(this).region}:${
+            Stack.of(this).account
+          }:parameter/*/FlowDefinitionArn`,
+        ],
+      }),
+    );
+
+    // SageMaker A2I permissions for starting human loops
+    this.addToRolePolicy(
+      new PolicyStatement({
+        actions: [
+          "sagemaker-a2i-runtime:StartHumanLoop",
+          "sagemaker-a2i-runtime:DescribeHumanLoop",
+          "sagemaker-a2i-runtime:StopHumanLoop",
+        ],
+        resources: ["*"],
+      }),
+    );
+
+    this.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["sagemaker:StartHumanLoop"],
+        resources: [
+          `arn:${Stack.of(this).partition}:sagemaker:*:*:flow-definition/*`,
+        ],
+      }),
+    );
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);
