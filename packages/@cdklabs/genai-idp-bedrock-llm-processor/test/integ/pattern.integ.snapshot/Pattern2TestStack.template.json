@@ -1496,7 +1496,9 @@
           "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
           "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
           "us.anthropic.claude-sonnet-4-20250514-v1:0",
-          "us.anthropic.claude-opus-4-20250514-v1:0"
+          "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+          "us.anthropic.claude-opus-4-20250514-v1:0",
+          "us.anthropic.claude-opus-4-1-20250805-v1:0"
          ],
          "order": 2,
          "dependsOn": {
@@ -1579,6 +1581,16 @@
          "description": {
           "type": "string",
           "description": "Class description. Instruct LLM how to identify the class from the context provided in the classification prompt."
+         },
+         "document_name_regex": {
+          "type": "string",
+          "description": "Optional regex pattern to match against document ID/name. When matched, all pages will be classified as this class type without LLM processing. Use only when all pages should be the same class.",
+          "order": 2.5
+         },
+         "document_page_content_regex": {
+          "type": "string",
+          "description": "Optional regex pattern to match against page content text. When matched during multi-modal page-level classification, the page will be classified as this class type without LLM processing.",
+          "order": 2.6
          },
          "examples": {
           "type": "array",
@@ -1890,7 +1902,9 @@
           "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
           "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
           "us.anthropic.claude-sonnet-4-20250514-v1:0",
-          "us.anthropic.claude-opus-4-20250514-v1:0"
+          "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+          "us.anthropic.claude-opus-4-20250514-v1:0",
+          "us.anthropic.claude-opus-4-1-20250805-v1:0"
          ],
          "order": 1
         },
@@ -1903,38 +1917,51 @@
          ],
          "order": 2
         },
+        "maxPagesForClassification": {
+         "type": "string",
+         "description": "Number of pages to use for classification [When set to a number, forces the entire document to be assigned a single class]",
+         "enum": [
+          "ALL",
+          "1",
+          "2",
+          "3",
+          "5",
+          "10"
+         ],
+         "order": 3
+        },
         "temperature": {
          "type": "number",
          "minimum": 0,
          "maximum": 1,
          "description": "Sampling temperature",
-         "order": 3
+         "order": 4
         },
         "top_k": {
          "type": "integer",
          "minimum": 1,
          "description": "Sampling Top K",
-         "order": 4
+         "order": 5
         },
         "top_p": {
          "type": "number",
          "description": "Sampling Top P",
-         "order": 5
+         "order": 6
         },
         "max_tokens": {
          "type": "number",
          "description": "Max tokens",
-         "order": 6
+         "order": 7
         },
         "system_prompt": {
          "type": "string",
          "description": "System prompt",
-         "order": 7
+         "order": 8
         },
         "task_prompt": {
          "type": "string",
          "description": "Task prompt - include placeholders {CLASS_NAMES_AND_DESCRIPTIONS} (replaced with the class names and descriptions for all specified classes), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and for multi-modal classification {DOCUMENT_IMAGE} (replaced by the page image attachment). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-         "order": 8
+         "order": 9
         }
        }
       },
@@ -1988,7 +2015,9 @@
           "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
           "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
           "us.anthropic.claude-sonnet-4-20250514-v1:0",
-          "us.anthropic.claude-opus-4-20250514-v1:0"
+          "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+          "us.anthropic.claude-opus-4-20250514-v1:0",
+          "us.anthropic.claude-opus-4-1-20250805-v1:0"
          ],
          "order": 1
         },
@@ -2122,7 +2151,9 @@
           "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
           "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
           "us.anthropic.claude-sonnet-4-20250514-v1:0",
-          "us.anthropic.claude-opus-4-20250514-v1:0"
+          "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+          "us.anthropic.claude-opus-4-20250514-v1:0",
+          "us.anthropic.claude-opus-4-1-20250805-v1:0"
          ],
          "order": 3
         },
@@ -2176,7 +2207,9 @@
           "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
           "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
           "us.anthropic.claude-sonnet-4-20250514-v1:0",
-          "us.anthropic.claude-opus-4-20250514-v1:0"
+          "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+          "us.anthropic.claude-opus-4-20250514-v1:0",
+          "us.anthropic.claude-opus-4-1-20250805-v1:0"
          ],
          "order": 1
         },
@@ -2233,7 +2266,9 @@
             "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
             "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
             "us.anthropic.claude-sonnet-4-20250514-v1:0",
-            "us.anthropic.claude-opus-4-20250514-v1:0"
+            "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+            "us.anthropic.claude-opus-4-20250514-v1:0",
+            "us.anthropic.claude-opus-4-1-20250805-v1:0"
            ],
            "order": 1
           },
@@ -3899,7 +3934,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "c9b932d44daf70935b76f6c0e6d8aa3b9b3716c7855c68dc6e67a82e6227397b.zip"
+     "S3Key": "e1d02da6265557e8ef7eb8476e654882818025ea0af136c4b4e66eec6092c611.zip"
     },
     "Environment": {
      "Variables": {
@@ -4148,7 +4183,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "a24d5d715127c321122be3fc9c584753edb180da93b69e42d51f51bc07902b22.zip"
+     "S3Key": "65b64f9cad668dc2f60678de39b8d2d24476ccb795638b17f12875b11ca7efaa.zip"
     },
     "Environment": {
      "Variables": {
@@ -4737,7 +4772,7 @@
      "Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "Key": "dd934969c5e40a0e14c6360ceba488be9febefe16af89087d2ebf5937ead54e6.json"
+     "Key": "f6356bb87783ab8a6614fd90fa06facd061319104f63cd1366185878dc9df628.json"
     },
     "DefinitionSubstitutions": {
      "OCRFunctionArn": {

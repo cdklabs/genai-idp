@@ -197,30 +197,30 @@
         }
       }
     },
-    "c9b932d44daf70935b76f6c0e6d8aa3b9b3716c7855c68dc6e67a82e6227397b": {
+    "e1d02da6265557e8ef7eb8476e654882818025ea0af136c4b4e66eec6092c611": {
       "displayName": "Processor/AssessmentFunction/Code",
       "source": {
-        "path": "asset.c9b932d44daf70935b76f6c0e6d8aa3b9b3716c7855c68dc6e67a82e6227397b",
+        "path": "asset.e1d02da6265557e8ef7eb8476e654882818025ea0af136c4b4e66eec6092c611",
         "packaging": "zip"
       },
       "destinations": {
-        "current_account-current_region-3072aae0": {
+        "current_account-current_region-3320dc08": {
           "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
-          "objectKey": "c9b932d44daf70935b76f6c0e6d8aa3b9b3716c7855c68dc6e67a82e6227397b.zip",
+          "objectKey": "e1d02da6265557e8ef7eb8476e654882818025ea0af136c4b4e66eec6092c611.zip",
           "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
         }
       }
     },
-    "a24d5d715127c321122be3fc9c584753edb180da93b69e42d51f51bc07902b22": {
+    "65b64f9cad668dc2f60678de39b8d2d24476ccb795638b17f12875b11ca7efaa": {
       "displayName": "Processor/ProcessResultsFunction/Code",
       "source": {
-        "path": "asset.a24d5d715127c321122be3fc9c584753edb180da93b69e42d51f51bc07902b22",
+        "path": "asset.65b64f9cad668dc2f60678de39b8d2d24476ccb795638b17f12875b11ca7efaa",
         "packaging": "zip"
       },
       "destinations": {
-        "current_account-current_region-44a756bd": {
+        "current_account-current_region-b6f12e7e": {
           "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
-          "objectKey": "a24d5d715127c321122be3fc9c584753edb180da93b69e42d51f51bc07902b22.zip",
+          "objectKey": "65b64f9cad668dc2f60678de39b8d2d24476ccb795638b17f12875b11ca7efaa.zip",
           "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
         }
       }
@@ -239,16 +239,16 @@
         }
       }
     },
-    "dd934969c5e40a0e14c6360ceba488be9febefe16af89087d2ebf5937ead54e6": {
+    "f6356bb87783ab8a6614fd90fa06facd061319104f63cd1366185878dc9df628": {
       "displayName": "Processor/DocumentProcessingStateMachine/DefinitionBody",
       "source": {
-        "path": "asset.dd934969c5e40a0e14c6360ceba488be9febefe16af89087d2ebf5937ead54e6.json",
+        "path": "asset.f6356bb87783ab8a6614fd90fa06facd061319104f63cd1366185878dc9df628.json",
         "packaging": "file"
       },
       "destinations": {
-        "current_account-current_region-e8f8f98b": {
+        "current_account-current_region-96791202": {
           "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
-          "objectKey": "dd934969c5e40a0e14c6360ceba488be9febefe16af89087d2ebf5937ead54e6.json",
+          "objectKey": "f6356bb87783ab8a6614fd90fa06facd061319104f63cd1366185878dc9df628.json",
           "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
         }
       }
@@ -267,16 +267,16 @@
         }
       }
     },
-    "2f255877aec91a639a3130d6d45d0e8d850343c103aaecf8c1e890edb2218247": {
+    "af5a79f3cde8c411a668ecba80853689c12f1f34beb2c7230a4cc72636006c70": {
       "displayName": "Pattern2TestStack Template",
       "source": {
         "path": "Pattern2TestStack.template.json",
         "packaging": "file"
       },
       "destinations": {
-        "current_account-current_region-d28243c9": {
+        "current_account-current_region-908a23b9": {
           "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
-          "objectKey": "2f255877aec91a639a3130d6d45d0e8d850343c103aaecf8c1e890edb2218247.json",
+          "objectKey": "af5a79f3cde8c411a668ecba80853689c12f1f34beb2c7230a4cc72636006c70.json",
           "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
         }
       }

@@ -6,14 +6,19 @@ SPDX-License-Identifier: Apache-2.0
 import * as path from "path";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
 import * as cdk from "aws-cdk-lib";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
+import { IConfigurationTable } from "../../configuration-table";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
 import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
+import { LogLevel } from "../../log-level";
+import { IProcessingEnvironmentApi } from "../../processing-environment-api";
 import { IDiscoveryTable } from "../discovery-table";
 
 /**
@@ -22,9 +27,9 @@ import { IDiscoveryTable } from "../discovery-table";
 export interface DiscoveryProcessorFunctionProps
   extends IdpPythonFunctionOptions {
   /**
-   * The S3 bucket for input documents.
+   * The S3 bucket for discovery document uploads.
    */
-  readonly inputBucket: IBucket;
+  readonly discoveryBucket: IBucket;
 
   /**
    * The discovery tracking table.
@@ -37,14 +42,25 @@ export interface DiscoveryProcessorFunctionProps
   readonly discoveryQueue: sqs.IQueue;
 
   /**
-   * The AppSync API URL for status updates.
+   * The configuration table for storing discovery results.
    */
-  readonly appSyncApiUrl: string;
+  readonly configurationTable: IConfigurationTable;
+
+  /**
+   * Optional ProcessingEnvironmentApi for progress notifications.
+   * When provided, the function will use GraphQL mutations to update document status.
+   */
+  readonly api?: IProcessingEnvironmentApi;
 
   /**
    * Optional KMS key for encrypting function resources.
    */
   readonly encryptionKey?: kms.IKey;
+
+  /**
+   * The log level for the function.
+   */
+  readonly logLevel?: LogLevel;
 }
 
 /**
@@ -98,15 +114,38 @@ export class DiscoveryProcessorFunction extends lambda_python.PythonFunction {
       },
       layers: [IdpPythonLayerVersion.getOrCreate(scope, "image")],
       environment: {
-        DISCOVERY_TABLE_NAME: props.discoveryTable.tableName,
-        INPUT_BUCKET_NAME: props.inputBucket.bucketName,
-        APPSYNC_API_URL: props.appSyncApiUrl,
+        LOG_LEVEL: props.logLevel?.toString() || "INFO",
+        DISCOVERY_BUCKET: props.discoveryBucket.bucketName,
+        DISCOVERY_TRACKING_TABLE: props.discoveryTable.tableName,
+        CONFIGURATION_TABLE_NAME: props.configurationTable.tableName,
+        APPSYNC_API_URL: props.api?.graphqlUrl || "",
       },
     });
 
     // Grant permissions
-    props.inputBucket.grantRead(this);
+    props.discoveryBucket.grantRead(this);
     props.discoveryTable.grantReadWriteData(this);
+    props.configurationTable.grantReadWriteData(this);
+    props.api?.grantMutation(this);
+
+    cloudwatch.Metric.grantPutMetricData(this);
+
+    // Grant Bedrock permissions
+    this.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["bedrock:InvokeModel"],
+        resources: [
+          `arn:${cdk.Stack.of(this).partition}:bedrock:*::foundation-model/*`,
+          `arn:${cdk.Stack.of(this).partition}:bedrock:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:inference-profile/*`,
+        ],
+      }),
+    );
+
+    // Grant KMS permissions if encryption key is provided
+    if (props.encryptionKey) {
+      props.encryptionKey.grantEncryptDecrypt(this);
+    }
 
     // Add SQS event source
     this.addEventSource(

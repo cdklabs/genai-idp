@@ -74,7 +74,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "b09be36febd41547e9fc71664d085773a1ffd7371ed0ad1f07525dd31bdd05d2.zip",
+          "S3Key": "86ad9c97c018e153fc68b58e1ffad5ad325c305d8e7c425ca578250cde6b9eda.zip",
         },
         "Environment": {
           "Variables": {
@@ -663,7 +663,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "Key": "dd934969c5e40a0e14c6360ceba488be9febefe16af89087d2ebf5937ead54e6.json",
+          "Key": "f6356bb87783ab8a6614fd90fa06facd061319104f63cd1366185878dc9df628.json",
         },
         "DefinitionSubstitutions": {
           "AssessmentFunctionArn": {
@@ -1338,7 +1338,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "a4aeba330a76bb639a8a9aab28bb51c2101f3e533efa2d4a8db73f6a75f5fdcf.zip",
+          "S3Key": "5b2d7f5372d2dd63f433052e01b5b025919b06e6f618267cad140c2cc0a7a48d.zip",
         },
         "Environment": {
           "Variables": {
@@ -1700,7 +1700,9 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
                     "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                     "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                     "us.anthropic.claude-opus-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-1-20250805-v1:0",
                   ],
                   "order": 3,
                   "type": "string",
@@ -1966,6 +1968,16 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "description": "Class description. Instruct LLM how to identify the class from the context provided in the classification prompt.",
                     "type": "string",
                   },
+                  "document_name_regex": {
+                    "description": "Optional regex pattern to match against document ID/name. When matched, all pages will be classified as this class type without LLM processing. Use only when all pages should be the same class.",
+                    "order": 2.5,
+                    "type": "string",
+                  },
+                  "document_page_content_regex": {
+                    "description": "Optional regex pattern to match against page content text. When matched during multi-modal page-level classification, the page will be classified as this class type without LLM processing.",
+                    "order": 2.6,
+                    "type": "string",
+                  },
                   "examples": {
                     "description": "Class few-shot examples",
                     "itemLabel": "Few-shot example",
@@ -2056,9 +2068,22 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                   "sectionLabel": "Image Processing Settings",
                   "type": "object",
                 },
+                "maxPagesForClassification": {
+                  "description": "Number of pages to use for classification [When set to a number, forces the entire document to be assigned a single class]",
+                  "enum": [
+                    "ALL",
+                    "1",
+                    "2",
+                    "3",
+                    "5",
+                    "10",
+                  ],
+                  "order": 3,
+                  "type": "string",
+                },
                 "max_tokens": {
                   "description": "Max tokens",
-                  "order": 6,
+                  "order": 7,
                   "type": "number",
                 },
                 "model": {
@@ -2071,37 +2096,39 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
                     "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                     "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                     "us.anthropic.claude-opus-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-1-20250805-v1:0",
                   ],
                   "order": 1,
                   "type": "string",
                 },
                 "system_prompt": {
                   "description": "System prompt",
-                  "order": 7,
+                  "order": 8,
                   "type": "string",
                 },
                 "task_prompt": {
                   "description": "Task prompt - include placeholders {CLASS_NAMES_AND_DESCRIPTIONS} (replaced with the class names and descriptions for all specified classes), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and for multi-modal classification {DOCUMENT_IMAGE} (replaced by the page image attachment). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-                  "order": 8,
+                  "order": 9,
                   "type": "string",
                 },
                 "temperature": {
                   "description": "Sampling temperature",
                   "maximum": 1,
                   "minimum": 0,
-                  "order": 3,
+                  "order": 4,
                   "type": "number",
                 },
                 "top_k": {
                   "description": "Sampling Top K",
                   "minimum": 1,
-                  "order": 4,
+                  "order": 5,
                   "type": "integer",
                 },
                 "top_p": {
                   "description": "Sampling Top P",
-                  "order": 5,
+                  "order": 6,
                   "type": "number",
                 },
               },
@@ -2137,7 +2164,9 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                         "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
                         "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                         "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                        "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                         "us.anthropic.claude-opus-4-20250514-v1:0",
+                        "us.anthropic.claude-opus-4-1-20250805-v1:0",
                       ],
                       "order": 1,
                       "type": "string",
@@ -2221,7 +2250,9 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
                     "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                     "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                     "us.anthropic.claude-opus-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-1-20250805-v1:0",
                   ],
                   "order": 1,
                   "type": "string",
@@ -2389,7 +2420,9 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
                     "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                     "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                     "us.anthropic.claude-opus-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-1-20250805-v1:0",
                   ],
                   "order": 2,
                   "type": "string",
@@ -2479,7 +2512,9 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
                     "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                     "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                     "us.anthropic.claude-opus-4-20250514-v1:0",
+                    "us.anthropic.claude-opus-4-1-20250805-v1:0",
                   ],
                   "order": 1,
                   "type": "string",
@@ -3190,7 +3225,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+          "S3Key": "e8b68e890a6e7d8c5d6b23980f9a7cffb845358c2d977af4a5a8c4c7c2d4b842.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service",
       },
@@ -3205,7 +3240,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+          "S3Key": "e8b68e890a6e7d8c5d6b23980f9a7cffb845358c2d977af4a5a8c4c7c2d4b842.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service",
       },
@@ -3220,7 +3255,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+          "S3Key": "e8b68e890a6e7d8c5d6b23980f9a7cffb845358c2d977af4a5a8c4c7c2d4b842.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr",
       },
@@ -3235,7 +3270,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+          "S3Key": "e8b68e890a6e7d8c5d6b23980f9a7cffb845358c2d977af4a5a8c4c7c2d4b842.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction",
       },
@@ -3250,7 +3285,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "3a64afdc8fae3815e75dad5786b51c11c4bfa9ea93d01965ee2d94b4cd49cd0b.zip",
+          "S3Key": "e8b68e890a6e7d8c5d6b23980f9a7cffb845358c2d977af4a5a8c4c7c2d4b842.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service",
       },

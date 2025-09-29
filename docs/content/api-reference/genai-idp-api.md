@@ -12864,6 +12864,7 @@ new DocumentDiscovery(scope: Construct, id: string, props: DocumentDiscoveryProp
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions">initializeFunctions</a></code> | Initialize the Lambda functions with API URL. |
 
 ---
 
@@ -12874,6 +12875,52 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `initializeFunctions` <a name="initializeFunctions" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions"></a>
+
+```typescript
+public initializeFunctions(api: IProcessingEnvironmentApi, configurationTable: IConfigurationTable, encryptionKey?: IKey, logLevel?: LogLevel, logRetention?: RetentionDays, vpcConfiguration?: VpcConfiguration): DocumentDiscoveryFunctions
+```
+
+Initialize the Lambda functions with API URL.
+
+Called by ProcessingEnvironmentApi when adding document discovery.
+
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.api"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
+
+---
+
+###### `configurationTable`<sup>Required</sup> <a name="configurationTable" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.configurationTable"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a>
+
+---
+
+###### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.encryptionKey"></a>
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+---
+
+###### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.logLevel"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+
+---
+
+###### `logRetention`<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.logRetention"></a>
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+
+---
+
+###### `vpcConfiguration`<sup>Optional</sup> <a name="vpcConfiguration" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.vpcConfiguration"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a>
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -12920,10 +12967,9 @@ Any object.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.property.discoveryBucket">discoveryBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for document discovery uploads. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.property.discoveryQueue">discoveryQueue</a></code> | <code><a href="#@cdklabs/genai-idp.IDiscoveryQueue">IDiscoveryQueue</a></code> | The SQS queue for processing discovery jobs asynchronously. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.property.discoveryTable">discoveryTable</a></code> | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable">IDiscoveryTable</a></code> | The DynamoDB table that tracks discovery job status and metadata. |
-| <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.property.processorFunction">processorFunction</a></code> | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction">DiscoveryProcessorFunction</a></code> | The Lambda function that processes discovery jobs. |
-| <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.property.uploadResolverFunction">uploadResolverFunction</a></code> | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction">DiscoveryUploadResolverFunction</a></code> | The Lambda function that handles discovery document uploads. |
 
 ---
 
@@ -12936,6 +12982,18 @@ public readonly node: Node;
 - *Type:* constructs.Node
 
 The tree node.
+
+---
+
+##### `discoveryBucket`<sup>Required</sup> <a name="discoveryBucket" id="@cdklabs/genai-idp.DocumentDiscovery.property.discoveryBucket"></a>
+
+```typescript
+public readonly discoveryBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket for document discovery uploads.
 
 ---
 
@@ -12960,30 +13018,6 @@ public readonly discoveryTable: IDiscoveryTable;
 - *Type:* <a href="#@cdklabs/genai-idp.IDiscoveryTable">IDiscoveryTable</a>
 
 The DynamoDB table that tracks discovery job status and metadata.
-
----
-
-##### `processorFunction`<sup>Required</sup> <a name="processorFunction" id="@cdklabs/genai-idp.DocumentDiscovery.property.processorFunction"></a>
-
-```typescript
-public readonly processorFunction: DiscoveryProcessorFunction;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction">DiscoveryProcessorFunction</a>
-
-The Lambda function that processes discovery jobs.
-
----
-
-##### `uploadResolverFunction`<sup>Required</sup> <a name="uploadResolverFunction" id="@cdklabs/genai-idp.DocumentDiscovery.property.uploadResolverFunction"></a>
-
-```typescript
-public readonly uploadResolverFunction: DiscoveryUploadResolverFunction;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction">DiscoveryUploadResolverFunction</a>
-
-The Lambda function that handles discovery document uploads.
 
 ---
 
@@ -15688,6 +15722,7 @@ Any object.
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table that tracks document processing status and metadata. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.property.workingBucket">workingBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket used for temporary storage during document processing. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.property.api">api</a></code> | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a></code> | Optional ProcessingEnvironmentApi for progress notifications. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.property.documentDiscovery">documentDiscovery</a></code> | <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a></code> | Optional document discovery system for automated configuration generation. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key used for encrypting sensitive data in the processing environment. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs generated by document processing components. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.property.reportingEnvironment">reportingEnvironment</a></code> | <code><a href="#@cdklabs/genai-idp.IReportingEnvironment">IReportingEnvironment</a></code> | Optional reporting environment for analytics and evaluation capabilities. |
@@ -15831,6 +15866,20 @@ public readonly api: IProcessingEnvironmentApi;
 Optional ProcessingEnvironmentApi for progress notifications.
 
 When provided, functions will use GraphQL mutations to update document status.
+
+---
+
+##### `documentDiscovery`<sup>Optional</sup> <a name="documentDiscovery" id="@cdklabs/genai-idp.ProcessingEnvironment.property.documentDiscovery"></a>
+
+```typescript
+public readonly documentDiscovery: IDocumentDiscovery;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a>
+
+Optional document discovery system for automated configuration generation.
+
+When provided, enables discovery job processing, status tracking, and UI upload functionality.
 
 ---
 
@@ -24362,11 +24411,13 @@ const discoveryProcessorFunctionProps: DiscoveryProcessorFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.appSyncApiUrl">appSyncApiUrl</a></code> | <code>string</code> | The AppSync API URL for status updates. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | The configuration table for storing discovery results. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.discoveryBucket">discoveryBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for discovery document uploads. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.discoveryQueue">discoveryQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The discovery processing queue. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.discoveryTable">discoveryTable</a></code> | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable">IDiscoveryTable</a></code> | The discovery tracking table. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.inputBucket">inputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for input documents. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.api">api</a></code> | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a></code> | Optional ProcessingEnvironmentApi for progress notifications. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting function resources. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the function. |
 
 ---
 
@@ -25030,15 +25081,27 @@ public subnets is not allowed (unless `allowPublicSubnet` is set to `true`).
 
 ---
 
-##### `appSyncApiUrl`<sup>Required</sup> <a name="appSyncApiUrl" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.appSyncApiUrl"></a>
+##### `configurationTable`<sup>Required</sup> <a name="configurationTable" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.configurationTable"></a>
 
 ```typescript
-public readonly appSyncApiUrl: string;
+public readonly configurationTable: IConfigurationTable;
 ```
 
-- *Type:* string
+- *Type:* <a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a>
 
-The AppSync API URL for status updates.
+The configuration table for storing discovery results.
+
+---
+
+##### `discoveryBucket`<sup>Required</sup> <a name="discoveryBucket" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.discoveryBucket"></a>
+
+```typescript
+public readonly discoveryBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket for discovery document uploads.
 
 ---
 
@@ -25066,15 +25129,17 @@ The discovery tracking table.
 
 ---
 
-##### `inputBucket`<sup>Required</sup> <a name="inputBucket" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.inputBucket"></a>
+##### `api`<sup>Optional</sup> <a name="api" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.api"></a>
 
 ```typescript
-public readonly inputBucket: IBucket;
+public readonly api: IProcessingEnvironmentApi;
 ```
 
-- *Type:* aws-cdk-lib.aws_s3.IBucket
+- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The S3 bucket for input documents.
+Optional ProcessingEnvironmentApi for progress notifications.
+
+When provided, the function will use GraphQL mutations to update document status.
 
 ---
 
@@ -25087,6 +25152,18 @@ public readonly encryptionKey: IKey;
 - *Type:* aws-cdk-lib.aws_kms.IKey
 
 Optional KMS key for encrypting function resources.
+
+---
+
+##### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.logLevel"></a>
+
+```typescript
+public readonly logLevel: LogLevel;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+
+The log level for the function.
 
 ---
 
@@ -25462,10 +25539,11 @@ const discoveryUploadResolverFunctionProps: DiscoveryUploadResolverFunctionProps
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.discoveryBucket">discoveryBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for discovery document uploads. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.discoveryQueue">discoveryQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The discovery processing queue. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.discoveryTable">discoveryTable</a></code> | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable">IDiscoveryTable</a></code> | The discovery tracking table. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.inputBucket">inputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for input documents. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting function resources. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the function. |
 
 ---
 
@@ -26129,6 +26207,18 @@ public subnets is not allowed (unless `allowPublicSubnet` is set to `true`).
 
 ---
 
+##### `discoveryBucket`<sup>Required</sup> <a name="discoveryBucket" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.discoveryBucket"></a>
+
+```typescript
+public readonly discoveryBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket for discovery document uploads.
+
+---
+
 ##### `discoveryQueue`<sup>Required</sup> <a name="discoveryQueue" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.discoveryQueue"></a>
 
 ```typescript
@@ -26153,18 +26243,6 @@ The discovery tracking table.
 
 ---
 
-##### `inputBucket`<sup>Required</sup> <a name="inputBucket" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.inputBucket"></a>
-
-```typescript
-public readonly inputBucket: IBucket;
-```
-
-- *Type:* aws-cdk-lib.aws_s3.IBucket
-
-The S3 bucket for input documents.
-
----
-
 ##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.encryptionKey"></a>
 
 ```typescript
@@ -26174,6 +26252,63 @@ public readonly encryptionKey: IKey;
 - *Type:* aws-cdk-lib.aws_kms.IKey
 
 Optional KMS key for encrypting function resources.
+
+---
+
+##### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.logLevel"></a>
+
+```typescript
+public readonly logLevel: LogLevel;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+
+The log level for the function.
+
+---
+
+### DocumentDiscoveryFunctions <a name="DocumentDiscoveryFunctions" id="@cdklabs/genai-idp.DocumentDiscoveryFunctions"></a>
+
+Result of initializing DocumentDiscovery functions.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.DocumentDiscoveryFunctions.Initializer"></a>
+
+```typescript
+import { DocumentDiscoveryFunctions } from '@cdklabs/genai-idp'
+
+const documentDiscoveryFunctions: DocumentDiscoveryFunctions = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryFunctions.property.processorFunction">processorFunction</a></code> | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction">DiscoveryProcessorFunction</a></code> | The Lambda function that processes discovery jobs. |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryFunctions.property.uploadResolverFunction">uploadResolverFunction</a></code> | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction">DiscoveryUploadResolverFunction</a></code> | The Lambda function that handles discovery document uploads. |
+
+---
+
+##### `processorFunction`<sup>Required</sup> <a name="processorFunction" id="@cdklabs/genai-idp.DocumentDiscoveryFunctions.property.processorFunction"></a>
+
+```typescript
+public readonly processorFunction: DiscoveryProcessorFunction;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction">DiscoveryProcessorFunction</a>
+
+The Lambda function that processes discovery jobs.
+
+---
+
+##### `uploadResolverFunction`<sup>Required</sup> <a name="uploadResolverFunction" id="@cdklabs/genai-idp.DocumentDiscoveryFunctions.property.uploadResolverFunction"></a>
+
+```typescript
+public readonly uploadResolverFunction: DiscoveryUploadResolverFunction;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction">DiscoveryUploadResolverFunction</a>
+
+The Lambda function that handles discovery document uploads.
 
 ---
 
@@ -26193,38 +26328,36 @@ const documentDiscoveryProps: DocumentDiscoveryProps = { ... }
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.appSyncApiUrl">appSyncApiUrl</a></code> | <code>string</code> | The AppSync API URL for status updates. |
-| <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.inputBucket">inputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for input documents. |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.discoveryBucket">discoveryBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for document discovery uploads. |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.discoveryTable">discoveryTable</a></code> | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable">IDiscoveryTable</a></code> | Optional properties for the discovery table. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting resources. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for Lambda functions. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs. |
-| <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.queueProps">queueProps</a></code> | <code><a href="#@cdklabs/genai-idp.DiscoveryQueueProps">DiscoveryQueueProps</a></code> | Optional properties for the discovery queue. |
-| <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.tableProps">tableProps</a></code> | <code><a href="#@cdklabs/genai-idp.FixedKeyTableProps">FixedKeyTableProps</a></code> | Optional properties for the discovery table. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.vpcConfiguration">vpcConfiguration</a></code> | <code><a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a></code> | Optional VPC configuration for Lambda functions. |
 
 ---
 
-##### `appSyncApiUrl`<sup>Required</sup> <a name="appSyncApiUrl" id="@cdklabs/genai-idp.DocumentDiscoveryProps.property.appSyncApiUrl"></a>
+##### `discoveryBucket`<sup>Required</sup> <a name="discoveryBucket" id="@cdklabs/genai-idp.DocumentDiscoveryProps.property.discoveryBucket"></a>
 
 ```typescript
-public readonly appSyncApiUrl: string;
-```
-
-- *Type:* string
-
-The AppSync API URL for status updates.
-
----
-
-##### `inputBucket`<sup>Required</sup> <a name="inputBucket" id="@cdklabs/genai-idp.DocumentDiscoveryProps.property.inputBucket"></a>
-
-```typescript
-public readonly inputBucket: IBucket;
+public readonly discoveryBucket: IBucket;
 ```
 
 - *Type:* aws-cdk-lib.aws_s3.IBucket
 
-The S3 bucket for input documents.
+The S3 bucket for document discovery uploads.
+
+---
+
+##### `discoveryTable`<sup>Optional</sup> <a name="discoveryTable" id="@cdklabs/genai-idp.DocumentDiscoveryProps.property.discoveryTable"></a>
+
+```typescript
+public readonly discoveryTable: IDiscoveryTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IDiscoveryTable">IDiscoveryTable</a>
+
+Optional properties for the discovery table.
 
 ---
 
@@ -26261,30 +26394,6 @@ public readonly logRetention: RetentionDays;
 - *Type:* aws-cdk-lib.aws_logs.RetentionDays
 
 The retention period for CloudWatch logs.
-
----
-
-##### `queueProps`<sup>Optional</sup> <a name="queueProps" id="@cdklabs/genai-idp.DocumentDiscoveryProps.property.queueProps"></a>
-
-```typescript
-public readonly queueProps: DiscoveryQueueProps;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.DiscoveryQueueProps">DiscoveryQueueProps</a>
-
-Optional properties for the discovery queue.
-
----
-
-##### `tableProps`<sup>Optional</sup> <a name="tableProps" id="@cdklabs/genai-idp.DocumentDiscoveryProps.property.tableProps"></a>
-
-```typescript
-public readonly tableProps: FixedKeyTableProps;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.FixedKeyTableProps">FixedKeyTableProps</a>
-
-Optional properties for the discovery table.
 
 ---
 
@@ -29848,6 +29957,7 @@ const processingEnvironmentProps: ProcessingEnvironmentProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentProps.property.concurrencyTable">concurrencyTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable">IConcurrencyTable</a></code> | The store that manages concurrency limits for document processing. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | Optional DynamoDB table for storing configuration settings. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentProps.property.dataTrackingRetention">dataTrackingRetention</a></code> | <code>aws-cdk-lib.Duration</code> | The retention period for document tracking data. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentProps.property.documentDiscovery">documentDiscovery</a></code> | <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a></code> | Optional document discovery construct. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentProps.property.key">key</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The KMS key used for encrypting resources in the document processing workflow. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the document processing components. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs generated by the document processing components. |
@@ -29970,6 +30080,20 @@ public readonly dataTrackingRetention: Duration;
 The retention period for document tracking data.
 
 Controls how long document metadata and processing results are kept in the system.
+
+---
+
+##### `documentDiscovery`<sup>Optional</sup> <a name="documentDiscovery" id="@cdklabs/genai-idp.ProcessingEnvironmentProps.property.documentDiscovery"></a>
+
+```typescript
+public readonly documentDiscovery: IDocumentDiscovery;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a>
+
+Optional document discovery construct.
+
+When provided, enables document discovery functionality including UI uploads.
 
 ---
 
@@ -31161,7 +31285,7 @@ public readonly autoConfigure: boolean;
 
 Whether to automatically configure CORS rules on S3 buckets for CloudFront access.
 
-When true, the library will configure CORS rules on the input and output buckets
+When true, the library will configure CORS rules on the input, output, and discovery buckets
 to allow access from the CloudFront distribution domain.
 
 When false, users are responsible for configuring CORS rules themselves.
@@ -32306,15 +32430,79 @@ Interface for the document discovery system.
 
 Provides document analysis capabilities for automated configuration generation.
 
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions">initializeFunctions</a></code> | Initialize Lambda functions with API dependencies. |
+
+---
+
+##### `initializeFunctions` <a name="initializeFunctions" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions"></a>
+
+```typescript
+public initializeFunctions(api: IProcessingEnvironmentApi, configurationTable: IConfigurationTable, encryptionKey?: IKey, logLevel?: LogLevel, logRetention?: RetentionDays, vpcConfiguration?: VpcConfiguration): DocumentDiscoveryFunctions
+```
+
+Initialize Lambda functions with API dependencies.
+
+Called by ProcessingEnvironmentApi when adding document discovery.
+
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.api"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
+
+---
+
+###### `configurationTable`<sup>Required</sup> <a name="configurationTable" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.configurationTable"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a>
+
+---
+
+###### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.encryptionKey"></a>
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+---
+
+###### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.logLevel"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+
+---
+
+###### `logRetention`<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.logRetention"></a>
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+
+---
+
+###### `vpcConfiguration`<sup>Optional</sup> <a name="vpcConfiguration" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.vpcConfiguration"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a>
+
+---
 
 #### Properties <a name="Properties" id="Properties"></a>
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery.property.discoveryBucket">discoveryBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for document discovery uploads. |
 | <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery.property.discoveryQueue">discoveryQueue</a></code> | <code><a href="#@cdklabs/genai-idp.IDiscoveryQueue">IDiscoveryQueue</a></code> | The SQS queue for processing discovery jobs asynchronously. |
 | <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery.property.discoveryTable">discoveryTable</a></code> | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable">IDiscoveryTable</a></code> | The DynamoDB table that tracks discovery job status and metadata. |
-| <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery.property.processorFunction">processorFunction</a></code> | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction">DiscoveryProcessorFunction</a></code> | The Lambda function that processes discovery jobs. |
-| <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery.property.uploadResolverFunction">uploadResolverFunction</a></code> | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction">DiscoveryUploadResolverFunction</a></code> | The Lambda function that handles discovery document uploads. |
+
+---
+
+##### `discoveryBucket`<sup>Required</sup> <a name="discoveryBucket" id="@cdklabs/genai-idp.IDocumentDiscovery.property.discoveryBucket"></a>
+
+```typescript
+public readonly discoveryBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket for document discovery uploads.
 
 ---
 
@@ -32339,30 +32527,6 @@ public readonly discoveryTable: IDiscoveryTable;
 - *Type:* <a href="#@cdklabs/genai-idp.IDiscoveryTable">IDiscoveryTable</a>
 
 The DynamoDB table that tracks discovery job status and metadata.
-
----
-
-##### `processorFunction`<sup>Required</sup> <a name="processorFunction" id="@cdklabs/genai-idp.IDocumentDiscovery.property.processorFunction"></a>
-
-```typescript
-public readonly processorFunction: DiscoveryProcessorFunction;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction">DiscoveryProcessorFunction</a>
-
-The Lambda function that processes discovery jobs.
-
----
-
-##### `uploadResolverFunction`<sup>Required</sup> <a name="uploadResolverFunction" id="@cdklabs/genai-idp.IDocumentDiscovery.property.uploadResolverFunction"></a>
-
-```typescript
-public readonly uploadResolverFunction: DiscoveryUploadResolverFunction;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction">DiscoveryUploadResolverFunction</a>
-
-The Lambda function that handles discovery document uploads.
 
 ---
 
@@ -32569,6 +32733,7 @@ The document processor to attach to this environment.
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironment.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table that tracks document processing status and metadata. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironment.property.workingBucket">workingBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket used for temporary storage during document processing. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironment.property.api">api</a></code> | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a></code> | Optional ProcessingEnvironmentApi for progress notifications. |
+| <code><a href="#@cdklabs/genai-idp.IProcessingEnvironment.property.documentDiscovery">documentDiscovery</a></code> | <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a></code> | Optional document discovery system for automated configuration generation. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironment.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key used for encrypting sensitive data in the processing environment. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironment.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs generated by document processing components. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironment.property.reportingEnvironment">reportingEnvironment</a></code> | <code><a href="#@cdklabs/genai-idp.IReportingEnvironment">IReportingEnvironment</a></code> | Optional reporting environment for analytics and evaluation capabilities. |
@@ -32701,6 +32866,20 @@ Optional ProcessingEnvironmentApi for progress notifications.
 
 When provided, functions will use GraphQL mutations to update document status
 and notify clients about processing progress.
+
+---
+
+##### `documentDiscovery`<sup>Optional</sup> <a name="documentDiscovery" id="@cdklabs/genai-idp.IProcessingEnvironment.property.documentDiscovery"></a>
+
+```typescript
+public readonly documentDiscovery: IDocumentDiscovery;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a>
+
+Optional document discovery system for automated configuration generation.
+
+When provided, enables discovery job processing, status tracking, and UI upload functionality.
 
 ---
 

@@ -11,6 +11,7 @@ import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
+import { LogLevel } from "../../log-level";
 import { IDiscoveryTable } from "../discovery-table";
 
 /**
@@ -19,9 +20,9 @@ import { IDiscoveryTable } from "../discovery-table";
 export interface DiscoveryUploadResolverFunctionProps
   extends IdpPythonFunctionOptions {
   /**
-   * The S3 bucket for input documents.
+   * The S3 bucket for discovery document uploads.
    */
-  readonly inputBucket: IBucket;
+  readonly discoveryBucket: IBucket;
 
   /**
    * The discovery tracking table.
@@ -37,6 +38,11 @@ export interface DiscoveryUploadResolverFunctionProps
    * Optional KMS key for encrypting function resources.
    */
   readonly encryptionKey?: kms.IKey;
+
+  /**
+   * The log level for the function.
+   */
+  readonly logLevel?: LogLevel;
 }
 
 /**
@@ -88,15 +94,21 @@ export class DiscoveryUploadResolverFunction extends lambda_python.PythonFunctio
         ],
       },
       environment: {
-        DISCOVERY_TABLE_NAME: props.discoveryTable.tableName,
+        LOG_LEVEL: props.logLevel?.toString() || "INFO",
+        DISCOVERY_BUCKET: props.discoveryBucket.bucketName,
+        DISCOVERY_TRACKING_TABLE: props.discoveryTable.tableName,
         DISCOVERY_QUEUE_URL: props.discoveryQueue.queueUrl,
-        INPUT_BUCKET_NAME: props.inputBucket.bucketName,
       },
     });
 
     // Grant permissions
-    props.inputBucket.grantReadWrite(this);
+    props.discoveryBucket.grantReadWrite(this);
     props.discoveryTable.grantReadWriteData(this);
     props.discoveryQueue.grantSendMessages(this);
+
+    // Grant KMS permissions if encryption key is provided
+    if (props.encryptionKey) {
+      props.encryptionKey.grantEncryptDecrypt(this);
+    }
   }
 }

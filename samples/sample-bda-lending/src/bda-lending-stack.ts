@@ -139,6 +139,14 @@ export class BdaLendingStack extends Stack {
       },
     );
 
+    const discoveryBucket = new Bucket(this, 'DiscoveryBucket', {
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true
+    })
+    const documentDiscovery = new DocumentDiscovery(this, "Discovery", {
+      discoveryBucket
+    });
+
     const environment = new ProcessingEnvironment(this, "Environment", {
       key,
       inputBucket,
@@ -149,6 +157,7 @@ export class BdaLendingStack extends Stack {
       api,
       metricNamespace,
       reportingEnvironment,
+      documentDiscovery
       // vpcConfiguration: {
       //   vpc,
       //   vpcSubnets,
@@ -231,10 +240,7 @@ export class BdaLendingStack extends Stack {
       reportingEnvironment,
     );
 
-    api.addDocumentDiscovery(new DocumentDiscovery(this, "Discovery", {
-      inputBucket,
-      appSyncApiUrl: api.graphqlUrl
-    }));
+    api.addDocumentDiscovery(documentDiscovery);
 
     new CfnOutput(this, "WebSiteUrl", {
       value: `https://${webApplication.distribution.distributionDomainName}`,

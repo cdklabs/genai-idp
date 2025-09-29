@@ -19,6 +19,7 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { ConcurrencyTable, IConcurrencyTable } from "./concurrency-table";
 import { ConfigurationTable, IConfigurationTable } from "./configuration-table";
+import { IDocumentDiscovery } from "./document-discovery";
 import { IDocumentProcessor } from "./document-processor";
 import * as functions from "./internal/functions";
 import { LogLevel } from "./log-level";
@@ -118,6 +119,12 @@ export interface IProcessingEnvironment {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * Optional document discovery system for automated configuration generation.
+   * When provided, enables discovery job processing, status tracking, and UI upload functionality.
+   */
+  readonly documentDiscovery?: IDocumentDiscovery;
 
   /**
    * Attaches a document processor to this processing environment.
@@ -233,6 +240,12 @@ export interface ProcessingEnvironmentProps {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * Optional document discovery construct.
+   * When provided, enables document discovery functionality including UI uploads.
+   */
+  readonly documentDiscovery?: IDocumentDiscovery;
 }
 
 /**
@@ -336,6 +349,12 @@ export class ProcessingEnvironment
   public readonly api?: IProcessingEnvironmentApi;
 
   /**
+   * Optional document discovery system for automated configuration generation.
+   * When provided, enables discovery job processing, status tracking, and UI upload functionality.
+   */
+  public readonly documentDiscovery?: IDocumentDiscovery;
+
+  /**
    * The DynamoDB table that tracks document processing status and metadata.
    * Stores information about documents being processed, including status and results.
    */
@@ -420,6 +439,9 @@ export class ProcessingEnvironment
 
     // Use provided API for progress notifications
     this.api = props.api;
+
+    // Use provided document discovery
+    this.documentDiscovery = props.documentDiscovery;
 
     this.configurationFunction = new functions.UpdateConfigurationFunction(
       this,

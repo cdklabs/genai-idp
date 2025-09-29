@@ -7,14 +7,11 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
-import { FixedKeyTableProps } from "../fixed-key-table-props";
+import { IConfigurationTable } from "../configuration-table";
 import { LogLevel } from "../log-level";
+import { IProcessingEnvironmentApi } from "../processing-environment-api";
 import { VpcConfiguration } from "../vpc-configuration";
-import {
-  DiscoveryQueue,
-  DiscoveryQueueProps,
-  IDiscoveryQueue,
-} from "./discovery-queue";
+import { DiscoveryQueue, IDiscoveryQueue } from "./discovery-queue";
 import { DiscoveryTable, IDiscoveryTable } from "./discovery-table";
 import {
   DiscoveryProcessorFunction,
@@ -22,20 +19,9 @@ import {
 } from "./functions";
 
 /**
- * Interface for the document discovery system.
- * Provides document analysis capabilities for automated configuration generation.
+ * Result of initializing DocumentDiscovery functions.
  */
-export interface IDocumentDiscovery {
-  /**
-   * The DynamoDB table that tracks discovery job status and metadata.
-   */
-  readonly discoveryTable: IDiscoveryTable;
-
-  /**
-   * The SQS queue for processing discovery jobs asynchronously.
-   */
-  readonly discoveryQueue: IDiscoveryQueue;
-
+export interface DocumentDiscoveryFunctions {
   /**
    * The Lambda function that handles discovery document uploads.
    */
@@ -48,28 +34,52 @@ export interface IDocumentDiscovery {
 }
 
 /**
+ * Interface for the document discovery system.
+ * Provides document analysis capabilities for automated configuration generation.
+ */
+export interface IDocumentDiscovery {
+  /**
+   * The S3 bucket for document discovery uploads.
+   */
+  readonly discoveryBucket: IBucket;
+
+  /**
+   * The DynamoDB table that tracks discovery job status and metadata.
+   */
+  readonly discoveryTable: IDiscoveryTable;
+
+  /**
+   * The SQS queue for processing discovery jobs asynchronously.
+   */
+  readonly discoveryQueue: IDiscoveryQueue;
+
+  /**
+   * Initialize Lambda functions with API dependencies.
+   * Called by ProcessingEnvironmentApi when adding document discovery.
+   */
+  initializeFunctions(
+    api: IProcessingEnvironmentApi,
+    configurationTable: IConfigurationTable,
+    encryptionKey?: kms.IKey,
+    logLevel?: LogLevel,
+    logRetention?: logs.RetentionDays,
+    vpcConfiguration?: VpcConfiguration,
+  ): DocumentDiscoveryFunctions;
+}
+
+/**
  * Properties for configuring the DocumentDiscovery construct.
  */
 export interface DocumentDiscoveryProps {
   /**
-   * The S3 bucket for input documents.
+   * The S3 bucket for document discovery uploads.
    */
-  readonly inputBucket: IBucket;
-
-  /**
-   * The AppSync API URL for status updates.
-   */
-  readonly appSyncApiUrl: string;
+  readonly discoveryBucket: IBucket;
 
   /**
    * Optional properties for the discovery table.
    */
-  readonly tableProps?: FixedKeyTableProps;
-
-  /**
-   * Optional properties for the discovery queue.
-   */
-  readonly queueProps?: DiscoveryQueueProps;
+  readonly discoveryTable?: IDiscoveryTable;
 
   /**
    * Optional KMS key for encrypting resources.
@@ -100,42 +110,70 @@ export interface DocumentDiscoveryProps {
  * and Lambda functions for processing discovery jobs.
  */
 export class DocumentDiscovery extends Construct implements IDocumentDiscovery {
+  readonly discoveryBucket: IBucket;
   readonly discoveryTable: IDiscoveryTable;
   readonly discoveryQueue: IDiscoveryQueue;
-  readonly uploadResolverFunction: DiscoveryUploadResolverFunction;
-  readonly processorFunction: DiscoveryProcessorFunction;
+
+  private readonly props: DocumentDiscoveryProps;
 
   constructor(scope: Construct, id: string, props: DocumentDiscoveryProps) {
     super(scope, id);
 
-    // Create table and queue
-    this.discoveryTable = new DiscoveryTable(this, "Table", props.tableProps);
-    this.discoveryQueue = new DiscoveryQueue(this, "Queue", props.queueProps);
+    this.props = props;
+    this.discoveryBucket = props.discoveryBucket;
+    this.discoveryTable =
+      props.discoveryTable ?? new DiscoveryTable(this, "Table");
+    this.discoveryQueue = new DiscoveryQueue(this, "Queue");
+  }
 
-    // Create Lambda functions
-    this.uploadResolverFunction = new DiscoveryUploadResolverFunction(
+  /**
+   * Initialize the Lambda functions with API URL.
+   * Called by ProcessingEnvironmentApi when adding document discovery.
+   */
+  public initializeFunctions(
+    api: IProcessingEnvironmentApi,
+    configurationTable: IConfigurationTable,
+    encryptionKey?: kms.IKey,
+    logLevel?: LogLevel,
+    logRetention?: logs.RetentionDays,
+    vpcConfiguration?: VpcConfiguration,
+  ): DocumentDiscoveryFunctions {
+    const uploadResolverFunction = new DiscoveryUploadResolverFunction(
       this,
       "UploadResolver",
       {
-        inputBucket: props.inputBucket,
+        discoveryBucket: this.discoveryBucket,
         discoveryTable: this.discoveryTable,
         discoveryQueue: this.discoveryQueue,
-        encryptionKey: props.encryptionKey,
-        logRetention: props.logRetention,
-        vpc: props.vpcConfiguration?.vpc,
-        vpcSubnets: props.vpcConfiguration?.vpcSubnets,
+        encryptionKey: encryptionKey ?? this.props.encryptionKey,
+        logLevel: logLevel ?? this.props.logLevel,
+        logRetention: logRetention ?? this.props.logRetention,
+        vpc: vpcConfiguration?.vpc ?? this.props.vpcConfiguration?.vpc,
+        vpcSubnets:
+          vpcConfiguration?.vpcSubnets ??
+          this.props.vpcConfiguration?.vpcSubnets,
       },
     );
 
-    this.processorFunction = new DiscoveryProcessorFunction(this, "Processor", {
-      inputBucket: props.inputBucket,
-      discoveryTable: this.discoveryTable,
-      discoveryQueue: this.discoveryQueue,
-      appSyncApiUrl: props.appSyncApiUrl,
-      encryptionKey: props.encryptionKey,
-      logRetention: props.logRetention,
-      vpc: props.vpcConfiguration?.vpc,
-      vpcSubnets: props.vpcConfiguration?.vpcSubnets,
-    });
+    const processorFunction = new DiscoveryProcessorFunction(
+      this,
+      "Processor",
+      {
+        discoveryBucket: this.discoveryBucket,
+        discoveryTable: this.discoveryTable,
+        discoveryQueue: this.discoveryQueue,
+        configurationTable: configurationTable,
+        api: api,
+        encryptionKey: encryptionKey ?? this.props.encryptionKey,
+        logLevel: logLevel ?? this.props.logLevel,
+        logRetention: logRetention ?? this.props.logRetention,
+        vpc: vpcConfiguration?.vpc ?? this.props.vpcConfiguration?.vpc,
+        vpcSubnets:
+          vpcConfiguration?.vpcSubnets ??
+          this.props.vpcConfiguration?.vpcSubnets,
+      },
+    );
+
+    return { uploadResolverFunction, processorFunction };
   }
 }

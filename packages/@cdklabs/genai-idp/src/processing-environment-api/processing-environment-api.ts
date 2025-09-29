@@ -177,6 +177,7 @@ export class ProcessingEnvironmentApi
   private readonly _encryptionKey?: kms.IKey;
   private readonly _logRetention?: logs.RetentionDays;
   private readonly _vpcConfiguration?: VpcConfiguration;
+  private readonly _configurationTable: IConfigurationTable;
   private readonly outputBucket: IBucket;
   private _agentAnalytics?: AgentAnalytics;
 
@@ -217,6 +218,7 @@ export class ProcessingEnvironmentApi
     this._encryptionKey = props.encryptionKey;
     this._logRetention = props.logRetention;
     this._vpcConfiguration = props.vpcConfiguration;
+    this._configurationTable = props.configurationTable;
     this.outputBucket = props.outputBucket;
 
     // Add file contents resolver
@@ -1488,10 +1490,20 @@ export class ProcessingEnvironmentApi
    * @param documentDiscovery The document discovery construct with table, queue, and functions
    */
   public addDocumentDiscovery(documentDiscovery: IDocumentDiscovery): void {
+    // Initialize functions with API URL and environment settings
+    const { uploadResolverFunction } = documentDiscovery.initializeFunctions(
+      this,
+      this._configurationTable,
+      this._encryptionKey,
+      this._logLevel,
+      this._logRetention,
+      this._vpcConfiguration,
+    );
+
     // Add upload discovery document resolver
     const discoveryUploadDataSource = this.addLambdaDataSource(
       "DiscoveryUploadDataSource",
-      documentDiscovery.uploadResolverFunction,
+      uploadResolverFunction,
       {
         name: "DiscoveryUploadResolver",
         description: "Lambda function for discovery document uploads",
