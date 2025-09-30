@@ -42,6 +42,9 @@ jobs:
           mv temp-upstream sources
           rm -rf sources/.git
           echo "Successfully synced release $LATEST_TAG (VERSION: $VERSION)"
+
+          # Stage the changes for git
+          git add sources
           '
       - name: Check for changes
         id: check-changes

@@ -71,6 +71,12 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
   readonly workingBucket: IBucket;
 
   /**
+   * OCR backend to use for text extraction.
+   * @default "textract"
+   */
+  readonly ocrBackend?: "textract" | "bedrock" | "none";
+
+  /**
    * Optional invokable model used for OCR when using Bedrock-based OCR.
    * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
    * Only used when the OCR backend is set to 'bedrock' in the configuration.
@@ -168,9 +174,11 @@ export class OcrFunction extends PythonFunction {
     props.configurationTable.grantReadWriteData(this);
     props.trackingTable.grantReadWriteData(this);
 
-    if (props.ocrModel) {
+    const ocrBackend = props.ocrBackend || "textract";
+
+    if (ocrBackend === "bedrock" && props.ocrModel) {
       props.ocrModel.grantInvoke(this);
-    } else {
+    } else if (ocrBackend === "textract") {
       // Textract Policy
       this.addToRolePolicy(
         new PolicyStatement({
@@ -179,6 +187,7 @@ export class OcrFunction extends PythonFunction {
         }),
       );
     }
+    // No permissions needed for "none" backend
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

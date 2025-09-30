@@ -207,6 +207,7 @@ export class BedrockLlmProcessor
       inputBucket: this.environment.inputBucket,
       outputBucket: this.environment.outputBucket,
       workingBucket: this.environment.workingBucket,
+      ocrBackend: renderedConfiguration.ocrBackend,
       ocrModel: renderedConfiguration.ocrModel,
       ocrGuardrail: props.ocrGuardrail,
       api: this.environment.api,
