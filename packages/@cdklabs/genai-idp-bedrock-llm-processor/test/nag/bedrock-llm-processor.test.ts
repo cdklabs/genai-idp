@@ -148,8 +148,8 @@ describe("BedrockLlmProcessor CDK Nag Compliance", () => {
 
       // Validate expected resource counts for Bedrock LLM processor
       // Note: These counts may need adjustment based on actual resource creation
-      template.resourceCountIs("AWS::Lambda::Function", 7); // Updated: Always creates assessment and summarization functions
-      template.resourceCountIs("AWS::IAM::Role", 8); // Updated: Always creates assessment and summarization functions with their roles
+      template.resourceCountIs("AWS::Lambda::Function", 10); // Updated: Added 3 HITL functions (HitlWait, HitlStatusUpdate, HitlProcess)
+      template.resourceCountIs("AWS::IAM::Role", 11); // Updated: Added 3 HITL function roles
       template.resourceCountIs("AWS::SQS::Queue", 0); // Adjusted based on actual count - Bedrock LLM processor doesn't use SQS
       template.resourceCountIs("AWS::S3::Bucket", 3); // Adjust based on actual count
       template.resourceCountIs("AWS::DynamoDB::Table", 2); // Adjusted based on actual count

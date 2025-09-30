@@ -102,7 +102,7 @@ export interface WebApplicationProps {
 
   /**
    * Whether to automatically configure CORS rules on S3 buckets for CloudFront access.
-   * When true, the library will configure CORS rules on the input and output buckets
+   * When true, the library will configure CORS rules on the input, output, and discovery buckets
    * to allow access from the CloudFront distribution domain.
    *
    * When false, users are responsible for configuring CORS rules themselves.
@@ -127,8 +127,11 @@ export class WebApplication extends Construct implements IWebApplication {
       {
         stringValue: JSON.stringify({
           StackName: cdk.Stack.of(this).stackName,
-          Version: "0.3.13",
+          Version: "0.3.16",
           InputBucket: props.environment.inputBucket.bucketName,
+          DiscoveryBucket:
+            props.environment.documentDiscovery?.discoveryBucket.bucketName ||
+            "",
           OutputBucket: props.environment.outputBucket.bucketName,
           ReportingBucket:
             props.environment.reportingEnvironment?.reportingBucket
@@ -466,7 +469,7 @@ export class WebApplication extends Construct implements IWebApplication {
    * Works with both user-provided and default distributions.
    *
    * This method is only called when autoConfigure is true (default).
-   * When autoConfigure is false, users are responsible for setting up CORS rules on input/output buckets.
+   * When autoConfigure is false, users are responsible for setting up CORS rules on input/output/discovery buckets.
    */
   private configureIntegrations(props: WebApplicationProps): void {
     // Get the distribution domain (works for both user-provided and default)
@@ -491,6 +494,25 @@ export class WebApplication extends Construct implements IWebApplication {
 
     if (props.environment.outputBucket instanceof s3.Bucket) {
       props.environment.outputBucket.addCorsRule({
+        allowedHeaders: [
+          "Content-Type",
+          "x-amz-content-sha256",
+          "x-amz-date",
+          "Authorization",
+          "x-amz-security-token",
+        ],
+        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.POST],
+        allowedOrigins: [`https://${distributionDomain}`],
+        exposedHeaders: ["ETag", "x-amz-server-side-encryption"],
+        maxAge: 3000,
+      });
+    }
+
+    // Configure CORS on discovery bucket
+    if (
+      props.environment.documentDiscovery?.discoveryBucket instanceof s3.Bucket
+    ) {
+      props.environment.documentDiscovery.discoveryBucket.addCorsRule({
         allowedHeaders: [
           "Content-Type",
           "x-amz-content-sha256",

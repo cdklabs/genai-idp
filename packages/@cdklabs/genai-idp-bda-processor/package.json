@@ -11,6 +11,7 @@
     "bundle": "npx projen bundle",
     "bundle:config:lending-package-sample": "npx projen bundle:config:lending-package-sample",
     "bundle:lambda:bda_completion_function": "npx projen bundle:lambda:bda_completion_function",
+    "bundle:lambda:bda_discovery_function": "npx projen bundle:lambda:bda_discovery_function",
     "bundle:lambda:bda_invoke_function": "npx projen bundle:lambda:bda_invoke_function",
     "bundle:lambda:hitl-process-function": "npx projen bundle:lambda:hitl-process-function",
     "bundle:lambda:hitl-status-update-function": "npx projen bundle:lambda:hitl-status-update-function",

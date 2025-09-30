@@ -158,7 +158,7 @@ Key parameters that can be configured during CloudFormation deployment:
 - `EvaluationAutoEnabled`: Enable automatic accuracy evaluation (default: true)
 - `DocumentKnowledgeBase`: Enable document knowledge base functionality
 - `KnowledgeBaseModelId`: Bedrock model for knowledge base queries
-- `PostProcessingLambdaHookFunctionArn`: Optional Lambda ARN for custom post-processing
+- `PostProcessingLambdaHookFunctionArn`: Optional Lambda ARN for custom post-processing (see [post-processing-lambda-hook.md](post-processing-lambda-hook.md) for detailed implementation guidance)
 - `BedrockGuardrailId`: Optional Bedrock Guardrail ID to apply
 - `BedrockGuardrailVersion`: Version of Bedrock Guardrail to use
 

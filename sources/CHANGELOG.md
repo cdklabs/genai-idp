@@ -5,6 +5,116 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+## [0.3.16]
+
+### Added
+
+- **S3 Vectors Support for Cost-Optimized Knowledge Base Storage**
+  - Added S3 Vectors as alternative vector store option to OpenSearch Serverless for Bedrock Knowledge Base with lower storage costs
+  - Custom resource Lambda implementation for S3 vector bucket and index management (using boto3 s3vectors client) with proper IAM permissions and resource cleanup
+  - Unified Knowledge Base interface supporting both vector store types with automatic resource provisioning based on user selection
+
+- **Page Limit Configuration for Classification Control**
+  - Added `maxPagesForClassification` configuration option to control how many pages are used during document classification
+  - **Default Behavior**: `"ALL"` - uses all pages for classification (existing behavior)
+  - **Limited Page Classification**: Set to numeric value (e.g., `"1"`, `"2"`, `"3"`) to classify only the first N pages
+  - **Important**: When using numeric limit, the classification result from the first N pages is applied to ALL pages in the document, effectively forcing the entire document to be assigned a single class with one section
+  - **Use Cases**: Performance optimization for large documents, cost reduction for documents with consistent classification patterns, simplified processing for homogeneous document types
+
+- **CloudFormation Service Role for Delegated Deployment Access**
+  - Added example CloudFormation service role template that enables non-administrator users to deploy and maintain IDP stacks without requiring ongoing administrator permissions
+  - Administrators can provision the service role once with elevated privileges, then delegate deployment capabilities to developer/DevOps teams
+  - Includes comprehensive documentation and cross-referenced deployment guides explaining the security model and setup process
+
+
+### Fixed
+- Fixed issue where CloudFront policy statements were still appearing in generated GovCloud templates despite CloudFront resources being removed
+- Fix duplicate Glue tables are created when using a document class that contains a dash (-). Resolved by replacing dash in section types with underscore character when creating the table, to align with the table name generated later by the Glue crawler - resolves #57.
+- Fix occasional UI error 'Failed to get document details - please try again later' - resolves #58
+- Fixed UI zipfile creation to exclude .aws-sam directories and .env files from deployment package
+- Added security recommendation to set LogLevel parameter to WARN or ERROR (not INFO) for production deployments to prevent logging of sensitive information including PII data, document contents, and S3 presigned URLs
+- Hardened several aspects of the new Discovery feature
+
+## [0.3.15]
+
+### Added
+
+- **Intelligent Document Discovery Module for Automated Configuration Generation**
+  - Added Discovery module that automatically analyzes document samples to identify structure, field types, and organizational patterns
+  - **Pattern-Neutral Design**: Works across all processing patterns (1, 2, 3) with unified discovery process and pattern-specific implementations
+  - **Dual Discovery Methods**: Discovery without ground truth (exploratory analysis) and with ground truth (optimization using labeled data)
+  - **Automated Blueprint Creation**: Pattern 1 includes zero-touch BDA blueprint generation with intelligent change detection and version management
+  - **Web UI Integration**: Real-time discovery job monitoring, interactive results review, and seamless configuration integration
+  - **Advanced Features**: Multi-model support (Nova, Claude), customizable prompts, configurable parameters, ground truth processing, schema conversion, and lifecycle management
+  - **Key Benefits**: Rapid new document type onboarding, reduced time-to-production, configuration optimization, and automated workflow bootstrapping
+  - **Use Cases**: New document exploration, configuration improvement, rapid prototyping, and document understanding
+  - **Documentation**: Guide in `docs/discovery.md` with architecture details, best practices, and troubleshooting
+
+- **Optional Pattern-2 Regex-Based Classification for Enhanced Performance**
+  - Added support for optional regex patterns in document class definitions for performance optimization
+  - **Document Name Regex**: Match against document ID/name to classify all pages without LLM processing when all pages should be the same class
+  - **Document Page Content Regex**: Match against page text content during multi-modal page-level classification for fast page classification
+  - **Key Benefits**: Significant performance improvements and cost savings by bypassing LLM calls for pattern-matched documents, deterministic classification results for known document patterns, seamless fallback to existing LLM classification when regex patterns don't match
+  - **Configuration**: Optional `document_name_regex` and `document_page_content_regex` fields in class definitions with automatic regex compilation and validation
+  - **Logging**: Comprehensive info-level logging when regex patterns match for observability and debugging
+  - **CloudFormation Integration**: Updated Pattern-2 schema to support regex configuration through the Web UI
+  - **Demonstration**: New `step2_classification_with_regex.ipynb` notebook showcasing regex configuration and performance comparisons
+  - **Documentation**: Enhanced classification module README and main documentation with regex usage examples and best practices
+  
+- **Windows WSL Development Environment Setup Guide**
+  - Added WSL-based development environment setup guide for Windows developers in `docs/setup-development-env-WSL.md`
+  - **Key Features**: Automated setup script (`wsl_setup.sh`) for quick installation of Git, Python, Node.js, AWS CLI, and SAM CLI
+  - **Integrated Workflow**: Development setup combining Windows tools (VS Code, browsers) with native Linux environment
+  - **Target Use Cases**: Windows developers needing Linux compatibility without Docker Desktop or VM overhead
+
+### Fixed
+- **Throttling Error Detection and Retry Logic for Assessment Functions** - [GitHub Issue #45](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/45)
+  - **Assessment Function**: Enhanced throttling detection to check for throttling errors returned in `document.errors` field in addition to thrown exceptions, raising `ThrottlingException` to trigger Step Functions retry when throttling is detected
+  - **Granular Assessment Task Caching**: Fixed caching logic to properly cache successful assessment tasks when there are ANY failed tasks (both exception-based and result-based failures), enabling efficient retry optimization by only reprocessing failed tasks while preserving successful results
+  - **Impact**: Improved resilience for throttling scenarios, reduced redundant processing during retries, and better Step Functions retry behavior
+
+- **Security Vulnerability Mitigation - Package Updates**
+
+- **GovCloud Compatibility - Hardcoded Service Domain References**
+  - Fixed hardcoded `amazonaws.com` references in CloudFormation templates that prevented GovCloud deployment
+  - Updated all service principals and endpoints to use dynamic `${AWS::URLSuffix}` expressions for automatic region-based resolution
+  - **Templates Updated**: `template.yaml` (main template), `patterns/pattern-3/sagemaker_classifier_endpoint.yaml`
+  - **Services Fixed**: EventBridge, Cognito, SageMaker, ECR, CloudFront, CodeBuild, AppSync, Lambda, DynamoDB, CloudWatch Logs, Glue
+  - Resolves GitHub Issue #50 - templates now deploy correctly in both standard AWS and GovCloud regions
+
+- **Bug Fixes and Code Improvements**
+  - Fixed HITL processing errors in both Pattern-1 (DynamoDB validation with empty strings) and Pattern-2 (string indices error in A2I output processing)
+  - Fixed Step Function UI issues including auto-refresh button auto-disable and fetch failures for failed executions with datetime serialization errors
+  - Cleaned up unused Step Function subscription infrastructure and removed duplicate code in Pattern-2 HITL function
+  - Expanded UI Visual Editor bounding box size with padding for better visibility and user interaction
+  - Fixed bug in list of models supporting cache points - previously claude 4 sonnet and opus had been excluded.
+  - Validations added at the assessment step for checking valid json response. The validation fails after extraction/assessment is complete if json parsing issues are encountered.
+
+
+## [0.3.14]
+
+### Added
+- Support for 1m token context for Claude Sonnet 4
+- Video demo of "Chat with Document" in [./docs/web-ui.md](./docs/web-ui.md)
+- **Human-in-the-Loop (HITL) Support Extended to Pattern-2**
+  - Added HITL review capabilities for Pattern-2 (Textract + Bedrock processing) using Amazon SageMaker Augmented AI (A2I)
+  - Enables human validation and correction when extraction confidence falls below configurable threshold
+  - Includes same features as Pattern-1 HITL: automatic triggering, review portal integration, and seamless result updates
+  - Documentation and video demo in [./docs/human-review.md](./docs/human-review.md)
+
+### Removed
+- Windows development environment guide and setup script removed as it proved insufficiently robust
+
+### Fixed
+- Fix 1-click Launch URL output from the GovCloud template generation script
+- Add Agent Analytics to architecture diagram
+- Fix various UX and error reporting issues with the new Python publish script
+- Simplify UDOP model path construction and avoid invalid default for regions other than us-east-1 and us-west-2
+- Permission regression from previous release affecting "Chat with Document"
+
+
 ## [0.3.13]
 
 ### Added

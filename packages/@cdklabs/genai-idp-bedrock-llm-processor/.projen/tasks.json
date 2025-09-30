@@ -57,6 +57,15 @@
           "spawn": "bundle:lambda:extraction_function"
         },
         {
+          "spawn": "bundle:lambda:hitl-process-function"
+        },
+        {
+          "spawn": "bundle:lambda:hitl-status-update-function"
+        },
+        {
+          "spawn": "bundle:lambda:hitl-wait-function"
+        },
+        {
           "spawn": "bundle:lambda:ocr_function"
         },
         {
@@ -173,6 +182,39 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/extraction_function/* assets/lambdas/extraction_function/."
+        }
+      ]
+    },
+    "bundle:lambda:hitl-process-function": {
+      "name": "bundle:lambda:hitl-process-function",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/hitl-process-function"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/hitl-process-function/* assets/lambdas/hitl-process-function/."
+        }
+      ]
+    },
+    "bundle:lambda:hitl-status-update-function": {
+      "name": "bundle:lambda:hitl-status-update-function",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/hitl-status-update-function"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/hitl-status-update-function/* assets/lambdas/hitl-status-update-function/."
+        }
+      ]
+    },
+    "bundle:lambda:hitl-wait-function": {
+      "name": "bundle:lambda:hitl-wait-function",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/hitl-wait-function"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/hitl-wait-function/* assets/lambdas/hitl-wait-function/."
         }
       ]
     },

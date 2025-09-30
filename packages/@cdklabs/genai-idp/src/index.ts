@@ -21,4 +21,5 @@ export * from "./idp-python-layer-version";
 export * from "./log-level";
 export * from "./custom-prompt-generator";
 export * from "./agent-analytics";
+export * from "./document-discovery";
 export * from "./internal";

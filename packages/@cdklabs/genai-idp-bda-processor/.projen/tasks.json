@@ -51,6 +51,9 @@
           "spawn": "bundle:lambda:bda_completion_function"
         },
         {
+          "spawn": "bundle:lambda:bda_discovery_function"
+        },
+        {
           "spawn": "bundle:lambda:bda_invoke_function"
         },
         {
@@ -98,6 +101,17 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/bda_completion_function/* assets/lambdas/bda_completion_function/."
+        }
+      ]
+    },
+    "bundle:lambda:bda_discovery_function": {
+      "name": "bundle:lambda:bda_discovery_function",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/bda_discovery_function"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/bda_discovery_function/* assets/lambdas/bda_discovery_function/."
         }
       ]
     },
