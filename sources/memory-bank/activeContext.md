@@ -2,14 +2,47 @@
 
 ## Current Task Status
 
-**Feature Implementation**: ✅ **COMPLETED** - GovCloud Template Generation System
+**Security Vulnerability Mitigation**: ✅ **COMPLETED** - IDP CLI Dependency Security Updates
 
-## Feature Overview
+**Previous Task**: ✅ **COMPLETED** - Service Principal GovCloud Compatibility Updates
 
-Successfully created a comprehensive GovCloud-compatible version of the GenAI IDP Accelerator that addresses both key requirements:
+## Security Vulnerability Mitigation Overview
 
-1. **ARN Partition Updates**: All templates now use `arn:${AWS::Partition}:` for GovCloud compatibility
-2. **Stripped-Down Template**: Created generation script that removes UI components for headless operation
+Successfully addressed critical security vulnerabilities in the IDP CLI development tool by updating vulnerable dependencies:
+
+### Issues Resolved:
+1. **urllib3 vulnerabilities (Medium severity - CVSS 5.3)**:
+   - CVE-2025-50181: Redirect handling bypass vulnerability
+   - CVE-2025-50182: Browser/Node.js redirect control issues
+   - Updated from version 2.3.0 → 2.5.0
+
+2. **tornado vulnerability (High severity - CVSS 7.5)**:
+   - CVE-2025-47287: DoS through multipart/form-data parser logging
+   - Updated from version 6.4.2 → 6.5.2
+
+### Implementation Details:
+- **Location**: `scripts/sdlc/idp-cli/` (Development CLI tool)
+- **Method**: Direct dependency version constraints in `pyproject.toml`
+- **Approach**: Added explicit version requirements to force secure versions
+- **Testing**: Verified dependency resolution and basic functionality
+
+### Files Modified:
+- `scripts/sdlc/idp-cli/pyproject.toml` - Added urllib3 >= 2.5.0 and tornado >= 6.5 constraints
+- `scripts/sdlc/idp-cli/poetry.lock` - Updated with new secure dependency versions
+
+### Security Status:
+- ✅ All identified vulnerabilities resolved
+- ✅ Dependencies updated to secure versions
+- ✅ Functionality verified
+- ✅ Low implementation risk (development tool only)
+
+## Previous Feature Overview (GovCloud Compatibility)
+
+Successfully updated all CloudFormation templates to replace hardcoded AWS service principals with dynamic expressions for GovCloud compatibility:
+
+1. **Service Principal Updates**: All templates now use `!Sub "<service>.${AWS::URLSuffix}"` for GovCloud compatibility
+2. **Template Fixes**: Fixed YAML validation errors and duplicate parameter issues
+3. **Comprehensive Coverage**: Updated all templates in main, options, and patterns directories
 
 ## Implementation Summary
 

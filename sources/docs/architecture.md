@@ -277,6 +277,8 @@ The solution supports an optional post-processing Lambda hook integration:
   - Custom notification systems
 - Receives the document processing details and output location
 
+For comprehensive implementation guidance, use cases, and code examples, see [post-processing-lambda-hook.md](./post-processing-lambda-hook.md).
+
 ## Additional Documentation
 
 - [classification.md](./classification.md) - Details on document classification capabilities

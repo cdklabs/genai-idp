@@ -51,6 +51,9 @@ rm -rf ${targetDir}
 mv temp-upstream ${targetDir}
 rm -rf ${targetDir}/.git
 echo "Successfully synced release $LATEST_TAG (VERSION: $VERSION)"
+
+# Stage the changes for git
+git add ${targetDir}
 '`,
         },
       ],

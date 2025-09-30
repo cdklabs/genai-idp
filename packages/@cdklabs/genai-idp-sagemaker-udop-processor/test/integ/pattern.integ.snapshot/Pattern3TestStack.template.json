@@ -1381,7 +1381,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "1fe8e90d565f5dad7cc5a2a2c4de85299e6d598f55be41b613da1f088c59c54d.zip"
+     "S3Key": "bd407025befb1de25f03591dbcab67a671c2e33dc7b924c2c93a456f6f577b1e.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service"
    },
@@ -1809,7 +1809,9 @@
           "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
           "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
           "us.anthropic.claude-sonnet-4-20250514-v1:0",
-          "us.anthropic.claude-opus-4-20250514-v1:0"
+          "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+          "us.anthropic.claude-opus-4-20250514-v1:0",
+          "us.anthropic.claude-opus-4-1-20250805-v1:0"
          ],
          "order": 2,
          "dependsOn": {
@@ -2202,7 +2204,9 @@
           "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
           "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
           "us.anthropic.claude-sonnet-4-20250514-v1:0",
-          "us.anthropic.claude-opus-4-20250514-v1:0"
+          "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+          "us.anthropic.claude-opus-4-20250514-v1:0",
+          "us.anthropic.claude-opus-4-1-20250805-v1:0"
          ],
          "order": 1
         },
@@ -2336,7 +2340,9 @@
           "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
           "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
           "us.anthropic.claude-sonnet-4-20250514-v1:0",
-          "us.anthropic.claude-opus-4-20250514-v1:0"
+          "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+          "us.anthropic.claude-opus-4-20250514-v1:0",
+          "us.anthropic.claude-opus-4-1-20250805-v1:0"
          ],
          "order": 3
         },
@@ -2390,7 +2396,9 @@
           "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
           "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
           "us.anthropic.claude-sonnet-4-20250514-v1:0",
-          "us.anthropic.claude-opus-4-20250514-v1:0"
+          "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+          "us.anthropic.claude-opus-4-20250514-v1:0",
+          "us.anthropic.claude-opus-4-1-20250805-v1:0"
          ],
          "order": 1
         },
@@ -2447,7 +2455,9 @@
             "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
             "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
             "us.anthropic.claude-sonnet-4-20250514-v1:0",
-            "us.anthropic.claude-opus-4-20250514-v1:0"
+            "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+            "us.anthropic.claude-opus-4-20250514-v1:0",
+            "us.anthropic.claude-opus-4-1-20250805-v1:0"
            ],
            "order": 1
           },
@@ -3414,6 +3424,27 @@
        ]
       },
       {
+       "name": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+       "units": [
+        {
+         "name": "inputTokens",
+         "price": "6.0E-6"
+        },
+        {
+         "name": "outputTokens",
+         "price": "2.25E-5"
+        },
+        {
+         "name": "cacheReadInputTokens",
+         "price": "6.0E-7"
+        },
+        {
+         "name": "cacheWriteInputTokens",
+         "price": "7.5E-6"
+        }
+       ]
+      },
+      {
        "name": "bedrock/us.anthropic.claude-opus-4-20250514-v1:0",
        "units": [
         {
@@ -3455,7 +3486,28 @@
         }
        ]
       }
-     ]
+     ],
+     "discovery": {
+      "output_format": {
+       "sample_json": "{\n    \"document_class\" : \"Form-1040\",\n    \"document_description\" : \"Brief summary of the document\",\n    \"groups\" : [\n        {\n            \"name\" : \"PersonalInformation\",\n            \"description\" : \"Personal information of Tax payer\",\n            \"attributeType\" : \"group\",\n            \"groupAttributes\" : [\n                {\n                    \"name\": \"FirstName\",\n                    \"dataType\" : \"string\",\n                    \"description\" : \"First Name of Taxpayer\"\n                },\n                {\n                    \"name\": \"Age\",\n                    \"dataType\" : \"number\",\n                    \"description\" : \"Age of Taxpayer\"\n                }\n            ]\n        },\n        {\n            \"name\" : \"Dependents\",\n            \"description\" : \"Dependents of taxpayer\",\n            \"attributeType\" : \"list\",\n            \"listItemTemplate\": {\n                \"itemAttributes\" : [\n                    {\n                        \"name\": \"FirstName\",\n                        \"dataType\" : \"string\",\n                        \"description\" : \"Dependent first name\"\n                    },\n                    {\n                        \"name\": \"Age\",\n                        \"dataType\" : \"number\",\n                        \"description\" : \"Dependent Age\"\n                    }\n                ]\n            }\n        }\n    ]\n}"
+      },
+      "with_ground_truth": {
+       "top_p": "0.1",
+       "temperature": "1.0",
+       "user_prompt": "This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference.                         <GROUND_TRUTH_REFERENCE> {ground_truth_json} </GROUND_TRUTH_REFERENCE> Ground truth reference JSON has the fields we are interested in extracting from the document/image. Use the ground truth to optimize field extraction. Match field names, data types, and groupings from the reference. Image may contain multiple pages, process all pages. Extract all field names including those without values. Do not change the group name and field name from ground truth in the extracted data json. Add field_description field for every field which will contain instruction to LLM to extract the field data from the image/document. Add data_type field for every field.  Add two fields document_class and document_description.  For document_class generate a short name based on the document content like W4, I-9, Paystub.  For document_description generate a description about the document in less than 50 words. If the group repeats and follows table format, update the attributeType as \"list\".                          Do not extract the values. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:\n  ",
+       "model_id": "us.amazon.nova-pro-v1:0",
+       "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Use provided ground truth data as reference to optimize field extraction and ensure consistency with expected document structure and field definitions.",
+       "max_tokens": "10000"
+      },
+      "without_ground_truth": {
+       "top_p": "0.1",
+       "temperature": "1.0",
+       "user_prompt": "This image contains forms data. Analyze the form line by line. Image may contains multiple pages, process all the pages.  Form may contain multiple name value pair in one line.  Extract all the names in the form including the name value pair which doesn't have value.  Organize them into groups, extract field_name, data_type and field description Field_name should be less than 60 characters, should not have space use '-' instead of space. field_description is a brief description of the field and the location of the field like box number or line number in the form and section of the form. Field_name should be unique within the group. Add two fields document_class and document_description.  For document_class generate a short name based on the document content like W4, I-9, Paystub.  For document_description generate a description about the document in less than 50 words. \nGroup the fields based on the section they are grouped in the form. Group should have attributeType as \"group\". If the group repeats and follows table format, update the attributeType as \"list\". Do not extract the values. Return the extracted data in JSON format. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:",
+       "model_id": "us.amazon.nova-pro-v1:0",
+       "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Analyze forms line by line to identify field names, data types, and organizational structure. Focus on creating comprehensive blueprints for document processing without extracting actual values.",
+       "max_tokens": "10000"
+      }
+     }
     },
     "ConfigurationTable": {
      "Ref": "EnvironmentConfigurationTableFFC21CA7"
@@ -5874,7 +5926,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "aa6da71ebf7c59fe0852ef95851248e982474d2ab3e2c80d3317b66bf920eadb.zip"
+     "S3Key": "b6eeb40628d7247f5e2ca6d354e65a0cd91ee235d3412a40f1b9df9a7b1c5a31.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr"
    },
@@ -5891,7 +5943,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "bcc3308fc98b29e514ad89681cf5f7b8388da5b6816b38964b44942577704142.zip"
+     "S3Key": "67c203203e8f3292916315e76aa6cec45825440f736bcb9854d89dd834d905d8.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service"
    },
@@ -5908,7 +5960,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "44d473a36325e6afd18972211edc3b08e0ef958ba4ecd5c342d60c99cbbb1d1c.zip"
+     "S3Key": "4d038b5ee6c28a6a9ec57f6fcbb3f8e7c961a7f8a1de35e58aa7cd03da8f5864.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction"
    },
@@ -5925,7 +5977,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "551b87244f3d5e688f258876c8d7ac0dd286490f918a9d877719bffa2dc0995a.zip"
+     "S3Key": "df43f488c20411ad3f15e82d3df832634519a99c34cff139bfe6a446cb8ca65c.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service"
    },

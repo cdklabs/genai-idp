@@ -5,66 +5,66 @@ SPDX-License-Identifier: Apache-2.0
 
 import * as path from "path";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
-import * as cdk from "aws-cdk-lib";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import { IBucket } from "aws-cdk-lib/aws-s3";
+import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
 import { LogLevel } from "../../log-level";
+import { IDiscoveryTable } from "../discovery-table";
 
 /**
- * Properties for configuring the PublishStepFunctionUpdateResolverFunction.
+ * Properties for configuring the DiscoveryUploadResolverFunction.
  */
-export interface PublishStepFunctionUpdateResolverFunctionProps
+export interface DiscoveryUploadResolverFunctionProps
   extends IdpPythonFunctionOptions {
   /**
-   * The log level for the function.
-   * Controls the verbosity of logs generated during execution.
+   * The S3 bucket for discovery document uploads.
    */
-  readonly logLevel?: LogLevel;
+  readonly discoveryBucket: IBucket;
+
+  /**
+   * The discovery tracking table.
+   */
+  readonly discoveryTable: IDiscoveryTable;
+
+  /**
+   * The discovery processing queue.
+   */
+  readonly discoveryQueue: sqs.IQueue;
 
   /**
    * Optional KMS key for encrypting function resources.
-   * When provided, ensures data security for the Lambda function.
    */
   readonly encryptionKey?: kms.IKey;
+
+  /**
+   * The log level for the function.
+   */
+  readonly logLevel?: LogLevel;
 }
 
 /**
- * A Lambda function that publishes Step Functions execution updates for GraphQL subscriptions.
+ * A Lambda function that handles discovery document uploads via GraphQL API.
  *
- * This function is used as a resolver in the ProcessingEnvironmentApi to handle
- * the publishStepFunctionExecutionUpdate mutation. It receives execution data
- * and returns it to trigger GraphQL subscriptions, enabling real-time updates
- * of Step Functions execution status to subscribed clients.
+ * This function generates presigned URLs for document uploads and creates
+ * discovery job entries in the tracking table.
  */
-export class PublishStepFunctionUpdateResolverFunction
-  extends lambda_python.PythonFunction
-  implements lambda.IFunction
-{
-  /**
-   * Creates a new PublishStepFunctionUpdateResolverFunction.
-   *
-   * @param scope The construct scope
-   * @param id The construct ID
-   * @param props Configuration properties for the function
-   */
+export class DiscoveryUploadResolverFunction extends lambda_python.PythonFunction {
   constructor(
     scope: Construct,
     id: string,
-    props: PublishStepFunctionUpdateResolverFunctionProps,
+    props: DiscoveryUploadResolverFunctionProps,
   ) {
     super(scope, id, {
+      ...props,
       entry: path.join(
         __dirname,
-        "..",
-        "..",
-        "..",
-        "assets",
-        "lambdas",
-        "publish_stepfunction_update_resolver",
+        "../../../assets/lambdas/discovery_upload_resolver",
       ),
-      handler: "lambda_handler",
+      runtime: lambda.Runtime.PYTHON_3_12,
+      memorySize: 512,
       bundling: {
         command: [
           "bash",
@@ -88,23 +88,27 @@ export class PublishStepFunctionUpdateResolverFunction
             // Copy only necessary dependencies to the output
             `rsync -rL /tmp/builddir/ /asset-output`,
             // Clean up temporary directory
-            `rm -rf /tmp/builddir`,
+            `rm -rf /tm p/builddir`,
             `cd /asset-output`,
           ].join(" && "),
         ],
       },
-      runtime: lambda.Runtime.PYTHON_3_12,
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 256,
-      description:
-        "This AWS Lambda Function publishes Step Functions execution updates for GraphQL subscriptions.",
       environment: {
-        LOG_LEVEL: props.logLevel || LogLevel.INFO,
+        LOG_LEVEL: props.logLevel?.toString() || "INFO",
+        DISCOVERY_BUCKET: props.discoveryBucket.bucketName,
+        DISCOVERY_TRACKING_TABLE: props.discoveryTable.tableName,
+        DISCOVERY_QUEUE_URL: props.discoveryQueue.queueUrl,
       },
-      ...props,
     });
 
+    // Grant permissions
+    props.discoveryBucket.grantReadWrite(this);
+    props.discoveryTable.grantReadWriteData(this);
+    props.discoveryQueue.grantSendMessages(this);
+
     // Grant KMS permissions if encryption key is provided
-    props.encryptionKey?.grantEncryptDecrypt(this);
+    if (props.encryptionKey) {
+      props.encryptionKey.grantEncryptDecrypt(this);
+    }
   }
 }

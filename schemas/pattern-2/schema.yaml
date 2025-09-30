@@ -13,17 +13,6 @@ properties:
     order: 1
     type: object
     sectionLabel: OCR Configuration
-    anyOf:
-      - properties:
-          backend:
-            const: textract
-        required:
-          - features
-      - properties:
-          backend:
-            enum:
-              - bedrock
-              - none
     properties:
       image:
         type: object
@@ -78,7 +67,9 @@ properties:
         - us.anthropic.claude-3-5-sonnet-20241022-v2:0
         - us.anthropic.claude-3-7-sonnet-20250219-v1:0
         - us.anthropic.claude-sonnet-4-20250514-v1:0
+        - us.anthropic.claude-sonnet-4-20250514-v1:0:1m
         - us.anthropic.claude-opus-4-20250514-v1:0
+        - us.anthropic.claude-opus-4-1-20250805-v1:0
         order: 2
         dependsOn:
           field: backend
@@ -144,6 +135,14 @@ properties:
           type: string
           description: Class description. Instruct LLM how to identify the class from the context provided in the classification
             prompt.
+        document_name_regex:
+          type: string
+          description: Optional regex pattern to match against document ID/name. When matched, all pages will be classified as this class type without LLM processing. Use only when all pages should be the same class.
+          order: 2.5
+        document_page_content_regex:
+          type: string
+          description: Optional regex pattern to match against page content text. When matched during multi-modal page-level classification, the page will be classified as this class type without LLM processing.
+          order: 2.6
         examples:
           type: array
           description: Class few-shot examples
@@ -403,7 +402,9 @@ properties:
         - us.anthropic.claude-3-5-sonnet-20241022-v2:0
         - us.anthropic.claude-3-7-sonnet-20250219-v1:0
         - us.anthropic.claude-sonnet-4-20250514-v1:0
+        - us.anthropic.claude-sonnet-4-20250514-v1:0:1m
         - us.anthropic.claude-opus-4-20250514-v1:0
+        - us.anthropic.claude-opus-4-1-20250805-v1:0
         order: 1
       classificationMethod:
         type: string
@@ -412,29 +413,40 @@ properties:
         - multimodalPageLevelClassification
         - textbasedHolisticClassification
         order: 2
+      maxPagesForClassification:
+        type: string
+        description: Number of pages to use for classification [When set to a number, forces the entire document to be assigned a single class]
+        enum:
+        - ALL
+        - "1"
+        - "2"
+        - "3"
+        - "5"
+        - "10"
+        order: 3
       temperature:
         type: number
         minimum: 0
         maximum: 1
         description: Sampling temperature
-        order: 3
+        order: 4
       top_k:
         type: integer
         minimum: 1
         description: Sampling Top K
-        order: 4
+        order: 5
       top_p:
         type: number
         description: Sampling Top P
-        order: 5
+        order: 6
       max_tokens:
         type: number
         description: Max tokens
-        order: 6
+        order: 7
       system_prompt:
         type: string
         description: System prompt
-        order: 7
+        order: 8
       task_prompt:
         type: string
         description: Task prompt - include placeholders {CLASS_NAMES_AND_DESCRIPTIONS} (replaced with the class names and
@@ -442,7 +454,7 @@ properties:
           in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and for multi-modal classification {DOCUMENT_IMAGE}
           (replaced by the page image attachment). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of
           prompt for Bedrock prompt caching.
-        order: 8
+        order: 9
   extraction:
     order: 4
     type: object
@@ -488,7 +500,9 @@ properties:
         - us.anthropic.claude-3-5-sonnet-20241022-v2:0
         - us.anthropic.claude-3-7-sonnet-20250219-v1:0
         - us.anthropic.claude-sonnet-4-20250514-v1:0
+        - us.anthropic.claude-sonnet-4-20250514-v1:0:1m
         - us.anthropic.claude-opus-4-20250514-v1:0
+        - us.anthropic.claude-opus-4-1-20250805-v1:0
         order: 1
       temperature:
         type: number
@@ -607,7 +621,9 @@ properties:
         - us.anthropic.claude-3-5-sonnet-20241022-v2:0
         - us.anthropic.claude-3-7-sonnet-20250219-v1:0
         - us.anthropic.claude-sonnet-4-20250514-v1:0
+        - us.anthropic.claude-sonnet-4-20250514-v1:0:1m
         - us.anthropic.claude-opus-4-20250514-v1:0
+        - us.anthropic.claude-opus-4-1-20250805-v1:0
         order: 3
       temperature:
         type: number
@@ -653,7 +669,9 @@ properties:
         - us.anthropic.claude-3-5-sonnet-20241022-v2:0
         - us.anthropic.claude-3-7-sonnet-20250219-v1:0
         - us.anthropic.claude-sonnet-4-20250514-v1:0
+        - us.anthropic.claude-sonnet-4-20250514-v1:0:1m
         - us.anthropic.claude-opus-4-20250514-v1:0
+        - us.anthropic.claude-opus-4-1-20250805-v1:0
         order: 1
       temperature:
         type: number
@@ -701,7 +719,9 @@ properties:
             - us.anthropic.claude-3-5-sonnet-20241022-v2:0
             - us.anthropic.claude-3-7-sonnet-20250219-v1:0
             - us.anthropic.claude-sonnet-4-20250514-v1:0
+            - us.anthropic.claude-sonnet-4-20250514-v1:0:1m
             - us.anthropic.claude-opus-4-20250514-v1:0
+            - us.anthropic.claude-opus-4-1-20250805-v1:0
             order: 1
           temperature:
             type: number

@@ -33,57 +33,41 @@ graph TB
 
 ## Deployment Process
 
-### Step 1: Standard Build Process
+### Dependencies
 
-First, run the standard build process to create all Lambda functions and artifacts:
+You need to have the following packages installed on your computer:
+
+1. bash shell (Linux, MacOS, Windows-WSL)
+2. aws (AWS CLI)
+3. [sam (AWS SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
+4. python 3.11 or later
+5. A local Docker daemon
+6. Python packages for publish.py: `pip install boto3 rich PyYAML botocore setuptools`
+
+### Step 1: Generate GovCloud Template
+
+First, generate the GovCloud-compatible template - this run the standard build process first to create all Lambda functions and artifacts, and then creates a stripped down version for GovCloud:
 
 ```bash
 # Build for GovCloud region
-python publish.py my-bucket-govcloud my-prefix us-gov-west-1
+python scripts/generate_govcloud_template.py my-bucket-govcloud my-prefix us-gov-west-1
 
 # Or build for commercial region first (for testing)
-python publish.py my-bucket my-prefix us-east-1
+python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1
 ```
 
-### Step 2: Generate GovCloud Template
+### Step 2: Deploy to GovCloud
 
-After the build completes, generate the GovCloud-compatible template:
-
-```bash
-# Generate GovCloud template from processed template
-python scripts/generate_govcloud_template.py
-
-# Optional: Use custom input/output paths
-python scripts/generate_govcloud_template.py \
-  --input .aws-sam/packaged.yaml \
-  --output my-govcloud-template.yaml \
-  --verbose
-```
-
-### Step 3: Deploy to GovCloud
-
-Deploy the generated template to GovCloud:
+Deploy the generated template to GovCloud using the AWS CloudFormation console (recommended) or deploy using AWS CLI e.g:
 
 ```bash
-# Deploy using SAM
-sam deploy \
-  --template-file template-govcloud.yaml \
-  --stack-name my-idp-govcloud-stack \
-  --region us-gov-west-1 \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    IDPPattern="Pattern2 - Packet processing with Textract and Bedrock" \
-    MaxConcurrentWorkflows=50
-
-# Or deploy using AWS CLI
 aws cloudformation deploy \
-  --template-file template-govcloud.yaml \
+  --template-file .aws-sam/idp-govcloud.yaml \
   --stack-name my-idp-govcloud-stack \
   --region us-gov-west-1 \
-  --capabilities CAPABILITY_IAM \
+  --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
   --parameter-overrides \
-    IDPPattern="Pattern2 - Packet processing with Textract and Bedrock" \
-    MaxConcurrentWorkflows=50
+    IDPPattern="Pattern2 - Packet processing with Textract and Bedrock"
 ```
 
 ## Services Removed in GovCloud
@@ -119,6 +103,12 @@ The following services are automatically removed from the GovCloud template:
 - Chat with document features
 - Text-to-SQL query capabilities
 
+### HITL Support
+- SageMaker A2I Human-in-the-Loop
+- Private workforce configuration
+- Human review workflows
+
+
 ## Core Services Retained
 
 The following essential services remain available:
@@ -148,10 +138,6 @@ The following essential services remain available:
 - ✅ Post-processing Lambda hooks
 - ✅ Evaluation and reporting systems
 
-### HITL Support
-- ✅ SageMaker A2I Human-in-the-Loop
-- ✅ Private workforce configuration
-- ✅ Human review workflows
 
 ## Access Methods
 
@@ -160,102 +146,18 @@ Without the web UI, you can interact with the system through:
 ### 1. Direct S3 Upload
 ```bash
 # Upload documents directly to input bucket
-aws s3 cp my-document.pdf s3://my-input-bucket/documents/
+aws s3 cp my-document.pdf s3://InputBucket/my-document.pdf
 
-# Monitor processing status
-aws dynamodb scan \
-  --table-name MyStack-TrackingTable \
-  --region us-gov-west-1
-```
 
-### 2. CLI Tools
+### 2. Check progress
+Using the lookup script
 ```bash
 # Use the lookup script to check document status
 ./scripts/lookup_file_status.sh documents/my-document.pdf MyStack
-
-# Or use default stack name (IDP)
-./scripts/lookup_file_status.sh documents/my-document.pdf
 ```
 
-### 3. SDK Integration
-```python
-import boto3
+Or navigate to the AWS Step Functions workflow using the link in the stack Outputs tab in CloudFormation, to visually monitor workflow progress.
 
-# Initialize clients
-s3_client = boto3.client('s3', region_name='us-gov-west-1')
-dynamodb = boto3.resource('dynamodb', region_name='us-gov-west-1')
-
-# Upload document
-s3_client.upload_file('local-doc.pdf', 'my-input-bucket', 'docs/local-doc.pdf')
-
-# Check processing status
-tracking_table = dynamodb.Table('MyStack-TrackingTable')
-response = tracking_table.get_item(
-    Key={'PK': 'doc#docs/local-doc.pdf', 'SK': 'none'}
-)
-print(f"Status: {response['Item']['Status']}")
-
-# Download results
-s3_client.download_file('my-output-bucket', 'docs/local-doc.pdf.json', 'results.json')
-```
-
-### 4. REST API Alternative
-If you need programmatic API access, you can deploy a simple Lambda function with API Gateway:
-
-```yaml
-# Optional: Add to your stack
-SimpleAPIFunction:
-  Type: AWS::Serverless::Function
-  Properties:
-    CodeUri: src/simple-api/
-    Handler: index.handler
-    Runtime: python3.12
-    Events:
-      Api:
-        Type: Api
-        Properties:
-          Path: /documents
-          Method: post
-          RestApiId: !Ref SimpleRestApi
-
-SimpleRestApi:
-  Type: AWS::Serverless::Api
-  Properties:
-    StageName: v1
-    EndpointConfiguration: REGIONAL
-```
-
-## Configuration Management
-
-Without the UI, configuration is managed through:
-
-### 1. S3 Configuration Files
-Edit configuration files directly in the configuration bucket:
-
-```bash
-# Download current configuration
-aws s3 cp s3://my-config-bucket/config_library/pattern-2/bank-statement-sample/config.yaml ./
-
-# Edit and upload back
-aws s3 cp ./config.yaml s3://my-config-bucket/config_library/pattern-2/bank-statement-sample/
-```
-
-### 2. DynamoDB Configuration Table
-Update configuration through the DynamoDB table:
-
-```bash
-# View current configuration
-aws dynamodb get-item \
-  --table-name MyStack-ConfigurationTable \
-  --key '{"Configuration": {"S": "Default"}}' \
-  --region us-gov-west-1
-
-# Update configuration (JSON format)
-aws dynamodb put-item \
-  --table-name MyStack-ConfigurationTable \
-  --item file://new-config.json \
-  --region us-gov-west-1
-```
 
 ## Monitoring & Troubleshooting
 
@@ -322,14 +224,6 @@ The following features are not available:
 ## Troubleshooting
 
 ### Common Issues
-
-**Template Validation Errors**
-```bash
-# Validate template before deployment
-aws cloudformation validate-template \
-  --template-body file://template-govcloud.yaml \
-  --region us-gov-west-1
-```
 
 **Missing Dependencies**
 - Ensure all Bedrock models are enabled in the region

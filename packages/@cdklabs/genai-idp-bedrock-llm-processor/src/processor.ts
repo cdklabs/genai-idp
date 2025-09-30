@@ -12,6 +12,8 @@ import {
 } from "@cdklabs/genai-idp";
 import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as events from "aws-cdk-lib/aws-events";
+import * as eventtargets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -24,6 +26,9 @@ import {
 import { AssessmentFunction } from "./internal/assessment-function";
 import { ClassificationFunction } from "./internal/classification-function";
 import { ExtractionFunction } from "./internal/extraction-function";
+import { HitlProcessFunction } from "./internal/hitl-process-function";
+import { HitlStatusUpdateFunction } from "./internal/hitl-status-update-function";
+import { HitlWaitFunction } from "./internal/hitl-wait-function";
 import { OcrFunction } from "./internal/ocr-function";
 import { ProcessResultsFunction } from "./internal/process-results-function";
 import { SummarizationFunction } from "./internal/summarization-function";
@@ -145,6 +150,22 @@ export interface BedrockLlmProcessorProps extends DocumentProcessorProps {
    * @default - No custom prompt generator is used
    */
   readonly customPromptGenerator?: ICustomPromptGenerator;
+
+  /**
+   * Optional SageMaker A2I Review Portal URL for HITL workflows.
+   * Used to provide human reviewers with access to the A2I review interface
+   * for document validation and correction workflows.
+   *
+   * @default - No A2I review portal URL is configured
+   */
+  readonly sageMakerA2IReviewPortalUrl?: string;
+
+  /**
+   * Enable Human In The Loop (A2I) for document review.
+   *
+   * @default false
+   */
+  readonly enableHitl?: boolean;
 }
 
 /**
@@ -276,10 +297,13 @@ export class BedrockLlmProcessor
         metricNamespace: this.environment.metricNamespace,
         logLevel: this.environment.logLevel,
         trackingTable: this.environment.trackingTable,
+        configurationTable: this.environment.configurationTable,
         inputBucket: this.environment.inputBucket,
         outputBucket: this.environment.outputBucket,
         workingBucket: this.environment.workingBucket,
         encryptionKey: this.environment.encryptionKey,
+        enableHitl: props.enableHitl,
+        sageMakerA2IReviewPortalUrl: props.sageMakerA2IReviewPortalUrl,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "ProcessResultsFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
@@ -313,6 +337,35 @@ export class BedrockLlmProcessor
       },
     );
 
+    // HITL Wait Function
+    const hitlWaitFunction = new HitlWaitFunction(this, "HITLWaitFunction", {
+      logLevel: this.environment.logLevel,
+      trackingTable: this.environment.trackingTable,
+      workingBucket: this.environment.workingBucket,
+      api: this.environment.api,
+      sageMakerA2IReviewPortalUrl: props.sageMakerA2IReviewPortalUrl,
+      logGroup: new logs.LogGroup(this, "HITLWaitFunctionLogGroup", {
+        encryptionKey: this.environment.encryptionKey,
+        retention: this.environment.logRetention,
+      }),
+      ...this.environment.vpcConfiguration,
+    });
+
+    // HITL Status Update Function
+    const hitlStatusUpdateFunction = new HitlStatusUpdateFunction(
+      this,
+      "HITLStatusUpdateFunction",
+      {
+        workingBucket: this.environment.workingBucket,
+        encryptionKey: this.environment.encryptionKey,
+        logGroup: new logs.LogGroup(this, "HITLStatusUpdateFunctionLogGroup", {
+          encryptionKey: this.environment.encryptionKey,
+          retention: this.environment.logRetention,
+        }),
+        ...this.environment.vpcConfiguration,
+      },
+    );
+
     // Create State Machine IAM Role
     const stateMachineRole = new iam.Role(this, "StateMachineRole", {
       assumedBy: new iam.ServicePrincipal("states.amazonaws.com"),
@@ -326,6 +379,8 @@ export class BedrockLlmProcessor
       assessmentFunction,
       processResultsFunction,
       summarizationFunction,
+      hitlWaitFunction,
+      hitlStatusUpdateFunction,
     ];
 
     // Grant invoke permissions to all functions
@@ -373,6 +428,8 @@ export class BedrockLlmProcessor
           AssessmentFunctionArn: assessmentFunction.functionArn,
           ProcessResultsLambdaArn: processResultsFunction.functionArn,
           SummarizationLambdaArn: summarizationFunction.functionArn,
+          HITLWaitFunctionArn: hitlWaitFunction.functionArn,
+          HITLStatusUpdateFunctionArn: hitlStatusUpdateFunction.functionArn,
           OutputBucket: this.environment.outputBucket.bucketName,
         },
         role: stateMachineRole,
@@ -382,6 +439,40 @@ export class BedrockLlmProcessor
           includeExecutionData: true,
         },
       },
+    );
+
+    // Create HITL Process Function for handling A2I completion events
+    const hitlProcessFunction = new HitlProcessFunction(
+      this,
+      "HITLProcessFunction",
+      {
+        logLevel: this.environment.logLevel,
+        trackingTable: this.environment.trackingTable,
+        inputBucket: this.environment.inputBucket,
+        outputBucket: this.environment.outputBucket,
+        stateMachine: this.stateMachine,
+        logGroup: new logs.LogGroup(this, "HITLProcessFunctionLogGroup", {
+          encryptionKey: this.environment.encryptionKey,
+          retention: this.environment.logRetention,
+        }),
+        ...this.environment.vpcConfiguration,
+      },
+    );
+
+    // Create EventBridge rule for HITL (SageMaker A2I) events
+    const hitlEventRule = new events.Rule(this, "HITLEventRule", {
+      eventPattern: {
+        source: ["aws.sagemaker"],
+        detailType: ["SageMaker A2I HumanLoop Status Change"],
+        detail: {
+          humanLoopStatus: ["Completed", "Failed", "Stopped"],
+        },
+      },
+    });
+
+    // Add Lambda function as a target for the EventBridge rule
+    hitlEventRule.addTarget(
+      new eventtargets.LambdaFunction(hitlProcessFunction),
     );
 
     this.environment.attach(this);

@@ -12,6 +12,7 @@ import {
   DEFAULT_PATH,
   UPLOAD_DOCUMENT_PATH,
   CONFIGURATION_PATH,
+  DISCOVERY_PATH,
 } from '../../routes/constants';
 
 export const documentsNavHeader = { text: 'Tools', href: `#${DEFAULT_PATH}` };
@@ -20,6 +21,7 @@ export const documentsNavItems = [
   { type: 'link', text: 'Document KB', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
   { type: 'link', text: 'Agent Analysis', href: `#${DOCUMENTS_ANALYTICS_PATH}` },
   { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
+  { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
   { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
   {
     type: 'section',
@@ -28,13 +30,13 @@ export const documentsNavItems = [
       {
         type: 'link',
         text: 'README',
-        href: 'https://gitlab.aws.dev/genaiic-reusable-assets/engagement-artifacts/genaiic-idp-accelerator/-/blob/main/README.md',
+        href: 'https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/blob/main/README.md',
         external: true,
       },
       {
         type: 'link',
         text: 'Source Code',
-        href: 'https://gitlab.aws.dev/genaiic-reusable-assets/engagement-artifacts/genaiic-idp-accelerator',
+        href: 'https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws',
         external: true,
       },
     ],
@@ -72,6 +74,8 @@ const Navigation = ({
     activeHref = `#${DOCUMENTS_ANALYTICS_PATH}`;
   } else if (path.includes(UPLOAD_DOCUMENT_PATH)) {
     activeHref = `#${UPLOAD_DOCUMENT_PATH}`;
+  } else if (path.includes(DISCOVERY_PATH)) {
+    activeHref = `#${DISCOVERY_PATH}`;
   } else if (path.includes(DOCUMENTS_PATH)) {
     activeHref = `#${DOCUMENTS_PATH}`;
   }

@@ -37,15 +37,18 @@ https://github.com/user-attachments/assets/e2dea2c5-5eb1-42f6-9af5-469afd2135a7
 
 ## Architecture
 
+The architecture of the Agent Analysis feature is shown below. The Web UI and AppSync API components are the same as used by the rest of the IDP system (with new AppSync endpoints added). Note the inclusion of Amazon Athena and the AgentCore Code Interpreter is specific to the Analytics Agent, but the Agent Request Handler and Processor lambdas along with jobs table are used for all agents, including [MCP agents](./custom-MCP-agent.md).
+
+![Architecture Diagram](../images/IDP-AnalyticsAgent.drawio.png)
+
 ### Multi-Agent System
 
 The Agent Analysis feature uses a multi-agent architecture with:
 
 1. **Orchestrator Agent**: Routes queries to appropriate specialized agents based on query content and agent capabilities
 2. **Analytics Agent**: Handles data analysis, SQL generation, and visualization creation
-3. **Dummy Agent**: Provides simple calculations and development testing capabilities
-4. **External MCP Agents**: Custom agents connected via Model Context Protocol servers
-5. **Extensible Framework**: Easy addition of new specialized agents for specific use cases
+3. **External MCP Agents**: Custom agents connected via Model Context Protocol servers
+
 
 ### Agent Workflow
 

@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT-0
 
 This pattern implements an intelligent document processing workflow that uses UDOP (Unified Document Processing) for page classification and grouping, followed by Claude for information extraction.
 
-<img src="../../images/IDP-Pattern3-UDOP.drawio.png" alt="Architecture" width="800">
+<img src="../images/IDP-Pattern3-UDOP.drawio.png" alt="Architecture" width="800">
 
 
 ## Table of Contents
