@@ -2671,10 +2671,10 @@ cdk-nag@^2.35.82, cdk-nag@^2.36.45:
   resolved "https://registry.yarnpkg.com/cdk-nag/-/cdk-nag-2.37.19.tgz#26ad1755db7e7ebf19a13c1dded837ea78a00b7b"
   integrity sha512-sbZ8UKrqkCWlbM3tA8QF+Y2CcQ904DSct9zuq5IxpmYNlE5PMKnn+kWBAIN+SAYYe9+De5K58JG/8uo9kfNB7w==
 
-cdklabs-projen-project-types@^0.3.2:
-  version "0.3.2"
-  resolved "https://registry.yarnpkg.com/cdklabs-projen-project-types/-/cdklabs-projen-project-types-0.3.2.tgz#d5dc1fe4b9a88fa470834a3092b60d01ba6e90d0"
-  integrity sha512-O8mIBZhdfhIQyti8OfcIODFOpUOnDnYdas4XZlyQTyOO6VEHdxrgtUUBlb28O9pwMLgYHSGffxWyUYrSBY+mpg==
+cdklabs-projen-project-types@^0.3.5:
+  version "0.3.5"
+  resolved "https://registry.yarnpkg.com/cdklabs-projen-project-types/-/cdklabs-projen-project-types-0.3.5.tgz#79a6bc45989782fcf58eb50ff1d1f30d1830ab25"
+  integrity sha512-vZvJX/42ovCOslyYtXENaaupJkTI+4Eaxjfa2+0oxZp5vyaNZBLD02bHH7Pfm74mwQbSpACADxyUK/+UY4eVdA==
   dependencies:
     yaml "^2.8.1"
 
