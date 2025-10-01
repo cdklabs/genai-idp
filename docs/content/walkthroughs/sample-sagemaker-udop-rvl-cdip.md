@@ -231,13 +231,6 @@ The main stack is defined in `src/rvl-cdip-stack.ts`. Let's examine the key comp
         api.grantQuery(userIdentity.identityPool.authenticatedRole);
         api.grantSubscription(userIdentity.identityPool.authenticatedRole);
 
-        // Add the processor's state machine to the API
-        api.addStateMachine(processor.stateMachine);
-
-        // Grant API permissions to authenticated users
-        api.grantQuery(userIdentity.identityPool.authenticatedRole);
-        api.grantSubscription(userIdentity.identityPool.authenticatedRole);
-
         // Create web application for document management
         const webApplication = new WebApplication(this, "WebApp", {
           webAppBucket: new Bucket(this, "WebAppBucket", {
@@ -248,7 +241,7 @@ The main stack is defined in `src/rvl-cdip-stack.ts`. Let's examine the key comp
           }),
           userIdentity,
           environment,
-          api,
+          apiUrl: api.graphqlUrl,
         });
 
         // Output the web application URL
@@ -321,53 +314,113 @@ The main stack is defined in `src/rvl-cdip-stack.ts`. Let's examine the key comp
                 self, "WorkingBucket",
                 encryption_key=key,
                 removal_policy=RemovalPolicy.DESTROY,
-        auto_delete_objects=True
-    )
+                auto_delete_objects=True
+            )
 
-    # Create DynamoDB tables for configuration and tracking
-    configuration_table = ConfigurationTable(
-        self, "ConfigurationTable",
-        encryption_key=key
-    )
+            # Create user identity for authentication
+            user_identity = UserIdentity(self, "UserIdentity")
 
-    tracking_table = TrackingTable(
-        self, "TrackingTable",
-        encryption_key=key
-    )
+            # Grant bucket access to authenticated users
+            input_bucket.grant_read(user_identity.identity_pool.authenticated_role)
+            output_bucket.grant_read(user_identity.identity_pool.authenticated_role)
 
-    # Create the RVL-CDIP model
-    model = RvlCdipModel(self, "RvlCdipModel")
-    model_data = model.model_data
+            # Create the RVL-CDIP model
+            model = RvlCdipModel(self, "RvlCdipModel")
+            model_data = model.model_data
 
-    # Create the SageMaker classifier
-    classifier = SagemakerClassifier(
-        self, "RvlCdipClassifier",
-        key=key,
-        output_bucket=output_bucket,
-        model_data=model_data,
-        instance_type=InstanceType.G5_2XLARGE
-    )
+            # Create the SageMaker classifier
+            classifier = SagemakerClassifier(
+                self, "RvlCdipClassifier",
+                key=key,
+                output_bucket=output_bucket,
+                model_data=model_data,
+                instance_type=InstanceType.G5_2XLARGE
+            )
 
-    # Create the processing environment
-    environment = ProcessingEnvironment(
-        self, "Environment",
-        key=key,
-        input_bucket=input_bucket,
-        output_bucket=output_bucket,
-        working_bucket=working_bucket,
-        configuration_table=configuration_table,
-        tracking_table=tracking_table,
-        api=api,
-        metric_namespace=metric_namespace
-    )
+            # Create DynamoDB tables for configuration and tracking
+            configuration_table = ConfigurationTable(
+                self, "ConfigurationTable",
+                encryption_key=key
+            )
 
-    # Create the SageMaker UDOP processor
-    SagemakerUdopProcessor(
-        self, "Processor",
-        environment=environment,
-        summarization_invokable=BedrockFoundationModel.ANTHROPIC_CLAUDE_3_5_SONNET_V2_0,
-        classifier=classifier
-    )
+            tracking_table = TrackingTable(
+                self, "TrackingTable",
+                encryption_key=key
+            )
+
+            # Create the GraphQL API for document tracking
+            api = ProcessingEnvironmentApi(
+                self, "EnvironmentApi",
+                input_bucket=input_bucket,
+                output_bucket=output_bucket,
+                encryption_key=key,
+                configuration_table=configuration_table,
+                tracking_table=tracking_table,
+                authorization_config={
+                    "default_authorization": {
+                        "authorization_type": AuthorizationType.USER_POOL,
+                        "user_pool_config": {
+                            "user_pool": user_identity.user_pool,
+                            "default_action": UserPoolDefaultAction.ALLOW,
+                        },
+                    },
+                    "additional_authorization_modes": [
+                        {
+                            "authorization_type": AuthorizationType.IAM,
+                        },
+                    ],
+                },
+            )
+
+            # Create the processing environment
+            environment = ProcessingEnvironment(
+                self, "Environment",
+                key=key,
+                input_bucket=input_bucket,
+                output_bucket=output_bucket,
+                working_bucket=working_bucket,
+                configuration_table=configuration_table,
+                tracking_table=tracking_table,
+                api=api,
+                metric_namespace=metric_namespace
+            )
+
+            # Create the SageMaker UDOP processor with RVL-CDIP configuration
+            processor = SagemakerUdopProcessor(
+                self, "Processor",
+                environment=environment,
+                classifier=classifier,
+                configuration=SagemakerUdopProcessorConfiguration.rvl_cdip_package_sample()
+            )
+
+            # Add the processor's state machine to the API
+            api.add_state_machine(processor.state_machine)
+
+            # Grant API permissions to authenticated users
+            api.grant_query(user_identity.identity_pool.authenticated_role)
+            api.grant_subscription(user_identity.identity_pool.authenticated_role)
+
+            # Create web application for document management
+            web_application = WebApplication(
+                self, "WebApp",
+                web_app_bucket=Bucket(
+                    self, "WebAppBucket",
+                    website_index_document="index.html",
+                    website_error_document="index.html",
+                    removal_policy=RemovalPolicy.DESTROY,
+                    auto_delete_objects=True,
+                ),
+                user_identity=user_identity,
+                environment=environment,
+                api_url=api.graphql_url,
+            )
+
+            # Output the web application URL
+            CfnOutput(
+                self, "WebSiteUrl",
+                value=f"https://{web_application.distribution.distribution_domain_name}",
+                description="URL of the web application for document management"
+            )
     ```
 
 === "C#/.NET"
@@ -414,40 +467,123 @@ The main stack is defined in `src/rvl-cdip-stack.ts`. Let's examine the key comp
 
                 var workingBucket = new Bucket(this, "WorkingBucket", new BucketProps
                 {
-        EncryptionKey = key,
-        RemovalPolicy = RemovalPolicy.DESTROY,
-        AutoDeleteObjects = true
-    });
+                    EncryptionKey = key,
+                    RemovalPolicy = RemovalPolicy.DESTROY,
+                    AutoDeleteObjects = true
+                });
 
-    // Create the RVL-CDIP model
-    var rvlCdipModel = new RvlCdipModel(this, "RvlCdipModel");
-    var modelData = rvlCdipModel.ModelData;
+                // Create user identity for authentication
+                var userIdentity = new UserIdentity(this, "UserIdentity");
 
-    // Create the SageMaker classifier
-    var classifier = new SagemakerClassifier(this, "RvlCdipClassifier", new SagemakerClassifierProps
-    {
-        Key = key,
-        OutputBucket = outputBucket,
-        ModelData = modelData,
-        InstanceType = InstanceType.G5_2XLARGE
-    });
+                // Grant bucket access to authenticated users
+                inputBucket.GrantRead(userIdentity.IdentityPool.AuthenticatedRole);
+                outputBucket.GrantRead(userIdentity.IdentityPool.AuthenticatedRole);
 
-    // Create DynamoDB tables for configuration and tracking
-    var configurationTable = new ConfigurationTable(this, "ConfigurationTable", new ConfigurationTableProps
-    {
-        EncryptionKey = key
-    });
+                // Create the RVL-CDIP model
+                var rvlCdipModel = new RvlCdipModel(this, "RvlCdipModel");
+                var modelData = rvlCdipModel.ModelData;
 
-    var trackingTable = new TrackingTable(this, "TrackingTable", new TrackingTableProps
-    {
-        EncryptionKey = key
-    });
+                // Create the SageMaker classifier
+                var classifier = new SagemakerClassifier(this, "RvlCdipClassifier", new SagemakerClassifierProps
+                {
+                    Key = key,
+                    OutputBucket = outputBucket,
+                    ModelData = modelData,
+                    InstanceType = InstanceType.G5_2XLARGE
+                });
 
-    // Create the processing environment
-    var environment = new ProcessingEnvironment(this, "Environment", new ProcessingEnvironmentProps
-    {
-        Key = key,
-        InputBucket = inputBucket,
+                // Create DynamoDB tables for configuration and tracking
+                var configurationTable = new ConfigurationTable(this, "ConfigurationTable", new ConfigurationTableProps
+                {
+                    EncryptionKey = key
+                });
+
+                var trackingTable = new TrackingTable(this, "TrackingTable", new TrackingTableProps
+                {
+                    EncryptionKey = key
+                });
+
+                // Create the GraphQL API for document tracking
+                var api = new ProcessingEnvironmentApi(this, "EnvironmentApi", new ProcessingEnvironmentApiProps
+                {
+                    InputBucket = inputBucket,
+                    OutputBucket = outputBucket,
+                    EncryptionKey = key,
+                    ConfigurationTable = configurationTable,
+                    TrackingTable = trackingTable,
+                    AuthorizationConfig = new AuthorizationConfig
+                    {
+                        DefaultAuthorization = new AuthorizationMode
+                        {
+                            AuthorizationType = AuthorizationType.USER_POOL,
+                            UserPoolConfig = new UserPoolConfig
+                            {
+                                UserPool = userIdentity.UserPool,
+                                DefaultAction = UserPoolDefaultAction.ALLOW,
+                            },
+                        },
+                        AdditionalAuthorizationModes = new[]
+                        {
+                            new AuthorizationMode
+                            {
+                                AuthorizationType = AuthorizationType.IAM,
+                            },
+                        },
+                    },
+                });
+
+                // Create the processing environment
+                var environment = new ProcessingEnvironment(this, "Environment", new ProcessingEnvironmentProps
+                {
+                    Key = key,
+                    InputBucket = inputBucket,
+                    OutputBucket = outputBucket,
+                    WorkingBucket = workingBucket,
+                    ConfigurationTable = configurationTable,
+                    TrackingTable = trackingTable,
+                    Api = api,
+                    MetricNamespace = metricNamespace
+                });
+
+                // Create the SageMaker UDOP processor with RVL-CDIP configuration
+                var processor = new SagemakerUdopProcessor(this, "Processor", new SagemakerUdopProcessorProps
+                {
+                    Environment = environment,
+                    Classifier = classifier,
+                    Configuration = SagemakerUdopProcessorConfiguration.RvlCdipPackageSample()
+                });
+
+                // Add the processor's state machine to the API
+                api.AddStateMachine(processor.StateMachine);
+
+                // Grant API permissions to authenticated users
+                api.GrantQuery(userIdentity.IdentityPool.AuthenticatedRole);
+                api.GrantSubscription(userIdentity.IdentityPool.AuthenticatedRole);
+
+                // Create web application for document management
+                var webApplication = new WebApplication(this, "WebApp", new WebApplicationProps
+                {
+                    WebAppBucket = new Bucket(this, "WebAppBucket", new BucketProps
+                    {
+                        WebsiteIndexDocument = "index.html",
+                        WebsiteErrorDocument = "index.html",
+                        RemovalPolicy = RemovalPolicy.DESTROY,
+                        AutoDeleteObjects = true
+                    }),
+                    UserIdentity = userIdentity,
+                    Environment = environment,
+                    ApiUrl = api.GraphqlUrl,
+                });
+
+                // Output the web application URL
+                new CfnOutput(this, "WebSiteUrl", new CfnOutputProps
+                {
+                    Value = $"https://{webApplication.Distribution.DistributionDomainName}",
+                    Description = "URL of the web application for document management"
+                });
+            }
+        }
+    }
         OutputBucket = outputBucket,
         WorkingBucket = workingBucket,
         ConfigurationTable = configurationTable,

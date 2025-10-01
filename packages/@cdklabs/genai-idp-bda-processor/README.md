@@ -103,7 +103,7 @@ export class MyIdpStack extends cdk.Stack {
       metricNamespace: 'MyIdpSolution',
     });
 
-    // Create processor configuration
+    // Replace with your own configuration - this is just a sample
     const configuration = BdaProcessorConfiguration.lendingPackageSample();
 
     // Reference your Bedrock Data Automation project
@@ -145,9 +145,9 @@ Please ensure your code adheres to our coding standards and includes appropriate
 
 ## Related Projects
 
-- [@cdklabs/genai-idp](../idp): Core IDP constructs and infrastructure
-- [@cdklabs/genai-idp-bedrock-llm-processor](../idp-bedrock-llm-processor): BedrockLlmProcessor implementation for custom extraction using Amazon Bedrock models
-- [@cdklabs/genai-idp-sagemaker-udop-processor](../idp-sagemaker-udop-processor): SagemakerUdopProcessor implementation for specialized document processing using SageMaker endpoints
+- [@cdklabs/genai-idp](../genai-idp): Core IDP constructs and infrastructure
+- [@cdklabs/genai-idp-bedrock-llm-processor](../genai-idp-bedrock-llm-processor): BedrockLlmProcessor implementation for custom extraction using Amazon Bedrock models
+- [@cdklabs/genai-idp-sagemaker-udop-processor](../genai-idp-sagemaker-udop-processor): SagemakerUdopProcessor implementation for specialized document processing using SageMaker endpoints
 
 ## License
 

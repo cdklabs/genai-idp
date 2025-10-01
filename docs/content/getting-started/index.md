@@ -225,9 +225,10 @@ Now, let's create the core infrastructure for our document processing solution. 
         });
 
         // Create the document processor using Bedrock LLM processor
+        // This uses a sample configuration - for custom configurations, use BedrockLlmProcessorConfiguration.fromFile()
         const processor = new BedrockLlmProcessor(this, 'Processor', {
           environment,
-          configuration: BedrockLlmProcessorConfiguration.defaultConfiguration(),
+          configuration: BedrockLlmProcessorConfiguration.lendingPackageSample(),
           // Optional: Customize the processor with additional settings
           // classificationMaxWorkers: 10,
           // ocrMaxWorkers: 10,
@@ -251,7 +252,7 @@ Now, let's create the core infrastructure for our document processing solution. 
           }),
           userIdentity,
           environment,
-          api,
+          apiUrl: api.graphqlUrl,
         });
 
         // Output the important values
@@ -392,10 +393,11 @@ Now, let's create the core infrastructure for our document processing solution. 
             )
 
             # Create the document processor using Bedrock LLM processor
+            # This uses a sample configuration - for custom configurations, use BedrockLlmProcessorConfiguration.from_file()
             processor = BedrockLlmProcessor(
                 self, "Processor",
                 environment=environment,
-                configuration=BedrockLlmProcessorConfiguration.default_configuration(),
+                configuration=BedrockLlmProcessorConfiguration.lending_package_sample(),
                 # Optional: Customize the processor with additional settings
                 # classification_max_workers=10,
                 # ocr_max_workers=10,
@@ -421,7 +423,7 @@ Now, let's create the core infrastructure for our document processing solution. 
                 ),
                 user_identity=user_identity,
                 environment=environment,
-                api=api,
+                api_url=api.graphql_url,
             )
 
             # Output the important values
@@ -553,10 +555,11 @@ Now, let's create the core infrastructure for our document processing solution. 
                 });
 
                 // Create the document processor using Bedrock LLM processor
+                // This uses a sample configuration - for custom configurations, use BedrockLlmProcessorConfiguration.FromFile()
                 var processor = new BedrockLlmProcessor(this, "Processor", new BedrockLlmProcessorProps
                 {
                     Environment = environment,
-                    Configuration = BedrockLlmProcessorConfiguration.DefaultConfiguration(),
+                    Configuration = BedrockLlmProcessorConfiguration.LendingPackageSample(),
                     // Optional: Customize the processor with additional settings
                     // ClassificationMaxWorkers = 10,
                     // OcrMaxWorkers = 10,
@@ -582,7 +585,7 @@ Now, let's create the core infrastructure for our document processing solution. 
                     }),
                     UserIdentity = userIdentity,
                     Environment = environment,
-                    Api = api,
+                    ApiUrl = api.GraphqlUrl,
                 });
 
                 // Output the important values

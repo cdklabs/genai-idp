@@ -68,7 +68,7 @@ import * as kms from 'aws-cdk-lib/aws-kms';
 import * as sagemaker from '@aws-cdk/aws-sagemaker-alpha';
 import * as bedrock from '@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock';
 import { ProcessingEnvironment } from '@cdklabs/genai-idp';
-import { SagemakerUdopProcessor, BasicSagemakerClassifier } from '@cdklabs/genai-idp-sagemaker-udop-processor';
+import { SagemakerUdopProcessor, SagemakerUdopProcessorConfiguration, BasicSagemakerClassifier } from '@cdklabs/genai-idp-sagemaker-udop-processor';
 
 export class MyIdpStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -120,7 +120,8 @@ export class MyIdpStack extends cdk.Stack {
     // Create the processor
     const processor = new SagemakerUdopProcessor(this, 'Processor', {
       environment,
-      configuration: /* Your SagemakerUdopProcessorConfiguration */,
+      // Replace with your own configuration - this is just a sample
+      configuration: SagemakerUdopProcessorConfiguration.rvlCdipPackageSample(),
       classifierEndpoint: classifier.endpoint,
       ocrMaxWorkers: 20,
     });
@@ -242,9 +243,9 @@ Please ensure your code adheres to our coding standards and includes appropriate
 
 ## Related Projects
 
-- [@cdklabs/genai-idp](../idp): Core IDP constructs and infrastructure
-- [@cdklabs/genai-idp-bda-processor](../idp-bda-processor): BdaProcessor implementation using Amazon Bedrock Data Automation
-- [@cdklabs/genai-idp-bedrock-llm-processor](../idp-bedrock-llm-processor): BedrockLlmProcessor implementation for custom extraction using Amazon Bedrock models
+- [@cdklabs/genai-idp](../genai-idp): Core IDP constructs and infrastructure
+- [@cdklabs/genai-idp-bda-processor](../genai-idp-bda-processor): BdaProcessor implementation using Amazon Bedrock Data Automation
+- [@cdklabs/genai-idp-bedrock-llm-processor](../genai-idp-bedrock-llm-processor): BedrockLlmProcessor implementation for custom extraction using Amazon Bedrock models
 
 ## License
 
