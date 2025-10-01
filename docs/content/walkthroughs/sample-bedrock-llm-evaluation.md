@@ -259,23 +259,6 @@ The main stack is defined in `src/bedrock-llm-stack.ts`. Let's examine the key c
         // Grant API permissions to authenticated users
         api.grantQuery(userIdentity.identityPool.authenticatedRole);
         api.grantSubscription(userIdentity.identityPool.authenticatedRole);
-                defaultAction: UserPoolDefaultAction.ALLOW,
-              },
-            },
-            additionalAuthorizationModes: [
-              {
-                authorizationType: AuthorizationType.IAM,
-              },
-            ],
-          },
-        });
-
-        // Add the processor's state machine to the API
-        api.addStateMachine(processor.stateMachine);
-
-        // Grant API permissions to authenticated users
-        api.grantQuery(userIdentity.identityPool.authenticatedRole);
-        api.grantSubscription(userIdentity.identityPool.authenticatedRole);
 
         // Create web application for document management
         const webApplication = new WebApplication(this, "WebApp", {
@@ -287,7 +270,7 @@ The main stack is defined in `src/bedrock-llm-stack.ts`. Let's examine the key c
           }),
           userIdentity,
           environment,
-          api,
+          apiUrl: api.graphqlUrl,
         });
 
         // Output the web application URL
@@ -366,42 +349,98 @@ The main stack is defined in `src/bedrock-llm-stack.ts`. Let's examine the key c
                 auto_delete_objects=True
             )
 
-    # Create DynamoDB tables for configuration and tracking
-    configuration_table = ConfigurationTable(
-        self, "ConfigurationTable",
-        encryption_key=key
-    )
+            # Create DynamoDB tables for configuration and tracking
+            configuration_table = ConfigurationTable(
+                self, "ConfigurationTable"
+            )
 
-    tracking_table = TrackingTable(
-        self, "TrackingTable",
-        encryption_key=key
-    )
+            tracking_table = TrackingTable(
+                self, "TrackingTable"
+            )
 
-    # Create the processing environment
-    environment = ProcessingEnvironment(
-        self, "Environment",
-        metric_namespace=self.stack_name,
-        input_bucket=input_bucket,
-        output_bucket=output_bucket,
-        working_bucket=working_bucket,
-        configuration_table=configuration_table,
-        tracking_table=tracking_table
-    )
+            # Create user identity for authentication
+            user_identity = UserIdentity(self, "UserIdentity")
 
-    # Create the Bedrock LLM processor with evaluation
-    BedrockLlmProcessor(
-        self, "Processor",
-        environment=environment,
-        evaluation_enabled=True,
-        evaluation_baseline_bucket=evaluation_baseline_bucket,
-        is_summarization_enabled=True,
-        # Optional: Customize with additional settings
-        # classification_max_workers=10,
-        # ocr_max_workers=10,
-        # classification_guardrail=my_guardrail,
-        # extraction_guardrail=my_guardrail,
-        # summarization_guardrail=my_guardrail,
-    )
+            # Grant bucket access to authenticated users
+            input_bucket.grant_read(user_identity.identity_pool.authenticated_role)
+            output_bucket.grant_read(user_identity.identity_pool.authenticated_role)
+
+            # Create the GraphQL API for document tracking
+            api = ProcessingEnvironmentApi(
+                self, "EnvApi",
+                input_bucket=input_bucket,
+                output_bucket=output_bucket,
+                configuration_table=configuration_table,
+                tracking_table=tracking_table,
+                authorization_config={
+                    "default_authorization": {
+                        "authorization_type": AuthorizationType.USER_POOL,
+                        "user_pool_config": {
+                            "user_pool": user_identity.user_pool,
+                            "default_action": UserPoolDefaultAction.ALLOW,
+                        },
+                    },
+                    "additional_authorization_modes": [
+                        {
+                            "authorization_type": AuthorizationType.IAM,
+                        },
+                    ],
+                },
+            )
+
+            # Create the processing environment
+            environment = ProcessingEnvironment(
+                self, "Environment",
+                metric_namespace=self.stack_name,
+                input_bucket=input_bucket,
+                output_bucket=output_bucket,
+                working_bucket=working_bucket,
+                configuration_table=configuration_table,
+                tracking_table=tracking_table,
+                api=api
+            )
+
+            # Create the Bedrock LLM processor with evaluation
+            processor = BedrockLlmProcessor(
+                self, "Processor",
+                environment=environment,
+                configuration=BedrockLlmProcessorConfiguration.lending_package_sample(),
+                evaluation_enabled=True,
+                evaluation_baseline_bucket=evaluation_baseline_bucket,
+                is_summarization_enabled=True,
+                # Optional: Customize with additional settings
+                # classification_max_workers=10,
+                # ocr_max_workers=10,
+            )
+
+            # Add the processor's state machine to the API
+            api.add_state_machine(processor.state_machine)
+
+            # Grant API permissions to authenticated users
+            api.grant_query(user_identity.identity_pool.authenticated_role)
+            api.grant_subscription(user_identity.identity_pool.authenticated_role)
+
+            # Create web application for document management
+            web_application = WebApplication(
+                self, "WebApp",
+                web_app_bucket=Bucket(
+                    self, "webAppBucket",
+                    website_index_document="index.html",
+                    website_error_document="index.html",
+                    removal_policy=RemovalPolicy.DESTROY,
+                    auto_delete_objects=True,
+                ),
+                user_identity=user_identity,
+                environment=environment,
+                api_url=api.graphql_url,
+            )
+
+            # Output the web application URL
+            CfnOutput(
+                self, "WebSiteUrl",
+                value=f"https://{web_application.distribution.distribution_domain_name}",
+                description="URL of the web application for document management"
+            )
     ```
 
 === "C#/.NET"
@@ -450,42 +489,105 @@ The main stack is defined in `src/bedrock-llm-stack.ts`. Let's examine the key c
                     AutoDeleteObjects = true
                 });
 
-    // Create DynamoDB tables for configuration and tracking
-    var configurationTable = new ConfigurationTable(this, "ConfigurationTable", new ConfigurationTableProps
-    {
-        EncryptionKey = key
-    });
+                // Create DynamoDB tables for configuration and tracking
+                var configurationTable = new ConfigurationTable(this, "ConfigurationTable");
 
-    var trackingTable = new TrackingTable(this, "TrackingTable", new TrackingTableProps
-    {
-        EncryptionKey = key
-    });
+                var trackingTable = new TrackingTable(this, "TrackingTable");
 
-    // Create the processing environment
-    var environment = new ProcessingEnvironment(this, "Environment", new ProcessingEnvironmentProps
-    {
-        MetricNamespace = this.StackName,
-        InputBucket = inputBucket,
-        OutputBucket = outputBucket,
-        WorkingBucket = workingBucket,
-        ConfigurationTable = configurationTable,
-        TrackingTable = trackingTable
-    });
+                // Create user identity for authentication
+                var userIdentity = new UserIdentity(this, "UserIdentity");
 
-    // Create the Bedrock LLM processor with evaluation
-    new BedrockLlmProcessor(this, "Processor", new BedrockLlmProcessorProps
-    {
-        Environment = environment,
-        EvaluationEnabled = true,
-        EvaluationBaselineBucket = evaluationBaselineBucket,
-        IsSummarizationEnabled = true,
-        // Optional: Customize with additional settings
-        // ClassificationMaxWorkers = 10,
-        // OcrMaxWorkers = 10,
-        // ClassificationGuardrail = myGuardrail,
-        // ExtractionGuardrail = myGuardrail,
-        // SummarizationGuardrail = myGuardrail,
-    });
+                // Grant bucket access to authenticated users
+                inputBucket.GrantRead(userIdentity.IdentityPool.AuthenticatedRole);
+                outputBucket.GrantRead(userIdentity.IdentityPool.AuthenticatedRole);
+
+                // Create the GraphQL API for document tracking
+                var api = new ProcessingEnvironmentApi(this, "EnvApi", new ProcessingEnvironmentApiProps
+                {
+                    InputBucket = inputBucket,
+                    OutputBucket = outputBucket,
+                    ConfigurationTable = configurationTable,
+                    TrackingTable = trackingTable,
+                    AuthorizationConfig = new AuthorizationConfig
+                    {
+                        DefaultAuthorization = new AuthorizationMode
+                        {
+                            AuthorizationType = AuthorizationType.USER_POOL,
+                            UserPoolConfig = new UserPoolConfig
+                            {
+                                UserPool = userIdentity.UserPool,
+                                DefaultAction = UserPoolDefaultAction.ALLOW,
+                            },
+                        },
+                        AdditionalAuthorizationModes = new[]
+                        {
+                            new AuthorizationMode
+                            {
+                                AuthorizationType = AuthorizationType.IAM,
+                            },
+                        },
+                    },
+                });
+
+                // Create the processing environment
+                var environment = new ProcessingEnvironment(this, "Environment", new ProcessingEnvironmentProps
+                {
+                    MetricNamespace = this.StackName,
+                    InputBucket = inputBucket,
+                    OutputBucket = outputBucket,
+                    WorkingBucket = workingBucket,
+                    ConfigurationTable = configurationTable,
+                    TrackingTable = trackingTable,
+                    Api = api
+                });
+
+                // Create the Bedrock LLM processor with evaluation
+                var processor = new BedrockLlmProcessor(this, "Processor", new BedrockLlmProcessorProps
+                {
+                    Environment = environment,
+                    Configuration = BedrockLlmProcessorConfiguration.LendingPackageSample(),
+                    EvaluationEnabled = true,
+                    EvaluationBaselineBucket = evaluationBaselineBucket,
+                    IsSummarizationEnabled = true,
+                    // Optional: Customize with additional settings
+                    // ClassificationMaxWorkers = 10,
+                    // OcrMaxWorkers = 10,
+                    // ClassificationGuardrail = myGuardrail,
+                    // ExtractionGuardrail = myGuardrail,
+                    // SummarizationGuardrail = myGuardrail,
+                });
+
+                // Add the processor's state machine to the API
+                api.AddStateMachine(processor.StateMachine);
+
+                // Grant API permissions to authenticated users
+                api.GrantQuery(userIdentity.IdentityPool.AuthenticatedRole);
+                api.GrantSubscription(userIdentity.IdentityPool.AuthenticatedRole);
+
+                // Create web application for document management
+                var webApplication = new WebApplication(this, "WebApp", new WebApplicationProps
+                {
+                    WebAppBucket = new Bucket(this, "webAppBucket", new BucketProps
+                    {
+                        WebsiteIndexDocument = "index.html",
+                        WebsiteErrorDocument = "index.html",
+                        RemovalPolicy = RemovalPolicy.DESTROY,
+                        AutoDeleteObjects = true
+                    }),
+                    UserIdentity = userIdentity,
+                    Environment = environment,
+                    ApiUrl = api.GraphqlUrl,
+                });
+
+                // Output the web application URL
+                new CfnOutput(this, "WebSiteUrl", new CfnOutputProps
+                {
+                    Value = $"https://{webApplication.Distribution.DistributionDomainName}",
+                    Description = "URL of the web application for document management"
+                });
+            }
+        }
+    }
     ```
 ## Step 5: Deploy the Stack
 

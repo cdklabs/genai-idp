@@ -131,9 +131,9 @@ Please ensure your code adheres to our coding standards and includes appropriate
 
 ## Related Projects
 
-- [@cdklabs/genai-idp-bda-processor](../idp-bda-processor): BdaProcessor implementation using Amazon Bedrock Data Automation
-- [@cdklabs/genai-idp-bedrock-llm-processor](../idp-bedrock-llm-processor): BedrockLlmProcessor implementation for custom extraction using Amazon Bedrock models
-- [@cdklabs/genai-idp-sagemaker-udop-processor](../idp-sagemaker-udop-processor): SagemakerUdopProcessor implementation for specialized document processing using SageMaker endpoints
+- [@cdklabs/genai-idp-bda-processor](../genai-idp-bda-processor): BdaProcessor implementation using Amazon Bedrock Data Automation
+- [@cdklabs/genai-idp-bedrock-llm-processor](../genai-idp-bedrock-llm-processor): BedrockLlmProcessor implementation for custom extraction using Amazon Bedrock models
+- [@cdklabs/genai-idp-sagemaker-udop-processor](../genai-idp-sagemaker-udop-processor): SagemakerUdopProcessor implementation for specialized document processing using SageMaker endpoints
 
 ## License
 
