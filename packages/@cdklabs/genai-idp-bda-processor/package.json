@@ -56,7 +56,7 @@
     "@aws-cdk/aws-glue-alpha": "2.214.0-alpha.0",
     "@aws-cdk/aws-lambda-python-alpha": "2.214.0-alpha.0",
     "@aws-cdk/aws-sagemaker-alpha": "2.214.0-alpha.0",
-    "@aws-cdk/cx-api": "^2.207.0",
+    "@aws-cdk/cx-api": "^2.218.0",
     "@cdklabs/genai-idp": "0.0.0",
     "@cdklabs/generative-ai-cdk-constructs": "0.1.309",
     "@types/jest": "^29.5.14",
