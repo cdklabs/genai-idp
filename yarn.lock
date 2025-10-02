@@ -51,10 +51,10 @@
     jsonschema "~1.4.1"
     semver "^7.7.2"
 
-"@aws-cdk/cx-api@^2.207.0":
-  version "2.214.0"
-  resolved "https://registry.yarnpkg.com/@aws-cdk/cx-api/-/cx-api-2.214.0.tgz#0f1cbef5b2143f57181885bdaee8130613ca1fb6"
-  integrity sha512-kkIIHAU6YtBdBzeJxI501A1V0IYSDqukeVJz5XTtPyNfIf/ZsyisiUyRKVNo+3i7duYPlP17zCX/s5zyBOfZsg==
+"@aws-cdk/cx-api@^2.219.0":
+  version "2.219.0"
+  resolved "https://registry.yarnpkg.com/@aws-cdk/cx-api/-/cx-api-2.219.0.tgz#7e963114ce26d3e494d88b07e550ae7d5f69f5bb"
+  integrity sha512-qsV31ydbDldc72HfImxU9irSDAiTk7O5TphgKA4+KP7tYFUM4OOvsaTEn28gRgvsvgdzV2LLP/CQKTnNjYc4PA==
   dependencies:
     semver "^7.7.2"
 
