@@ -8,6 +8,7 @@ import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
 import * as cdk from "aws-cdk-lib";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
 import { IConcurrencyTable } from "../../concurrency-table";
@@ -53,6 +54,12 @@ export interface QueueProcessorFunctionProps extends IdpPythonFunctionOptions {
    * The function updates this table with document processing status.
    */
   readonly trackingTable: ITrackingTable;
+
+  /**
+   * The S3 bucket for working files during document processing.
+   * Used for temporary storage of intermediate processing results.
+   */
+  readonly workingBucket: IBucket;
 
   /**
    * Optional encryption key for the function.
@@ -126,6 +133,7 @@ export class QueueProcessorFunction extends lambda_python.PythonFunction {
         TRACKING_TABLE: props.trackingTable.tableName,
         CONCURRENCY_TABLE: props.concurrencyTable.tableName,
         MAX_CONCURRENT: `${props.maxConcurrent}`,
+        WORKING_BUCKET: props.workingBucket.bucketName,
         DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
         ...(props.api && { APPSYNC_API_URL: props.api.graphqlUrl }),
       },
@@ -135,6 +143,7 @@ export class QueueProcessorFunction extends lambda_python.PythonFunction {
     props.stateMachine.grantStartExecution(this);
     props.trackingTable.grantFullAccess(this);
     props.concurrencyTable.grantFullAccess(this);
+    props.workingBucket.grantReadWrite(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
 
     // Grant AppSync permissions if API is provided

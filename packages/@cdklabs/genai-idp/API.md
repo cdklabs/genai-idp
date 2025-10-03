@@ -16553,7 +16553,7 @@ Add an environment variable to the construct.
 ##### `addAgentAnalytics` <a name="addAgentAnalytics" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics"></a>
 
 ```typescript
-public addAgentAnalytics(trackingTable: ITrackingTable, model: IInvokable, reportingEnvironment: IReportingEnvironment, externalMcpAgentsSecret?: ISecret): void
+public addAgentAnalytics(trackingTable: ITrackingTable, model: IInvokable, reportingEnvironment: IReportingEnvironment, externalMcpAgentsSecret?: ISecret, guardrail?: IGuardrail): void
 ```
 
 Add Agent Analytics capabilities to the GraphQL API.
@@ -16605,6 +16605,14 @@ The reporting environment that the analytics will be run for.
 - *Type:* aws-cdk-lib.aws_secretsmanager.ISecret
 
 Optional Secrets Manager secret for external MCP agents.
+
+---
+
+###### `guardrail`<sup>Optional</sup> <a name="guardrail" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics.parameter.guardrail"></a>
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+
+Optional Bedrock guardrail for content filtering.
 
 ---
 
@@ -20067,6 +20075,7 @@ const agentAnalyticsProps: AgentAnalyticsProps = { ... }
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.appSyncApiUrl">appSyncApiUrl</a></code> | <code>string</code> | AppSync GraphQL API URL for publishing updates. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | The DynamoDB table that stores configuration settings. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.metricNamespace">metricNamespace</a></code> | <code>string</code> | The namespace for CloudWatch metrics. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.model">model</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The foundation model or inference profile to use for document analysis agent. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.reportingEnvironment">reportingEnvironment</a></code> | <code><a href="#@cdklabs/genai-idp.IReportingEnvironment">IReportingEnvironment</a></code> | Athena database for analytics queries. |
@@ -20074,6 +20083,7 @@ const agentAnalyticsProps: AgentAnalyticsProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.dataRetentionDays">dataRetentionDays</a></code> | <code>number</code> | Data retention period in days. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The KMS key for encryption. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.externalMcpAgentsSecret">externalMcpAgentsSecret</a></code> | <code>aws-cdk-lib.aws_secretsmanager.ISecret</code> | Optional Secrets Manager secret for external MCP agents. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.guardrail">guardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail for content filtering. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | Log level for agent analytics functions. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | Log retention period. |
 
@@ -20088,6 +20098,20 @@ public readonly appSyncApiUrl: string;
 - *Type:* string
 
 AppSync GraphQL API URL for publishing updates.
+
+---
+
+##### `configurationTable`<sup>Required</sup> <a name="configurationTable" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.configurationTable"></a>
+
+```typescript
+public readonly configurationTable: IConfigurationTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a>
+
+The DynamoDB table that stores configuration settings.
+
+Used by analytics agents to access document schemas and processing parameters.
 
 ---
 
@@ -20180,6 +20204,20 @@ Optional Secrets Manager secret for external MCP agents.
 
 ---
 
+##### `guardrail`<sup>Optional</sup> <a name="guardrail" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.guardrail"></a>
+
+```typescript
+public readonly guardrail: IGuardrail;
+```
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+
+Optional Bedrock guardrail for content filtering.
+
+When provided, enables guardrail permissions for analytics agents.
+
+---
+
 ##### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.logLevel"></a>
 
 ```typescript
@@ -20269,10 +20307,12 @@ const agentProcessorFunctionProps: AgentProcessorFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.appSyncApiUrl">appSyncApiUrl</a></code> | <code>string</code> | AppSync GraphQL API URL for publishing updates. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.athenaBucket">athenaBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | S3 bucket for Athena query results. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.athenaDatabase">athenaDatabase</a></code> | <code>@aws-cdk/aws-glue-alpha.IDatabase</code> | Athena database for analytics queries. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | The DynamoDB table that stores configuration settings. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.metricNamespace">metricNamespace</a></code> | <code>string</code> | The namespace for CloudWatch metrics. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.model">model</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The foundation model or inference profile to use for document analysis agent. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The KMS key used for encryption. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.externalMcpAgentsSecret">externalMcpAgentsSecret</a></code> | <code>aws-cdk-lib.aws_secretsmanager.ISecret</code> | Optional Secrets Manager secret for external MCP agents. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.guardrail">guardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail for content filtering. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the function. |
 
 ---
@@ -20985,6 +21025,20 @@ Athena database for analytics queries.
 
 ---
 
+##### `configurationTable`<sup>Required</sup> <a name="configurationTable" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.configurationTable"></a>
+
+```typescript
+public readonly configurationTable: IConfigurationTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a>
+
+The DynamoDB table that stores configuration settings.
+
+Used to access document schemas and processing parameters.
+
+---
+
 ##### `metricNamespace`<sup>Required</sup> <a name="metricNamespace" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.metricNamespace"></a>
 
 ```typescript
@@ -21030,6 +21084,20 @@ public readonly externalMcpAgentsSecret: ISecret;
 - *Type:* aws-cdk-lib.aws_secretsmanager.ISecret
 
 Optional Secrets Manager secret for external MCP agents.
+
+---
+
+##### `guardrail`<sup>Optional</sup> <a name="guardrail" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.guardrail"></a>
+
+```typescript
+public readonly guardrail: IGuardrail;
+```
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+
+Optional Bedrock guardrail for content filtering.
+
+When provided, enables guardrail permissions for the agent processor.
 
 ---
 
@@ -29552,7 +29620,9 @@ const processingEnvironmentApiProps: ProcessingEnvironmentApiProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.inputBucket">inputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where source documents to be processed are stored. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.outputBucket">outputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where processed documents and extraction results are stored. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table that tracks document processing status and metadata. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.dataRetentionInDays">dataRetentionInDays</a></code> | <code>number</code> | Data retention period in days for processed documents. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.documentDiscovery">documentDiscovery</a></code> | <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a></code> | Optional document discovery for automated document analysis. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.documentQueue">documentQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue for document processing requests. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key used for encrypting sensitive data in the processing environment. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket name for storing evaluation baseline documents. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBase">knowledgeBase</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase</code> | Optional knowledge base identifier for document querying capabilities. |
@@ -29562,6 +29632,7 @@ const processingEnvironmentApiProps: ProcessingEnvironmentApiProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs generated by document processing components. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | Optional Step Functions state machine for document processing workflow. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.vpcConfiguration">vpcConfiguration</a></code> | <code><a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a></code> | Optional VPC configuration for document processing components. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.workingBucket">workingBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for working files during document processing. |
 
 ---
 
@@ -29779,6 +29850,20 @@ Stores information about documents being processed, including status and results
 
 ---
 
+##### `dataRetentionInDays`<sup>Optional</sup> <a name="dataRetentionInDays" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.dataRetentionInDays"></a>
+
+```typescript
+public readonly dataRetentionInDays: number;
+```
+
+- *Type:* number
+
+Data retention period in days for processed documents.
+
+Controls how long document data is kept in the system.
+
+---
+
 ##### `documentDiscovery`<sup>Optional</sup> <a name="documentDiscovery" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.documentDiscovery"></a>
 
 ```typescript
@@ -29791,6 +29876,20 @@ Optional document discovery for automated document analysis.
 
 When provided, enables document discovery capabilities including
 automated configuration generation and document structure analysis.
+
+---
+
+##### `documentQueue`<sup>Optional</sup> <a name="documentQueue" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.documentQueue"></a>
+
+```typescript
+public readonly documentQueue: IQueue;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.IQueue
+
+The SQS queue for document processing requests.
+
+Used to queue documents for processing and manage workflow execution.
 
 ---
 
@@ -29923,6 +30022,20 @@ public readonly vpcConfiguration: VpcConfiguration;
 Optional VPC configuration for document processing components.
 
 When provided, deploys processing components within a VPC with specified settings.
+
+---
+
+##### `workingBucket`<sup>Optional</sup> <a name="workingBucket" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.workingBucket"></a>
+
+```typescript
+public readonly workingBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket for working files during document processing.
+
+Used for temporary storage of intermediate processing results.
 
 ---
 

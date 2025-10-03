@@ -574,6 +574,7 @@ export class ProcessingEnvironment
         concurrencyTable: this.concurrencyTable,
         maxConcurrent: processor.maxProcessingConcurrency,
         trackingTable: this.trackingTable,
+        workingBucket: this.workingBucket,
         encryptionKey: this.key,
         api: this.api,
         logGroup: new logs.LogGroup(processor, "QueueProcessorLogGroup", {

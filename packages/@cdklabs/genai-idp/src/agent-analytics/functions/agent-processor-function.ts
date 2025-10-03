@@ -16,6 +16,7 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
+import { IConfigurationTable } from "../../configuration-table";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
 import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
 import { LogLevel } from "../../log-level";
@@ -41,6 +42,12 @@ export interface AgentProcessorFunctionProps extends IdpPythonFunctionOptions {
   readonly agentTable: dynamodb.ITable;
 
   /**
+   * The DynamoDB table that stores configuration settings.
+   * Used to access document schemas and processing parameters.
+   */
+  readonly configurationTable: IConfigurationTable;
+
+  /**
    * AppSync GraphQL API URL for publishing updates.
    */
   readonly appSyncApiUrl: string;
@@ -64,6 +71,12 @@ export interface AgentProcessorFunctionProps extends IdpPythonFunctionOptions {
    * The KMS key used for encryption.
    */
   readonly encryptionKey?: IKey;
+
+  /**
+   * Optional Bedrock guardrail for content filtering.
+   * When provided, enables guardrail permissions for the agent processor.
+   */
+  readonly guardrail?: bedrock.IGuardrail;
 
   /**
    * Optional Secrets Manager secret for external MCP agents.
@@ -128,6 +141,7 @@ export class AgentProcessorFunction extends PythonFunction {
       timeout: Duration.minutes(15),
       environment: {
         LOG_LEVEL: props.logLevel ?? LogLevel.INFO,
+        CONFIGURATION_TABLE_NAME: props.configurationTable.tableName,
         STRANDS_LOG_LEVEL: props.logLevel ?? LogLevel.INFO,
         AGENT_TABLE: props.agentTable.tableName,
         APPSYNC_API_URL: props.appSyncApiUrl,
@@ -148,8 +162,14 @@ export class AgentProcessorFunction extends PythonFunction {
     // Grant permissions to read/write agent table
     props.agentTable.grantReadWriteData(this);
 
+    // Grant permissions to read configuration table
+    props.configurationTable.grantReadData(this);
+
     // Grant Bedrock permissions
     props.model.grantInvoke(this);
+
+    // Grant guardrail permissions if provided
+    props.guardrail?.grantApply(this);
 
     // Grant Bedrock AgentCore permissions for code interpreter
     this.addToRolePolicy(
