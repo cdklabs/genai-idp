@@ -10,6 +10,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct, IConstruct } from "constructs";
+import { IConfigurationTable } from "../configuration-table";
 import { FixedKeyTableProps } from "../fixed-key-table-props";
 import { LogLevel } from "../log-level";
 import { ITrackingTable } from "../tracking-table";
@@ -82,6 +83,12 @@ export interface AgentAnalyticsProps {
   readonly trackingTable: ITrackingTable;
 
   /**
+   * The DynamoDB table that stores configuration settings.
+   * Used by analytics agents to access document schemas and processing parameters.
+   */
+  readonly configurationTable: IConfigurationTable;
+
+  /**
    * The foundation model or inference profile to use for document analysis agent.
    * @default - No model specified, must be provided
    */
@@ -118,6 +125,12 @@ export interface AgentAnalyticsProps {
    * Athena database for analytics queries.
    */
   readonly reportingEnvironment: IReportingEnvironment;
+
+  /**
+   * Optional Bedrock guardrail for content filtering.
+   * When provided, enables guardrail permissions for analytics agents.
+   */
+  readonly guardrail?: bedrock.IGuardrail;
 
   /**
    * Optional Secrets Manager secret for external MCP agents.
@@ -177,11 +190,13 @@ export class AgentAnalytics extends Construct implements IAgentAnalytics {
       metricNamespace: props.metricNamespace,
       logLevel: props.logLevel ?? LogLevel.INFO,
       agentTable: this.agentTable,
+      configurationTable: props.configurationTable,
       appSyncApiUrl: props.appSyncApiUrl,
       athenaDatabase: props.reportingEnvironment.reportingDatabase,
       athenaBucket: props.reportingEnvironment.reportingBucket,
       model: props.model,
       encryptionKey: props.encryptionKey,
+      guardrail: props.guardrail,
       externalMcpAgentsSecret: props.externalMcpAgentsSecret,
       logGroup: new logs.LogGroup(this, "AgentProcessorLogGroup", {
         encryptionKey: props.encryptionKey,

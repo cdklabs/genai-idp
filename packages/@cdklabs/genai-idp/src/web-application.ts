@@ -127,7 +127,7 @@ export class WebApplication extends Construct implements IWebApplication {
       {
         stringValue: JSON.stringify({
           StackName: cdk.Stack.of(this).stackName,
-          Version: "0.3.16",
+          Version: "0.3.18",
           InputBucket: props.environment.inputBucket.bucketName,
           DiscoveryBucket:
             props.environment.documentDiscovery?.discoveryBucket.bucketName ||

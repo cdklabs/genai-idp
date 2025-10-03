@@ -1,6 +1,6 @@
 # GenAI IDP Accelerator for AWS CDK
 
-[![Compatible with version: 0.3.16](https://img.shields.io/badge/Compatible%20with-0.3.16-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.3.16)
+[![Compatible with version: 0.3.18](https://img.shields.io/badge/Compatible%20with-0.3.18-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.3.18)
 
 A modular AWS CDK implementation of the GenAI Intelligent Document Processing (IDP) Accelerator, designed to transform unstructured documents into structured data at scale using AWS's latest AI/ML services.
 
@@ -94,7 +94,7 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 ## Additional Resources
 
 - [Accelerate intelligent document processing with generative AI on AWS blog post](https://aws.amazon.com/blogs/machine-learning/accelerate-intelligent-document-processing-with-generative-ai-on-aws/)
-- [Gen AI Intelligent Document Processing (GenAIIDP)](github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws)
+- [Gen AI Intelligent Document Processing (GenAIIDP)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws)
 - [AWS CDK Documentation](https://docs.aws.amazon.com/cdk/v2/guide/home.html)
 - [Amazon Bedrock Documentation](https://docs.aws.amazon.com/bedrock/)
 - [Projen Documentation](https://projen.io/)

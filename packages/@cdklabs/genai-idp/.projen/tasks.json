@@ -114,9 +114,6 @@
           "spawn": "bundle:handler:process_changes_resolver"
         },
         {
-          "spawn": "bundle:handler:publish_stepfunction_update_resolver"
-        },
-        {
           "spawn": "bundle:handler:query_knowledgebase_resolver"
         },
         {
@@ -133,9 +130,6 @@
         },
         {
           "spawn": "bundle:handler:start_codebuild"
-        },
-        {
-          "spawn": "bundle:handler:stepfunction_subscription_publisher"
         },
         {
           "spawn": "bundle:handler:update_configuration"
@@ -399,17 +393,6 @@
         }
       ]
     },
-    "bundle:handler:publish_stepfunction_update_resolver": {
-      "name": "bundle:handler:publish_stepfunction_update_resolver",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/publish_stepfunction_update_resolver"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/src/lambda/publish_stepfunction_update_resolver/ assets/lambdas/publish_stepfunction_update_resolver/."
-        }
-      ]
-    },
     "bundle:handler:query_knowledgebase_resolver": {
       "name": "bundle:handler:query_knowledgebase_resolver",
       "steps": [
@@ -473,17 +456,6 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/src/lambda/start_codebuild/ assets/lambdas/start_codebuild/."
-        }
-      ]
-    },
-    "bundle:handler:stepfunction_subscription_publisher": {
-      "name": "bundle:handler:stepfunction_subscription_publisher",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/stepfunction_subscription_publisher"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/src/lambda/stepfunction_subscription_publisher/ assets/lambdas/stepfunction_subscription_publisher/."
         }
       ]
     },
