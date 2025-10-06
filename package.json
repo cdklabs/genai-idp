@@ -16,7 +16,7 @@
     "projen": "npx projen"
   },
   "devDependencies": {
-    "@types/node": "^18",
+    "@types/node": "^24",
     "cdklabs-projen-project-types": "^0.3.2",
     "constructs": "^10.0.0",
     "projen": "^0.95.6",
