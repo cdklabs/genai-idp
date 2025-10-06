@@ -16,6 +16,7 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import { IQueue } from "aws-cdk-lib/aws-sqs";
 import * as stepfunctions from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
 import { AgentAnalytics } from "../agent-analytics";
@@ -137,6 +138,24 @@ export interface ProcessingEnvironmentApiProps
    * automated configuration generation and document structure analysis.
    */
   readonly documentDiscovery?: IDocumentDiscovery;
+
+  /**
+   * The S3 bucket for working files during document processing.
+   * Used for temporary storage of intermediate processing results.
+   */
+  readonly workingBucket?: IBucket;
+
+  /**
+   * The SQS queue for document processing requests.
+   * Used to queue documents for processing and manage workflow execution.
+   */
+  readonly documentQueue?: IQueue;
+
+  /**
+   * Data retention period in days for processed documents.
+   * Controls how long document data is kept in the system.
+   */
+  readonly dataRetentionInDays?: number;
 }
 
 /**
@@ -249,6 +268,26 @@ export class ProcessingEnvironmentApi
     );
 
     this.createReprocessDocumentMutationResolver(reprocessDocumentDataSource);
+
+    // Add process changes resolver if required properties are available
+    if (
+      props.workingBucket &&
+      props.documentQueue &&
+      props.dataRetentionInDays !== undefined
+    ) {
+      const processChangesDataSource = this.addProcessChangesDataSource(
+        props.trackingTable,
+        props.documentQueue,
+        props.workingBucket,
+        props.inputBucket,
+        props.outputBucket,
+        props.dataRetentionInDays,
+        props.encryptionKey,
+        props.logRetention,
+        props.vpcConfiguration,
+      );
+      this.createProcessChangesMutationResolver(processChangesDataSource);
+    }
 
     // Add optional components using modular methods
     if (props.evaluationBaselineBucket) {
@@ -452,15 +491,18 @@ export class ProcessingEnvironmentApi
    * @param model The foundation model or inference profile for analytics queries
    * @param reportingEnvironment The reporting environment that the analytics will be run for
    * @param externalMcpAgentsSecret Optional Secrets Manager secret for external MCP agents
+   * @param guardrail Optional Bedrock guardrail for content filtering
    */
   public addAgentAnalytics(
     trackingTable: ITrackingTable,
     model: bedrock.IInvokable,
     reportingEnvironment: IReportingEnvironment,
     externalMcpAgentsSecret?: secretsmanager.ISecret,
+    guardrail?: bedrock.IGuardrail,
   ): void {
     this._agentAnalytics = new AgentAnalytics(this, "AgentAnalytics", {
       trackingTable,
+      configurationTable: this._configurationTable,
       model,
       metricNamespace: "GenAI-IDP",
       appSyncApiUrl: this.graphqlUrl,
@@ -469,6 +511,7 @@ export class ProcessingEnvironmentApi
       logLevel: this._logLevel,
       logRetention: this._logRetention,
       externalMcpAgentsSecret,
+      guardrail,
     });
 
     // Add data sources and resolvers for agent analytics
@@ -1162,6 +1205,90 @@ export class ProcessingEnvironmentApi
   }
 
   /**
+   * Add Process Changes Data Source to the GraphQL API.
+   *
+   * This method creates a Lambda data source for processing document section changes.
+   * The data source can be used to create resolvers that allow clients to modify
+   * document sections and trigger reprocessing.
+   *
+   * @param trackingTable The DynamoDB table for tracking document processing
+   * @param documentQueue The SQS queue for document processing
+   * @param workingBucket The S3 bucket for working files
+   * @param inputBucket The S3 bucket for input documents
+   * @param outputBucket The S3 bucket for output documents
+   * @param dataRetentionInDays Data retention period in days
+   * @param encryptionKey The KMS key for encryption
+   * @param logRetention The log retention period
+   * @param vpcConfiguration The VPC configuration
+   * @returns The created Lambda data source
+   */
+  private addProcessChangesDataSource(
+    trackingTable: ITrackingTable,
+    documentQueue: IQueue,
+    workingBucket: IBucket,
+    inputBucket: IBucket,
+    outputBucket: IBucket,
+    dataRetentionInDays: number,
+    encryptionKey?: kms.IKey,
+    logRetention?: logs.RetentionDays,
+    vpcConfiguration?: VpcConfiguration,
+  ): appsync.LambdaDataSource {
+    const processChangesResolverFunction =
+      new functions.ProcessChangesResolverFunction(
+        this,
+        "ProcessChangesResolverFunction",
+        {
+          trackingTable: trackingTable,
+          documentQueue: documentQueue,
+          workingBucket: workingBucket,
+          inputBucket: inputBucket,
+          outputBucket: outputBucket,
+          appsyncApiUrl: this.graphqlUrl,
+          graphqlApiArn: this.arn,
+          dataRetentionInDays: dataRetentionInDays,
+          encryptionKey: encryptionKey,
+          logGroup: new logs.LogGroup(
+            this,
+            "ProcessChangesResolverFunctionLogGroup",
+            {
+              encryptionKey: encryptionKey,
+              retention: logRetention || logs.RetentionDays.ONE_WEEK,
+            },
+          ),
+          ...vpcConfiguration,
+        },
+      );
+
+    return this.addLambdaDataSource(
+      "ProcessChangesDataSource",
+      processChangesResolverFunction,
+      {
+        name: "ProcessChangesDataSource",
+        description: "Lambda function for processing section changes",
+      },
+    );
+  }
+
+  /**
+   * Create Process Changes Mutation Resolver using the provided data source.
+   *
+   * This method creates a resolver that handles document section changes mutations
+   * using the specified Lambda data source.
+   *
+   * @param dataSource The Lambda data source for processing changes
+   * @returns The created resolver
+   */
+  private createProcessChangesMutationResolver(
+    dataSource: appsync.LambdaDataSource,
+  ): appsync.Resolver {
+    return this.createResolver("ProcessChangesResolver", {
+      dataSource: dataSource,
+      typeName: "Mutation",
+      fieldName: "processChanges",
+    });
+  }
+
+  /**
    * Add Upload Document Resolver to the GraphQL API.
    *
    * This method creates a resolver that generates presigned URLs
@@ -1404,6 +1531,138 @@ export class ProcessingEnvironmentApi
         #end
       `),
     });
+
+    // Create updateAgentJobStatus resolver using DynamoDB data source
+    agentTableDataSource.createResolver("UpdateAgentJobStatusResolver", {
+      typeName: "Mutation",
+      fieldName: "updateAgentJobStatus",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        #set($userId = $ctx.args.userId)
+        #set($expNames = {})
+        #set($expValues = {})
+        
+        ## Set status (required)
+        $util.qr($expNames.put("#status", "status"))
+        $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
+        
+        ## Set result if provided
+        #if($ctx.args.result)
+          $util.qr($expNames.put("#result", "result"))
+          $util.qr($expValues.put(":result", $util.dynamodb.toDynamoDB($ctx.args.result)))
+        #end
+        
+        ## Set completedAt timestamp
+        $util.qr($expNames.put("#completedAt", "completedAt"))
+        $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
+        
+        {
+          "version": "2018-05-29",
+          "operation": "UpdateItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("agent#\${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          },
+          "update": {
+            "expression": "SET #status = :status, #completedAt = :completedAt#if($ctx.args.result), #result = :result#end",
+            "expressionNames": $util.toJson($expNames),
+            "expressionValues": $util.toJson($expValues)
+          }
+        }
+      `),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #end
+        
+        ## Return false if no item was updated (item not found)
+        #if(!$ctx.result)
+          false
+        #else
+          true
+        #end
+      `),
+    });
+
+    // Create listAgentJobs resolver using DynamoDB data source
+    agentTableDataSource.createResolver("ListAgentJobsResolver", {
+      typeName: "Query",
+      fieldName: "listAgentJobs",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "Query",
+          "query": {
+            "expression": "PK = :pk",
+            "expressionValues": {
+              ":pk": $util.dynamodb.toDynamoDBJson("agent#\${userId}")
+            }
+          },
+          #if($ctx.args.limit)
+            "limit": $ctx.args.limit,
+          #end
+          #if($ctx.args.nextToken)
+            "nextToken": "$ctx.args.nextToken",
+          #end
+          "scanIndexForward": false
+        }
+      `),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "items": [
+            #foreach($item in $ctx.result.items)
+              {
+                "jobId": $util.toJson($item.SK),
+                "status": $util.toJson($item.status),
+                "query": $util.toJson($item.query),
+                "agentIds": $util.toJson($item.agentIds),
+                "createdAt": $util.toJson($item.createdAt),
+                "completedAt": $util.toJson($item.completedAt),
+                "result": $util.toJson($item.result),
+                "error": $util.toJson($item.error)
+              }#if($foreach.hasNext),#end
+            #end
+          ],
+          "nextToken": $util.toJson($ctx.result.nextToken)
+        }
+      `),
+    });
+
+    // Create deleteAgentJob resolver using DynamoDB data source
+    agentTableDataSource.createResolver("DeleteAgentJobResolver", {
+      typeName: "Mutation",
+      fieldName: "deleteAgentJob",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "DeleteItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("agent#\${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          }
+        }
+      `),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #else
+          true
+        #end
+      `),
+    });
   }
 
   /**
@@ -1549,36 +1808,55 @@ export class ProcessingEnvironmentApi
         typeName: "Mutation",
         fieldName: "updateDiscoveryJobStatus",
         requestMappingTemplate: appsync.MappingTemplate.fromString(`
-        {
-          "version": "2017-02-28",
-          "operation": "UpdateItem",
-          "key": {
-            "jobId": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          },
-          "update": {
-            "expression": "SET #status = :status, updatedAt = :updatedAt",
-            "expressionNames": {
-              "#status": "status"
+          ## Validate status is one of the allowed values
+          #set($validStatuses = ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"])
+          #if(!$validStatuses.contains($ctx.args.status))
+            $util.error("Invalid status value. Status must be one of: PENDING, IN_PROGRESS, COMPLETED, FAILED", "ValidationException")
+          #end
+          
+          #set($expNames = {})
+          #set($expValues = {})
+          
+          ## Set status (required)
+          $util.qr($expNames.put("#status", "status"))
+          $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
+          #set($updateExpression = "SET #status = :status")
+          
+          ## Set errorMessage (optional)
+          #if($ctx.args.errorMessage)
+            $util.qr($expNames.put("#errorMessage", "errorMessage"))
+            $util.qr($expValues.put(":errorMessage", $util.dynamodb.toDynamoDB($ctx.args.errorMessage)))
+            #set($updateExpression = "\${updateExpression}, #errorMessage = :errorMessage")
+          #end
+          
+          ## Set updatedAt to current timestamp
+          $util.qr($expNames.put("#updatedAt", "updatedAt"))
+          $util.qr($expValues.put(":updatedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
+          #set($updateExpression = "\${updateExpression}, #updatedAt = :updatedAt")
+          
+          ## Set completedAt when status is COMPLETED or FAILED
+          #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED")
+            $util.qr($expNames.put("#completedAt", "completedAt"))
+            $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
+            #set($updateExpression = "\${updateExpression}, #completedAt = :completedAt")
+          #end
+          
+          {
+            "version": "2018-05-29",
+            "operation": "UpdateItem",
+            "key": {
+              "jobId": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
             },
-            "expressionValues": {
-              ":status": $util.dynamodb.toDynamoDBJson($ctx.args.status),
-              ":updatedAt": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601())
+            "update": {
+              "expression": "$updateExpression",
+              "expressionNames": $util.toJson($expNames),
+              "expressionValues": $util.toJson($expValues)
             }
           }
-        }
-        #if($ctx.args.errorMessage)
-          $util.qr($ctx.stash.put("errorMessage", $ctx.args.errorMessage))
-          $util.qr($ctx.stash.get("update").put("expression", "SET #status = :status, updatedAt = :updatedAt, errorMessage = :errorMessage"))
-          $util.qr($ctx.stash.get("update").get("expressionValues").put(":errorMessage", $util.dynamodb.toDynamoDBJson($ctx.args.errorMessage)))
-        #end
-      `),
+        `),
         responseMappingTemplate: appsync.MappingTemplate.fromString(`
-        {
-          "jobId": "$ctx.result.jobId",
-          "status": "$ctx.result.status",
-          "errorMessage": "$util.defaultIfNull($ctx.result.errorMessage, null)"
-        }
-      `),
+          $util.toJson($ctx.result)
+        `),
       },
     );
   }

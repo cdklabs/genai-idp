@@ -9,6 +9,7 @@ export * from "./copy-to-baseline-resolver-function";
 export * from "./delete-document-resolver-function";
 export * from "./get-file-contents-resolver-function";
 export * from "./get-stepfunction-execution-resolver-function";
+export * from "./process-changes-resolver-function";
 export * from "./query-knowledge-base-resolver-function";
 export * from "./reprocess-document-resolver-function";
 export * from "./upload-resolver-function";

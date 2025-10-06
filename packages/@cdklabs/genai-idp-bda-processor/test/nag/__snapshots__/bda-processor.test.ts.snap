@@ -1843,7 +1843,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "045ad3de7bed3dcce2cec7277dcd77658b979783e404d81c2ec4688824e05984.zip",
+          "S3Key": "5c8030862b8fc5d6ebf3081004aceaf53cc4b122f28fc4876a3186bea0427001.zip",
         },
         "Environment": {
           "Variables": {
@@ -1858,6 +1858,9 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             },
             "TRACKING_TABLE": {
               "Ref": "EnvironmentTrackingTable97AE1FE4",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "WorkingBucketAF106285",
             },
           },
         },
@@ -1960,6 +1963,43 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                 },
                 {
                   "Ref": "AWS::NoValue",
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "WorkingBucketAF106285",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "WorkingBucketAF106285",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
                 },
               ],
             },
@@ -2081,7 +2121,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "b77ccaae7492fc256a645bf69ebed8dfae4fa0f230491c649b09936e4a1ca15b.zip",
+          "S3Key": "b1d8e7375bf165faf489be960370d0a754e6b1b7ef7fbb32d52ca0644dbfe7c1.zip",
         },
         "Environment": {
           "Variables": {
@@ -2723,6 +2763,24 @@ Respond ONLY with the JSON and nothing else. Here's the exact format:
                 {
                   "name": "cacheWriteInputTokens",
                   "price": "1.875E-5",
+                },
+              ],
+            },
+            {
+              "name": "lambda/requests",
+              "units": [
+                {
+                  "name": "invocations",
+                  "price": "2.0E-7",
+                },
+              ],
+            },
+            {
+              "name": "lambda/duration",
+              "units": [
+                {
+                  "name": "gb_seconds",
+                  "price": "1.66667E-5",
                 },
               ],
             },
@@ -4021,7 +4079,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "5ac0e6c34b3c4972ec17b3916f95cf3a469f9a3aa946847c7dcb0f85f4b3a8f2.zip",
+          "S3Key": "4ba0f2e35d7e2158829d169227f92e84fc05817bd24d7b6b42194b4ae9c83a4b.zip",
         },
         "DeadLetterConfig": {
           "TargetArn": {
@@ -4258,7 +4316,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "e8b68e890a6e7d8c5d6b23980f9a7cffb845358c2d977af4a5a8c4c7c2d4b842.zip",
+          "S3Key": "30b3ba90159d31e284ee43e6f518f32b456050143141edcb11f0d59b811e6135.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service",
       },
@@ -4273,7 +4331,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "e8b68e890a6e7d8c5d6b23980f9a7cffb845358c2d977af4a5a8c4c7c2d4b842.zip",
+          "S3Key": "30b3ba90159d31e284ee43e6f518f32b456050143141edcb11f0d59b811e6135.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: appsync, summarization",
       },
@@ -4288,7 +4346,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "e8b68e890a6e7d8c5d6b23980f9a7cffb845358c2d977af4a5a8c4c7c2d4b842.zip",
+          "S3Key": "30b3ba90159d31e284ee43e6f518f32b456050143141edcb11f0d59b811e6135.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only)",
       },

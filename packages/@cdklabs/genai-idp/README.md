@@ -1,6 +1,6 @@
 # GenAI IDP Core Package
 
-[![Compatible with GenAI IDP version: 0.3.16](https://img.shields.io/badge/Compatible%20with%20GenAI%20IDP-0.3.16-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.3.16)
+[![Compatible with GenAI IDP version: 0.3.18](https://img.shields.io/badge/Compatible%20with%20GenAI%20IDP-0.3.18-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.3.18)
 ![Stability: Experimental](https://img.shields.io/badge/Stability-Experimental-important.svg)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
