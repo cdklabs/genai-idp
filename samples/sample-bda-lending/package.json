@@ -70,7 +70,7 @@
     "@cdklabs/genai-idp": "^0.0.0",
     "@cdklabs/genai-idp-bda-processor": "^0.0.0",
     "@cdklabs/generative-ai-cdk-constructs": "^0.1.309",
-    "@types/aws-lambda": "^8.10.152"
+    "@types/aws-lambda": "^8.10.155"
   },
   "license": "Apache-2.0",
   "publishConfig": {
