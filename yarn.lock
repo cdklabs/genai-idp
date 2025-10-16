@@ -1908,10 +1908,10 @@
   dependencies:
     tslib "^2.4.0"
 
-"@types/aws-lambda@^8.10.149", "@types/aws-lambda@^8.10.152":
-  version "8.10.153"
-  resolved "https://registry.yarnpkg.com/@types/aws-lambda/-/aws-lambda-8.10.153.tgz#c9a39d53b98a22ee466b475e58a48fa08768dc34"
-  integrity sha512-j5zuETAQtPKuU8ZeqtcLdqLxQeNffX1Dd1Sr3tP56rYZD21Ph49iIqWbiHHqwLXugsMPSsgX/bAZI29Patlbbw==
+"@types/aws-lambda@^8.10.156":
+  version "8.10.156"
+  resolved "https://registry.yarnpkg.com/@types/aws-lambda/-/aws-lambda-8.10.156.tgz#ea7cd65806d441fcf4afce1738fe786d4bdafb8d"
+  integrity sha512-LElQP+QliVWykC7OF8dNr04z++HJCMO2lF7k9HuKoSDARqhcjHq8MzbrRwujCSDeBHIlvaimbuY/tVZL36KXFQ==
 
 "@types/babel__core@^7.1.14":
   version "7.20.5"
