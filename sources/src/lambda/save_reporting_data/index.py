@@ -80,7 +80,7 @@ def handler(event, context):
         if config_table_name:
             try:
                 logger.info(f"Loading configuration from table: {config_table_name}")
-                config = get_config(config_table_name)
+                config = get_config(table_name=config_table_name, as_model=True)
                 logger.info("Configuration loaded successfully")
             except Exception as e:
                 logger.warning(f"Failed to load configuration from {config_table_name}: {str(e)}")

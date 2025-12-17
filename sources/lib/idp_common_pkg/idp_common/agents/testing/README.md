@@ -6,10 +6,12 @@ This directory contains utilities for testing IDP agents locally, outside of the
 
 | File | Purpose |
 |------|---------|
-| `test_analytics.py` | Main test script for analytics agent |
+| `test_analytics.py` | Local test script for analytics agent |
 | `run_analytics_test.py` | Wrapper script with .env file support |
+| `test_agent_chat_integration.py` | Integration test for deployed agent chat system |
 | `.env.example` | Template for environment variables |
 | `README.md` | This file |
+| `README_CONVERSATIONAL_TESTS.md` | Documentation for conversational orchestrator tests |
 
 ## Quick Start
 
@@ -276,6 +278,95 @@ python idp_common/agents/testing/test_document_analysis.py -q "Analyze this docu
 
 # Future workflow agent
 python idp_common/agents/testing/test_workflow.py -q "Automate document approval process"
+```
+
+## Agent Chat Integration Testing
+
+The `test_agent_chat_integration.py` script tests the complete conversational agent system in a deployed AWS environment.
+
+### What It Tests
+
+- Lambda function invocation (resolver and processor)
+- DynamoDB message storage
+- Conversation memory persistence
+- Multi-turn conversations
+- Streaming responses
+
+### Usage
+
+```bash
+# Test with default stack name and region
+python idp_common/agents/testing/test_agent_chat_integration.py
+
+# Test with custom stack and region
+python idp_common/agents/testing/test_agent_chat_integration.py --stack-name MyStack --region us-west-2
+```
+
+### Requirements
+
+- Deployed CloudFormation stack with agent chat resources
+- AWS credentials configured
+- IAM permissions to:
+  - Invoke Lambda functions
+  - Query DynamoDB tables
+  - Describe CloudFormation stacks
+
+### Test Flow
+
+1. **Resolve Lambda and DynamoDB resources** from CloudFormation stack
+2. **Send test message** via resolver Lambda
+3. **Verify message storage** in ChatMessagesTable
+4. **Wait for processor** to generate response (60 seconds)
+5. **Check assistant response** in DynamoDB
+6. **Verify memory persistence** in IdHelperChatMemoryTable
+7. **Test multi-turn conversation** with follow-up message
+
+### Expected Output
+
+```
+============================================================
+Starting Agent Chat Integration Test
+============================================================
+Resolver: IDP-AgentChatResolverFunction-ABC123
+Processor: IDP-AgentChatProcessorFunction-XYZ789
+ChatMessagesTable: IDP-ChatMessagesTable-123456
+MemoryTable: IDP-IdHelperChatMemoryTable-789012
+Using session ID: test-session-1234567890
+
+============================================================
+Test 1: Send message via resolver
+============================================================
+✅ Resolver returned user message
+
+============================================================
+Test 2: Verify message in ChatMessagesTable
+============================================================
+✅ Message found in ChatMessagesTable
+
+============================================================
+Test 3: Wait for processor to complete (60 seconds)
+============================================================
+✅ Assistant response found!
+
+============================================================
+Test 4: Check conversation memory
+============================================================
+✅ Conversation memory stored
+
+============================================================
+Test 5: Test multi-turn conversation
+============================================================
+✅ Second message sent successfully
+
+============================================================
+Test Summary
+============================================================
+Session ID: test-session-1234567890
+Messages in ChatMessagesTable: 4
+Assistant responses: 2
+Memory items: 2
+
+✅ Integration test completed!
 ```
 
 ## Adding New Test Scripts

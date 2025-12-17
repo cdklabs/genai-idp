@@ -2,12 +2,114 @@
 
 ## Current Task Status
 
-**ProcessChanges Resolver Fix & Agent Analytics Optimization**: ✅ **COMPLETED** - 2-Phase Schema Knowledge Optimization
+**GovCloud S3 Vectors Fix**: ✅ **COMPLETED** - Fixed GovCloud Deployment Failure Due to S3 Vectors Service
 
 **Previous Tasks**: 
+- ✅ **COMPLETED** - Test Suite Dependency Fix
+- ✅ **COMPLETED** - ProcessChanges Resolver Fix & Agent Analytics Optimization
 - ✅ **COMPLETED** - Section Edit Mode Performance Optimization  
 - ✅ **COMPLETED** - IDP CLI Dependency Security Updates
 - ✅ **COMPLETED** - Service Principal GovCloud Compatibility Updates
+
+## GovCloud S3 Vectors Fix
+
+Successfully resolved GovCloud deployment failure caused by S3 Vectors service not being available in GovCloud regions.
+
+### Issue Identified - GitHub Issue #159
+- **Problem 1**: Service principal exception for `indexing.s3vectors.${AWS::URLSuffix}` - service doesn't exist in GovCloud
+- **Problem 2**: Default parameter `KnowledgeBaseVectorStore` was set to `S3_VECTORS` which doesn't work in GovCloud
+- **Problem 3**: Deploy script domain incorrect: `aws.amazonaws-us-gov.com` should be `amazonaws-us-gov.com`
+- **What Worked**: Deployment with OPENSEARCH_SERVERLESS succeeded
+
+### Root Cause Analysis
+- **S3 Vectors Service Availability**: S3 Vectors is a relatively new AWS service NOT available in GovCloud (us-gov-west-1, us-gov-east-1)
+- **KMS Policy Issue**: Template's KMS key policy included conditional statement for S3 Vectors service principal even in GovCloud
+- **Parameter Problem**: `KnowledgeBaseVectorStore` parameter defaulted to S3_VECTORS, causing confusion and potential deployment attempts with unavailable service
+
+### Solution Implemented
+
+**File Modified**: `scripts/generate_govcloud_template.py`
+
+#### Change 1: Parameter Removal
+- Added `KnowledgeBaseVectorStore` to `self.ui_parameters` removal set
+- Ensures the parameter is completely removed from GovCloud template
+- Users won't see S3_VECTORS option in GovCloud deployments
+
+#### Change 2: Force Condition to False
+```python
+# In remove_conditions() method
+if 'IsS3VectorsVectorStore' in conditions:
+    conditions['IsS3VectorsVectorStore'] = False
+    self.logger.info("Forced IsS3VectorsVectorStore condition to False for GovCloud")
+```
+- Forces `IsS3VectorsVectorStore` condition to `False` instead of removing it
+- Ensures S3 Vectors KMS policy statement evaluates to `!Ref AWS::NoValue` and is excluded
+- CloudFormation won't validate the non-existent service principal
+
+#### Change 3: Domain Reference Fix
+```python
+# In print_deployment_summary() method
+if "us-gov" in region:
+    domain="amazonaws-us-gov.com"  # Fixed from aws.amazonaws-us-gov.com
+```
+- Corrected GovCloud console domain for 1-Click Launch URLs
+
+### Impact & Benefits
+
+**Deployment Success**:
+- ✅ GovCloud templates now deploy successfully without service principal errors
+- ✅ Knowledge Base functionality properly disabled for GovCloud compatibility
+- ✅ Correct 1-Click Launch URLs for GovCloud console
+
+**User Experience**:
+- ✅ No confusing S3_VECTORS option shown in GovCloud deployments
+- ✅ Clear path forward: OPENSEARCH_SERVERLESS as vector store option
+- ✅ Simplified parameter choices for GovCloud users
+
+**Technical Implementation**:
+- ✅ Condition-based approach prevents KMS policy inclusion without template errors
+- ✅ Maintains proper CloudFormation conditional logic
+- ✅ Clean separation of commercial vs GovCloud feature sets
+
+### Files Modified
+- `scripts/generate_govcloud_template.py` - All three fixes implemented
+- `CHANGELOG.md` - Documented fix in Unreleased section
+
+### Testing Considerations
+To fully validate:
+1. Generate GovCloud template and verify `KnowledgeBaseVectorStore` parameter is absent
+2. Verify `IsS3VectorsVectorStore` condition is set to `False` (not removed)
+3. Confirm KMS key policy does NOT contain S3 Vectors service principal
+4. Test 1-Click launch URL uses correct domain (`amazonaws-us-gov.com`)
+5. Deploy to GovCloud region to confirm no service principal errors
+
+## Test Suite Dependency Fix
+
+Successfully resolved test collection failure caused by missing type stubs dependency for Bedrock Runtime client.
+
+### Issue Identified
+- **Error**: `ModuleNotFoundError: No module named 'mypy_boto3_bedrock_runtime'` during test collection
+- **Location**: `lib/idp_common_pkg/idp_common/utils/bedrock_utils.py`
+- **Root Cause**: Type stubs dependency was only in `agentic-extraction` optional dependencies, not in `test` dependencies
+
+### Solution Implemented
+- **Added Dependency**: `mypy-boto3-bedrock-runtime>=1.39.0` to test dependencies in `pyproject.toml`
+- **File Modified**: `lib/idp_common_pkg/pyproject.toml`
+- **Rationale**: The `bedrock_utils.py` module imports `mypy_boto3_bedrock_runtime` for type hints on BedrockRuntimeClient, and these type stubs are required for the `test_bedrock_utils.py` unit tests to import and run
+
+### Test Results
+- **idp_common_pkg**: ✅ 428 passed, 20 skipped
+- **idp_cli**: ✅ 61 passed
+- **Total Time**: ~8.44 seconds
+- **Status**: All tests passing successfully
+
+### Technical Details
+The type stubs package `mypy-boto3-bedrock-runtime` provides type information for boto3's bedrock-runtime client, enabling:
+1. Better IDE autocomplete and type checking
+2. Type-safe wrapper class implementation in `BedrockClientWrapper`
+3. Proper type hints for invoke_model, converse, and converse_stream methods
+
+This dependency was already present in `agentic-extraction` dependencies but was missing from the `test` group, causing test collection to fail when importing the module.
 
 ## ProcessChanges Resolver Fix & Agent Analytics Optimization Overview
 

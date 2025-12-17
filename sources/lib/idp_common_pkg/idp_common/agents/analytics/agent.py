@@ -175,7 +175,7 @@ def create_analytics_agent(
     WHERE CONTAINS("service_api", 'classification')
     
     -- ✅ CORRECT: Numeric validation with regex
-    WHERE REGEXP_LIKE("inference_result.amount", '^[0-9]+\.?[0-9]*$')
+    WHERE REGEXP_LIKE("inference_result.amount", '^[0-9]+\\.?[0-9]*$')
     
     -- ❌ WRONG: PostgreSQL regex operator
     WHERE "inference_result.amount" ~ '^[0-9.]+$'
@@ -255,6 +255,8 @@ def create_analytics_agent(
     Remember, DO NOT attempt to execute multiple tools in parallel. The input of some tools depend on the output of others. Only ever execute one tool at a time.
     
     Also remember, DO NOT EVER GENERATE SYNTHETIC DATA. Only answer questions or generate plots based on REAL DATA retrieved from databases. If no data can be retrieved, or if there are gaps in the data, do not make up fake data. It is better to show an empty plot or explain you are unable to answer than to make up data.
+
+    If a tool or several tools result in error after 2 times of retry, reply by mentioning the error that has occurred and stop retrying the tool(s). 
     
     Your final response should be directly parsable as json with no additional text before or after. The json should conform to the result format description shown above, with top level key "responseType" being one of "plotData", "table", or "text". You may have to clean up the output of the python code if, for example, it contains extra strings from logging or otherwise. Return only directly parsable json in your final response.
     """
@@ -296,8 +298,14 @@ def create_analytics_agent(
         get_table_info,  # Detailed schema for specific tables
     ]
 
-    # Get model ID from environment variable
-    model_id = os.environ.get("DOCUMENT_ANALYSIS_AGENT_MODEL_ID")
+    # Get model ID using configuration system (reads user-changed values from DynamoDB)
+    try:
+        from .config import get_analytics_model_id
+
+        model_id = get_analytics_model_id()
+    except Exception as e:
+        logger.warning(f"Failed to get analytics model ID, using default: {e}")
+        model_id = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
 
     bedrock_model = create_strands_bedrock_model(
         model_id=model_id, boto_session=session

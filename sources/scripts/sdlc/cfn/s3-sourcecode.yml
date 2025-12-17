@@ -8,7 +8,7 @@ Parameters:
   BucketName:
     Type: String
     Description: Name of the S3 bucket to create
-    Default: idp-sdlc-sourcecode-YOUR_AWS_ACCOUNT-YOUR_REGION
+    Default: genaiic-sdlc-sourcecode-YOUR_AWS_ACCOUNT-YOUR_REGION
 
 Resources:
   InitialInstallBucket:
@@ -34,3 +34,6 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true

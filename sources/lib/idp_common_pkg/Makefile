@@ -3,10 +3,10 @@
 test: test-unit
 
 test-unit:
-	pytest -m "unit"
+	pytest -m "unit" --ignore=idp_common/agents/testing
 
 test-integration:
-	pytest -m "integration"
+	pytest -m "integration" --ignore=idp_common/agents/testing
 
 test-cicd: test-unit-cicd
 

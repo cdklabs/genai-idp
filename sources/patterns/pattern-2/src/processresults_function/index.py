@@ -27,32 +27,6 @@ ssm_client = boto3.client('ssm')
 enable_hitl = os.environ.get('ENABLE_HITL', 'false').lower()
 SAGEMAKER_A2I_REVIEW_PORTAL_URL = os.environ.get('SAGEMAKER_A2I_REVIEW_PORTAL_URL', '')
 
-def get_confidence_threshold_from_config(document: Document) -> float:
-    """
-    Get the HITL confidence threshold from configuration.
-    
-    Args:
-        document (Document): The document object containing configuration
-        
-    Returns:
-        float: The confidence threshold as a decimal (0.0-1.0)
-    """
-    try:
-        config = get_config()
-        threshold_value = float(config['assessment']['default_confidence_threshold'])
-        
-        # Validate that the threshold is in the expected 0.0-1.0 range
-        if threshold_value < 0.0 or threshold_value > 1.0:
-            logger.warning(f"Invalid confidence threshold value {threshold_value}. Must be between 0.0 and 1.0. Using default: 0.70")
-            return 0.70
-            
-        logger.info(f"Retrieved confidence threshold from configuration: {threshold_value}")
-        return threshold_value
-    except Exception as e:
-        logger.warning(f"Failed to retrieve confidence threshold from configuration: {e}")
-        # Return default value of 70% (0.70) if configuration is not available
-        logger.info("Using default confidence threshold: 0.70")
-        return 0.70
 
 def generate_random_string(length: int) -> str:
     """Generate a random alphanumeric string of specified length."""
@@ -389,6 +363,7 @@ def handler(event, context):
     """
     logger.info(f"Processing event: {json.dumps(event)}")
     
+    config = get_config(as_model=True)
     # Get the base document from the original classification result - handle both compressed and uncompressed
     working_bucket = os.environ.get('WORKING_BUCKET')
     classification_document_data = event.get("ClassificationResult", {}).get("document", {})
@@ -399,7 +374,7 @@ def handler(event, context):
     execution_id = execution_arn.split(':')[-1] if execution_arn else "unknown"
     
     # Get confidence threshold from configuration
-    confidence_threshold = get_confidence_threshold_from_config(document)
+    confidence_threshold = config.assessment.default_confidence_threshold 
     logger.info(f"Using confidence threshold: {confidence_threshold}")
     
     # Update document status to POSTPROCESSING

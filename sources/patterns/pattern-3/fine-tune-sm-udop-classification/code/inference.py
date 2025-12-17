@@ -46,7 +46,9 @@ def model_fn(model_dir):
         logger.info(f"Loading processor for {model_id} with pinned revision: {revision}")
         processor = AutoProcessor.from_pretrained(model_id, revision=revision, apply_ocr=False)
     else:
-        # Fallback for custom models without managed versions
+        # nosec B615 - Sample training/inference code for demonstration purposes
+        # This fallback path is only for custom models during development/testing
+        # Production deployments should use pinned revisions from model_versions.py
         logger.info(f"Loading processor for {model_id} without revision pinning (not in managed list)")
         processor = AutoProcessor.from_pretrained(model_id, apply_ocr=False)
     with open(os.path.join(model_dir, "validation_prompt.json"), 'r') as f:

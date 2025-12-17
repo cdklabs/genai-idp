@@ -9,12 +9,22 @@ tests/unit/agents/
 ├── README.md                    # This file
 ├── __init__.py                  # Test module initialization
 ├── test_common_config.py        # Tests for common configuration utilities
-└── analytics/                  # Analytics agent specific tests
-    ├── __init__.py
-    ├── test_agent.py           # Analytics agent creation tests
-    ├── test_config.py          # Analytics configuration tests
-    ├── test_integration.py     # Integration tests for analytics components
-    └── test_tools.py           # Individual tool tests
+├── analytics/                   # Analytics agent specific tests
+│   ├── __init__.py
+│   ├── test_agent.py           # Analytics agent creation tests
+│   ├── test_config.py          # Analytics configuration tests
+│   ├── test_integration.py     # Integration tests for analytics components
+│   └── test_tools.py           # Individual tool tests
+├── error_analyzer/              # Error analyzer agent specific tests
+│   ├── __init__.py
+│   ├── test_agent.py           # Error analyzer agent creation tests
+│   ├── test_config.py          # Error analyzer configuration tests
+│   └── test_tools.py           # Individual tool tests
+├── orchestrator/                # Orchestrator agent specific tests
+│   ├── __init__.py
+│   └── test_conversational_orchestrator.py  # Conversational orchestrator tests
+└── common/                      # Common agent utilities tests
+    └── test_monitoring.py      # Monitoring and message tracking tests
 ```
 
 ## Running Tests
@@ -32,6 +42,12 @@ pytest tests/unit/agents/test_common_config.py -v
 
 # Analytics agent tests
 pytest tests/unit/agents/analytics/ -v
+
+# Error analyzer agent tests
+pytest tests/unit/agents/error_analyzer/ -v
+
+# Orchestrator agent tests
+pytest tests/unit/agents/orchestrator/ -v
 
 # Specific test file
 pytest tests/unit/agents/analytics/test_tools.py -v
@@ -142,6 +158,28 @@ Integration tests that verify components work together correctly.
 - Environment variables → Configuration validation
 - Asset loading → Agent initialization
 - Tool configuration → Agent setup
+
+### `orchestrator/test_conversational_orchestrator.py`
+
+Tests the conversational orchestrator creation and configuration.
+
+**Test Classes:**
+- `TestConversationalOrchestrator`: Tests conversational orchestrator factory method
+
+**Key Test Cases:**
+- `test_create_conversational_orchestrator_basic()`: Tests successful orchestrator creation with memory and conversation management
+- `test_memory_provider_configuration()`: Verifies DynamoDB memory provider is configured with correct parameters
+- `test_conversation_manager_configuration()`: Tests conversation manager setup and configuration
+- `test_invalid_agent_id()`: Tests error handling for non-existent agents
+- `test_missing_memory_table_env_var()`: Tests graceful degradation when memory table is not configured
+- `test_multiple_agents()`: Tests orchestrator creation with multiple specialized agents
+- `test_returns_raw_strands_agent()`: Verifies raw Strands agent is returned (not wrapped in IDPAgent)
+
+**Mocked Components:**
+- Strands orchestrator agent creation
+- DynamoDB memory provider
+- Conversation manager
+- Environment variables
 
 ## Test Patterns and Best Practices
 

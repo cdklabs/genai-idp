@@ -33,32 +33,6 @@ bedrock_client = boto3.client('bedrock-data-automation')
 SAGEMAKER_A2I_REVIEW_PORTAL_URL = os.environ.get('SAGEMAKER_A2I_REVIEW_PORTAL_URL', '')
 enable_hitl = os.environ.get('ENABLE_HITL', 'false').lower()
 
-def get_confidence_threshold_from_config(document: Document) -> float:
-    """
-    Get the HITL confidence threshold from configuration.
-    
-    Args:
-        document (Document): The document object containing configuration
-        
-    Returns:
-        float: The confidence threshold as a decimal (0.0-1.0)
-    """
-    try:
-        config = get_config()
-        threshold_value = float(config['assessment']['default_confidence_threshold'])
-        
-        # Validate that the threshold is in the expected 0.0-1.0 range
-        if threshold_value < 0.0 or threshold_value > 1.0:
-            logger.warning(f"Invalid confidence threshold value {threshold_value}. Must be between 0.0 and 1.0. Using default: 0.80")
-            return 0.80
-            
-        logger.info(f"Retrieved confidence threshold from configuration: {threshold_value}")
-        return threshold_value
-    except Exception as e:
-        logger.warning(f"Failed to retrieve confidence threshold from configuration: {e}")
-        # Return default value of 80% (0.80) if configuration is not available
-        logger.info("Using default confidence threshold: 0.80")
-        return 0.80
 
 def create_metadata_file(file_uri, class_type, file_type=None):
     """
@@ -1007,6 +981,7 @@ def handler(event, context):
         Dict containing the processed document
     """
     logger.info(f"Processing event: {json.dumps(event)}")
+    config = get_config(as_model=True)
     
     # Check if we have a single BDA response or an array of responses
     bda_responses = []
@@ -1052,7 +1027,7 @@ def handler(event, context):
     )
 
     # Get confidence threshold from configuration for adding to explainability data
-    confidence_threshold = get_confidence_threshold_from_config(document)
+    confidence_threshold = config.assessment.default_confidence_threshold 
     logger.info(f"Using confidence threshold: {confidence_threshold}")
 
     # Update document status

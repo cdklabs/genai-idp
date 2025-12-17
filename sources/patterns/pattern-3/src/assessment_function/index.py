@@ -27,8 +27,8 @@ def handler(event, context):
     logger.info(f"Starting assessment processing for event: {json.dumps(event, default=str)}")
 
     # Load configuration
-    config = get_config()
-    logger.info(f"Config: {json.dumps(config)}")
+    config = get_config(as_model = True)
+    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
     
     # Extract input from event - handle both compressed and uncompressed
     document_data = event.get('document', {})
@@ -57,8 +57,8 @@ def handler(event, context):
         raise ValueError(f"Section {section_id} not found in document")
 
     # Check if granular assessment is enabled (for Lambda metering context)
-    granular_config = config.get('assessment', {}).get('granular', {})
-    granular_enabled = granular_config.get('enabled', False)
+    granular_config = config.assessment.granular
+    granular_enabled = granular_config.enabled
     assessment_context = "GranularAssessment" if granular_enabled else "Assessment"
     logger.info(f"Assessment mode: {'Granular' if granular_enabled else 'Regular'} (context: {assessment_context})")
 

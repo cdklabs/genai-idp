@@ -374,6 +374,11 @@ Resources:
   #
   S3VectorManagerRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: Specified permissions do not appy to specific resources
     Condition: UseS3Vectors
     Properties:
       AssumeRolePolicyDocument:
@@ -448,6 +453,8 @@ Resources:
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W58
+            reason: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
@@ -542,6 +549,11 @@ Resources:
 
   OpenSearchLambdaExecutionRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: Specified permissions do not appy to specific resources
     Condition: UseOpenSearchServerless
     Properties:
       AssumeRolePolicyDocument:
@@ -611,11 +623,6 @@ Resources:
             - aoss:APIAccessAll
             Resource:
               Fn::Sub: arn:${AWS::Partition}:aoss:${AWS::Region}:${AWS::AccountId}:collection/*
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W11
-            reason: Specified permissions do not appy to specific resources
 
   CreateOSSIndexLambdaFunction:
     Type: AWS::Serverless::Function
@@ -668,6 +675,11 @@ Resources:
   #
   KnowledgeBaseServiceRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Role requires * resource access for Marketplace"
     Properties:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -694,6 +706,12 @@ Resources:
                 Action:
                   - bedrock:InvokeModel
                 Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${pEmbedModel}"
+              - Effect: Allow
+                Action:
+                  - aws-marketplace:Subscribe
+                  - aws-marketplace:Unsubscribe
+                  - aws-marketplace:ViewSubscriptions
+                Resource: "*"
         - !If
           - UseOpenSearchServerless
           - PolicyName: oss-api-access

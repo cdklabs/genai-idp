@@ -29,7 +29,7 @@ sudo apt install build-essential make -y
 python3 --version
 
 # Install Node.js 18
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -  # nosemgrep: bash.curl.security.curl-pipe-bash.curl-pipe-bash - Official NodeSource repository with HTTPS verification for development environment only
 sudo apt-get install -y nodejs
 
 # Install AWS CLI

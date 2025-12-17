@@ -41,7 +41,9 @@ def train(
         print(f"Loading processor for {base_model} with pinned revision: {revision}")
         processor = AutoProcessor.from_pretrained(base_model, revision=revision, apply_ocr=False)
     else:
-        # Fallback for custom models without managed versions
+        # nosec B615 - Sample training code for demonstration purposes
+        # This fallback path is only for custom models during development/testing
+        # Production deployments should use pinned revisions from model_versions.py
         print(f"Loading processor for {base_model} without revision pinning (not in managed list)")
         processor = AutoProcessor.from_pretrained(base_model, apply_ocr=False)
     train_ds = ClassificationDataset(processor, data_dir, split="training")
@@ -52,7 +54,7 @@ def train(
             train_ds.prompt, val_ds.prompt
         )
     )
-
+    # nosemgrep: trailofbits.python.automatic-memory-pinning.automatic-memory-pinning - pin_memory is a performance optimization; default behavior is safe and functional
     train_dl = DataLoader(
         train_ds, batch_size=1, num_workers=4,
         collate_fn=lambda x: x[0], shuffle=True

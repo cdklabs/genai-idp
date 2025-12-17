@@ -90,8 +90,8 @@ def handler(event, context):
     t0 = time.time()
     
     # Load configuration and initialize the OCR service using new simplified pattern
-    config = get_config()
-    backend = config.get("ocr", {}).get("backend", "textract")
+    config = get_config(as_model=True)
+    backend = config.ocr.backend
     
     logger.info(f"Initializing OCR with backend: {backend}")
     service = ocr.OcrService(

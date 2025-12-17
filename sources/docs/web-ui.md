@@ -7,7 +7,7 @@ The solution includes a responsive web-based user interface built with React tha
 
 ![Web UI Screenshot](../images/WebUI.png)
 
-*The GenAIIDP Web Interface showing the document tracking dashboard with status information, classification results, and extracted data.*
+_The GenAIIDP Web Interface showing the document tracking dashboard with status information, classification results, and extracted data._
 
 ## Features
 
@@ -50,7 +50,7 @@ The Edit Sections feature provides an intelligent interface for modifying docume
 
 1. **Edit Section Classifications**: Use dropdowns to change document types
 2. **Modify Page Assignments**: Edit comma-separated page IDs (e.g., "1, 2, 3")
-3. **Add New Sections**: Click "Add Section" for new document boundaries  
+3. **Add New Sections**: Click "Add Section" for new document boundaries
 4. **Delete Sections**: Use remove buttons to delete unnecessary sections
 5. **Validation**: Real-time validation prevents overlapping pages and invalid configurations
 6. **Submit Changes**: Click "Save & Process Changes" to trigger selective reprocessing
@@ -59,11 +59,13 @@ The Edit Sections feature provides an intelligent interface for modifying docume
 
 The Edit Sections feature uses **2-phase schema knowledge optimization**:
 
-#### Phase 1: Frontend 
+#### Phase 1: Frontend
+
 - **Selective Payload**: Only sends sections that actually changed
 - **Validation Engine**: Prevents invalid configurations before submission
 
-#### Phase 2: Backend   
+#### Phase 2: Backend
+
 - **Pipeline**: Processing functions automatically skip redundant operations
   - **OCR**: Skips if pages already have OCR data
   - **Classification**: Skips if pages already classified
@@ -74,17 +76,18 @@ The Edit Sections feature uses **2-phase schema knowledge optimization**:
 ### Pattern Compatibility
 
 #### Pattern-2 and Pattern-3 Support
+
 - **Full Functionality**: Complete edit capabilities with intelligent reprocessing
-- **Performance Optimization**: Automatic selective processing for efficiency  
+- **Performance Optimization**: Automatic selective processing for efficiency
 - **Data Preservation**: Unmodified sections retain all processing results
 
 #### Pattern-1 Information
+
 Pattern-1 uses **Bedrock Data Automation (BDA)** with automatic section management. When Edit Sections is clicked, users see an informative modal explaining:
 
 - **Architecture Differences**: BDA handles section boundaries automatically
 - **Alternative Workflows**: Available options like "View/Edit Data", Configuration updates, and document reprocessing
 - **Future Considerations**: Guidance on using Pattern-2/Pattern-3 for fine-grained section control
-
 
 ## Document Analytics
 
@@ -125,7 +128,7 @@ The Document Process Flow feature provides a visual representation of the Step F
 
 ![Document Process Flow](../images/DocumentProcessFlow.png)
 
-*The Document Process Flow visualization showing the execution steps, status, and details.*
+_The Document Process Flow visualization showing the execution steps, status, and details._
 
 ### Key Capabilities
 
@@ -164,10 +167,9 @@ The "Chat with Document" feature is available at the bottom of the Document Deta
 
 Your chat history will be saved as you continue your chat but if you leave the document details screen, your chat history is erased. This feature uses prompt caching for the document contents for repeated chat requests for each document.
 
-See the feature in action in this video:  
- 
-https://github.com/user-attachments/assets/50607084-96d6-4833-85a6-3dc0e72b28ac
+See the feature in action in this video:
 
+https://github.com/user-attachments/assets/50607084-96d6-4833-85a6-3dc0e72b28ac
 
 ### How to Use
 
@@ -217,14 +219,16 @@ To run the web UI locally for development:
 
 1. Navigate to the `/ui` directory
 2. Create a `.env` file using the `WebUITestEnvFile` output from the CloudFormation stack:
+
 ```
-REACT_APP_USER_POOL_ID=<value>
-REACT_APP_USER_POOL_CLIENT_ID=<value>
-REACT_APP_IDENTITY_POOL_ID=<value>
-REACT_APP_APPSYNC_GRAPHQL_URL=<value>
-REACT_APP_AWS_REGION=<value>
-REACT_APP_SETTINGS_PARAMETER=<value>
+VITE_USER_POOL_ID=<value>
+VITE_USER_POOL_CLIENT_ID=<value>
+VITE_IDENTITY_POOL_ID=<value>
+VITE_APPSYNC_GRAPHQL_URL=<value>
+VITE_AWS_REGION=<value>
+VITE_SETTINGS_PARAMETER=<value>
 ```
+
 3. Install dependencies: `npm install`
 4. Start the development server: `npm run start`
 5. Open [http://localhost:3000](http://localhost:3000) in your browser
@@ -260,6 +264,7 @@ The solution includes AWS WAF integration to protect your AppSync API:
 - **Lambda service access**: The solution automatically maintains a WAF IPSet with current AWS Lambda service IP ranges to ensure Lambda functions can always access the AppSync API even when IP restrictions are enabled
 
 When configuring the WAF:
+
 - IP ranges must be in valid CIDR notation (e.g., `192.168.1.0/24`)
 - Multiple ranges should be comma-separated
 - The WAF is only enabled when the parameter is set to something other than the default `0.0.0.0/0`
