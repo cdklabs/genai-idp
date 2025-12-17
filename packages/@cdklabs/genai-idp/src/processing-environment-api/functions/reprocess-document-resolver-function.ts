@@ -15,8 +15,7 @@ import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-op
 /**
  * Properties for configuring the ReprocessDocumentResolverFunction.
  */
-export interface ReprocessDocumentResolverFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface ReprocessDocumentResolverFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The S3 bucket containing input documents.
    * Function needs read/write access to trigger reprocessing.

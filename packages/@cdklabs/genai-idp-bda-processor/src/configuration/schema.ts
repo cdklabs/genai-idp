@@ -30,9 +30,7 @@ export interface IBdaProcessorConfigurationSchema {
  * for the BDA processor configuration, including document classes, attributes,
  * evaluation settings, and summarization parameters.
  */
-export class BdaProcessorConfigurationSchema
-  implements IBdaProcessorConfigurationSchema
-{
+export class BdaProcessorConfigurationSchema implements IBdaProcessorConfigurationSchema {
   /**
    * Creates a new BdaProcessorConfigurationSchema.
    */

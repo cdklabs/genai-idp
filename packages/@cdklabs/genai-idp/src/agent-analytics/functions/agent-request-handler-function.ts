@@ -18,8 +18,7 @@ import { LogLevel } from "../../log-level";
 /**
  * Properties for the Agent Request Handler function.
  */
-export interface AgentRequestHandlerFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface AgentRequestHandlerFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The namespace for CloudWatch metrics.
    */

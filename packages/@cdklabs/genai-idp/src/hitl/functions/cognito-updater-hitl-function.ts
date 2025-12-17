@@ -19,8 +19,7 @@ import { LogLevel } from "../../log-level";
  *
  * @experimental This API is experimental and may change in future versions.
  */
-export interface CognitoUpdaterHitlFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface CognitoUpdaterHitlFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The Cognito User Pool to update.
    */

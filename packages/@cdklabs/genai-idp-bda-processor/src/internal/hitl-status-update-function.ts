@@ -24,8 +24,7 @@ import { Construct } from "constructs";
  * after HITL completion, marking sections as reviewed and updating
  * the document status.
  */
-export interface HitlStatusUpdateFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface HitlStatusUpdateFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The namespace for CloudWatch metrics emitted by the function.
    * Used to organize and identify metrics related to HITL status updates,

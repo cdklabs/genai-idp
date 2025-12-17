@@ -31,9 +31,7 @@ export interface ISagemakerUdopProcessorConfigurationSchema {
  * attributes, extraction parameters, evaluation criteria, and summarization options.
  * It's specialized for use with SageMaker endpoints for document classification.
  */
-export class SagemakerUdopProcessorConfigurationSchema
-  implements ISagemakerUdopProcessorConfigurationSchema
-{
+export class SagemakerUdopProcessorConfigurationSchema implements ISagemakerUdopProcessorConfigurationSchema {
   /**
    * Binds the configuration schema to a processor instance.
    * Creates a custom resource that updates the schema in the configuration table.

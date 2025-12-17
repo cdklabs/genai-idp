@@ -66,9 +66,10 @@ Configuration properties for the DynamoDB table.
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this file system. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantFullAccess">grantFullAccess</a></code> | Permits all DynamoDB operations ("dynamodb:*") to an IAM principal. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantOnKey">grantOnKey</a></code> | Gives permissions to a grantable entity to perform actions on the encryption key. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantReadData">grantReadData</a></code> | Permits an IAM principal all data read operations from this table: BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan, DescribeTable. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantReadWriteData">grantReadWriteData</a></code> | Permits an IAM principal to all data read/write operations to this table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantStream">grantStream</a></code> | Adds an IAM policy statement associated with this table's stream to an IAM principal's policy. |
@@ -93,6 +94,7 @@ Configuration properties for the DynamoDB table.
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.autoScaleReadCapacity">autoScaleReadCapacity</a></code> | Enable read capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.autoScaleWriteCapacity">autoScaleWriteCapacity</a></code> | Enable write capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.schema">schema</a></code> | Get schema attributes of table or index. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.schemaV2">schemaV2</a></code> | Get schema attributes of table or index. |
 
 ---
 
@@ -132,11 +134,11 @@ account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
 public addToResourcePolicy(statement: PolicyStatement): AddToResourcePolicyResult
 ```
 
-Adds a statement to the resource policy associated with this file system.
+Adds a statement to the resource policy associated with this table.
 
 A resource policy will be automatically created upon the first call to `addToResourcePolicy`.
 
-Note that this does not work with imported file systems.
+Note that this does not work with imported tables.
 
 ###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.addToResourcePolicy.parameter.statement"></a>
 
@@ -189,6 +191,26 @@ if one was configured.
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
 
 The principal to grant access to.
+
+---
+
+##### `grantOnKey` <a name="grantOnKey" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantOnKey"></a>
+
+```typescript
+public grantOnKey(grantee: IGrantable, actions: ...string[]): GrantOnKeyResult
+```
+
+Gives permissions to a grantable entity to perform actions on the encryption key.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantOnKey.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantOnKey.parameter.actions"></a>
+
+- *Type:* ...string[]
 
 ---
 
@@ -613,7 +635,7 @@ Enable write capacity scaling for this table.
 
 ---
 
-##### `schema` <a name="schema" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.schema"></a>
+##### ~~`schema`~~ <a name="schema" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.schema"></a>
 
 ```typescript
 public schema(indexName?: string): SchemaOptions
@@ -622,6 +644,20 @@ public schema(indexName?: string): SchemaOptions
 Get schema attributes of table or index.
 
 ###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.schema.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+##### `schemaV2` <a name="schemaV2" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.schemaV2"></a>
+
+```typescript
+public schemaV2(indexName?: string): KeySchema
+```
+
+Get schema attributes of table or index.
+
+###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.schemaV2.parameter.indexName"></a>
 
 - *Type:* string
 
@@ -811,11 +847,15 @@ The table's name.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.grants">grants</a></code> | <code>aws-cdk-lib.aws_dynamodb.TableGrants</code> | Grant a predefined set of permissions on this Table. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.streamGrants">streamGrants</a></code> | <code>aws-cdk-lib.aws_dynamodb.StreamGrants</code> | Grant a predefined set of permissions on this Table's Stream, if present. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | KMS encryption key, if this table uses a customer-managed encryption key. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.regions">regions</a></code> | <code>string[]</code> | Additional regions other than the main one that this table is replicated to. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.tableStreamArn">tableStreamArn</a></code> | <code>string</code> | ARN of the table's stream, if there is one. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.resourcePolicy">resourcePolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyDocument</code> | Resource policy to assign to DynamoDB Table. |
 
@@ -839,16 +879,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -861,6 +902,32 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `grants`<sup>Required</sup> <a name="grants" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.grants"></a>
+
+```typescript
+public readonly grants: TableGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.TableGrants
+
+Grant a predefined set of permissions on this Table.
+
+---
+
+##### `streamGrants`<sup>Required</sup> <a name="streamGrants" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.streamGrants"></a>
+
+```typescript
+public readonly streamGrants: StreamGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.StreamGrants
+
+Grant a predefined set of permissions on this Table's Stream, if present.
+
+Will throw if the Table has not been configured for streaming.
 
 ---
 
@@ -888,6 +955,18 @@ Table name of the dynamodb table.
 
 ---
 
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
+
+---
+
 ##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.encryptionKey"></a>
 
 ```typescript
@@ -897,6 +976,18 @@ public readonly encryptionKey: IKey;
 - *Type:* aws-cdk-lib.aws_kms.IKey
 
 KMS encryption key, if this table uses a customer-managed encryption key.
+
+---
+
+##### `regions`<sup>Optional</sup> <a name="regions" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.property.regions"></a>
+
+```typescript
+public readonly regions: string[];
+```
+
+- *Type:* string[]
+
+Additional regions other than the main one that this table is replicated to.
 
 ---
 
@@ -2297,7 +2388,7 @@ enabling tracking of individual document processing records within BDA jobs.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
@@ -2324,16 +2415,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 

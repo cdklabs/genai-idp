@@ -18,8 +18,7 @@ import { IReportingEnvironment } from "../../reporting";
  * Properties for configuring the SaveReportingDataFunction.
  * This function saves document evaluation data to the reporting bucket in Parquet format.
  */
-export interface SaveReportingDataFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface SaveReportingDataFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The reporting environment containing the S3 bucket and Glue tables.
    * Used to store evaluation metrics and reporting data.
@@ -122,10 +121,5 @@ export class SaveReportingDataFunction extends PythonFunction {
 
     // Grant permissions to put CloudWatch metrics
     cloudwatch.Metric.grantPutMetricData(this);
-
-    // Grant KMS permissions if encryption key is provided
-    if (props.environmentEncryption) {
-      props.environmentEncryption.grantEncryptDecrypt(this);
-    }
   }
 }

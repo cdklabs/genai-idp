@@ -226,8 +226,6 @@ describe("ProcessingEnvironmentApi - Basic Functionality", () => {
               Effect: "Allow",
               Action: Match.arrayWith([
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",

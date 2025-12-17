@@ -17,8 +17,7 @@ import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-op
 /**
  * Properties for configuring the CopyToBaselineResolverFunction.
  */
-export interface CopyToBaselineResolverFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface CopyToBaselineResolverFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The S3 bucket containing processed output documents.
    * Function needs read/write access to copy documents from this bucket.

@@ -35,9 +35,7 @@ export interface ISagemakerUdopProcessorConfiguration {
  * It provides a centralized way to manage document classes, extraction schemas, and
  * model parameters for specialized document processing with SageMaker.
  */
-export class SagemakerUdopProcessorConfiguration
-  implements ISagemakerUdopProcessorConfiguration
-{
+export class SagemakerUdopProcessorConfiguration implements ISagemakerUdopProcessorConfiguration {
   /**
    * Creates a configuration from a YAML file.
    *

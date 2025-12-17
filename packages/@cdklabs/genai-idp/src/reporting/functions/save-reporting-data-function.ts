@@ -19,8 +19,7 @@ import { LogLevel } from "../../log-level";
  *
  * @experimental This API is experimental and may change in future versions.
  */
-export interface SaveReportingDataFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface SaveReportingDataFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The S3 bucket where reporting data will be saved in Parquet format.
    */

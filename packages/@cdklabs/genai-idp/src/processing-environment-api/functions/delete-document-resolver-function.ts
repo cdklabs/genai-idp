@@ -16,8 +16,7 @@ import { ITrackingTable } from "../../tracking-table";
 /**
  * Properties for configuring the DeleteDocumentResolverFunction.
  */
-export interface DeleteDocumentResolverFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface DeleteDocumentResolverFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The tracking table that stores document metadata.
    * Function needs read/write access to remove document records.

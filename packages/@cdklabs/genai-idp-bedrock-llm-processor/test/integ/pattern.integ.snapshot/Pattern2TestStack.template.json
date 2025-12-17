@@ -213,7 +213,12 @@
       {
        "Action": "s3:PutBucketNotification",
        "Effect": "Allow",
-       "Resource": "*"
+       "Resource": {
+        "Fn::GetAtt": [
+         "InputBucket3BF8630A",
+         "Arn"
+        ]
+       }
       }
      ],
      "Version": "2012-10-17"
@@ -242,7 +247,7 @@
       "Arn"
      ]
     },
-    "Runtime": "python3.11",
+    "Runtime": "python3.13",
     "Timeout": 300
    },
    "DependsOn": [
@@ -488,8 +493,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -501,17 +504,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentConcurrencyTableE6976F31",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConcurrencyTableE6976F31",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConcurrencyTableE6976F31",
+         "Arn"
+        ]
+       }
       }
      ],
      "Version": "2012-10-17"
@@ -533,7 +544,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "288988c410aa3beaf787b16d6aae259412caf443425f107b69a700783c9c77ae.zip"
+     "S3Key": "bcdb5d26be037ee3e2fb1435bf19d002ff4b16fb07f2d5d072142e17cdbe211b.zip"
     },
     "Environment": {
      "Variables": {
@@ -674,8 +685,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -687,17 +696,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentConfigurationTableFFC21CA7",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
       }
      ],
      "Version": "2012-10-17"
@@ -719,7 +736,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "97c23f175fd4124257ca485e69da70cac3263d6d3edbb5b4d770c7bb7c041fed.zip"
+     "S3Key": "14ef76276eba0534b28b8d6a84478d2d46797f1180bc2b2e3939dfcd915560a4.zip"
     },
     "Environment": {
      "Variables": {
@@ -853,8 +870,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -866,17 +881,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       }
      ],
      "Version": "2012-10-17"
@@ -898,7 +921,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "8695970a5d049bf99d33f851d7a2869a25e3e5b0ef75a0dbb505ff7767a7a8a5.zip"
+     "S3Key": "a5401557683a007e2a29538f5c1d1273d5b167278f7f4f306d539110c4d1d503.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -1024,8 +1047,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -1037,23 +1058,29 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -1065,17 +1092,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentConcurrencyTableE6976F31",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConcurrencyTableE6976F31",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConcurrencyTableE6976F31",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
@@ -1134,7 +1169,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "cb4dc67ec5a0a057f9fdd093c8cf2e2b86dce8d46858e978a64d98d71189d20f.zip"
+     "S3Key": "18f6ea7b5e8599f5ca64d2d58c2b649a109fbe72fc46f5187dea73fa8eeeb920.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -1238,8 +1273,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -1247,17 +1280,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
@@ -1340,7 +1381,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "46c28c6b174ac9d8f20c64212c538455a40080406ff5de7d1cc3aaabcf1ecb07.zip"
+     "S3Key": "9471d3642d5c17829435b427652e8c8240914a65bfe8057982794f65c66b2e9f.zip"
     },
     "Environment": {
      "Variables": {
@@ -1381,7 +1422,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "739c13a45d25b1e805657b0d6b9a0d898d6a3b6f6ee8c12b0307dacb1784e2f8.zip"
+     "S3Key": "a7c7a5f4adccbedb67618e7771cb6aa138d1a10c24d01fb300bf48974921d128.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service"
    },
@@ -2820,8 +2861,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -2833,23 +2872,29 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentConfigurationTableFFC21CA7",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -2861,17 +2906,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
@@ -2939,7 +2992,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "022cdfb2b5f13bf9b1ca3e0acecc0023d267a292c02cc30ee39f13fb4b5df16d.zip"
+     "S3Key": "4500fb0535cfa2e0c3e2bcb4cf19237ac159f199b861c9789f0ee88ad654f092.zip"
     },
     "Environment": {
      "Variables": {
@@ -3139,8 +3192,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -3152,17 +3203,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": "cloudwatch:PutMetricData",
@@ -3172,8 +3231,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -3185,17 +3242,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentConfigurationTableFFC21CA7",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
@@ -3263,7 +3328,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "6b0fba431386942829565272b04fbc52d5d3fc6c1e292ea10f72d6ed0c749752.zip"
+     "S3Key": "48e640369b584d07a6be57f8db800ff601158afbc854ddfdd3c550857d06e9c0.zip"
     },
     "Environment": {
      "Variables": {
@@ -3464,8 +3529,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -3477,17 +3540,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentConfigurationTableFFC21CA7",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": "cloudwatch:PutMetricData",
@@ -3497,8 +3568,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -3510,17 +3579,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
@@ -3588,7 +3665,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "6f38a0b66be81afa2c0519f4488b3226de71bbff0159dd60437a8bbc8ae765b1.zip"
+     "S3Key": "6f22bc52b9a4a87dccec81b3b7e00837854ea914248c268f041c190cee39c5f5.zip"
     },
     "Environment": {
      "Variables": {
@@ -3793,8 +3870,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -3806,23 +3881,29 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentConfigurationTableFFC21CA7",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -3834,17 +3915,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
@@ -3912,7 +4001,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "39e8ffe8161f6a5594f3d49714a3298d70676c670a538011d220345fd40674fc.zip"
+     "S3Key": "14b979e27142aa58a2108a1a2a5505b10772101e0f8152418bff96dc017cd87d.zip"
     },
     "Environment": {
      "Variables": {
@@ -4116,8 +4205,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -4129,23 +4216,29 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -4153,17 +4246,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentConfigurationTableFFC21CA7",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": "ssm:GetParameter",
@@ -4234,7 +4335,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "65b64f9cad668dc2f60678de39b8d2d24476ccb795638b17f12875b11ca7efaa.zip"
+     "S3Key": "685ef30f10f8a056b9becf891414e3706fd98de4d96228603119f6700b0e9867.zip"
     },
     "Environment": {
      "Variables": {
@@ -4438,8 +4539,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -4451,17 +4550,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentConfigurationTableFFC21CA7",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
@@ -4512,8 +4619,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -4525,17 +4630,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": "cloudwatch:PutMetricData",
@@ -4562,7 +4675,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "87e1dd6ac8f12c3abaafe5481f0a29ed859ac0c984f6b8ad6facd7e252603021.zip"
+     "S3Key": "a24a92aaa5f7afecfc75b337d473864e2b2a0f30a8285fa127017e20ef9091e6.zip"
     },
     "Environment": {
      "Variables": {
@@ -4658,8 +4771,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -4671,17 +4782,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
@@ -4745,7 +4864,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "3cb6153d9b7eb6b13fb10b6418cc3a9c174f6b960216eea90512fc8c099340d7.zip"
+     "S3Key": "b520ff573e392a070e5f8aec9e5e606dfcb554c44141944a7906e61aadee11b5.zip"
     },
     "Environment": {
      "Variables": {
@@ -4890,7 +5009,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "68f90e1f066893f4044667d4b70292e9e295ca29cf8108e14378b052b6bf118a.zip"
+     "S3Key": "25da7648c6f0cfef0326ebf1ac45c4c513597afb203584d2bc37d4ecf5147bf0.zip"
     },
     "Handler": "index.handler",
     "Layers": [
@@ -5328,8 +5447,6 @@
       {
        "Action": [
         "dynamodb:BatchGetItem",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
         "dynamodb:Query",
         "dynamodb:GetItem",
         "dynamodb:Scan",
@@ -5341,17 +5458,25 @@
         "dynamodb:DescribeTable"
        ],
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
@@ -5453,7 +5578,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "aec93115ea62fef495d95eb91fac0f9e29bf6a50ccf0e6b94587c223397fd4ef.zip"
+     "S3Key": "b47e69a29c801db7ce44b0e4d0e668b1ba3f6d5552dfe53497cd0a2959e1b90c.zip"
     },
     "Environment": {
      "Variables": {
@@ -5602,32 +5727,22 @@
       {
        "Action": "dynamodb:*",
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentTrackingTable97AE1FE4",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentTrackingTable97AE1FE4",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": "dynamodb:*",
        "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "EnvironmentConcurrencyTableE6976F31",
-          "Arn"
-         ]
-        },
-        {
-         "Ref": "AWS::NoValue"
-        }
-       ]
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConcurrencyTableE6976F31",
+         "Arn"
+        ]
+       }
       },
       {
        "Action": [
@@ -5702,7 +5817,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "da18a88b2e70026f20dae174c41d9cdf6f50d7743942af9fbbed68eb2a63990b.zip"
+     "S3Key": "7a0e267fbe0dd85b7df048546056553cfb4fdac2cd247a9f8b72859ae059814c.zip"
     },
     "Environment": {
      "Variables": {
@@ -5903,7 +6018,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "d8ec8d1896dea0a7cd745442f8731fa521ce137671cbde1dc52f336e3d2aa8f2.zip"
+     "S3Key": "0e82b5ab2d8b4ae693f8e78b4417a41ab7b7f092e883cd95e14c01cb367b5283.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr"
    },
@@ -5920,7 +6035,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "f53a735fcd38913b56b3513aa694841ac7a1bfba856367f8e9081feeb1a5b12c.zip"
+     "S3Key": "a125966b905b4f1a7507cf1810d67f035056dbd94b3284dab0c9d832833a4469.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service"
    },
@@ -5937,7 +6052,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "c74eb3438d27492c4ef04834e5d5a027a8b633798444cc88a0634453f097acde.zip"
+     "S3Key": "95c48d590190994abd21444c9514b53e0dd0ca5e4ef8c14c946ea308d6b4ed80.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction"
    },
@@ -5954,7 +6069,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "df8c4a69331e62d2efe0adb1b575c920529764c927567c9b40fbb8f90b35ff28.zip"
+     "S3Key": "672b83a806c65855cfd91a7f52f722bf9fce7e6023225f621187bf3fd076a1dd.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service"
    },

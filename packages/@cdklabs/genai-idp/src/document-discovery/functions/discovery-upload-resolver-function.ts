@@ -17,8 +17,7 @@ import { IDiscoveryTable } from "../discovery-table";
 /**
  * Properties for configuring the DiscoveryUploadResolverFunction.
  */
-export interface DiscoveryUploadResolverFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface DiscoveryUploadResolverFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The S3 bucket for discovery document uploads.
    */
@@ -51,7 +50,9 @@ export interface DiscoveryUploadResolverFunctionProps
  * This function generates presigned URLs for document uploads and creates
  * discovery job entries in the tracking table.
  */
-export class DiscoveryUploadResolverFunction extends lambda_python.PythonFunction {
+export class DiscoveryUploadResolverFunction
+  extends lambda_python.PythonFunction
+{
   constructor(
     scope: Construct,
     id: string,

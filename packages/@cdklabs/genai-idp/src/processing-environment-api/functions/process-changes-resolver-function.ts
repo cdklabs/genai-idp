@@ -18,8 +18,7 @@ import { ITrackingTable } from "../../tracking-table";
 /**
  * Properties for configuring the ProcessChangesResolverFunction.
  */
-export interface ProcessChangesResolverFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface ProcessChangesResolverFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The tracking table for document processing status.
    */

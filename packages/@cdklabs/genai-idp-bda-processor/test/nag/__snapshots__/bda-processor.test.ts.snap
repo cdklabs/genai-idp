@@ -228,8 +228,6 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -237,17 +235,25 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -732,8 +738,6 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -745,23 +749,29 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -773,17 +783,25 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "BdaProcessorBDAMetadataTableAC922B53",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "BdaProcessorBDAMetadataTableAC922B53",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "BdaProcessorBDAMetadataTableAC922B53",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -1063,17 +1081,12 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             {
               "Action": "dynamodb:*",
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
-              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "cloudwatch:PutMetricData",
@@ -1219,23 +1232,16 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             {
               "Action": "dynamodb:*",
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
-              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -1247,17 +1253,25 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "BdaProcessorBDAMetadataTableAC922B53",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "BdaProcessorBDAMetadataTableAC922B53",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "BdaProcessorBDAMetadataTableAC922B53",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "cloudwatch:PutMetricData",
@@ -1470,17 +1484,12 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             {
               "Action": "dynamodb:*",
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
-              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "cloudwatch:PutMetricData",
@@ -1607,8 +1616,6 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -1620,23 +1627,29 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -1648,23 +1661,29 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentConfigurationTableFFC21CA7",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConfigurationTableFFC21CA7",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConfigurationTableFFC21CA7",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -1676,17 +1695,25 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "BdaProcessorBDAMetadataTableAC922B53",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "BdaProcessorBDAMetadataTableAC922B53",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "BdaProcessorBDAMetadataTableAC922B53",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -1939,32 +1966,22 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             {
               "Action": "dynamodb:*",
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
-              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "dynamodb:*",
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentConcurrencyTableE6976F31",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
-              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConcurrencyTableE6976F31",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -2214,8 +2231,6 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -2227,17 +2242,25 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -2346,8 +2369,6 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -2359,17 +2380,25 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentConfigurationTableFFC21CA7",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConfigurationTableFFC21CA7",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConfigurationTableFFC21CA7",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -3483,8 +3512,6 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -3496,17 +3523,25 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentConcurrencyTableE6976F31",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConcurrencyTableE6976F31",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConcurrencyTableE6976F31",
+                  "Arn",
+                ],
+              },
             },
           ],
           "Version": "2012-10-17",
@@ -3652,8 +3687,6 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -3661,17 +3694,25 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -3883,8 +3924,6 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -3896,17 +3935,25 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
           ],
           "Version": "2012-10-17",
@@ -4023,8 +4070,6 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -4036,17 +4081,25 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentConfigurationTableFFC21CA7",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConfigurationTableFFC21CA7",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConfigurationTableFFC21CA7",
+                  "Arn",
+                ],
+              },
             },
           ],
           "Version": "2012-10-17",
@@ -4190,8 +4243,6 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -4203,23 +4254,29 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentTrackingTable97AE1FE4",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -4231,17 +4288,25 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "EnvironmentConcurrencyTableE6976F31",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConcurrencyTableE6976F31",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConcurrencyTableE6976F31",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [

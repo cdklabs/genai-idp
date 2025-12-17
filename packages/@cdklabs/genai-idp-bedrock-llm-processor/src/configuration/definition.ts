@@ -56,8 +56,7 @@ export interface BedrockLlmProcessorConfigurationDefinitionOptions {
   readonly ocrModel?: IInvokable;
 }
 
-export interface IBedrockLlmProcessorConfigurationDefinition
-  extends IConfigurationDefinition {
+export interface IBedrockLlmProcessorConfigurationDefinition extends IConfigurationDefinition {
   /**
    * The invokable model used for document classification.
    * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
@@ -506,9 +505,7 @@ export class BedrockLlmProcessorConfigurationDefinition {
       ],
     });
 
-    class LoadedDefinition
-      implements IBedrockLlmProcessorConfigurationDefinition
-    {
+    class LoadedDefinition implements IBedrockLlmProcessorConfigurationDefinition {
       public readonly classificationMethod = _classificationMethod;
       public readonly extractionModel = _extractionInvokable;
       public readonly summarizationModel = _summarizationInvokable;

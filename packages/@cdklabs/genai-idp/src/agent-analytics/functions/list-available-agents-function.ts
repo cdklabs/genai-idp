@@ -17,8 +17,7 @@ import { LogLevel } from "../../log-level";
 /**
  * Properties for the List Available Agents function.
  */
-export interface ListAvailableAgentsFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface ListAvailableAgentsFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The namespace for CloudWatch metrics.
    */

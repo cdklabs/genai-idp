@@ -18,8 +18,7 @@ import { LogLevel } from "../../log-level";
 /**
  * Properties for configuring the ChatWithDocumentResolverFunction.
  */
-export interface ChatWithDocumentResolverFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface ChatWithDocumentResolverFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The Bedrock knowledge base to query for document context.
    * Function needs query access to retrieve document information.
@@ -58,7 +57,9 @@ export interface ChatWithDocumentResolverFunctionProps
  * It maintains conversation history and provides contextual responses based on
  * document content.
  */
-export class ChatWithDocumentResolverFunction extends lambda_python.PythonFunction {
+export class ChatWithDocumentResolverFunction
+  extends lambda_python.PythonFunction
+{
   constructor(
     scope: Construct,
     id: string,

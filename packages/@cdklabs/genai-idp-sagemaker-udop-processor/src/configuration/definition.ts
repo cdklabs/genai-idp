@@ -51,8 +51,7 @@ export interface SagemakerUdopProcessorConfigurationDefinitionOptions {
  * Interface for SageMaker UDOP processor configuration definition.
  * Defines the structure and capabilities of configuration for SageMaker UDOP processing.
  */
-export interface ISagemakerUdopProcessorConfigurationDefinition
-  extends IConfigurationDefinition {
+export interface ISagemakerUdopProcessorConfigurationDefinition extends IConfigurationDefinition {
   /**
    * The invokable model used for information extraction.
    * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
@@ -220,9 +219,7 @@ export class SagemakerUdopProcessorConfigurationDefinition {
       ],
     });
 
-    class LoadedDefinition
-      implements ISagemakerUdopProcessorConfigurationDefinition
-    {
+    class LoadedDefinition implements ISagemakerUdopProcessorConfigurationDefinition {
       public readonly extractionModel = _extractionInvokable;
       public readonly summarizationModel = _summarizationInvokable;
       public readonly evaluationModel = _evaluationInvokable;
