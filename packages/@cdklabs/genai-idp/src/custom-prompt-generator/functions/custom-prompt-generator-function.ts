@@ -23,8 +23,7 @@ import { ITrackingTable } from "../../tracking-table";
  * workflows in Patterns 2 and 3, enabling dynamic prompt customization based on
  * document content, business rules, or external system integrations.
  */
-export interface CustomPromptGeneratorFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface CustomPromptGeneratorFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The namespace for CloudWatch metrics emitted by the function.
    * Used to organize and identify metrics related to custom prompt generation.

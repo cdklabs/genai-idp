@@ -14,9 +14,9 @@ import path from "path";
 import fs from 'fs';
 
 const stability = Stability.EXPERIMENTAL;
-const CDK_VERSION = '2.214.0';
-const CONSTRUCTS_VERSION = '10.4.2';
-const GENAI_CONSTRUCTS_VERSION = '0.1.309';
+const CDK_VERSION = '2.232.2';
+const CONSTRUCTS_VERSION = '10.4.4';
+const GENAI_CONSTRUCTS_VERSION = '0.1.312';
 
 const idpDeps = [
   `@aws-cdk/aws-lambda-python-alpha@^${CDK_VERSION}-alpha.0`,

@@ -15,8 +15,7 @@ import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-op
 /**
  * Properties for configuring the ConfigurationResolverFunction.
  */
-export interface ConfigurationResolverFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface ConfigurationResolverFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The configuration table that will be managed by this function.
    * This table stores system-wide configuration settings.

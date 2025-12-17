@@ -1034,18 +1034,20 @@ Metric for the number of unreserved concurrent executions across all Lambdas.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.functionRef">functionRef</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.FunctionReference</code> | A reference to a Function resource. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
@@ -1073,16 +1075,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -1145,6 +1148,18 @@ public readonly functionName: string;
 - *Type:* string
 
 Name of this function.
+
+---
+
+##### `functionRef`<sup>Required</sup> <a name="functionRef" id="@cdklabs/genai-idp.AgentProcessorFunction.property.functionRef"></a>
+
+```typescript
+public readonly functionRef: FunctionReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.FunctionReference
+
+A reference to a Function resource.
 
 ---
 
@@ -1226,6 +1241,18 @@ public readonly role: IRole;
 - *Type:* aws-cdk-lib.aws_iam.IRole
 
 Execution role associated with this function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.AgentProcessorFunction.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+
+The tenancy configuration for this function.
 
 ---
 
@@ -2178,18 +2205,20 @@ Metric for the number of unreserved concurrent executions across all Lambdas.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.functionRef">functionRef</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.FunctionReference</code> | A reference to a Function resource. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
@@ -2217,16 +2246,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -2289,6 +2319,18 @@ public readonly functionName: string;
 - *Type:* string
 
 Name of this function.
+
+---
+
+##### `functionRef`<sup>Required</sup> <a name="functionRef" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.functionRef"></a>
+
+```typescript
+public readonly functionRef: FunctionReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.FunctionReference
+
+A reference to a Function resource.
 
 ---
 
@@ -2370,6 +2412,18 @@ public readonly role: IRole;
 - *Type:* aws-cdk-lib.aws_iam.IRole
 
 Execution role associated with this function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+
+The tenancy configuration for this function.
 
 ---
 
@@ -2523,9 +2577,10 @@ new AgentTable(scope: Construct, id: string, props?: FixedKeyTableProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
-| <code><a href="#@cdklabs/genai-idp.AgentTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this file system. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.grantFullAccess">grantFullAccess</a></code> | Permits all DynamoDB operations ("dynamodb:*") to an IAM principal. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.grantOnKey">grantOnKey</a></code> | Gives permissions to a grantable entity to perform actions on the encryption key. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.grantReadData">grantReadData</a></code> | Permits an IAM principal all data read operations from this table: BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan, DescribeTable. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.grantReadWriteData">grantReadWriteData</a></code> | Permits an IAM principal to all data read/write operations to this table. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.grantStream">grantStream</a></code> | Adds an IAM policy statement associated with this table's stream to an IAM principal's policy. |
@@ -2550,6 +2605,7 @@ new AgentTable(scope: Construct, id: string, props?: FixedKeyTableProps)
 | <code><a href="#@cdklabs/genai-idp.AgentTable.autoScaleReadCapacity">autoScaleReadCapacity</a></code> | Enable read capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.autoScaleWriteCapacity">autoScaleWriteCapacity</a></code> | Enable write capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.schema">schema</a></code> | Get schema attributes of table or index. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.schemaV2">schemaV2</a></code> | Get schema attributes of table or index. |
 
 ---
 
@@ -2589,11 +2645,11 @@ account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
 public addToResourcePolicy(statement: PolicyStatement): AddToResourcePolicyResult
 ```
 
-Adds a statement to the resource policy associated with this file system.
+Adds a statement to the resource policy associated with this table.
 
 A resource policy will be automatically created upon the first call to `addToResourcePolicy`.
 
-Note that this does not work with imported file systems.
+Note that this does not work with imported tables.
 
 ###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.AgentTable.addToResourcePolicy.parameter.statement"></a>
 
@@ -2646,6 +2702,26 @@ if one was configured.
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
 
 The principal to grant access to.
+
+---
+
+##### `grantOnKey` <a name="grantOnKey" id="@cdklabs/genai-idp.AgentTable.grantOnKey"></a>
+
+```typescript
+public grantOnKey(grantee: IGrantable, actions: ...string[]): GrantOnKeyResult
+```
+
+Gives permissions to a grantable entity to perform actions on the encryption key.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantOnKey.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.AgentTable.grantOnKey.parameter.actions"></a>
+
+- *Type:* ...string[]
 
 ---
 
@@ -3070,7 +3146,7 @@ Enable write capacity scaling for this table.
 
 ---
 
-##### `schema` <a name="schema" id="@cdklabs/genai-idp.AgentTable.schema"></a>
+##### ~~`schema`~~ <a name="schema" id="@cdklabs/genai-idp.AgentTable.schema"></a>
 
 ```typescript
 public schema(indexName?: string): SchemaOptions
@@ -3079,6 +3155,20 @@ public schema(indexName?: string): SchemaOptions
 Get schema attributes of table or index.
 
 ###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.AgentTable.schema.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+##### `schemaV2` <a name="schemaV2" id="@cdklabs/genai-idp.AgentTable.schemaV2"></a>
+
+```typescript
+public schemaV2(indexName?: string): KeySchema
+```
+
+Get schema attributes of table or index.
+
+###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.AgentTable.schemaV2.parameter.indexName"></a>
 
 - *Type:* string
 
@@ -3268,11 +3358,15 @@ The table's name.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.AgentTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.grants">grants</a></code> | <code>aws-cdk-lib.aws_dynamodb.TableGrants</code> | Grant a predefined set of permissions on this Table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.streamGrants">streamGrants</a></code> | <code>aws-cdk-lib.aws_dynamodb.StreamGrants</code> | Grant a predefined set of permissions on this Table's Stream, if present. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | KMS encryption key, if this table uses a customer-managed encryption key. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.property.regions">regions</a></code> | <code>string[]</code> | Additional regions other than the main one that this table is replicated to. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.property.tableStreamArn">tableStreamArn</a></code> | <code>string</code> | ARN of the table's stream, if there is one. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.property.resourcePolicy">resourcePolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyDocument</code> | Resource policy to assign to DynamoDB Table. |
 
@@ -3296,16 +3390,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -3318,6 +3413,32 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `grants`<sup>Required</sup> <a name="grants" id="@cdklabs/genai-idp.AgentTable.property.grants"></a>
+
+```typescript
+public readonly grants: TableGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.TableGrants
+
+Grant a predefined set of permissions on this Table.
+
+---
+
+##### `streamGrants`<sup>Required</sup> <a name="streamGrants" id="@cdklabs/genai-idp.AgentTable.property.streamGrants"></a>
+
+```typescript
+public readonly streamGrants: StreamGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.StreamGrants
+
+Grant a predefined set of permissions on this Table's Stream, if present.
+
+Will throw if the Table has not been configured for streaming.
 
 ---
 
@@ -3345,6 +3466,18 @@ Table name of the dynamodb table.
 
 ---
 
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.AgentTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
+
+---
+
 ##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.AgentTable.property.encryptionKey"></a>
 
 ```typescript
@@ -3354,6 +3487,18 @@ public readonly encryptionKey: IKey;
 - *Type:* aws-cdk-lib.aws_kms.IKey
 
 KMS encryption key, if this table uses a customer-managed encryption key.
+
+---
+
+##### `regions`<sup>Optional</sup> <a name="regions" id="@cdklabs/genai-idp.AgentTable.property.regions"></a>
+
+```typescript
+public readonly regions: string[];
+```
+
+- *Type:* string[]
+
+Additional regions other than the main one that this table is replicated to.
 
 ---
 
@@ -4260,18 +4405,20 @@ Metric for the number of unreserved concurrent executions across all Lambdas.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.functionRef">functionRef</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.FunctionReference</code> | A reference to a Function resource. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for this function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
@@ -4299,16 +4446,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -4371,6 +4519,18 @@ public readonly functionName: string;
 - *Type:* string
 
 Name of this function.
+
+---
+
+##### `functionRef`<sup>Required</sup> <a name="functionRef" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.functionRef"></a>
+
+```typescript
+public readonly functionRef: FunctionReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.FunctionReference
+
+A reference to a Function resource.
 
 ---
 
@@ -4452,6 +4612,18 @@ public readonly role: IRole;
 - *Type:* aws-cdk-lib.aws_iam.IRole
 
 Execution role associated with this function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+
+The tenancy configuration for this function.
 
 ---
 
@@ -4613,9 +4785,10 @@ Configuration properties for the DynamoDB table.
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
-| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this file system. |
+| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.grantFullAccess">grantFullAccess</a></code> | Permits all DynamoDB operations ("dynamodb:*") to an IAM principal. |
+| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.grantOnKey">grantOnKey</a></code> | Gives permissions to a grantable entity to perform actions on the encryption key. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.grantReadData">grantReadData</a></code> | Permits an IAM principal all data read operations from this table: BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan, DescribeTable. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.grantReadWriteData">grantReadWriteData</a></code> | Permits an IAM principal to all data read/write operations to this table. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.grantStream">grantStream</a></code> | Adds an IAM policy statement associated with this table's stream to an IAM principal's policy. |
@@ -4640,6 +4813,7 @@ Configuration properties for the DynamoDB table.
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.autoScaleReadCapacity">autoScaleReadCapacity</a></code> | Enable read capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.autoScaleWriteCapacity">autoScaleWriteCapacity</a></code> | Enable write capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.schema">schema</a></code> | Get schema attributes of table or index. |
+| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.schemaV2">schemaV2</a></code> | Get schema attributes of table or index. |
 
 ---
 
@@ -4679,11 +4853,11 @@ account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
 public addToResourcePolicy(statement: PolicyStatement): AddToResourcePolicyResult
 ```
 
-Adds a statement to the resource policy associated with this file system.
+Adds a statement to the resource policy associated with this table.
 
 A resource policy will be automatically created upon the first call to `addToResourcePolicy`.
 
-Note that this does not work with imported file systems.
+Note that this does not work with imported tables.
 
 ###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.ConcurrencyTable.addToResourcePolicy.parameter.statement"></a>
 
@@ -4736,6 +4910,26 @@ if one was configured.
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
 
 The principal to grant access to.
+
+---
+
+##### `grantOnKey` <a name="grantOnKey" id="@cdklabs/genai-idp.ConcurrencyTable.grantOnKey"></a>
+
+```typescript
+public grantOnKey(grantee: IGrantable, actions: ...string[]): GrantOnKeyResult
+```
+
+Gives permissions to a grantable entity to perform actions on the encryption key.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConcurrencyTable.grantOnKey.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.ConcurrencyTable.grantOnKey.parameter.actions"></a>
+
+- *Type:* ...string[]
 
 ---
 
@@ -5160,7 +5354,7 @@ Enable write capacity scaling for this table.
 
 ---
 
-##### `schema` <a name="schema" id="@cdklabs/genai-idp.ConcurrencyTable.schema"></a>
+##### ~~`schema`~~ <a name="schema" id="@cdklabs/genai-idp.ConcurrencyTable.schema"></a>
 
 ```typescript
 public schema(indexName?: string): SchemaOptions
@@ -5169,6 +5363,20 @@ public schema(indexName?: string): SchemaOptions
 Get schema attributes of table or index.
 
 ###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.ConcurrencyTable.schema.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+##### `schemaV2` <a name="schemaV2" id="@cdklabs/genai-idp.ConcurrencyTable.schemaV2"></a>
+
+```typescript
+public schemaV2(indexName?: string): KeySchema
+```
+
+Get schema attributes of table or index.
+
+###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.ConcurrencyTable.schemaV2.parameter.indexName"></a>
 
 - *Type:* string
 
@@ -5358,11 +5566,15 @@ The table's name.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.grants">grants</a></code> | <code>aws-cdk-lib.aws_dynamodb.TableGrants</code> | Grant a predefined set of permissions on this Table. |
+| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.streamGrants">streamGrants</a></code> | <code>aws-cdk-lib.aws_dynamodb.StreamGrants</code> | Grant a predefined set of permissions on this Table's Stream, if present. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | KMS encryption key, if this table uses a customer-managed encryption key. |
+| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.regions">regions</a></code> | <code>string[]</code> | Additional regions other than the main one that this table is replicated to. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.tableStreamArn">tableStreamArn</a></code> | <code>string</code> | ARN of the table's stream, if there is one. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.property.resourcePolicy">resourcePolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyDocument</code> | Resource policy to assign to DynamoDB Table. |
 
@@ -5386,16 +5598,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -5408,6 +5621,32 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `grants`<sup>Required</sup> <a name="grants" id="@cdklabs/genai-idp.ConcurrencyTable.property.grants"></a>
+
+```typescript
+public readonly grants: TableGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.TableGrants
+
+Grant a predefined set of permissions on this Table.
+
+---
+
+##### `streamGrants`<sup>Required</sup> <a name="streamGrants" id="@cdklabs/genai-idp.ConcurrencyTable.property.streamGrants"></a>
+
+```typescript
+public readonly streamGrants: StreamGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.StreamGrants
+
+Grant a predefined set of permissions on this Table's Stream, if present.
+
+Will throw if the Table has not been configured for streaming.
 
 ---
 
@@ -5435,6 +5674,18 @@ Table name of the dynamodb table.
 
 ---
 
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.ConcurrencyTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
+
+---
+
 ##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.ConcurrencyTable.property.encryptionKey"></a>
 
 ```typescript
@@ -5444,6 +5695,18 @@ public readonly encryptionKey: IKey;
 - *Type:* aws-cdk-lib.aws_kms.IKey
 
 KMS encryption key, if this table uses a customer-managed encryption key.
+
+---
+
+##### `regions`<sup>Optional</sup> <a name="regions" id="@cdklabs/genai-idp.ConcurrencyTable.property.regions"></a>
+
+```typescript
+public readonly regions: string[];
+```
+
+- *Type:* string[]
+
+Additional regions other than the main one that this table is replicated to.
 
 ---
 
@@ -5558,9 +5821,10 @@ Configuration properties for the DynamoDB table.
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
-| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this file system. |
+| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.grantFullAccess">grantFullAccess</a></code> | Permits all DynamoDB operations ("dynamodb:*") to an IAM principal. |
+| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.grantOnKey">grantOnKey</a></code> | Gives permissions to a grantable entity to perform actions on the encryption key. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.grantReadData">grantReadData</a></code> | Permits an IAM principal all data read operations from this table: BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan, DescribeTable. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.grantReadWriteData">grantReadWriteData</a></code> | Permits an IAM principal to all data read/write operations to this table. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.grantStream">grantStream</a></code> | Adds an IAM policy statement associated with this table's stream to an IAM principal's policy. |
@@ -5585,6 +5849,7 @@ Configuration properties for the DynamoDB table.
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.autoScaleReadCapacity">autoScaleReadCapacity</a></code> | Enable read capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.autoScaleWriteCapacity">autoScaleWriteCapacity</a></code> | Enable write capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.schema">schema</a></code> | Get schema attributes of table or index. |
+| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.schemaV2">schemaV2</a></code> | Get schema attributes of table or index. |
 
 ---
 
@@ -5624,11 +5889,11 @@ account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
 public addToResourcePolicy(statement: PolicyStatement): AddToResourcePolicyResult
 ```
 
-Adds a statement to the resource policy associated with this file system.
+Adds a statement to the resource policy associated with this table.
 
 A resource policy will be automatically created upon the first call to `addToResourcePolicy`.
 
-Note that this does not work with imported file systems.
+Note that this does not work with imported tables.
 
 ###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.ConfigurationTable.addToResourcePolicy.parameter.statement"></a>
 
@@ -5681,6 +5946,26 @@ if one was configured.
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
 
 The principal to grant access to.
+
+---
+
+##### `grantOnKey` <a name="grantOnKey" id="@cdklabs/genai-idp.ConfigurationTable.grantOnKey"></a>
+
+```typescript
+public grantOnKey(grantee: IGrantable, actions: ...string[]): GrantOnKeyResult
+```
+
+Gives permissions to a grantable entity to perform actions on the encryption key.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConfigurationTable.grantOnKey.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.ConfigurationTable.grantOnKey.parameter.actions"></a>
+
+- *Type:* ...string[]
 
 ---
 
@@ -6105,7 +6390,7 @@ Enable write capacity scaling for this table.
 
 ---
 
-##### `schema` <a name="schema" id="@cdklabs/genai-idp.ConfigurationTable.schema"></a>
+##### ~~`schema`~~ <a name="schema" id="@cdklabs/genai-idp.ConfigurationTable.schema"></a>
 
 ```typescript
 public schema(indexName?: string): SchemaOptions
@@ -6114,6 +6399,20 @@ public schema(indexName?: string): SchemaOptions
 Get schema attributes of table or index.
 
 ###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.ConfigurationTable.schema.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+##### `schemaV2` <a name="schemaV2" id="@cdklabs/genai-idp.ConfigurationTable.schemaV2"></a>
+
+```typescript
+public schemaV2(indexName?: string): KeySchema
+```
+
+Get schema attributes of table or index.
+
+###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.ConfigurationTable.schemaV2.parameter.indexName"></a>
 
 - *Type:* string
 
@@ -6303,11 +6602,15 @@ The table's name.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.grants">grants</a></code> | <code>aws-cdk-lib.aws_dynamodb.TableGrants</code> | Grant a predefined set of permissions on this Table. |
+| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.streamGrants">streamGrants</a></code> | <code>aws-cdk-lib.aws_dynamodb.StreamGrants</code> | Grant a predefined set of permissions on this Table's Stream, if present. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | KMS encryption key, if this table uses a customer-managed encryption key. |
+| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.regions">regions</a></code> | <code>string[]</code> | Additional regions other than the main one that this table is replicated to. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.tableStreamArn">tableStreamArn</a></code> | <code>string</code> | ARN of the table's stream, if there is one. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.property.resourcePolicy">resourcePolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyDocument</code> | Resource policy to assign to DynamoDB Table. |
 
@@ -6331,16 +6634,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -6353,6 +6657,32 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `grants`<sup>Required</sup> <a name="grants" id="@cdklabs/genai-idp.ConfigurationTable.property.grants"></a>
+
+```typescript
+public readonly grants: TableGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.TableGrants
+
+Grant a predefined set of permissions on this Table.
+
+---
+
+##### `streamGrants`<sup>Required</sup> <a name="streamGrants" id="@cdklabs/genai-idp.ConfigurationTable.property.streamGrants"></a>
+
+```typescript
+public readonly streamGrants: StreamGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.StreamGrants
+
+Grant a predefined set of permissions on this Table's Stream, if present.
+
+Will throw if the Table has not been configured for streaming.
 
 ---
 
@@ -6380,6 +6710,18 @@ Table name of the dynamodb table.
 
 ---
 
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.ConfigurationTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
+
+---
+
 ##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.ConfigurationTable.property.encryptionKey"></a>
 
 ```typescript
@@ -6389,6 +6731,18 @@ public readonly encryptionKey: IKey;
 - *Type:* aws-cdk-lib.aws_kms.IKey
 
 KMS encryption key, if this table uses a customer-managed encryption key.
+
+---
+
+##### `regions`<sup>Optional</sup> <a name="regions" id="@cdklabs/genai-idp.ConfigurationTable.property.regions"></a>
+
+```typescript
+public readonly regions: string[];
+```
+
+- *Type:* string[]
+
+Additional regions other than the main one that this table is replicated to.
 
 ---
 
@@ -7299,18 +7653,20 @@ Metric for the number of unreserved concurrent executions across all Lambdas.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.functionRef">functionRef</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.FunctionReference</code> | A reference to a Function resource. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for this function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
@@ -7338,16 +7694,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -7410,6 +7767,18 @@ public readonly functionName: string;
 - *Type:* string
 
 Name of this function.
+
+---
+
+##### `functionRef`<sup>Required</sup> <a name="functionRef" id="@cdklabs/genai-idp.CreateA2IResourcesFunction.property.functionRef"></a>
+
+```typescript
+public readonly functionRef: FunctionReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.FunctionReference
+
+A reference to a Function resource.
 
 ---
 
@@ -7491,6 +7860,18 @@ public readonly role: IRole;
 - *Type:* aws-cdk-lib.aws_iam.IRole
 
 Execution role associated with this function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.CreateA2IResourcesFunction.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+
+The tenancy configuration for this function.
 
 ---
 
@@ -8598,18 +8979,20 @@ Metric for the number of unreserved concurrent executions across all Lambdas.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.functionRef">functionRef</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.FunctionReference</code> | A reference to a Function resource. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for this function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
@@ -8637,16 +9020,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -8709,6 +9093,18 @@ public readonly functionName: string;
 - *Type:* string
 
 Name of this function.
+
+---
+
+##### `functionRef`<sup>Required</sup> <a name="functionRef" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.functionRef"></a>
+
+```typescript
+public readonly functionRef: FunctionReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.FunctionReference
+
+A reference to a Function resource.
 
 ---
 
@@ -8790,6 +9186,18 @@ public readonly role: IRole;
 - *Type:* aws-cdk-lib.aws_iam.IRole
 
 Execution role associated with this function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+
+The tenancy configuration for this function.
 
 ---
 
@@ -9742,18 +10150,20 @@ Metric for the number of unreserved concurrent executions across all Lambdas.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.functionRef">functionRef</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.FunctionReference</code> | A reference to a Function resource. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
@@ -9781,16 +10191,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -9853,6 +10264,18 @@ public readonly functionName: string;
 - *Type:* string
 
 Name of this function.
+
+---
+
+##### `functionRef`<sup>Required</sup> <a name="functionRef" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.property.functionRef"></a>
+
+```typescript
+public readonly functionRef: FunctionReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.FunctionReference
+
+A reference to a Function resource.
 
 ---
 
@@ -9934,6 +10357,18 @@ public readonly role: IRole;
 - *Type:* aws-cdk-lib.aws_iam.IRole
 
 Execution role associated with this function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+
+The tenancy configuration for this function.
 
 ---
 
@@ -10097,6 +10532,7 @@ Configuration properties for the SQS queue.
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the IAM resource policy associated with this queue. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.grant">grant</a></code> | Grant the actions defined in queueActions to the identity Principal given on this SQS queue resource. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.grantConsumeMessages">grantConsumeMessages</a></code> | Grant permissions to consume messages from a queue. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.grantOnKey">grantOnKey</a></code> | Gives permissions to a grantable entity to perform actions on the encryption key. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.grantPurge">grantPurge</a></code> | Grant an IAM principal permissions to purge all messages from the queue. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.grantSendMessages">grantSendMessages</a></code> | Grant access to send messages to a queue to the given identity. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.metric">metric</a></code> | Return the given named metric for this Queue. |
@@ -10211,6 +10647,26 @@ This will grant the following KMS permissions:
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
 
 Principal to grant consume rights to.
+
+---
+
+##### `grantOnKey` <a name="grantOnKey" id="@cdklabs/genai-idp.DiscoveryQueue.grantOnKey"></a>
+
+```typescript
+public grantOnKey(grantee: IGrantable, actions: ...string[]): GrantOnKeyResult
+```
+
+Gives permissions to a grantable entity to perform actions on the encryption key.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryQueue.grantOnKey.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.DiscoveryQueue.grantOnKey.parameter.actions"></a>
+
+- *Type:* ...string[]
 
 ---
 
@@ -10574,11 +11030,13 @@ Import an existing queue.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.fifo">fifo</a></code> | <code>boolean</code> | Whether this queue is an Amazon SQS FIFO queue. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.grants">grants</a></code> | <code>aws-cdk-lib.aws_sqs.QueueGrants</code> | Collection of grant methods for a Queue. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.queueArn">queueArn</a></code> | <code>string</code> | The ARN of this queue. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.queueName">queueName</a></code> | <code>string</code> | The name of this queue. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.queueRef">queueRef</a></code> | <code>aws-cdk-lib.interfaces.aws_sqs.QueueReference</code> | A reference to a Queue resource. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.queueUrl">queueUrl</a></code> | <code>string</code> | The URL of this queue. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.encryptionMasterKey">encryptionMasterKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | If this queue is encrypted, this is the KMS key. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.property.encryptionType">encryptionType</a></code> | <code>aws-cdk-lib.aws_sqs.QueueEncryption</code> | Whether the contents of the queue are encrypted, and by what type of key. |
@@ -10604,16 +11062,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -10643,6 +11102,18 @@ If false, this is a standard queue.
 
 ---
 
+##### `grants`<sup>Required</sup> <a name="grants" id="@cdklabs/genai-idp.DiscoveryQueue.property.grants"></a>
+
+```typescript
+public readonly grants: QueueGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.QueueGrants
+
+Collection of grant methods for a Queue.
+
+---
+
 ##### `queueArn`<sup>Required</sup> <a name="queueArn" id="@cdklabs/genai-idp.DiscoveryQueue.property.queueArn"></a>
 
 ```typescript
@@ -10664,6 +11135,18 @@ public readonly queueName: string;
 - *Type:* string
 
 The name of this queue.
+
+---
+
+##### `queueRef`<sup>Required</sup> <a name="queueRef" id="@cdklabs/genai-idp.DiscoveryQueue.property.queueRef"></a>
+
+```typescript
+public readonly queueRef: QueueReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_sqs.QueueReference
+
+A reference to a Queue resource.
 
 ---
 
@@ -10790,9 +11273,10 @@ Configuration properties for the DynamoDB table.
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this file system. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.grantFullAccess">grantFullAccess</a></code> | Permits all DynamoDB operations ("dynamodb:*") to an IAM principal. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.grantOnKey">grantOnKey</a></code> | Gives permissions to a grantable entity to perform actions on the encryption key. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.grantReadData">grantReadData</a></code> | Permits an IAM principal all data read operations from this table: BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan, DescribeTable. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.grantReadWriteData">grantReadWriteData</a></code> | Permits an IAM principal to all data read/write operations to this table. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.grantStream">grantStream</a></code> | Adds an IAM policy statement associated with this table's stream to an IAM principal's policy. |
@@ -10817,6 +11301,7 @@ Configuration properties for the DynamoDB table.
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.autoScaleReadCapacity">autoScaleReadCapacity</a></code> | Enable read capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.autoScaleWriteCapacity">autoScaleWriteCapacity</a></code> | Enable write capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.schema">schema</a></code> | Get schema attributes of table or index. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.schemaV2">schemaV2</a></code> | Get schema attributes of table or index. |
 
 ---
 
@@ -10856,11 +11341,11 @@ account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
 public addToResourcePolicy(statement: PolicyStatement): AddToResourcePolicyResult
 ```
 
-Adds a statement to the resource policy associated with this file system.
+Adds a statement to the resource policy associated with this table.
 
 A resource policy will be automatically created upon the first call to `addToResourcePolicy`.
 
-Note that this does not work with imported file systems.
+Note that this does not work with imported tables.
 
 ###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.DiscoveryTable.addToResourcePolicy.parameter.statement"></a>
 
@@ -10913,6 +11398,26 @@ if one was configured.
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
 
 The principal to grant access to.
+
+---
+
+##### `grantOnKey` <a name="grantOnKey" id="@cdklabs/genai-idp.DiscoveryTable.grantOnKey"></a>
+
+```typescript
+public grantOnKey(grantee: IGrantable, actions: ...string[]): GrantOnKeyResult
+```
+
+Gives permissions to a grantable entity to perform actions on the encryption key.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryTable.grantOnKey.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.DiscoveryTable.grantOnKey.parameter.actions"></a>
+
+- *Type:* ...string[]
 
 ---
 
@@ -11337,7 +11842,7 @@ Enable write capacity scaling for this table.
 
 ---
 
-##### `schema` <a name="schema" id="@cdklabs/genai-idp.DiscoveryTable.schema"></a>
+##### ~~`schema`~~ <a name="schema" id="@cdklabs/genai-idp.DiscoveryTable.schema"></a>
 
 ```typescript
 public schema(indexName?: string): SchemaOptions
@@ -11346,6 +11851,20 @@ public schema(indexName?: string): SchemaOptions
 Get schema attributes of table or index.
 
 ###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.DiscoveryTable.schema.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+##### `schemaV2` <a name="schemaV2" id="@cdklabs/genai-idp.DiscoveryTable.schemaV2"></a>
+
+```typescript
+public schemaV2(indexName?: string): KeySchema
+```
+
+Get schema attributes of table or index.
+
+###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.DiscoveryTable.schemaV2.parameter.indexName"></a>
 
 - *Type:* string
 
@@ -11535,11 +12054,15 @@ The table's name.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.grants">grants</a></code> | <code>aws-cdk-lib.aws_dynamodb.TableGrants</code> | Grant a predefined set of permissions on this Table. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.streamGrants">streamGrants</a></code> | <code>aws-cdk-lib.aws_dynamodb.StreamGrants</code> | Grant a predefined set of permissions on this Table's Stream, if present. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | KMS encryption key, if this table uses a customer-managed encryption key. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.regions">regions</a></code> | <code>string[]</code> | Additional regions other than the main one that this table is replicated to. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.tableStreamArn">tableStreamArn</a></code> | <code>string</code> | ARN of the table's stream, if there is one. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.property.resourcePolicy">resourcePolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyDocument</code> | Resource policy to assign to DynamoDB Table. |
 
@@ -11563,16 +12086,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -11585,6 +12109,32 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `grants`<sup>Required</sup> <a name="grants" id="@cdklabs/genai-idp.DiscoveryTable.property.grants"></a>
+
+```typescript
+public readonly grants: TableGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.TableGrants
+
+Grant a predefined set of permissions on this Table.
+
+---
+
+##### `streamGrants`<sup>Required</sup> <a name="streamGrants" id="@cdklabs/genai-idp.DiscoveryTable.property.streamGrants"></a>
+
+```typescript
+public readonly streamGrants: StreamGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.StreamGrants
+
+Grant a predefined set of permissions on this Table's Stream, if present.
+
+Will throw if the Table has not been configured for streaming.
 
 ---
 
@@ -11612,6 +12162,18 @@ Table name of the dynamodb table.
 
 ---
 
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.DiscoveryTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
+
+---
+
 ##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.DiscoveryTable.property.encryptionKey"></a>
 
 ```typescript
@@ -11621,6 +12183,18 @@ public readonly encryptionKey: IKey;
 - *Type:* aws-cdk-lib.aws_kms.IKey
 
 KMS encryption key, if this table uses a customer-managed encryption key.
+
+---
+
+##### `regions`<sup>Optional</sup> <a name="regions" id="@cdklabs/genai-idp.DiscoveryTable.property.regions"></a>
+
+```typescript
+public readonly regions: string[];
+```
+
+- *Type:* string[]
+
+Additional regions other than the main one that this table is replicated to.
 
 ---
 
@@ -12518,18 +13092,20 @@ Metric for the number of unreserved concurrent executions across all Lambdas.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.functionRef">functionRef</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.FunctionReference</code> | A reference to a Function resource. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
@@ -12557,16 +13133,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -12629,6 +13206,18 @@ public readonly functionName: string;
 - *Type:* string
 
 Name of this function.
+
+---
+
+##### `functionRef`<sup>Required</sup> <a name="functionRef" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.functionRef"></a>
+
+```typescript
+public readonly functionRef: FunctionReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.FunctionReference
+
+A reference to a Function resource.
 
 ---
 
@@ -12710,6 +13299,18 @@ public readonly role: IRole;
 - *Type:* aws-cdk-lib.aws_iam.IRole
 
 Execution role associated with this function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+
+The tenancy configuration for this function.
 
 ---
 
@@ -13878,18 +14479,20 @@ Metric for the number of unreserved concurrent executions across all Lambdas.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.functionRef">functionRef</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.FunctionReference</code> | A reference to a Function resource. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for this function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
@@ -13917,16 +14520,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -13989,6 +14593,18 @@ public readonly functionName: string;
 - *Type:* string
 
 Name of this function.
+
+---
+
+##### `functionRef`<sup>Required</sup> <a name="functionRef" id="@cdklabs/genai-idp.GetWorkforceUrlFunction.property.functionRef"></a>
+
+```typescript
+public readonly functionRef: FunctionReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.FunctionReference
+
+A reference to a Function resource.
 
 ---
 
@@ -14070,6 +14686,18 @@ public readonly role: IRole;
 - *Type:* aws-cdk-lib.aws_iam.IRole
 
 Execution role associated with this function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.GetWorkforceUrlFunction.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+
+The tenancy configuration for this function.
 
 ---
 
@@ -15219,18 +15847,20 @@ Metric for the number of unreserved concurrent executions across all Lambdas.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.functionRef">functionRef</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.FunctionReference</code> | A reference to a Function resource. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for this function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
@@ -15258,16 +15888,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -15330,6 +15961,18 @@ public readonly functionName: string;
 - *Type:* string
 
 Name of this function.
+
+---
+
+##### `functionRef`<sup>Required</sup> <a name="functionRef" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.functionRef"></a>
+
+```typescript
+public readonly functionRef: FunctionReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.FunctionReference
+
+A reference to a Function resource.
 
 ---
 
@@ -15411,6 +16054,18 @@ public readonly role: IRole;
 - *Type:* aws-cdk-lib.aws_iam.IRole
 
 Execution role associated with this function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+
+The tenancy configuration for this function.
 
 ---
 
@@ -16978,7 +17633,7 @@ GraphQL API Attributes of an API.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.apiId">apiId</a></code> | <code>string</code> | an unique AWS AppSync GraphQL API identifier i.e. 'lxz775lwdrgcndgz3nurvac7oa'. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.arn">arn</a></code> | <code>string</code> | the ARN of the API. |
@@ -17012,16 +17667,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -18267,18 +18923,20 @@ Metric for the number of unreserved concurrent executions across all Lambdas.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The architecture of this Lambda Function (this is an optional attribute and defaults to X86_64). |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.connections">connections</a></code> | <code>aws-cdk-lib.aws_ec2.Connections</code> | Access the Connections object. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.functionArn">functionArn</a></code> | <code>string</code> | ARN of this function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.functionName">functionName</a></code> | <code>string</code> | Name of this function. |
+| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.functionRef">functionRef</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.FunctionReference</code> | A reference to a Function resource. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.grantPrincipal">grantPrincipal</a></code> | <code>aws-cdk-lib.aws_iam.IPrincipal</code> | The principal this Lambda Function is running as. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.isBoundToVpc">isBoundToVpc</a></code> | <code>boolean</code> | Whether or not this Lambda function was bound to a VPC. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.latestVersion">latestVersion</a></code> | <code>aws-cdk-lib.aws_lambda.IVersion</code> | The `$LATEST` version of this function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.permissionsNode">permissionsNode</a></code> | <code>constructs.Node</code> | The construct node where permissions are attached. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.resourceArnsForGrantInvoke">resourceArnsForGrantInvoke</a></code> | <code>string[]</code> | The ARN(s) to put into the resource field of the generated IAM policy for grantInvoke(). |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.role">role</a></code> | <code>aws-cdk-lib.aws_iam.IRole</code> | Execution role associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for this function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.currentVersion">currentVersion</a></code> | <code>aws-cdk-lib.aws_lambda.Version</code> | Returns a `lambda.Version` which represents the current version of this Lambda function. A new version will be created every time the function's configuration changes. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The LogGroup where the Lambda function's logs are made available. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.property.runtime">runtime</a></code> | <code>aws-cdk-lib.aws_lambda.Runtime</code> | The runtime configured for this lambda. |
@@ -18306,16 +18964,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -18378,6 +19037,18 @@ public readonly functionName: string;
 - *Type:* string
 
 Name of this function.
+
+---
+
+##### `functionRef`<sup>Required</sup> <a name="functionRef" id="@cdklabs/genai-idp.SaveReportingDataFunction.property.functionRef"></a>
+
+```typescript
+public readonly functionRef: FunctionReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.FunctionReference
+
+A reference to a Function resource.
 
 ---
 
@@ -18459,6 +19130,18 @@ public readonly role: IRole;
 - *Type:* aws-cdk-lib.aws_iam.IRole
 
 Execution role associated with this function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.SaveReportingDataFunction.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+
+The tenancy configuration for this function.
 
 ---
 
@@ -18622,9 +19305,10 @@ Configuration properties for the DynamoDB table.
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
-| <code><a href="#@cdklabs/genai-idp.TrackingTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this file system. |
+| <code><a href="#@cdklabs/genai-idp.TrackingTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.grantFullAccess">grantFullAccess</a></code> | Permits all DynamoDB operations ("dynamodb:*") to an IAM principal. |
+| <code><a href="#@cdklabs/genai-idp.TrackingTable.grantOnKey">grantOnKey</a></code> | Gives permissions to a grantable entity to perform actions on the encryption key. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.grantReadData">grantReadData</a></code> | Permits an IAM principal all data read operations from this table: BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan, DescribeTable. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.grantReadWriteData">grantReadWriteData</a></code> | Permits an IAM principal to all data read/write operations to this table. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.grantStream">grantStream</a></code> | Adds an IAM policy statement associated with this table's stream to an IAM principal's policy. |
@@ -18649,6 +19333,7 @@ Configuration properties for the DynamoDB table.
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.autoScaleReadCapacity">autoScaleReadCapacity</a></code> | Enable read capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.autoScaleWriteCapacity">autoScaleWriteCapacity</a></code> | Enable write capacity scaling for this table. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.schema">schema</a></code> | Get schema attributes of table or index. |
+| <code><a href="#@cdklabs/genai-idp.TrackingTable.schemaV2">schemaV2</a></code> | Get schema attributes of table or index. |
 
 ---
 
@@ -18688,11 +19373,11 @@ account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
 public addToResourcePolicy(statement: PolicyStatement): AddToResourcePolicyResult
 ```
 
-Adds a statement to the resource policy associated with this file system.
+Adds a statement to the resource policy associated with this table.
 
 A resource policy will be automatically created upon the first call to `addToResourcePolicy`.
 
-Note that this does not work with imported file systems.
+Note that this does not work with imported tables.
 
 ###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.TrackingTable.addToResourcePolicy.parameter.statement"></a>
 
@@ -18745,6 +19430,26 @@ if one was configured.
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
 
 The principal to grant access to.
+
+---
+
+##### `grantOnKey` <a name="grantOnKey" id="@cdklabs/genai-idp.TrackingTable.grantOnKey"></a>
+
+```typescript
+public grantOnKey(grantee: IGrantable, actions: ...string[]): GrantOnKeyResult
+```
+
+Gives permissions to a grantable entity to perform actions on the encryption key.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TrackingTable.grantOnKey.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.TrackingTable.grantOnKey.parameter.actions"></a>
+
+- *Type:* ...string[]
 
 ---
 
@@ -19169,7 +19874,7 @@ Enable write capacity scaling for this table.
 
 ---
 
-##### `schema` <a name="schema" id="@cdklabs/genai-idp.TrackingTable.schema"></a>
+##### ~~`schema`~~ <a name="schema" id="@cdklabs/genai-idp.TrackingTable.schema"></a>
 
 ```typescript
 public schema(indexName?: string): SchemaOptions
@@ -19178,6 +19883,20 @@ public schema(indexName?: string): SchemaOptions
 Get schema attributes of table or index.
 
 ###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.TrackingTable.schema.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+##### `schemaV2` <a name="schemaV2" id="@cdklabs/genai-idp.TrackingTable.schemaV2"></a>
+
+```typescript
+public schemaV2(indexName?: string): KeySchema
+```
+
+Get schema attributes of table or index.
+
+###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.TrackingTable.schemaV2.parameter.indexName"></a>
 
 - *Type:* string
 
@@ -19367,11 +20086,15 @@ The table's name.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.TrackingTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.TrackingTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.TrackingTable.property.grants">grants</a></code> | <code>aws-cdk-lib.aws_dynamodb.TableGrants</code> | Grant a predefined set of permissions on this Table. |
+| <code><a href="#@cdklabs/genai-idp.TrackingTable.property.streamGrants">streamGrants</a></code> | <code>aws-cdk-lib.aws_dynamodb.StreamGrants</code> | Grant a predefined set of permissions on this Table's Stream, if present. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.TrackingTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | KMS encryption key, if this table uses a customer-managed encryption key. |
+| <code><a href="#@cdklabs/genai-idp.TrackingTable.property.regions">regions</a></code> | <code>string[]</code> | Additional regions other than the main one that this table is replicated to. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.property.tableStreamArn">tableStreamArn</a></code> | <code>string</code> | ARN of the table's stream, if there is one. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.property.resourcePolicy">resourcePolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyDocument</code> | Resource policy to assign to DynamoDB Table. |
 
@@ -19395,16 +20118,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -19417,6 +20141,32 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `grants`<sup>Required</sup> <a name="grants" id="@cdklabs/genai-idp.TrackingTable.property.grants"></a>
+
+```typescript
+public readonly grants: TableGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.TableGrants
+
+Grant a predefined set of permissions on this Table.
+
+---
+
+##### `streamGrants`<sup>Required</sup> <a name="streamGrants" id="@cdklabs/genai-idp.TrackingTable.property.streamGrants"></a>
+
+```typescript
+public readonly streamGrants: StreamGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.StreamGrants
+
+Grant a predefined set of permissions on this Table's Stream, if present.
+
+Will throw if the Table has not been configured for streaming.
 
 ---
 
@@ -19444,6 +20194,18 @@ Table name of the dynamodb table.
 
 ---
 
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.TrackingTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
+
+---
+
 ##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.TrackingTable.property.encryptionKey"></a>
 
 ```typescript
@@ -19453,6 +20215,18 @@ public readonly encryptionKey: IKey;
 - *Type:* aws-cdk-lib.aws_kms.IKey
 
 KMS encryption key, if this table uses a customer-managed encryption key.
+
+---
+
+##### `regions`<sup>Optional</sup> <a name="regions" id="@cdklabs/genai-idp.TrackingTable.property.regions"></a>
+
+```typescript
+public readonly regions: string[];
+```
+
+- *Type:* string[]
+
+Additional regions other than the main one that this table is replicated to.
 
 ---
 
@@ -19981,7 +20755,7 @@ Check whether the given construct is a Resource.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.Workteam.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.Workteam.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.Workteam.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.Workteam.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.Workteam.property.workteamArn">workteamArn</a></code> | <code>string</code> | The ARN of the SageMaker workteam. |
 | <code><a href="#@cdklabs/genai-idp.Workteam.property.workteamName">workteamName</a></code> | <code>string</code> | The name of the SageMaker workteam. |
@@ -20006,16 +20780,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -20265,13 +21040,14 @@ const agentProcessorFunctionProps: AgentProcessorFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -20300,6 +21076,7 @@ const agentProcessorFunctionProps: AgentProcessorFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -20394,10 +21171,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -20477,13 +21254,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -20929,6 +21722,19 @@ Sets the system log level for the function.
 
 ---
 
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
+
+---
+
 ##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.tracing"></a>
 
 ```typescript
@@ -21135,13 +21941,14 @@ const agentRequestHandlerFunctionProps: AgentRequestHandlerFunctionProps = { ...
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -21170,6 +21977,7 @@ const agentRequestHandlerFunctionProps: AgentRequestHandlerFunctionProps = { ...
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -21259,10 +22067,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -21342,13 +22150,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -21794,6 +22618,19 @@ Sets the system log level for the function.
 
 ---
 
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
+
+---
+
 ##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.tracing"></a>
 
 ```typescript
@@ -21937,13 +22774,14 @@ const cognitoUpdaterHitlFunctionProps: CognitoUpdaterHitlFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -21972,6 +22810,7 @@ const cognitoUpdaterHitlFunctionProps: CognitoUpdaterHitlFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -22060,10 +22899,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -22143,13 +22982,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -22595,6 +23450,19 @@ Sets the system log level for the function.
 
 ---
 
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
+
+---
+
 ##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.tracing"></a>
 
 ```typescript
@@ -22774,13 +23642,14 @@ const createA2IResourcesFunctionProps: CreateA2IResourcesFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -22809,6 +23678,7 @@ const createA2IResourcesFunctionProps: CreateA2IResourcesFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -22897,10 +23767,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -22980,13 +23850,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -23432,6 +24318,19 @@ Sets the system log level for the function.
 
 ---
 
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
+
+---
+
 ##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.tracing"></a>
 
 ```typescript
@@ -23566,13 +24465,14 @@ const customPromptGeneratorFunctionProps: CustomPromptGeneratorFunctionProps = {
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -23601,6 +24501,7 @@ const customPromptGeneratorFunctionProps: CustomPromptGeneratorFunctionProps = {
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -23692,10 +24593,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -23775,13 +24676,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -24227,6 +25144,19 @@ Sets the system log level for the function.
 
 ---
 
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
+
+---
+
 ##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.tracing"></a>
 
 ```typescript
@@ -24441,13 +25371,14 @@ const discoveryProcessorFunctionProps: DiscoveryProcessorFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -24476,6 +25407,7 @@ const discoveryProcessorFunctionProps: DiscoveryProcessorFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -24566,10 +25498,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -24649,13 +25581,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -25098,6 +26046,19 @@ public readonly systemLogLevelV2: SystemLogLevel;
 - *Default:* SystemLogLevel.INFO
 
 Sets the system log level for the function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
 
 ---
 
@@ -25569,13 +26530,14 @@ const discoveryUploadResolverFunctionProps: DiscoveryUploadResolverFunctionProps
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -25604,6 +26566,7 @@ const discoveryUploadResolverFunctionProps: DiscoveryUploadResolverFunctionProps
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -25692,10 +26655,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -25775,13 +26738,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -26224,6 +27203,19 @@ public readonly systemLogLevelV2: SystemLogLevel;
 - *Default:* SystemLogLevel.INFO
 
 Sets the system log level for the function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
 
 ---
 
@@ -27021,13 +28013,14 @@ const getWorkforceUrlFunctionProps: GetWorkforceUrlFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -27056,6 +28049,7 @@ const getWorkforceUrlFunctionProps: GetWorkforceUrlFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -27143,10 +28137,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -27226,13 +28220,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -27678,6 +28688,19 @@ Sets the system log level for the function.
 
 ---
 
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
+
+---
+
 ##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.tracing"></a>
 
 ```typescript
@@ -27923,13 +28946,14 @@ const idpPythonFunctionOptions: IdpPythonFunctionOptions = { ... }
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -27958,6 +28982,7 @@ const idpPythonFunctionOptions: IdpPythonFunctionOptions = { ... }
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -28041,10 +29066,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.IdpPythonFunctionOptions.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -28124,13 +29149,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.IdpPythonFunctionOptions.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.IdpPythonFunctionOptions.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -28576,6 +29617,19 @@ Sets the system log level for the function.
 
 ---
 
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.IdpPythonFunctionOptions.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
+
+---
+
 ##### `tracing`<sup>Optional</sup> <a name="tracing" id="@cdklabs/genai-idp.IdpPythonFunctionOptions.property.tracing"></a>
 
 ```typescript
@@ -28645,13 +29699,14 @@ const listAvailableAgentsFunctionProps: ListAvailableAgentsFunctionProps = { ...
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -28680,6 +29735,7 @@ const listAvailableAgentsFunctionProps: ListAvailableAgentsFunctionProps = { ...
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -28767,10 +29823,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -28850,13 +29906,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -29299,6 +30371,19 @@ public readonly systemLogLevelV2: SystemLogLevel;
 - *Default:* SystemLogLevel.INFO
 
 Sets the system log level for the function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
 
 ---
 
@@ -30390,13 +31475,14 @@ const saveReportingDataFunctionProps: SaveReportingDataFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.applicationLogLevel">applicationLogLevel</a></code> | <code>string</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.applicationLogLevelV2">applicationLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.ApplicationLogLevel</code> | Sets the application log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.architecture">architecture</a></code> | <code>aws-cdk-lib.aws_lambda.Architecture</code> | The system architectures compatible with this lambda function. |
-| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.aws_lambda.ICodeSigningConfig</code> | Code signing config associated with this function. |
+| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.codeSigningConfig">codeSigningConfig</a></code> | <code>aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef</code> | Code signing config associated with this function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.currentVersionOptions">currentVersionOptions</a></code> | <code>aws-cdk-lib.aws_lambda.VersionOptions</code> | Options for the `lambda.Version` resource automatically created by the `fn.currentVersion` method. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.deadLetterQueue">deadLetterQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue to use if DLQ is enabled. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.deadLetterQueueEnabled">deadLetterQueueEnabled</a></code> | <code>boolean</code> | Enabled DLQ. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.deadLetterTopic">deadLetterTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | The SNS topic to use as a DLQ. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.description">description</a></code> | <code>string</code> | A description of the function. |
-| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
+| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.durableConfig">durableConfig</a></code> | <code>aws-cdk-lib.aws_lambda.DurableConfig</code> | The durable configuration for the function. |
+| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.environmentEncryption">environmentEncryption</a></code> | <code>aws-cdk-lib.interfaces.aws_kms.IKeyRef</code> | The AWS KMS key that's used to encrypt your function's environment variables. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.ephemeralStorageSize">ephemeralStorageSize</a></code> | <code>aws-cdk-lib.Size</code> | The size of the function’s /tmp directory in MiB. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.events">events</a></code> | <code>aws-cdk-lib.aws_lambda.IEventSource[]</code> | Event sources for this function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.functionName">functionName</a></code> | <code>string</code> | A name for the function. |
@@ -30425,6 +31511,7 @@ const saveReportingDataFunctionProps: SaveReportingDataFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.snapStart">snapStart</a></code> | <code>aws-cdk-lib.aws_lambda.SnapStartConf</code> | Enable SnapStart for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.systemLogLevel">systemLogLevel</a></code> | <code>string</code> | Sets the system log level for the function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.systemLogLevelV2">systemLogLevelV2</a></code> | <code>aws-cdk-lib.aws_lambda.SystemLogLevel</code> | Sets the system log level for the function. |
+| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.tenancyConfig">tenancyConfig</a></code> | <code>aws-cdk-lib.aws_lambda.TenancyConfig</code> | The tenancy configuration for the function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray Tracing for Lambda Function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
@@ -30513,10 +31600,10 @@ The system architectures compatible with this lambda function.
 ##### `codeSigningConfig`<sup>Optional</sup> <a name="codeSigningConfig" id="@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.codeSigningConfig"></a>
 
 ```typescript
-public readonly codeSigningConfig: ICodeSigningConfig;
+public readonly codeSigningConfig: ICodeSigningConfigRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_lambda.ICodeSigningConfig
+- *Type:* aws-cdk-lib.interfaces.aws_lambda.ICodeSigningConfigRef
 - *Default:* Not Sign the Code
 
 Code signing config associated with this function.
@@ -30596,13 +31683,29 @@ A description of the function.
 
 ---
 
+##### `durableConfig`<sup>Optional</sup> <a name="durableConfig" id="@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.durableConfig"></a>
+
+```typescript
+public readonly durableConfig: DurableConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.DurableConfig
+- *Default:* No durable configuration
+
+The durable configuration for the function.
+
+If durability is added to an existing function, a resource replacement will be triggered.
+See the 'durableConfig' section in the module README for more details.
+
+---
+
 ##### `environmentEncryption`<sup>Optional</sup> <a name="environmentEncryption" id="@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.environmentEncryption"></a>
 
 ```typescript
-public readonly environmentEncryption: IKey;
+public readonly environmentEncryption: IKeyRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Type:* aws-cdk-lib.interfaces.aws_kms.IKeyRef
 - *Default:* AWS Lambda creates and uses an AWS managed customer master key (CMK).
 
 The AWS KMS key that's used to encrypt your function's environment variables.
@@ -31045,6 +32148,19 @@ public readonly systemLogLevelV2: SystemLogLevel;
 - *Default:* SystemLogLevel.INFO
 
 Sets the system log level for the function.
+
+---
+
+##### `tenancyConfig`<sup>Optional</sup> <a name="tenancyConfig" id="@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.tenancyConfig"></a>
+
+```typescript
+public readonly tenancyConfig: TenancyConfig;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.TenancyConfig
+- *Default:* Tenant isolation is not enabled
+
+The tenancy configuration for the function.
 
 ---
 
@@ -31816,7 +32932,7 @@ Interface for Agent Table implementations.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.IAgentTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.IAgentTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.IAgentTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IAgentTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.IAgentTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IAgentTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
@@ -31843,16 +32959,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -31933,7 +33050,7 @@ preventing resource exhaustion and ensuring system stability under load.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
@@ -31960,16 +33077,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -32127,7 +33245,7 @@ including extraction schemas, model parameters, evaluation criteria, and UI sett
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
@@ -32154,16 +33272,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -32291,8 +33410,9 @@ This queue handles async processing of discovery jobs.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryQueue.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.IDiscoveryQueue.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.IDiscoveryQueue.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryQueue.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.IDiscoveryQueue.property.queueRef">queueRef</a></code> | <code>aws-cdk-lib.interfaces.aws_sqs.QueueReference</code> | A reference to a Queue resource. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryQueue.property.fifo">fifo</a></code> | <code>boolean</code> | Whether this queue is an Amazon SQS FIFO queue. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryQueue.property.queueArn">queueArn</a></code> | <code>string</code> | The ARN of this queue. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryQueue.property.queueName">queueName</a></code> | <code>string</code> | The name of this queue. |
@@ -32320,16 +33440,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -32342,6 +33463,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `queueRef`<sup>Required</sup> <a name="queueRef" id="@cdklabs/genai-idp.IDiscoveryQueue.property.queueRef"></a>
+
+```typescript
+public readonly queueRef: QueueReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_sqs.QueueReference
+
+A reference to a Queue resource.
 
 ---
 
@@ -32435,7 +33568,7 @@ This table tracks discovery job status and metadata.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
@@ -32462,16 +33595,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -33082,7 +34216,7 @@ Provides GraphQL API capabilities for monitoring and managing document processin
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.apiId">apiId</a></code> | <code>string</code> | an unique AWS AppSync GraphQL API identifier i.e. 'lxz775lwdrgcndgz3nurvac7oa'. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.arn">arn</a></code> | <code>string</code> | the ARN of the API. |
@@ -33111,16 +34245,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -33334,7 +34469,7 @@ enabling tracking of documents throughout their processing lifecycle from upload
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
@@ -33361,16 +34496,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 
@@ -33555,7 +34691,7 @@ Interface for SageMaker workteam used in HITL workflows.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.IWorkteam.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.IWorkteam.property.env">env</a></code> | <code>aws-cdk-lib.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.IWorkteam.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IWorkteam.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.IWorkteam.property.workteamArn">workteamArn</a></code> | <code>string</code> | The ARN of the SageMaker workteam. |
 | <code><a href="#@cdklabs/genai-idp.IWorkteam.property.workteamName">workteamName</a></code> | <code>string</code> | The name of the SageMaker workteam. |
@@ -33580,16 +34716,17 @@ The tree node.
 public readonly env: ResourceEnvironment;
 ```
 
-- *Type:* aws-cdk-lib.ResourceEnvironment
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
 
 The environment this resource belongs to.
 
-For resources that are created and managed by the CDK
-(generally, those created by creating new class instances like Role, Bucket, etc.),
-this is always the same as the environment of the stack they belong to;
-however, for imported resources
-(those obtained from static methods like fromRoleArn, fromBucketName, etc.),
-that might be different than the stack they were imported into.
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
 
 ---
 

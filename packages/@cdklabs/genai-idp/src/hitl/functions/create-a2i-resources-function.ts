@@ -19,8 +19,7 @@ import { LogLevel } from "../../log-level";
  *
  * @experimental This API is experimental and may change in future versions.
  */
-export interface CreateA2IResourcesFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface CreateA2IResourcesFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The ARN of the SageMaker workteam for A2I tasks.
    */

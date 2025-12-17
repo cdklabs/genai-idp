@@ -45,8 +45,7 @@ export interface IProcessingEnvironmentApi extends appsync.IGraphqlApi {
  * Properties for configuring the ProcessingEnvironmentApi construct.
  * Extends the base properties with additional settings specific to document processing.
  */
-export interface ProcessingEnvironmentApiProps
-  extends ProcessingEnvironmentApiBaseProps {
+export interface ProcessingEnvironmentApiProps extends ProcessingEnvironmentApiBaseProps {
   /**
    * The S3 bucket where source documents to be processed are stored.
    * This bucket is monitored for new document uploads to trigger processing.

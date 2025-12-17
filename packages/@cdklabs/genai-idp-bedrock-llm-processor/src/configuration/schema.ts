@@ -31,9 +31,7 @@ export interface IBedrockLlmProcessorConfigurationSchema {
  * attributes, classification settings, extraction parameters, evaluation
  * criteria, and summarization options.
  */
-export class BedrockLlmProcessorConfigurationSchema
-  implements IBedrockLlmProcessorConfigurationSchema
-{
+export class BedrockLlmProcessorConfigurationSchema implements IBedrockLlmProcessorConfigurationSchema {
   /**
    * Binds the configuration schema to a processor instance.
    * Creates a custom resource that updates the schema in the configuration table.

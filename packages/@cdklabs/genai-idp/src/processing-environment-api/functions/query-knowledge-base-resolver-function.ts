@@ -17,8 +17,7 @@ import { LogLevel } from "../../log-level";
 /**
  * Properties for configuring the QueryKnowledgeBaseResolverFunction.
  */
-export interface QueryKnowledgeBaseResolverFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface QueryKnowledgeBaseResolverFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The Bedrock knowledge base to query.
    * Function needs query access to retrieve information from the knowledge base.

@@ -246,8 +246,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -259,23 +257,29 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockConfigTable9B38FA67",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -287,17 +291,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockTrackingTableC27D2FF3",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "appsync:GraphQL",
@@ -557,8 +569,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -570,17 +580,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockTrackingTableC27D2FF3",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "cloudwatch:PutMetricData",
@@ -590,8 +608,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -603,17 +619,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockConfigTable9B38FA67",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -953,8 +977,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -966,17 +988,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockConfigTable9B38FA67",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "cloudwatch:PutMetricData",
@@ -986,8 +1016,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -999,17 +1027,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockTrackingTableC27D2FF3",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -1194,8 +1230,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -1207,17 +1241,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockTrackingTableC27D2FF3",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -1560,8 +1602,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -1573,17 +1613,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockTrackingTableC27D2FF3",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -1858,8 +1906,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -1871,23 +1917,29 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockConfigTable9B38FA67",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -1899,17 +1951,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockTrackingTableC27D2FF3",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -2154,8 +2214,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -2167,23 +2225,29 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockTrackingTableC27D2FF3",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -2191,17 +2255,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockConfigTable9B38FA67",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": [
@@ -3683,8 +3755,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -3696,17 +3766,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockConfigTable9B38FA67",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "appsync:GraphQL",
@@ -3716,8 +3794,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
             {
               "Action": [
                 "dynamodb:BatchGetItem",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
                 "dynamodb:Query",
                 "dynamodb:GetItem",
                 "dynamodb:Scan",
@@ -3729,17 +3805,25 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 "dynamodb:DescribeTable",
               ],
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockTrackingTableC27D2FF3",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Ref": "AWS::NoValue",
-                },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
               ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "cloudwatch:PutMetricData",

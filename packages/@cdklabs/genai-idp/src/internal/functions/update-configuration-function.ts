@@ -15,8 +15,7 @@ import { IdpPythonFunctionOptions } from "../../functions";
 /**
  * Properties for configuring the UpdateConfigurationFunction.
  */
-export interface UpdateConfigurationFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface UpdateConfigurationFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The configuration table that will be updated by this function.
    * This table stores system-wide configuration settings.

@@ -98,9 +98,7 @@ export class MockProcessingEnvironment implements IProcessingEnvironment {
 /**
  * Mock implementation of IBedrockLlmProcessorConfiguration for testing
  */
-export class MockBedrockLlmProcessorConfiguration
-  implements IBedrockLlmProcessorConfiguration
-{
+export class MockBedrockLlmProcessorConfiguration implements IBedrockLlmProcessorConfiguration {
   private includeOptionalModels: boolean;
 
   constructor(includeOptionalModels: boolean = false) {

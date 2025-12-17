@@ -16,8 +16,7 @@ import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-op
 /**
  * Properties for configuring the GetStepFunctionExecutionResolverFunction.
  */
-export interface GetStepFunctionExecutionResolverFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface GetStepFunctionExecutionResolverFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The Step Functions state machine to query execution details from.
    * Function needs permissions to describe executions and get execution history.

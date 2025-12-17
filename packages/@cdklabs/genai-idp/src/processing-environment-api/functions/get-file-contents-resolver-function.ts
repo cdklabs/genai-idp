@@ -15,8 +15,7 @@ import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-op
 /**
  * Properties for configuring the GetFileContentsResolverFunction.
  */
-export interface GetFileContentsResolverFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface GetFileContentsResolverFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The S3 bucket containing input documents.
    * Function needs read access to retrieve document contents.

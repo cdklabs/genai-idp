@@ -34,9 +34,7 @@ export interface IBedrockLlmProcessorConfiguration {
  * including schema definitions, classification prompts, extraction prompts, and configuration
  * values. It provides a centralized way to manage document classes, extraction schemas, and model parameters.
  */
-export class BedrockLlmProcessorConfiguration
-  implements IBedrockLlmProcessorConfiguration
-{
+export class BedrockLlmProcessorConfiguration implements IBedrockLlmProcessorConfiguration {
   /**
    * Creates a configuration from a YAML file.
    *

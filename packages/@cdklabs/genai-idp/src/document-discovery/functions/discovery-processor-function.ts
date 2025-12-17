@@ -24,8 +24,7 @@ import { IDiscoveryTable } from "../discovery-table";
 /**
  * Properties for configuring the DiscoveryProcessorFunction.
  */
-export interface DiscoveryProcessorFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface DiscoveryProcessorFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The S3 bucket for discovery document uploads.
    */

@@ -35,8 +35,7 @@ export interface BdaProcessorConfigurationDefinitionOptions {
  * Interface for BDA processor configuration definition.
  * Defines the structure and capabilities of configuration for Bedrock Data Automation processing.
  */
-export interface IBdaProcessorConfigurationDefinition
-  extends IConfigurationDefinition {
+export interface IBdaProcessorConfigurationDefinition extends IConfigurationDefinition {
   /**
    * The invokable model used for evaluating extraction results.
    * Used to assess the quality and accuracy of extracted information by
