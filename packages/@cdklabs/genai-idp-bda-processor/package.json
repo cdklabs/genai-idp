@@ -60,7 +60,7 @@
     "@cdklabs/genai-idp": "0.0.0",
     "@cdklabs/generative-ai-cdk-constructs": "0.1.312",
     "@types/jest": "^29.5.14",
-    "@types/node": "^22.15.16",
+    "@types/node": "^25.0.3",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
     "aws-cdk": "^2",
