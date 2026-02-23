@@ -10,16 +10,16 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct, IConstruct } from "constructs";
-import { IConfigurationTable } from "../configuration-table";
-import { FixedKeyTableProps } from "../fixed-key-table-props";
-import { LogLevel } from "../log-level";
-import { ITrackingTable } from "../tracking-table";
 import {
   AgentRequestHandlerFunction,
   AgentProcessorFunction,
   ListAvailableAgentsFunction,
 } from "./functions";
-import { IReportingEnvironment } from "../reporting/reporting-environment";
+import { IConfigurationTable } from "../../configuration-table";
+import { FixedKeyTableProps } from "../../fixed-key-table-props";
+import { LogLevel } from "../../log-level";
+import { IReportingEnvironment } from "../../reporting/reporting-environment";
+import { ITrackingTable } from "../../tracking-table";
 
 /**
  * Interface for Agent Table implementations.

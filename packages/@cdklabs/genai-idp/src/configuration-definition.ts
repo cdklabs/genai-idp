@@ -3,6 +3,13 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import {
+  validateConfiguration,
+  isLegacyFormat,
+  isJsonSchemaFormat,
+  ValidationResult,
+} from "./json-schema-validator";
+
 /**
  * Transforms a value in a nested object based on a flat path.
  * Used internally to apply transformations to specific configuration properties.
@@ -43,6 +50,30 @@ export interface IConfigurationDefinition {
    * @returns The configuration as a JavaScript object
    */
   raw(): { [key: string]: any };
+
+  /**
+   * Validates the configuration.
+   *
+   * Automatically detects format (legacy or JSON Schema) and validates accordingly.
+   * Supports both legacy format and JSON Schema format with x-aws-idp-* extensions.
+   *
+   * @returns Validation result with errors and warnings
+   */
+  validate(): ValidationResult;
+
+  /**
+   * Checks if the configuration is in legacy format.
+   *
+   * @returns true if legacy format, false if JSON Schema format
+   */
+  isLegacyFormat(): boolean;
+
+  /**
+   * Checks if the configuration is in JSON Schema format.
+   *
+   * @returns true if JSON Schema format, false if legacy format
+   */
+  isJsonSchemaFormat(): boolean;
 }
 
 /**
@@ -84,6 +115,9 @@ export interface ConfigurationDefinitionProps {
 /**
  * A configuration definition for document processing.
  * Manages configuration data and provides methods to access it.
+ *
+ * Supports both legacy format and JSON Schema format with automatic validation.
+ * The configuration format is automatically detected and validated during construction.
  */
 export class ConfigurationDefinition implements IConfigurationDefinition {
   /**
@@ -105,6 +139,21 @@ export class ConfigurationDefinition implements IConfigurationDefinition {
         transformValue(raw, path.split("."), transform);
       });
     this.contents = raw;
+
+    // Validate configuration during construction
+    const validationResult = this.validate();
+    if (!validationResult.valid) {
+      throw new Error(
+        `Invalid configuration: ${validationResult.errors.join(", ")}`,
+      );
+    }
+
+    // Log warnings if any
+    if (validationResult.warnings.length > 0) {
+      console.warn(
+        `Configuration warnings: ${validationResult.warnings.join(", ")}`,
+      );
+    }
   }
 
   /**
@@ -114,5 +163,35 @@ export class ConfigurationDefinition implements IConfigurationDefinition {
    */
   raw() {
     return this.contents;
+  }
+
+  /**
+   * Validates the configuration.
+   *
+   * Automatically detects format (legacy or JSON Schema) and validates accordingly.
+   * Supports both legacy format and JSON Schema format with x-aws-idp-* extensions.
+   *
+   * @returns Validation result with errors and warnings
+   */
+  validate(): ValidationResult {
+    return validateConfiguration(this.contents);
+  }
+
+  /**
+   * Checks if the configuration is in legacy format.
+   *
+   * @returns true if legacy format, false if JSON Schema format
+   */
+  isLegacyFormat(): boolean {
+    return isLegacyFormat(this.contents);
+  }
+
+  /**
+   * Checks if the configuration is in JSON Schema format.
+   *
+   * @returns true if JSON Schema format, false if legacy format
+   */
+  isJsonSchemaFormat(): boolean {
+    return isJsonSchemaFormat(this.contents);
   }
 }

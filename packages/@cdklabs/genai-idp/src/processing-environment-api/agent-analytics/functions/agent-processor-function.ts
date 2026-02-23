@@ -16,10 +16,10 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
-import { IConfigurationTable } from "../../configuration-table";
-import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
-import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
-import { LogLevel } from "../../log-level";
+import { IConfigurationTable } from "../../../configuration-table";
+import { IdpPythonFunctionOptions } from "../../../functions/idp-python-function-options";
+import { IdpPythonLayerVersion } from "../../../idp-python-layer-version";
+import { LogLevel } from "../../../log-level";
 
 /**
  * Properties for the Agent Processor function.

@@ -64,7 +64,7 @@ export class GetStepFunctionExecutionResolverFunction
         "lambdas",
         "get_stepfunction_execution_resolver",
       ),
-      handler: "lambda_handler",
+      handler: "index.lambda_handler",
       bundling: {
         command: [
           "bash",

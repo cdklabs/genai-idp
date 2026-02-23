@@ -227,6 +227,18 @@ export class SagemakerUdopProcessorConfigurationDefinition {
       raw(): { [key: string]: any } {
         return def.raw();
       }
+
+      validate() {
+        return def.validate();
+      }
+
+      isLegacyFormat(): boolean {
+        return def.isLegacyFormat();
+      }
+
+      isJsonSchemaFormat(): boolean {
+        return def.isJsonSchemaFormat();
+      }
     }
     return new LoadedDefinition();
   }

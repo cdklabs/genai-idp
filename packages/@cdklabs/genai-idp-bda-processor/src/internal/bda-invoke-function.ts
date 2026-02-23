@@ -111,7 +111,7 @@ export class BdaInvokeFunction extends PythonFunction {
             `rsync -rL /asset-input/ /tmp/builddir`,
             // Install dependencies to temporary directory
             `cd /tmp/builddir`,
-            `sed -i '/\\.\\/lib/d' requirements.txt || true`,
+            `sed -i '/lib\\/idp_common_pkg/d' requirements.txt || true`,
             `python -m pip install -r requirements.txt -t /tmp/builddir || true`,
             // Clean up unnecessary files in the temp directory
             `find /tmp/builddir -type d -name "*.egg-info" -exec rm -rf {} +`,

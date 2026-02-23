@@ -101,6 +101,15 @@ export interface WebApplicationProps {
   readonly userIdentity: IUserIdentity;
 
   /**
+   * Optional document discovery integration for the web application.
+   * When provided, enables document discovery features in the UI including
+   * sample document uploads and automatic configuration generation.
+   *
+   * @default - Document discovery features are disabled in the UI
+   */
+  readonly documentDiscovery?: import("./document-discovery").IDocumentDiscovery;
+
+  /**
    * Whether to automatically configure CORS rules on S3 buckets for CloudFront access.
    * When true, the library will configure CORS rules on the input, output, and discovery buckets
    * to allow access from the CloudFront distribution domain.
@@ -130,8 +139,7 @@ export class WebApplication extends Construct implements IWebApplication {
           Version: "0.3.18",
           InputBucket: props.environment.inputBucket.bucketName,
           DiscoveryBucket:
-            props.environment.documentDiscovery?.discoveryBucket.bucketName ||
-            "",
+            props.documentDiscovery?.discoveryBucket.bucketName || "",
           OutputBucket: props.environment.outputBucket.bucketName,
           ReportingBucket:
             props.environment.reportingEnvironment?.reportingBucket
@@ -509,10 +517,8 @@ export class WebApplication extends Construct implements IWebApplication {
     }
 
     // Configure CORS on discovery bucket
-    if (
-      props.environment.documentDiscovery?.discoveryBucket instanceof s3.Bucket
-    ) {
-      props.environment.documentDiscovery.discoveryBucket.addCorsRule({
+    if (props.documentDiscovery?.discoveryBucket instanceof s3.Bucket) {
+      props.documentDiscovery.discoveryBucket.addCorsRule({
         allowedHeaders: [
           "Content-Type",
           "x-amz-content-sha256",

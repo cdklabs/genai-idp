@@ -6,19 +6,18 @@ SPDX-License-Identifier: Apache-2.0
 import path from "path";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import { Duration, Stack } from "aws-cdk-lib";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import { IKey } from "aws-cdk-lib/aws-kms";
-import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
-import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
-import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
-import { LogLevel } from "../../log-level";
+import { IdpPythonFunctionOptions } from "../../../functions/idp-python-function-options";
+import { IdpPythonLayerVersion } from "../../../idp-python-layer-version";
+import { LogLevel } from "../../../log-level";
 
 /**
- * Properties for the Agent Request Handler function.
+ * Properties for the List Available Agents function.
  */
-export interface AgentRequestHandlerFunctionProps extends IdpPythonFunctionOptions {
+export interface ListAvailableAgentsFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The namespace for CloudWatch metrics.
    */
@@ -31,20 +30,9 @@ export interface AgentRequestHandlerFunctionProps extends IdpPythonFunctionOptio
   readonly logLevel?: LogLevel;
 
   /**
-   * The DynamoDB table for agent job tracking.
+   * Optional Secrets Manager secret for external MCP agents.
    */
-  readonly agentTable: dynamodb.ITable;
-
-  /**
-   * The agent processor function to invoke for processing queries.
-   */
-  readonly agentProcessorFunction: lambda.IFunction;
-
-  /**
-   * Data retention period in days.
-   * @default 30
-   */
-  readonly dataRetentionDays?: number;
+  readonly externalMcpAgentsSecret?: secretsmanager.ISecret;
 
   /**
    * The KMS key used for encryption.
@@ -53,16 +41,16 @@ export interface AgentRequestHandlerFunctionProps extends IdpPythonFunctionOptio
 }
 
 /**
- * Lambda function for handling agent query requests.
+ * Lambda function for listing available analytics agents.
  *
- * This function receives agent query requests from the GraphQL API and manages
- * the job lifecycle, including creating job records and invoking the agent processor.
+ * This function returns a list of available agents including both built-in
+ * analytics agents and any configured external MCP agents.
  */
-export class AgentRequestHandlerFunction extends PythonFunction {
+export class ListAvailableAgentsFunction extends PythonFunction {
   constructor(
     scope: Construct,
     id: string,
-    props: AgentRequestHandlerFunctionProps,
+    props: ListAvailableAgentsFunctionProps,
   ) {
     super(scope, id, {
       ...props,
@@ -74,7 +62,7 @@ export class AgentRequestHandlerFunction extends PythonFunction {
         "..",
         "assets",
         "lambdas",
-        "agent_request_handler",
+        "list_available_agents",
       ),
       bundling: {
         command: [
@@ -104,24 +92,25 @@ export class AgentRequestHandlerFunction extends PythonFunction {
           ].join(" && "),
         ],
       },
-      memorySize: 512,
-      timeout: Duration.minutes(1),
+      memorySize: 256,
+      timeout: Duration.seconds(30),
       environment: {
         LOG_LEVEL: props.logLevel ?? LogLevel.INFO,
-        AGENT_TABLE: props.agentTable.tableName,
-        AGENT_PROCESSOR_FUNCTION: props.agentProcessorFunction.functionName,
-        DATA_RETENTION_DAYS: props.dataRetentionDays?.toString() ?? "30",
         METRIC_NAMESPACE: props.metricNamespace,
         ...(props.encryptionKey && { KMS_KEY_ID: props.encryptionKey.keyId }),
       },
-      layers: [IdpPythonLayerVersion.getOrCreate(Stack.of(scope))],
+      layers: [IdpPythonLayerVersion.getOrCreate(Stack.of(scope), "agents")],
     });
 
-    // Grant permissions to read/write agent table
-    props.agentTable.grantReadWriteData(this);
-    props.encryptionKey?.grantEncryptDecrypt(this);
+    // Grant external MCP agents secret access if provided
+    if (props.externalMcpAgentsSecret) {
+      props.externalMcpAgentsSecret.grantRead(this);
+    }
 
-    // Grant permission to invoke agent processor function
-    props.agentProcessorFunction.grantInvoke(this);
+    // Grant KMS permissions if encryption key is provided
+    if (props.encryptionKey) {
+      props.encryptionKey.grantDecrypt(this);
+      props.encryptionKey.grantEncrypt(this);
+    }
   }
 }

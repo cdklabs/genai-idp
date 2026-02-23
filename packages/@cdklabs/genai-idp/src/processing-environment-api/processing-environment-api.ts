@@ -19,15 +19,20 @@ import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { IQueue } from "aws-cdk-lib/aws-sqs";
 import * as stepfunctions from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
-import { AgentAnalytics } from "../agent-analytics";
+import { AgentAnalytics, IAgentAnalytics } from "./agent-analytics";
+import { IDocumentDiscovery } from "../document-discovery";
 import { LogLevel } from "../log-level";
+import { IAgentCompanionChat } from "./agent-companion-chat";
+import { ChatSessionResolverFunction } from "./agent-companion-chat/functions";
 import { ProcessingEnvironmentApiBaseProps } from "./processing-environment-api-base-props";
 import { IConfigurationTable } from "../configuration-table";
-import { IDocumentDiscovery } from "../document-discovery";
-import { VpcConfiguration } from "../vpc-configuration";
-import * as functions from "./functions";
+import { IErrorAnalyzer } from "./error-analyzer";
+import { IMCPIntegration } from "./mcp-integration";
+import { ITestStudio } from "./test-studio";
 import { IReportingEnvironment } from "../reporting/reporting-environment";
 import { ITrackingTable } from "../tracking-table";
+import { VpcConfiguration } from "../vpc-configuration";
+import * as functions from "./functions";
 
 /**
  * Interface for the document processing environment API.
@@ -39,6 +44,42 @@ export interface IProcessingEnvironmentApi extends appsync.IGraphqlApi {
    * Used by client applications to interact with the document processing system.
    */
   readonly graphqlUrl: string;
+
+  /**
+   * Adds Test Studio capabilities to the GraphQL API.
+   * Enables test set management, execution, and results analysis.
+   *
+   * @param trackingTable The tracking table for test execution data
+   * @param testSetBucket The S3 bucket for test set storage
+   * @param inputBucket The input bucket for document processing
+   * @param testSetCopyQueue The SQS queue for test set copy operations
+   * @param reportingBucket Optional S3 bucket for reporting data
+   * @param testResultCacheUpdateQueue Optional SQS queue for test result cache updates
+   */
+  addTestStudio(
+    trackingTable: ITrackingTable,
+    testSetBucket: IBucket,
+    inputBucket: IBucket,
+    testSetCopyQueue: IQueue,
+    reportingBucket?: IBucket,
+    testResultCacheUpdateQueue?: IQueue,
+  ): void;
+
+  /**
+   * Adds Agent Companion Chat capabilities to the GraphQL API.
+   * Enables interactive AI assistant with multi-agent orchestration.
+   *
+   * @param agentCompanionChat The Agent Companion Chat construct with orchestrator and session management
+   */
+  addAgentCompanionChat(agentCompanionChat: IAgentCompanionChat): void;
+
+  /**
+   * Adds Error Analyzer capabilities to the GraphQL API.
+   * Enables AI-powered failure diagnosis and troubleshooting.
+   *
+   * @param errorAnalyzer The Error Analyzer construct with AI-powered analysis capabilities
+   */
+  addErrorAnalyzer(errorAnalyzer: IErrorAnalyzer): void;
 }
 
 /**
@@ -155,6 +196,39 @@ export interface ProcessingEnvironmentApiProps extends ProcessingEnvironmentApiB
    * Controls how long document data is kept in the system.
    */
   readonly dataRetentionInDays?: number;
+
+  /**
+   * Optional Test Studio construct for test management capabilities.
+   * When provided, enables test set creation, execution, and analysis through the GraphQL API.
+   *
+   * @since v0.4.8
+   */
+  readonly testStudio?: ITestStudio;
+
+  /**
+   * Optional Agent Companion Chat construct for AI assistant capabilities.
+   * When provided, enables interactive chat with multi-agent orchestration through the GraphQL API.
+   *
+   * @since v0.4.8
+   */
+  readonly agentCompanionChat?: IAgentCompanionChat;
+
+  /**
+   * Optional MCP Integration construct for external application access.
+   * When provided, enables MCP server deployment with OAuth 2.0 authentication.
+   *
+   * @since v0.4.8
+   */
+  readonly mcpIntegration?: IMCPIntegration;
+
+  /**
+   * Optional Error Analyzer construct for AI-powered failure diagnosis.
+   * When provided, enables intelligent troubleshooting capabilities with
+   * CloudWatch log analysis and X-Ray trace correlation through the GraphQL API.
+   *
+   * @since v0.4.8
+   */
+  readonly errorAnalyzer?: IErrorAnalyzer;
 }
 
 /**
@@ -197,7 +271,7 @@ export class ProcessingEnvironmentApi
   private readonly _vpcConfiguration?: VpcConfiguration;
   private readonly _configurationTable: IConfigurationTable;
   private readonly outputBucket: IBucket;
-  private _agentAnalytics?: AgentAnalytics;
+  private _agentAnalytics?: IAgentAnalytics;
 
   /**
    * Creates a new ProcessingEnvironmentApi.
@@ -317,6 +391,29 @@ export class ProcessingEnvironmentApi
     if (props.documentDiscovery) {
       this.addDocumentDiscovery(props.documentDiscovery);
     }
+
+    // Automatically integrate auxiliary features (v0.4.8)
+    if (props.testStudio) {
+      this.addTestStudio(
+        props.trackingTable,
+        props.testStudio.testBucket!,
+        props.inputBucket,
+        props.testStudio.testSetCopyQueue,
+        undefined, // No reporting bucket by default
+        props.testStudio.testResultCacheUpdateQueue,
+      );
+    }
+
+    if (props.agentCompanionChat) {
+      this.addAgentCompanionChat(props.agentCompanionChat);
+    }
+
+    if (props.errorAnalyzer) {
+      this.addErrorAnalyzer(props.errorAnalyzer);
+    }
+
+    // Note: MCPIntegration doesn't have an add method yet as it's primarily
+    // a standalone construct that provides OAuth endpoints
   }
 
   /**
@@ -1858,5 +1955,293 @@ export class ProcessingEnvironmentApi
         `),
       },
     );
+  }
+
+  /**
+   * Add Test Studio capabilities to the GraphQL API.
+   *
+   * This method adds test management functionality including:
+   * - Test set creation and management
+   * - Test execution and tracking
+   * - Test results retrieval and comparison
+   * - Test performance analysis
+   *
+   * @example
+   * // Add test studio after API creation
+   * api.addTestStudio(
+   *   trackingTable,
+   *   testSetBucket,
+   *   inputBucket,
+   *   testSetCopyQueue,
+   *   reportingBucket,
+   *   testResultCacheUpdateQueue
+   * );
+   *
+   * @param trackingTable The DynamoDB table for tracking test execution
+   * @param testSetBucket The S3 bucket for storing test documents and baselines
+   * @param inputBucket The S3 bucket for input documents (for pattern-based test sets)
+   * @param testSetCopyQueue The SQS queue for test set file copying operations
+   * @param reportingBucket Optional S3 bucket for detailed reporting data
+   * @param testResultCacheUpdateQueue Optional SQS queue for test result cache updates
+   */
+  public addTestStudio(
+    trackingTable: ITrackingTable,
+    testSetBucket: IBucket,
+    inputBucket: IBucket,
+    testSetCopyQueue: IQueue,
+    reportingBucket?: IBucket,
+    testResultCacheUpdateQueue?: IQueue,
+  ): void {
+    // Import the resolver functions
+    const { TestSetResolverFunction, TestResultsResolverFunction } = functions;
+
+    // Create test set resolver function
+    const testSetResolverFunction = new TestSetResolverFunction(
+      this,
+      "TestSetResolverFunction",
+      {
+        trackingTable,
+        testSetBucket,
+        inputBucket,
+        testSetCopyQueue,
+        encryptionKey: this._encryptionKey,
+        logLevel: this._logLevel,
+        logRetention: this._logRetention,
+        ...this._vpcConfiguration,
+      },
+    );
+
+    // Create test results resolver function
+    const testResultsResolverFunction = new TestResultsResolverFunction(
+      this,
+      "TestResultsResolverFunction",
+      {
+        trackingTable,
+        reportingBucket,
+        testResultCacheUpdateQueue,
+        encryptionKey: this._encryptionKey,
+        logLevel: this._logLevel,
+        logRetention: this._logRetention,
+        ...this._vpcConfiguration,
+      },
+    );
+
+    // Create data sources
+    const testSetDataSource = this.addLambdaDataSource(
+      "TestSetDataSource",
+      testSetResolverFunction,
+    );
+
+    const testResultsDataSource = this.addLambdaDataSource(
+      "TestResultsDataSource",
+      testResultsResolverFunction,
+    );
+
+    // Create test set resolvers
+    testSetDataSource.createResolver("GetTestSetsResolver", {
+      typeName: "Query",
+      fieldName: "getTestSets",
+    });
+
+    testSetDataSource.createResolver("AddTestSetResolver", {
+      typeName: "Mutation",
+      fieldName: "addTestSet",
+    });
+
+    testSetDataSource.createResolver("AddTestSetFromUploadResolver", {
+      typeName: "Mutation",
+      fieldName: "addTestSetFromUpload",
+    });
+
+    testSetDataSource.createResolver("DeleteTestSetsResolver", {
+      typeName: "Mutation",
+      fieldName: "deleteTestSets",
+    });
+
+    testSetDataSource.createResolver("ListBucketFilesResolver", {
+      typeName: "Query",
+      fieldName: "listBucketFiles",
+    });
+
+    testSetDataSource.createResolver("ValidateTestFileNameResolver", {
+      typeName: "Query",
+      fieldName: "validateTestFileName",
+    });
+
+    // Create test results resolvers
+    testResultsDataSource.createResolver("GetTestRunResolver", {
+      typeName: "Query",
+      fieldName: "getTestRun",
+    });
+
+    testResultsDataSource.createResolver("GetTestRunsResolver", {
+      typeName: "Query",
+      fieldName: "getTestRuns",
+    });
+
+    testResultsDataSource.createResolver("GetTestRunStatusResolver", {
+      typeName: "Query",
+      fieldName: "getTestRunStatus",
+    });
+
+    testResultsDataSource.createResolver("CompareTestRunsResolver", {
+      typeName: "Query",
+      fieldName: "compareTestRuns",
+    });
+
+    // Create test runner resolver (uses the same test results function)
+    testResultsDataSource.createResolver("StartTestRunResolver", {
+      typeName: "Mutation",
+      fieldName: "startTestRun",
+    });
+
+    testResultsDataSource.createResolver("DeleteTestsResolver", {
+      typeName: "Mutation",
+      fieldName: "deleteTests",
+    });
+  }
+
+  /**
+   * Add Agent Companion Chat capabilities to the GraphQL API.
+   *
+   * This method adds AI assistant functionality including:
+   * - Multi-agent orchestration (Analytics, Error Analyzer, General)
+   * - Session-based conversation management
+   * - Real-time streaming through AppSync subscriptions
+   * - Conversation history with sliding window (last 20 turns)
+   * - Optional Code Intelligence agent
+   *
+   * @example
+   * // Add agent companion chat after API creation
+   * api.addAgentCompanionChat(agentCompanionChat);
+   *
+   * @param agentCompanionChat The Agent Companion Chat construct with orchestrator and session management
+   */
+  public addAgentCompanionChat(agentCompanionChat: IAgentCompanionChat): void {
+    // Import the resolver functions
+    const { AgentChatResolverFunction } = functions;
+
+    // Create agent chat resolver function
+    const agentChatResolverFunction = new AgentChatResolverFunction(
+      this,
+      "AgentChatResolverFunction",
+      {
+        sessionTable: agentCompanionChat.sessionTable!,
+        orchestratorFunction: agentCompanionChat.orchestratorFunction,
+        enableCodeIntelligence: true, // Default to enabled
+        encryptionKey: this._encryptionKey,
+        logLevel: this._logLevel,
+        logRetention: this._logRetention,
+        ...this._vpcConfiguration,
+      },
+    );
+
+    // Create chat session resolver function
+    const chatSessionResolverFunction = new ChatSessionResolverFunction(
+      this,
+      "ChatSessionResolverFunction",
+      {
+        sessionTable: agentCompanionChat.sessionTable!,
+        encryptionKey: this._encryptionKey,
+        logRetention: this._logRetention,
+        ...this._vpcConfiguration,
+      },
+    );
+
+    // Create data sources
+    const agentChatDataSource = this.addLambdaDataSource(
+      "AgentChatDataSource",
+      agentChatResolverFunction,
+    );
+
+    const chatSessionDataSource = this.addLambdaDataSource(
+      "ChatSessionDataSource",
+      chatSessionResolverFunction,
+    );
+
+    // Create agent chat message resolvers
+    agentChatDataSource.createResolver("SendAgentChatMessageResolver", {
+      typeName: "Mutation",
+      fieldName: "sendAgentChatMessage",
+    });
+
+    agentChatDataSource.createResolver("GetAgentChatMessagesResolver", {
+      typeName: "Query",
+      fieldName: "getAgentChatMessages",
+    });
+
+    agentChatDataSource.createResolver("GetChatMessagesResolver", {
+      typeName: "Query",
+      fieldName: "getChatMessages",
+    });
+
+    // Create chat session management resolvers
+    chatSessionDataSource.createResolver("ListChatSessionsResolver", {
+      typeName: "Query",
+      fieldName: "listChatSessions",
+    });
+
+    chatSessionDataSource.createResolver("DeleteChatSessionResolver", {
+      typeName: "Mutation",
+      fieldName: "deleteChatSession",
+    });
+
+    chatSessionDataSource.createResolver("UpdateChatSessionTitleResolver", {
+      typeName: "Mutation",
+      fieldName: "updateChatSessionTitle",
+    });
+  }
+
+  /**
+   * Add Error Analyzer capabilities to the API.
+   *
+   * This method integrates an Error Analyzer construct with the ProcessingEnvironmentApi
+   * to provide GraphQL operations for AI-powered failure diagnosis and troubleshooting.
+   *
+   * @example
+   * // Add error analyzer after API creation
+   * api.addErrorAnalyzer(errorAnalyzer);
+   *
+   * @param errorAnalyzer The Error Analyzer construct with AI-powered analysis capabilities
+   */
+  public addErrorAnalyzer(errorAnalyzer: IErrorAnalyzer): void {
+    // Import the resolver functions
+    const { ErrorAnalyzerResolverFunction } = functions;
+
+    // Create error analyzer resolver function
+    const errorAnalyzerResolverFunction = new ErrorAnalyzerResolverFunction(
+      this,
+      "ErrorAnalyzerResolverFunction",
+      {
+        analyzerFunction: errorAnalyzer.analyzerFunction,
+        traceTable: errorAnalyzer.traceTable!,
+        encryptionKey: this._encryptionKey,
+        logLevel: this._logLevel,
+        logRetention: this._logRetention,
+        vpcConfiguration: this._vpcConfiguration,
+      },
+    );
+
+    // Create data source
+    const errorAnalyzerDataSource = this.addLambdaDataSource(
+      "ErrorAnalyzerDataSource",
+      errorAnalyzerResolverFunction,
+    );
+
+    // Create error analysis resolvers
+    errorAnalyzerDataSource.createResolver("AnalyzeErrorResolver", {
+      typeName: "Mutation",
+      fieldName: "analyzeError",
+    });
+
+    errorAnalyzerDataSource.createResolver("GetErrorAnalysisResolver", {
+      typeName: "Query",
+      fieldName: "getErrorAnalysis",
+    });
+
+    errorAnalyzerDataSource.createResolver("ListErrorAnalysesResolver", {
+      typeName: "Query",
+      fieldName: "listErrorAnalyses",
+    });
   }
 }

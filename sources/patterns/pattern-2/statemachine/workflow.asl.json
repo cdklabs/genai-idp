@@ -20,8 +20,7 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
+                        "RequestLimitExceeded"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 2,
@@ -49,8 +48,7 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
+                        "RequestLimitExceeded"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,
@@ -85,8 +83,7 @@
                                     "ServiceQuotaExceededException",
                                     "ThrottlingException",
                                     "ProvisionedThroughputExceededException",
-                                    "RequestLimitExceeded",
-                                    "ServiceUnavailableException"
+                                    "RequestLimitExceeded"
                                 ],
                                 "IntervalSeconds": 2,
                                 "MaxAttempts": 10,
@@ -115,8 +112,7 @@
                                     "ServiceQuotaExceededException",
                                     "ThrottlingException",
                                     "ProvisionedThroughputExceededException",
-                                    "RequestLimitExceeded",
-                                    "ServiceUnavailableException"
+                                    "RequestLimitExceeded"
                                 ],
                                 "IntervalSeconds": 2,
                                 "MaxAttempts": 10,
@@ -154,8 +150,7 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
+                        "RequestLimitExceeded"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,
@@ -195,8 +190,7 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
+                        "RequestLimitExceeded"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,
@@ -222,8 +216,7 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
+                        "RequestLimitExceeded"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,
@@ -252,37 +245,7 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 2,
-                    "MaxAttempts": 10,
-                    "BackoffRate": 2
-                }
-            ],
-            "Next": "EvaluationStep"
-        },
-        "EvaluationStep": {
-            "Type": "Task",
-            "Resource": "${EvaluationLambdaArn}",
-            "Parameters": {
-                "execution_arn.$": "$$.Execution.Id",
-                "document.$": "$"
-            },
-            "ResultPath": "$",
-            "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Sandbox.Timedout",
-                        "Lambda.ServiceException",
-                        "Lambda.AWSLambdaException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
+                        "RequestLimitExceeded"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,

@@ -57,6 +57,9 @@
           "spawn": "bundle:lambda:bda_invoke_function"
         },
         {
+          "spawn": "bundle:lambda:evaluation_function"
+        },
+        {
           "spawn": "bundle:lambda:hitl-process-function"
         },
         {
@@ -123,6 +126,17 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/bda_invoke_function/* assets/lambdas/bda_invoke_function/."
+        }
+      ]
+    },
+    "bundle:lambda:evaluation_function": {
+      "name": "bundle:lambda:evaluation_function",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/evaluation_function"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/evaluation_function/* assets/lambdas/evaluation_function/."
         }
       ]
     },
