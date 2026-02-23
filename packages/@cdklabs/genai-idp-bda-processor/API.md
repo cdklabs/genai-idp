@@ -1993,9 +1993,11 @@ const bdaProcessorProps: BdaProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.configuration">configuration</a></code> | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfiguration">IBdaProcessorConfiguration</a></code> | Configuration for the BDA document processor. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.dataAutomationProject">dataAutomationProject</a></code> | <code><a href="#@cdklabs/genai-idp-bda-processor.IDataAutomationProject">IDataAutomationProject</a></code> | The Bedrock Data Automation Project used for document processing. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableDiscovery">enableDiscovery</a></code> | <code>boolean</code> | Enable discovery integration for BDA blueprint generation. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableHITL">enableHITL</a></code> | <code>boolean</code> | Enable Human In The Loop (HITL) review for documents with low confidence scores. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline evaluation data for model performance assessment. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sageMakerA2IReviewPortalURL">sageMakerA2IReviewPortalURL</a></code> | <code>string</code> | URL for the SageMaker A2I review portal used for HITL tasks. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sectionSplittingStrategy">sectionSplittingStrategy</a></code> | <code>@cdklabs/genai-idp.SectionSplittingStrategy</code> | Section splitting strategy configuration. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
 
 ---
@@ -2060,6 +2062,22 @@ including document types, extraction schemas, and processing rules.
 
 ---
 
+##### `enableDiscovery`<sup>Optional</sup> <a name="enableDiscovery" id="@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableDiscovery"></a>
+
+```typescript
+public readonly enableDiscovery: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Enable discovery integration for BDA blueprint generation.
+
+When enabled, allows the discovery module to automatically generate
+BDA blueprints from document samples, streamlining the configuration process.
+
+---
+
 ##### `enableHITL`<sup>Optional</sup> <a name="enableHITL" id="@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableHITL"></a>
 
 ```typescript
@@ -2105,6 +2123,27 @@ URL for the SageMaker A2I review portal used for HITL tasks.
 
 This URL is provided to human reviewers to access documents that require
 manual review and correction.
+
+---
+
+##### `sectionSplittingStrategy`<sup>Optional</sup> <a name="sectionSplittingStrategy" id="@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sectionSplittingStrategy"></a>
+
+```typescript
+public readonly sectionSplittingStrategy: SectionSplittingStrategy;
+```
+
+- *Type:* @cdklabs/genai-idp.SectionSplittingStrategy
+- *Default:* SectionSplittingStrategy.LLM_DETERMINED
+
+Section splitting strategy configuration.
+
+Controls how multi-page documents are divided into sections during classification.
+This affects how documents of the same type are grouped together and processed.
+
+Options:
+- DISABLED: Entire document treated as single section with first detected class
+- PAGE: One section per page preventing automatic joining of same-type documents
+- LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
 
 ---
 
@@ -2516,6 +2555,7 @@ Use BDA Processor when:
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the document processing workflow. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessor.property.evaluationFunction">evaluationFunction</a></code> | <code>any</code> | The evaluation function if evaluation is enabled for this processor. |
 
 ---
 
@@ -2573,6 +2613,21 @@ The Step Functions state machine that orchestrates the document processing workf
 Manages the sequence of processing steps and handles error conditions.
 This state machine is triggered for each document that needs processing
 and coordinates the entire extraction pipeline.
+
+---
+
+##### `evaluationFunction`<sup>Optional</sup> <a name="evaluationFunction" id="@cdklabs/genai-idp-bda-processor.IBdaProcessor.property.evaluationFunction"></a>
+
+```typescript
+public readonly evaluationFunction: any;
+```
+
+- *Type:* any
+
+The evaluation function if evaluation is enabled for this processor.
+
+The evaluation function is created by the ProcessingEnvironment when
+evaluation baseline bucket and model are provided.
 
 ---
 

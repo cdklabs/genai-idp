@@ -667,10 +667,12 @@ const sagemakerUdopProcessorProps: SagemakerUdopProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.assessmentGuardrail">assessmentGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to assessment model interactions. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.customPromptGenerator">customPromptGenerator</a></code> | <code>@cdklabs/genai-idp.ICustomPromptGenerator</code> | Optional custom prompt generator for injecting business logic into extraction processing. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.enableEditSections">enableEditSections</a></code> | <code>boolean</code> | Enable edit sections feature for classification updates. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline documents for evaluation. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationEnabled">evaluationEnabled</a></code> | <code>boolean</code> | Controls whether extraction results are evaluated for accuracy. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.extractionGuardrail">extractionGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to extraction model interactions. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.ocrMaxWorkers">ocrMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for OCR processing. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.sectionSplittingStrategy">sectionSplittingStrategy</a></code> | <code>@cdklabs/genai-idp.SectionSplittingStrategy</code> | Section splitting strategy configuration. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
 
 ---
@@ -788,6 +790,23 @@ document content, business rules, or external system integrations.
 
 ---
 
+##### `enableEditSections`<sup>Optional</sup> <a name="enableEditSections" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.enableEditSections"></a>
+
+```typescript
+public readonly enableEditSections: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Enable edit sections feature for classification updates.
+
+When enabled, allows users to modify document classification through the UI
+and trigger selective reprocessing of affected sections. This provides
+flexibility to correct classification errors without reprocessing entire documents.
+
+---
+
 ##### `evaluationBaselineBucket`<sup>Optional</sup> <a name="evaluationBaselineBucket" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationBaselineBucket"></a>
 
 ```typescript
@@ -851,6 +870,27 @@ The maximum number of concurrent workers for OCR processing.
 
 Controls parallelism during the text extraction phase to optimize
 throughput while managing resource utilization.
+
+---
+
+##### `sectionSplittingStrategy`<sup>Optional</sup> <a name="sectionSplittingStrategy" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.sectionSplittingStrategy"></a>
+
+```typescript
+public readonly sectionSplittingStrategy: SectionSplittingStrategy;
+```
+
+- *Type:* @cdklabs/genai-idp.SectionSplittingStrategy
+- *Default:* SectionSplittingStrategy.LLM_DETERMINED
+
+Section splitting strategy configuration.
+
+Controls how multi-page documents are divided into sections during classification.
+This affects how documents of the same type are grouped together and processed.
+
+Options:
+- DISABLED: Entire document treated as single section with first detected class
+- PAGE: One section per page preventing automatic joining of same-type documents
+- LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
 
 ---
 
@@ -1148,6 +1188,7 @@ Use SageMaker UDOP Processor when:
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the document processing workflow. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.evaluationFunction">evaluationFunction</a></code> | <code>any</code> | The evaluation function if evaluation is enabled for this processor. |
 
 ---
 
@@ -1205,6 +1246,21 @@ The Step Functions state machine that orchestrates the document processing workf
 Manages the sequence of processing steps and handles error conditions.
 This state machine is triggered for each document that needs processing
 and coordinates the entire extraction pipeline.
+
+---
+
+##### `evaluationFunction`<sup>Optional</sup> <a name="evaluationFunction" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.evaluationFunction"></a>
+
+```typescript
+public readonly evaluationFunction: any;
+```
+
+- *Type:* any
+
+The evaluation function if evaluation is enabled for this processor.
+
+The evaluation function is created by the ProcessingEnvironment when
+evaluation baseline bucket and model are provided.
 
 ---
 

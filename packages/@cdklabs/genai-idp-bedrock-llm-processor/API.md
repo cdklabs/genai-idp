@@ -541,6 +541,7 @@ Any object.
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the document processing workflow. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.evaluationFunction">evaluationFunction</a></code> | <code>any</code> | The evaluation function if evaluation is enabled for this processor. |
 
 ---
 
@@ -598,6 +599,21 @@ The Step Functions state machine that orchestrates the document processing workf
 Manages the sequence of processing steps and handles error conditions.
 This state machine is triggered for each document that needs processing
 and coordinates the entire extraction pipeline.
+
+---
+
+##### `evaluationFunction`<sup>Optional</sup> <a name="evaluationFunction" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.evaluationFunction"></a>
+
+```typescript
+public readonly evaluationFunction: any;
+```
+
+- *Type:* any
+
+The evaluation function if evaluation is enabled for this processor.
+
+The evaluation function is created by the ProcessingEnvironment when
+evaluation baseline bucket and model are provided.
 
 ---
 
@@ -753,12 +769,17 @@ const bedrockLlmProcessorProps: BedrockLlmProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationMaxWorkers">classificationMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for document classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.customPromptGenerator">customPromptGenerator</a></code> | <code>@cdklabs/genai-idp.ICustomPromptGenerator</code> | Optional custom prompt generator for injecting business logic into extraction processing. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableAgenticExtraction">enableAgenticExtraction</a></code> | <code>boolean</code> | Enable agentic extraction with Strands framework. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableEditSections">enableEditSections</a></code> | <code>boolean</code> | Enable edit sections feature for classification updates. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableHitl">enableHitl</a></code> | <code>boolean</code> | Enable Human In The Loop (A2I) for document review. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableRegexClassification">enableRegexClassification</a></code> | <code>boolean</code> | Enable regex-based classification for performance optimization. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline documents for evaluation. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.extractionGuardrail">extractionGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to extraction model interactions. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.maxPagesForClassification">maxPagesForClassification</a></code> | <code>number \| @cdklabs/genai-idp.MaxPagesForClassification</code> | Maximum pages for classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.ocrGuardrail">ocrGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to OCR model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.ocrMaxWorkers">ocrMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for OCR processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.sageMakerA2IReviewPortalUrl">sageMakerA2IReviewPortalUrl</a></code> | <code>string</code> | Optional SageMaker A2I Review Portal URL for HITL workflows. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.sectionSplittingStrategy">sectionSplittingStrategy</a></code> | <code>@cdklabs/genai-idp.SectionSplittingStrategy</code> | Section splitting strategy configuration. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
 
 ---
@@ -872,6 +893,40 @@ document content, business rules, or external system integrations.
 
 ---
 
+##### `enableAgenticExtraction`<sup>Optional</sup> <a name="enableAgenticExtraction" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableAgenticExtraction"></a>
+
+```typescript
+public readonly enableAgenticExtraction: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Enable agentic extraction with Strands framework.
+
+When enabled, uses the Strands agent framework for intelligent, self-correcting
+document extraction with iterative validation loops. This provides more robust
+extraction for complex documents but may increase processing time.
+
+---
+
+##### `enableEditSections`<sup>Optional</sup> <a name="enableEditSections" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableEditSections"></a>
+
+```typescript
+public readonly enableEditSections: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Enable edit sections feature for classification updates.
+
+When enabled, allows users to modify document classification through the UI
+and trigger selective reprocessing of affected sections. This provides
+flexibility to correct classification errors without reprocessing entire documents.
+
+---
+
 ##### `enableHitl`<sup>Optional</sup> <a name="enableHitl" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableHitl"></a>
 
 ```typescript
@@ -882,6 +937,24 @@ public readonly enableHitl: boolean;
 - *Default:* false
 
 Enable Human In The Loop (A2I) for document review.
+
+---
+
+##### `enableRegexClassification`<sup>Optional</sup> <a name="enableRegexClassification" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableRegexClassification"></a>
+
+```typescript
+public readonly enableRegexClassification: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Enable regex-based classification for performance optimization.
+
+When enabled, attempts to classify documents using regex patterns matching
+document names or page content before falling back to LLM classification.
+This can significantly improve performance and reduce costs for documents
+with predictable naming patterns.
 
 ---
 
@@ -914,6 +987,23 @@ Optional Bedrock guardrail to apply to extraction model interactions.
 
 Helps ensure model outputs adhere to content policies and guidelines
 by filtering inappropriate content and enforcing usage policies.
+
+---
+
+##### `maxPagesForClassification`<sup>Optional</sup> <a name="maxPagesForClassification" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.maxPagesForClassification"></a>
+
+```typescript
+public readonly maxPagesForClassification: number | MaxPagesForClassification;
+```
+
+- *Type:* number | @cdklabs/genai-idp.MaxPagesForClassification
+- *Default:* MaxPagesForClassification.ALL
+
+Maximum pages for classification.
+
+Controls how many pages are sent to the classification model. Can be a specific
+number or MaxPagesForClassification.ALL to use all pages. Limiting pages can
+optimize costs and performance for large documents.
 
 ---
 
@@ -962,6 +1052,27 @@ Optional SageMaker A2I Review Portal URL for HITL workflows.
 
 Used to provide human reviewers with access to the A2I review interface
 for document validation and correction workflows.
+
+---
+
+##### `sectionSplittingStrategy`<sup>Optional</sup> <a name="sectionSplittingStrategy" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.sectionSplittingStrategy"></a>
+
+```typescript
+public readonly sectionSplittingStrategy: SectionSplittingStrategy;
+```
+
+- *Type:* @cdklabs/genai-idp.SectionSplittingStrategy
+- *Default:* SectionSplittingStrategy.LLM_DETERMINED
+
+Section splitting strategy configuration.
+
+Controls how multi-page documents are divided into sections during classification.
+This affects how documents of the same type are grouped together and processed.
+
+Options:
+- DISABLED: Entire document treated as single section with first detected class
+- PAGE: One section per page preventing automatic joining of same-type documents
+- LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
 
 ---
 
@@ -1544,6 +1655,7 @@ Use Bedrock LLM Processor when:
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the document processing workflow. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessor.property.evaluationFunction">evaluationFunction</a></code> | <code>any</code> | The evaluation function if evaluation is enabled for this processor. |
 
 ---
 
@@ -1601,6 +1713,21 @@ The Step Functions state machine that orchestrates the document processing workf
 Manages the sequence of processing steps and handles error conditions.
 This state machine is triggered for each document that needs processing
 and coordinates the entire extraction pipeline.
+
+---
+
+##### `evaluationFunction`<sup>Optional</sup> <a name="evaluationFunction" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessor.property.evaluationFunction"></a>
+
+```typescript
+public readonly evaluationFunction: any;
+```
+
+- *Type:* any
+
+The evaluation function if evaluation is enabled for this processor.
+
+The evaluation function is created by the ProcessingEnvironment when
+evaluation baseline bucket and model are provided.
 
 ---
 
