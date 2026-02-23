@@ -16,6 +16,7 @@
     "bundle:config:rvl-cdip-package-sample-with-few-shot-examples": "npx projen bundle:config:rvl-cdip-package-sample-with-few-shot-examples",
     "bundle:lambda:assessment_function": "npx projen bundle:lambda:assessment_function",
     "bundle:lambda:classification_function": "npx projen bundle:lambda:classification_function",
+    "bundle:lambda:evaluation_function": "npx projen bundle:lambda:evaluation_function",
     "bundle:lambda:extraction_function": "npx projen bundle:lambda:extraction_function",
     "bundle:lambda:hitl-process-function": "npx projen bundle:lambda:hitl-process-function",
     "bundle:lambda:hitl-status-update-function": "npx projen bundle:lambda:hitl-status-update-function",

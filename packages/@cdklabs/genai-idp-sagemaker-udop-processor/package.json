@@ -12,6 +12,7 @@
     "bundle:config:rvl-cdip-package-sample": "npx projen bundle:config:rvl-cdip-package-sample",
     "bundle:lambda:assessment_function": "npx projen bundle:lambda:assessment_function",
     "bundle:lambda:classification_function": "npx projen bundle:lambda:classification_function",
+    "bundle:lambda:evaluation_function": "npx projen bundle:lambda:evaluation_function",
     "bundle:lambda:extraction_function": "npx projen bundle:lambda:extraction_function",
     "bundle:lambda:ocr_function": "npx projen bundle:lambda:ocr_function",
     "bundle:lambda:processresults_function": "npx projen bundle:lambda:processresults_function",
