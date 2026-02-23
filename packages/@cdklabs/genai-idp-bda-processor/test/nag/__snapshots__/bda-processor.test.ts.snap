@@ -382,6 +382,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
         "DefinitionSubstitutions": {
           "BDAProjectArn": "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
           "EnableHITL": "false",
+          "EvaluationLambdaArn": "",
           "HITLStatusUpdateFunctionArn": {
             "Fn::GetAtt": [
               "BdaProcessorHITLStatusUpdateFunctionF9483151",
@@ -686,7 +687,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "498f286194bc3af1208ef7a8983e9b96a9936acfb9657484218a4b6e31c976d9.zip",
+          "S3Key": "3a3f83b3f6f60f140d871390dce8020fe4652b98fdbdd5cc05459d94fda50960.zip",
         },
         "Environment": {
           "Variables": {
@@ -1115,7 +1116,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "9fd31e67af2722039547215a73c77c87157510ab527d757244a9e9ae1c0caada.zip",
+          "S3Key": "513c6c8bbea66f46156f0bfa0580c36d86d090afaa08ac80439ede4f430ed405.zip",
         },
         "Environment": {
           "Variables": {
@@ -1499,7 +1500,137 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
             {
               "Action": "bedrock:InvokeDataAutomationAsync",
               "Effect": "Allow",
-              "Resource": "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
+              "Resource": [
+                "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:us-east-1:",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":data-automation-profile/us.data-automation-v1",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:us-east-2:",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":data-automation-profile/us.data-automation-v1",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:us-west-1:",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":data-automation-profile/us.data-automation-v1",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:us-west-2:",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":data-automation-profile/us.data-automation-v1",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:eu-central-1:",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":data-automation-profile/eu.data-automation-v1",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:eu-west-1:",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":data-automation-profile/eu.data-automation-v1",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:eu-west-2:",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":data-automation-profile/eu.data-automation-v1",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:eu-west-3:",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":data-automation-profile/eu.data-automation-v1",
+                    ],
+                  ],
+                },
+              ],
             },
           ],
           "Version": "2012-10-17",
@@ -1523,7 +1654,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "45779bce375fc66e2db05f00ae321b434b7b55b7c4974f503856ad49bf24f621.zip",
+          "S3Key": "13ff25d88952ba812d26bcf109ee52031bc71b5eb0c76363c4333236f71b0e09.zip",
         },
         "Environment": {
           "Variables": {
@@ -1870,7 +2001,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "5c8030862b8fc5d6ebf3081004aceaf53cc4b122f28fc4876a3186bea0427001.zip",
+          "S3Key": "a3ba378aa1ded4f3d6a4af5437cf2792f56909ad4c8453421d0c7201125c61af.zip",
         },
         "Environment": {
           "Variables": {
@@ -2138,7 +2269,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "b1d8e7375bf165faf489be960370d0a754e6b1b7ef7fbb32d52ca0644dbfe7c1.zip",
+          "S3Key": "5709e1479282c74b8183bf620a0e76589c459888d33e74378b94f7caf8869f47.zip",
         },
         "Environment": {
           "Variables": {
@@ -2465,6 +2596,102 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "Ref": "EnvironmentConfigurationTableFFC21CA7",
         },
         "Default": {
+          "agents": {
+            "chat_companion": {
+              "model_id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            },
+            "error_analyzer": {
+              "model_id": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+              "parameters": {
+                "max_log_events": 5,
+                "time_range_hours_default": 24,
+              },
+              "system_prompt": "You are an intelligent error analysis agent for the GenAI IDP system with access to specialized diagnostic tools.
+
+GENERAL TROUBLESHOOTING WORKFLOW:
+1. Identify document status from DynamoDB
+2. Find any errors reported during Step Function execution
+3. Collect relevant logs from CloudWatch
+4. Identify any performance issues from X-Ray traces
+5. Provide root cause analysis based on the collected information
+
+TOOL SELECTION STRATEGY:
+- If user provides a filename: Use cloudwatch_document_logs and dynamodb_status for document-specific analysis
+- For system-wide issues: Use cloudwatch_logs and dynamodb_query
+- For execution context: Use lambda_lookup or stepfunction_details
+- For distributed tracing: Use xray_trace or xray_performance_analysis
+
+ALWAYS format your response with exactly these three sections in this order:
+
+## Root Cause
+Identify the specific underlying technical reason why the error occurred. Focus on the primary cause, not symptoms.
+
+## Recommendations
+Provide specific, actionable steps to resolve the issue. Limit to top three recommendations only.
+
+<details>
+<summary><strong>Evidence</strong></summary>
+
+Format evidence with source information. Include relevant data from tool responses:
+
+**For CloudWatch logs:**
+**Log Group:** [full log_group name]
+**Log Stream:** [full log_stream name]
+\`\`\`
+[ERROR] timestamp message
+\`\`\`
+
+**For other sources (DynamoDB, Step Functions, X-Ray):**
+**Source:** [service name and resource]
+\`\`\`
+Relevant data from tool response
+\`\`\`
+
+</details>
+
+FORMATTING RULES:
+- Use the exact three-section structure above
+- Make Evidence section collapsible using HTML details tags
+- Include relevant data from all tool responses (CloudWatch, DynamoDB, Step Functions, X-Ray)
+- For CloudWatch: Show complete log group and log stream names without truncation
+- Present evidence data in code blocks with appropriate source labels
+  
+ANALYSIS GUIDELINES:
+- Use multiple tools for comprehensive analysis when needed
+- Start with document-specific tools for targeted queries
+- Use system-wide tools for pattern analysis
+- Combine DynamoDB status with CloudWatch logs for complete picture
+- Leverage X-Ray for distributed system issues
+
+ROOT CAUSE DETERMINATION:
+1. Document Status: Check dynamodb_status first
+2. Execution Details: Use stepfunction_details for workflow failures
+3. Log Analysis: Use cloudwatch_document_logs or cloudwatch_logs for error details
+4. Distributed Tracing: Use xray_performance_analysis for service interaction issues
+5. Context: Use lambda_lookup for execution environment
+
+RECOMMENDATION GUIDELINES:
+For code-related issues or system bugs:
+- Do not suggest code modifications
+- Include error details, timestamps, and context
+
+For configuration-related issues:
+- Direct users to UI configuration panel
+- Specify exact configuration section and parameter names
+
+For operational issues:
+- Provide immediate troubleshooting steps
+- Include preventive measures
+
+TIME RANGE PARSING:
+- recent: 1 hour
+- last week: 168 hours  
+- last day: 24 hours
+- No time specified: 24 hours (default)
+
+IMPORTANT: Do not include any search quality reflections, search quality scores, or meta-analysis sections in your response. Only provide the three required sections: Root Cause, Recommendations, and Evidence.",
+            },
+          },
           "assessment": {
             "default_confidence_threshold": "0.8",
           },
@@ -2517,22 +2744,22 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
               "max_tokens": "10000",
               "model_id": "us.amazon.nova-pro-v1:0",
               "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Use provided ground truth data as reference to optimize field extraction and ensure consistency with expected document structure and field definitions.",
-              "temperature": "1.0",
-              "top_p": "0.1",
-              "user_prompt": "This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference.                         <GROUND_TRUTH_REFERENCE> {ground_truth_json} </GROUND_TRUTH_REFERENCE> Ground truth reference JSON has the fields we are interested in extracting from the document/image. Use the ground truth to optimize field extraction. Match field names, data types, and groupings from the reference. Image may contain multiple pages, process all pages. Extract all field names including those without values. Do not change the group name and field name from ground truth in the extracted data json. Add field_description field for every field which will contain instruction to LLM to extract the field data from the image/document. Add data_type field for every field.  Add two fields document_class and document_description.  For document_class generate a short name based on the document content like W4, I-9, Paystub.  For document_description generate a description about the document in less than 50 words. If the group repeats and follows table format, update the attributeType as "list".                          Do not extract the values. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:
-  ",
+              "temperature": "0.0",
+              "top_p": "0.0",
+              "user_prompt": "This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference.                         <GROUND_TRUTH_REFERENCE> {ground_truth_json} </GROUND_TRUTH_REFERENCE> Ground truth reference JSON has the fields we are interested in extracting from the document/image. Use the ground truth to optimize field extraction. Match field names, data types, and groupings from the reference. Image may contain multiple pages, process all pages. Extract all field names including those without values. Do not change the group name and field name from ground truth in the extracted data json. Add field_description field for every field which will contain instruction to LLM to extract the field data from the image/document. Add data_type field for every field.  Add two fields document_class and document_description.  For document_class generate a short name based on the document content like W4, I-9, Paystub.  For document_description generate a description about the document in less than 50 words. If the group repeats and follows table format, update the attributeType as "list".                          Do not extract the values. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:",
             },
             "without_ground_truth": {
               "max_tokens": "10000",
               "model_id": "us.amazon.nova-pro-v1:0",
               "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Analyze forms line by line to identify field names, data types, and organizational structure. Focus on creating comprehensive blueprints for document processing without extracting actual values.",
-              "temperature": "1.0",
-              "top_p": "0.1",
+              "temperature": "0.0",
+              "top_p": "0.0",
               "user_prompt": "This image contains forms data. Analyze the form line by line. Image may contains multiple pages, process all the pages.  Form may contain multiple name value pair in one line.  Extract all the names in the form including the name value pair which doesn't have value.  Organize them into groups, extract field_name, data_type and field description Field_name should be less than 60 characters, should not have space use '-' instead of space. field_description is a brief description of the field and the location of the field like box number or line number in the form and section of the form. Field_name should be unique within the group. Add two fields document_class and document_description.  For document_class generate a short name based on the document content like W4, I-9, Paystub.  For document_description generate a description about the document in less than 50 words. 
 Group the fields based on the section they are grouped in the form. Group should have attributeType as "group". If the group repeats and follows table format, update the attributeType as "list". Do not extract the values. Return the extracted data in JSON format. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:",
             },
           },
           "evaluation": {
+            "enabled": true,
             "llm_method": {
               "max_tokens": "4096",
               "model": "us.anthropic.claude-3-haiku-20240307-v1:0",
@@ -2557,7 +2784,7 @@ Respond ONLY with the JSON and nothing else. Here's the exact format:
 }",
               "temperature": "0.0",
               "top_k": "5",
-              "top_p": "0.1",
+              "top_p": "0.0",
             },
           },
           "notes": "Processing configuration in BDA project.",
@@ -2636,6 +2863,27 @@ Respond ONLY with the JSON and nothing else. Here's the exact format:
               ],
             },
             {
+              "name": "bedrock/us.amazon.nova-2-lite-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "3.0E-7",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "2.5E-6",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "7.5E-8",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "3.0E-7",
+                },
+              ],
+            },
+            {
               "name": "bedrock/us.anthropic.claude-3-haiku-20240307-v1:0",
               "units": [
                 {
@@ -2666,6 +2914,27 @@ Respond ONLY with the JSON and nothing else. Here's the exact format:
                 {
                   "name": "cacheWriteInputTokens",
                   "price": "1.0E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "1.1E-06",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "5.5E-06",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "1.1E-07",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "1.4E-06",
                 },
               ],
             },
@@ -2754,6 +3023,48 @@ Respond ONLY with the JSON and nothing else. Here's the exact format:
               ],
             },
             {
+              "name": "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "3.3E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.65E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "3.3E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "4.125E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "6.6E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "2.475E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "6.6E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "8.25E-6",
+                },
+              ],
+            },
+            {
               "name": "bedrock/us.anthropic.claude-opus-4-20250514-v1:0",
               "units": [
                 {
@@ -2792,6 +3103,263 @@ Respond ONLY with the JSON and nothing else. Here's the exact format:
                 {
                   "name": "cacheWriteInputTokens",
                   "price": "1.875E-5",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "5.0E-06",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "2.5E-05",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "5.0E-07",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "6.25E-06",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.amazon.nova-lite-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "7.8E-8",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "3.1E-7",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "1.9E-8",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "7.8E-8",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.amazon.nova-pro-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "1.0E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "4.2E-6",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "2.6E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "1.0E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.amazon.nova-2-lite-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "3.9E-7",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "3.27E-6",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "9.75E-8",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "3.9E-7",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.anthropic.claude-3-haiku-20240307-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "2.5E-7",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.25E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "1.1E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "5.5E-6",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "1.1E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "1.4E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "3.0E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.5E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "3.0E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "3.75E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "3.0E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.5E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "3.0E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "3.75E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.anthropic.claude-sonnet-4-20250514-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "3.0E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.5E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "3.0E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "3.75E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "3.3E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "1.65E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "3.3E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "4.125E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "6.6E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "2.475E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "6.6E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "8.25E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/eu.anthropic.claude-opus-4-5-20251101-v1:0",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "5.0E-6",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "2.5E-5",
+                },
+                {
+                  "name": "cacheReadInputTokens",
+                  "price": "5.0E-7",
+                },
+                {
+                  "name": "cacheWriteInputTokens",
+                  "price": "6.25E-6",
+                },
+              ],
+            },
+            {
+              "name": "bedrock/qwen.qwen3-vl-235b-a22b",
+              "units": [
+                {
+                  "name": "inputTokens",
+                  "price": "5.3E-7",
+                },
+                {
+                  "name": "outputTokens",
+                  "price": "2.66E-6",
                 },
               ],
             },
@@ -2845,7 +3413,7 @@ You MUST return ONLY valid JSON with the following structure and nothing else:
 Do not include any text, explanations, or notes outside of this JSON structure. The JSON must be properly formatted and parseable.",
             "temperature": "0.0",
             "top_k": "5",
-            "top_p": "0.1",
+            "top_p": "0.0",
           },
         },
         "ServiceToken": {
@@ -3615,7 +4183,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "2808911717496b0149fba49c0a13571259bf71e34cffde5d8846375b4c129898.zip",
+          "S3Key": "d431f21159f78af8ddad8adaaeefaa7cdb18c71b0806c3a1c3bd2c0aa4b45d2f.zip",
         },
         "Environment": {
           "Variables": {
@@ -3797,7 +4365,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "4b3f57cd4d14ceaad669c38b2750de1bd471cffdd3fb048d51c3e36ea87685ef.zip",
+          "S3Key": "6fae8cfc606dd44f5c0b5a44de673a6a018e1121df9782156bfbcb658bf4b5f9.zip",
         },
         "DeadLetterConfig": {
           "TargetArn": {
@@ -4012,7 +4580,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "54e7d9c732090ea5039716687e3a5e7ca524ed38ad50fbd174580970ec8d9871.zip",
+          "S3Key": "5fb6889555b71a4cfe88010eeba67a026732b3d4c2e02a0a79dc96a2f839a0f4.zip",
         },
         "Environment": {
           "Variables": {
@@ -4022,6 +4590,11 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           },
         },
         "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerd7517139DE3E71C4",
+          },
+        ],
         "Role": {
           "Fn::GetAtt": [
             "EnvironmentUpdateConfigurationFunctionServiceRole6FF8673E",
@@ -4132,7 +4705,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "4ba0f2e35d7e2158829d169227f92e84fc05817bd24d7b6b42194b4ae9c83a4b.zip",
+          "S3Key": "06e8a65360b073ff6d1e2e7729cba5c308c1d3965cfdbade00e447e8042abc81.zip",
         },
         "DeadLetterConfig": {
           "TargetArn": {
@@ -4381,7 +4954,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "30b3ba90159d31e284ee43e6f518f32b456050143141edcb11f0d59b811e6135.zip",
+          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service",
       },
@@ -4396,7 +4969,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "30b3ba90159d31e284ee43e6f518f32b456050143141edcb11f0d59b811e6135.zip",
+          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: appsync, summarization",
       },
@@ -4411,7 +4984,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "30b3ba90159d31e284ee43e6f518f32b456050143141edcb11f0d59b811e6135.zip",
+          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only)",
       },
