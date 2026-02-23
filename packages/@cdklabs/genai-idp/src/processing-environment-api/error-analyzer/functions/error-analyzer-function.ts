@@ -79,6 +79,7 @@ export class ErrorAnalyzerFunction extends lambda_python.PythonFunction {
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "error_analyzer",

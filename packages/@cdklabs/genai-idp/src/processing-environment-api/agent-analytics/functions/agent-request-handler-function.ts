@@ -72,6 +72,7 @@ export class AgentRequestHandlerFunction extends PythonFunction {
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "agent_request_handler",

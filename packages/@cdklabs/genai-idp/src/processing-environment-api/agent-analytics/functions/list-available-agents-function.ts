@@ -60,6 +60,7 @@ export class ListAvailableAgentsFunction extends PythonFunction {
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "list_available_agents",

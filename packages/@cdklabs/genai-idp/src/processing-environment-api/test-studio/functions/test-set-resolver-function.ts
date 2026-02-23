@@ -74,6 +74,7 @@ export class TestSetResolverFunction extends lambda_python.PythonFunction {
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "test_set_resolver",

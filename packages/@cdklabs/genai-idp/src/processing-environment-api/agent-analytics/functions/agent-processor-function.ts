@@ -105,6 +105,7 @@ export class AgentProcessorFunction extends PythonFunction {
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "agent_processor",

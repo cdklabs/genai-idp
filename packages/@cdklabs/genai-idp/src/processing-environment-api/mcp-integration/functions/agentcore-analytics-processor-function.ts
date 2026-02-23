@@ -84,6 +84,7 @@ export class AgentCoreAnalyticsProcessorFunction
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "agentcore_analytics_processor",

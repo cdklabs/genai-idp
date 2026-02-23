@@ -74,6 +74,7 @@ export class AgentCoreGatewayManagerFunction
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "agentcore_gateway_manager",

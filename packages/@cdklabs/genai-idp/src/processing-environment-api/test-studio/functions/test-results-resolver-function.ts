@@ -68,6 +68,7 @@ export class TestResultsResolverFunction extends lambda_python.PythonFunction {
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "test_results_resolver",

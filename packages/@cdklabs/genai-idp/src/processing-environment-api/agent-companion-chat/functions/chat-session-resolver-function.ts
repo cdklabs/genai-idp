@@ -56,6 +56,7 @@ export class ChatSessionResolverFunction extends lambda_python.PythonFunction {
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "create_chat_session_resolver",

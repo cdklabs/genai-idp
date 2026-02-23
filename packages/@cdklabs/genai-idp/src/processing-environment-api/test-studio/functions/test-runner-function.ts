@@ -69,6 +69,7 @@ export class TestRunnerFunction extends lambda_python.PythonFunction {
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "test_runner",

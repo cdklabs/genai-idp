@@ -61,6 +61,7 @@ export class AgentChatProcessorFunction extends lambda_python.PythonFunction {
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "agent_chat_processor",

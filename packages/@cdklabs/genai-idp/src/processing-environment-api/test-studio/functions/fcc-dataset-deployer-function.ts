@@ -60,6 +60,7 @@ export class FccDatasetDeployerFunction extends lambda_python.PythonFunction {
         "..",
         "..",
         "..",
+        "..",
         "assets",
         "lambdas",
         "fcc_dataset_deployer",
