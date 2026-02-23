@@ -736,7 +736,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "14ef76276eba0534b28b8d6a84478d2d46797f1180bc2b2e3939dfcd915560a4.zip"
+     "S3Key": "7b326c1a8b2b08734d281b87d775341c260f451153cab8c26580acbc758ccb30.zip"
     },
     "Environment": {
      "Variables": {
@@ -746,6 +746,11 @@
      }
     },
     "Handler": "index.handler",
+    "Layers": [
+     {
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerd7517139DE3E71C4"
+     }
+    ],
     "Role": {
      "Fn::GetAtt": [
       "EnvironmentUpdateConfigurationFunctionServiceRole6FF8673E",
@@ -921,7 +926,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "a5401557683a007e2a29538f5c1d1273d5b167278f7f4f306d539110c4d1d503.zip"
+     "S3Key": "315e50c53ef9d511ab060b5b5eea56bb4b63ea12c27cff82c4d40cb916739bf2.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -1169,7 +1174,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "18f6ea7b5e8599f5ca64d2d58c2b649a109fbe72fc46f5187dea73fa8eeeb920.zip"
+     "S3Key": "cb17d8774b5dbd987c51343bb31f7d4d1f9ace8d0f4f8798e32dc13b7b31881b.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -1381,7 +1386,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "9471d3642d5c17829435b427652e8c8240914a65bfe8057982794f65c66b2e9f.zip"
+     "S3Key": "0b40febe0f92a9ec1be3ed3494cc2f2c076327f1ff84a942898d66a03dc5c155.zip"
     },
     "Environment": {
      "Variables": {
@@ -1412,6 +1417,23 @@
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
+  "comamazonawscdkcdklabsgenaiidpidpcommonlayerd7517139DE3E71C4": {
+   "Type": "AWS::Lambda::LayerVersion",
+   "Properties": {
+    "CompatibleRuntimes": [
+     "python3.12"
+    ],
+    "Content": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "a4e8ca9b8484b498d4958ee8be008ab12bf5794a1087dd8eb48fcd5b656c6395.zip"
+    },
+    "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only)"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete"
+  },
   "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A": {
    "Type": "AWS::Lambda::LayerVersion",
    "Properties": {
@@ -1422,7 +1444,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "a7c7a5f4adccbedb67618e7771cb6aa138d1a10c24d01fb300bf48974921d128.zip"
+     "S3Key": "af14ccdabbdf70e7da03bf0851ebe796800f715dccd0a7392d7237958940f3ea.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service"
    },
@@ -2992,7 +3014,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "4500fb0535cfa2e0c3e2bcb4cf19237ac159f199b861c9789f0ee88ad654f092.zip"
+     "S3Key": "d9265e11f6a0839222edec6f8f32f54bc01a92865c61b7492aab7f14e596835d.zip"
     },
     "Environment": {
      "Variables": {
@@ -3328,7 +3350,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "48e640369b584d07a6be57f8db800ff601158afbc854ddfdd3c550857d06e9c0.zip"
+     "S3Key": "a63b8934e0eb7ac25b4b92a6fed13b478e3903c84e5ce8719901ffc8b6169330.zip"
     },
     "Environment": {
      "Variables": {
@@ -3665,7 +3687,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "6f22bc52b9a4a87dccec81b3b7e00837854ea914248c268f041c190cee39c5f5.zip"
+     "S3Key": "69b494750643d34681db2101141c99505d1186c8712e7e942c1e2b955384d448.zip"
     },
     "Environment": {
      "Variables": {
@@ -4001,7 +4023,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "14b979e27142aa58a2108a1a2a5505b10772101e0f8152418bff96dc017cd87d.zip"
+     "S3Key": "2fbc8aad6a497af516804f72f17de02d382a3da6cd792a3d5fc740336c4ced3b.zip"
     },
     "Environment": {
      "Variables": {
@@ -4335,7 +4357,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "685ef30f10f8a056b9becf891414e3706fd98de4d96228603119f6700b0e9867.zip"
+     "S3Key": "43b46681095352daf0fb87e4fef15030054f188c67e3355645a56d00aa429dd3.zip"
     },
     "Environment": {
      "Variables": {
@@ -4675,7 +4697,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "a24a92aaa5f7afecfc75b337d473864e2b2a0f30a8285fa127017e20ef9091e6.zip"
+     "S3Key": "7264c3b576ea223c221a3dc94602a1e691e088ef66d25db68619a915dd9d10e1.zip"
     },
     "Environment": {
      "Variables": {
@@ -4864,7 +4886,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "b520ff573e392a070e5f8aec9e5e606dfcb554c44141944a7906e61aadee11b5.zip"
+     "S3Key": "7b2bbe89cbee9501563aea9f50d5f34440a0dd83d8982f0d42e5fd9bd4542240.zip"
     },
     "Environment": {
      "Variables": {
@@ -5364,6 +5386,7 @@
        "Arn"
       ]
      },
+     "EvaluationLambdaArn": "",
      "OutputBucket": {
       "Ref": "OutputBucket7114EB27"
      }
@@ -5578,7 +5601,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "b47e69a29c801db7ce44b0e4d0e668b1ba3f6d5552dfe53497cd0a2959e1b90c.zip"
+     "S3Key": "a99b5e00e27aa94e1fa72b915dc3ce09da131090c4ff60d51dce0572d86afa5d.zip"
     },
     "Environment": {
      "Variables": {
@@ -5817,7 +5840,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "7a0e267fbe0dd85b7df048546056553cfb4fdac2cd247a9f8b72859ae059814c.zip"
+     "S3Key": "517ddbf6b647f7164d30e5167350f953f06d3114a973651fa60b2041bcd7fefb.zip"
     },
     "Environment": {
      "Variables": {
@@ -6018,7 +6041,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "0e82b5ab2d8b4ae693f8e78b4417a41ab7b7f092e883cd95e14c01cb367b5283.zip"
+     "S3Key": "752cb3d93e843d210ef314377c689fb04ac81d6f80f7d8060de0fa90251d934a.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr"
    },
@@ -6035,7 +6058,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "a125966b905b4f1a7507cf1810d67f035056dbd94b3284dab0c9d832833a4469.zip"
+     "S3Key": "c8e6754e04f2364e80bfd562b7cadd5d10f48b836f5cd390b94aa098e8425c6b.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service"
    },
@@ -6052,7 +6075,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "95c48d590190994abd21444c9514b53e0dd0ca5e4ef8c14c946ea308d6b4ed80.zip"
+     "S3Key": "3d0c32671ad382e67de5fc781d090c955354122b9635b75446a6afb5447099a1.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction"
    },
@@ -6069,7 +6092,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "672b83a806c65855cfd91a7f52f722bf9fce7e6023225f621187bf3fd076a1dd.zip"
+     "S3Key": "c80fe6f6d6aa770b140b3440343e360a8ca96860b1a4eb75a0a3b88d0f4abee2.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service"
    },
