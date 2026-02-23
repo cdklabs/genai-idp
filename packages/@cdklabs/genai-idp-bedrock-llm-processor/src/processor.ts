@@ -9,12 +9,16 @@ import {
   IProcessingEnvironment,
   IDocumentProcessor,
   ICustomPromptGenerator,
+  SectionSplittingStrategy,
+  MaxPagesForClassification,
 } from "@cdklabs/genai-idp";
+import { EvaluationFunction } from "@cdklabs/genai-idp/lib/internal/functions/evaluation-function";
 import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as events from "aws-cdk-lib/aws-events";
 import * as eventtargets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
@@ -166,6 +170,71 @@ export interface BedrockLlmProcessorProps extends DocumentProcessorProps {
    * @default false
    */
   readonly enableHitl?: boolean;
+
+  /**
+   * Enable agentic extraction with Strands framework.
+   *
+   * When enabled, uses the Strands agent framework for intelligent, self-correcting
+   * document extraction with iterative validation loops. This provides more robust
+   * extraction for complex documents but may increase processing time.
+   *
+   * @default false
+   * @since v0.4.8
+   */
+  readonly enableAgenticExtraction?: boolean;
+
+  /**
+   * Enable regex-based classification for performance optimization.
+   *
+   * When enabled, attempts to classify documents using regex patterns matching
+   * document names or page content before falling back to LLM classification.
+   * This can significantly improve performance and reduce costs for documents
+   * with predictable naming patterns.
+   *
+   * @default false
+   * @since v0.4.8
+   */
+  readonly enableRegexClassification?: boolean;
+
+  /**
+   * Enable edit sections feature for classification updates.
+   *
+   * When enabled, allows users to modify document classification through the UI
+   * and trigger selective reprocessing of affected sections. This provides
+   * flexibility to correct classification errors without reprocessing entire documents.
+   *
+   * @default false
+   * @since v0.4.8
+   */
+  readonly enableEditSections?: boolean;
+
+  /**
+   * Maximum pages for classification.
+   *
+   * Controls how many pages are sent to the classification model. Can be a specific
+   * number or MaxPagesForClassification.ALL to use all pages. Limiting pages can
+   * optimize costs and performance for large documents.
+   *
+   * @default MaxPagesForClassification.ALL
+   * @since v0.4.8
+   */
+  readonly maxPagesForClassification?: number | MaxPagesForClassification;
+
+  /**
+   * Section splitting strategy configuration.
+   *
+   * Controls how multi-page documents are divided into sections during classification.
+   * This affects how documents of the same type are grouped together and processed.
+   *
+   * Options:
+   * - DISABLED: Entire document treated as single section with first detected class
+   * - PAGE: One section per page preventing automatic joining of same-type documents
+   * - LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
+   *
+   * @default SectionSplittingStrategy.LLM_DETERMINED
+   * @since v0.4.8
+   */
+  readonly sectionSplittingStrategy?: SectionSplittingStrategy;
 }
 
 /**
@@ -181,6 +250,7 @@ export class BedrockLlmProcessor
   extends Construct
   implements IBedrockLlmProcessor
 {
+  public readonly evaluationFunction?: any;
   public readonly environment: IProcessingEnvironment;
   public readonly maxProcessingConcurrency: number;
   public readonly stateMachine: sfn.IStateMachine;
@@ -414,6 +484,34 @@ export class BedrockLlmProcessor
       },
     );
 
+    // Create evaluation function if baseline bucket and model are provided
+    let evaluationFunction: lambda.IFunction | undefined;
+    if (
+      props.evaluationBaselineBucket &&
+      renderedConfiguration.evaluationModel
+    ) {
+      evaluationFunction = new EvaluationFunction(this, "EvaluationFunction", {
+        metricNamespace: this.environment.metricNamespace,
+        logLevel: this.environment.logLevel,
+        outputBucket: this.environment.outputBucket,
+        workingBucket: this.environment.workingBucket,
+        trackingTable: this.environment.trackingTable,
+        configurationTable: this.environment.configurationTable,
+        baselineBucket: props.evaluationBaselineBucket,
+        reportingEnvironment: this.environment.reportingEnvironment,
+        saveReportingDataFunction: this.environment.saveReportingDataFunction,
+        api: this.environment.api,
+        logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
+          encryptionKey: this.environment.encryptionKey,
+          retention: this.environment.logRetention,
+        }),
+        ...this.environment.vpcConfiguration,
+      });
+
+      this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
+      renderedConfiguration.evaluationModel.grantInvoke(evaluationFunction);
+    }
+
     // Create State Machine
     this.stateMachine = new sfn.StateMachine(
       this,
@@ -431,6 +529,7 @@ export class BedrockLlmProcessor
           SummarizationLambdaArn: summarizationFunction.functionArn,
           HITLWaitFunctionArn: hitlWaitFunction.functionArn,
           HITLStatusUpdateFunctionArn: hitlStatusUpdateFunction.functionArn,
+          EvaluationLambdaArn: evaluationFunction?.functionArn || "",
           OutputBucket: this.environment.outputBucket.bucketName,
         },
         role: stateMachineRole,
@@ -441,6 +540,11 @@ export class BedrockLlmProcessor
         },
       },
     );
+
+    // Grant invoke permission to evaluation function if it exists
+    if (evaluationFunction) {
+      evaluationFunction.grantInvoke(stateMachineRole);
+    }
 
     // Create HITL Process Function for handling A2I completion events
     const hitlProcessFunction = new HitlProcessFunction(
@@ -476,6 +580,7 @@ export class BedrockLlmProcessor
       new eventtargets.LambdaFunction(hitlProcessFunction),
     );
 
+    // Attach processor to environment for event handling and permissions
     this.environment.attach(this);
   }
 
