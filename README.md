@@ -1,8 +1,24 @@
 # GenAI IDP Accelerator for AWS CDK
 
-[![Compatible with version: 0.3.18](https://img.shields.io/badge/Compatible%20with-0.3.18-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.3.18)
+[![Compatible with version: 0.4.8](https://img.shields.io/badge/Compatible%20with-0.4.8-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.4.8)
 
 A modular AWS CDK implementation of the GenAI Intelligent Document Processing (IDP) Accelerator, designed to transform unstructured documents into structured data at scale using AWS's latest AI/ML services.
+
+## What's New in v0.4.8
+
+This release brings significant enhancements to testing, AI-powered assistance, and developer experience:
+
+- **Test Studio** - Comprehensive test management with automated dataset deployment, interactive charts, and cross-test comparison
+- **Agent Companion Chat** - Multi-agent AI assistant with real-time streaming for interactive troubleshooting and analytics
+- **MCP Integration** - Model Context Protocol server deployment with OAuth 2.0 for external application access
+- **Error Analyzer** - AI-powered failure diagnosis using Claude Sonnet 4 with CloudWatch log and X-Ray trace analysis
+- **Enhanced Document Discovery** - Pattern-neutral discovery with BDA blueprint auto-generation
+- **JSON Schema Configuration** - Modern configuration format with validation and migration from legacy formats
+- **Advanced Evaluation** - Stickler-based evaluation with field importance weights and enhanced comparators
+- **Agentic Extraction** - Iterative validation loops with Pydantic models for Pattern 2
+- **Section Splitting Strategies** - Flexible document segmentation (disabled, page-based, LLM-determined)
+- **S3 Vectors Support** - Cost-effective vector storage for Knowledge Base with sub-second latency
+- **X-Ray Tracing** - Distributed tracing support for Lambda functions
 
 ## Overview
 
