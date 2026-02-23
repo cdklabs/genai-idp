@@ -157,7 +157,6 @@ export class BdaLendingStack extends Stack {
       api,
       metricNamespace,
       reportingEnvironment,
-      documentDiscovery,
       // vpcConfiguration: {
       //   vpc,
       //   vpcSubnets,
