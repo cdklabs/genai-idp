@@ -8,12 +8,15 @@ import {
   DocumentProcessorProps,
   IDocumentProcessor,
   IProcessingEnvironment,
+  SectionSplittingStrategy,
 } from "@cdklabs/genai-idp";
+import { EvaluationFunction } from "@cdklabs/genai-idp/lib/internal/functions/evaluation-function";
 import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import * as cdk from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as events from "aws-cdk-lib/aws-events";
 import * as eventtargets from "aws-cdk-lib/aws-events-targets";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
@@ -106,6 +109,33 @@ export interface BdaProcessorProps extends DocumentProcessorProps {
    * @default - No review portal URL is provided
    */
   readonly sageMakerA2IReviewPortalURL?: string;
+
+  /**
+   * Section splitting strategy configuration.
+   *
+   * Controls how multi-page documents are divided into sections during classification.
+   * This affects how documents of the same type are grouped together and processed.
+   *
+   * Options:
+   * - DISABLED: Entire document treated as single section with first detected class
+   * - PAGE: One section per page preventing automatic joining of same-type documents
+   * - LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
+   *
+   * @default SectionSplittingStrategy.LLM_DETERMINED
+   * @since v0.4.8
+   */
+  readonly sectionSplittingStrategy?: SectionSplittingStrategy;
+
+  /**
+   * Enable discovery integration for BDA blueprint generation.
+   *
+   * When enabled, allows the discovery module to automatically generate
+   * BDA blueprints from document samples, streamlining the configuration process.
+   *
+   * @default false
+   * @since v0.4.8
+   */
+  readonly enableDiscovery?: boolean;
 }
 
 export class BdaProcessor extends Construct implements IBdaProcessor {
@@ -229,6 +259,31 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
       },
     );
 
+    // Create evaluation function if baseline bucket and model are provided
+    let evaluationFunction: lambda.IFunction | undefined;
+    if (evaluationBaselineBucket && renderedDefinition.evaluationModel) {
+      evaluationFunction = new EvaluationFunction(this, "EvaluationFunction", {
+        metricNamespace: this.environment.metricNamespace,
+        logLevel: this.environment.logLevel,
+        outputBucket: this.environment.outputBucket,
+        workingBucket: this.environment.workingBucket,
+        trackingTable: this.environment.trackingTable,
+        configurationTable: this.environment.configurationTable,
+        baselineBucket: evaluationBaselineBucket,
+        reportingEnvironment: this.environment.reportingEnvironment,
+        saveReportingDataFunction: this.environment.saveReportingDataFunction,
+        api: this.environment.api,
+        logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
+          encryptionKey: this.environment.encryptionKey,
+          retention: this.environment.logRetention,
+        }),
+        ...this.environment.vpcConfiguration,
+      });
+
+      this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
+      renderedDefinition.evaluationModel.grantInvoke(evaluationFunction);
+    }
+
     this.stateMachine = new sfn.StateMachine(
       this,
       "DocumentProcessingStateMachine",
@@ -242,6 +297,7 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
           SummarizationLambdaArn: summarizationFunction.functionArn,
           HITLWaitFunctionArn: hitlWaitFunction.functionArn,
           HITLStatusUpdateFunctionArn: hitlStatusUpdateFunction.functionArn,
+          EvaluationLambdaArn: evaluationFunction?.functionArn || "",
           EnableHITL: props.enableHITL === true ? "true" : "false",
           SageMakerA2IReviewPortalURL: props.sageMakerA2IReviewPortalURL || "",
           OutputBucket: this.environment.outputBucket.bucketName,
@@ -264,6 +320,11 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
     summarizationFunction.grantInvoke(this.stateMachine);
     hitlWaitFunction.grantInvoke(this.stateMachine);
     hitlStatusUpdateFunction.grantInvoke(this.stateMachine);
+
+    // Grant permission to invoke evaluation function if it exists
+    if (evaluationFunction) {
+      evaluationFunction.grantInvoke(this.stateMachine);
+    }
 
     const bdaCompletionFunction = new BdaCompletionFunction(
       this,
@@ -308,10 +369,8 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
 
     this.addHitlEvent(hitlProcessFunction);
 
-    this.environment.attach(this, {
-      evaluationBucket: evaluationBaselineBucket,
-      evaluationModel: renderedDefinition.evaluationModel,
-    });
+    // Attach processor to environment (creates queue processor and event rules)
+    this.environment.attach(this);
   }
 
   private addEvent(bdaCompletionFunction: BdaCompletionFunction) {
