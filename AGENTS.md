@@ -32,10 +32,13 @@ src/{feature-name}/
 ```
 
 **Examples of Correct Structure:**
-- `src/document-discovery/` - Document discovery module
-- `src/reporting/` - Reporting environment module
-- `src/test-studio/` - Test management module
-- `src/agent-companion-chat/` - AI assistant module
+- `src/document-discovery/` - Document discovery module (core processing)
+- `src/reporting/` - Reporting environment module (core processing)
+- `src/processing-environment-api/test-studio/` - Test management module (auxiliary)
+- `src/processing-environment-api/agent-companion-chat/` - AI assistant module (auxiliary)
+- `src/processing-environment-api/agent-analytics/` - Analytics agent module (auxiliary)
+- `src/processing-environment-api/error-analyzer/` - Error analysis module (auxiliary)
+- `src/processing-environment-api/mcp-integration/` - MCP integration module (auxiliary)
 
 **Rules:**
 - ✅ Each feature gets its own module folder
@@ -48,10 +51,19 @@ src/{feature-name}/
 
 ```
 src/
-├── {feature-modules}/              # Feature-specific modules
+├── document-discovery/             # Core: Document discovery module
+├── reporting/                      # Core: Reporting environment module
+├── processing-environment-api/     # Auxiliary features and GraphQL API
+│   ├── agent-analytics/           # Analytics agent
+│   ├── agent-companion-chat/      # AI assistant
+│   ├── error-analyzer/            # Error analysis
+│   ├── mcp-integration/           # MCP integration
+│   ├── test-studio/               # Test management
+│   └── functions/                 # API resolver functions
 ├── functions/                      # Shared/utility functions
 ├── internal/                       # Internal utilities
-├── processing-environment-api/     # GraphQL API components
+├── hitl/                          # Human-in-the-loop components
+├── custom-prompt-generator/        # Custom prompt generation
 ├── {core-constructs}.ts           # Core constructs (tables, environment, etc.)
 └── index.ts                       # Main package exports
 ```
