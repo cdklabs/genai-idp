@@ -187,6 +187,7 @@ export class BdaLendingStack extends Stack {
       userIdentity,
       environment,
       apiUrl: api.graphqlUrl,
+      documentDiscovery,
       enableDocumentKnowledgeBase: true,
     });
 
