@@ -16,18 +16,17 @@ import { FixedKeyTableProps as SessionTableProps } from "../../fixed-key-table-p
 export interface ISessionTable extends ITable {}
 
 /**
- * A DynamoDB table for storing chat sessions and conversation history.
+ * A DynamoDB table for storing chat sessions and metadata.
  *
- * This table uses a composite key (PK, SK) to efficiently store and query
- * chat session data including session metadata and individual conversation
- * turns. The table design supports conversation history management with
- * automatic cleanup through TTL attributes.
+ * This table uses a composite key (userId, sessionId) to efficiently store and query
+ * chat session metadata including session configuration, titles, and timestamps.
+ * The table design supports session management with automatic cleanup through TTL attributes.
  *
  * Session data stored in this table includes:
  * - Chat session metadata and configuration
- * - Individual conversation turns and responses
- * - Agent interaction history and tool usage
- * - User context and conversation state
+ * - Session titles and descriptions
+ * - User associations and permissions
+ * - Session creation and update timestamps
  */
 export class SessionTable extends Table implements ISessionTable {
   /**
@@ -41,11 +40,11 @@ export class SessionTable extends Table implements ISessionTable {
     super(scope, id, {
       ...props,
       partitionKey: {
-        name: "PK",
+        name: "userId",
         type: AttributeType.STRING,
       },
       sortKey: {
-        name: "SK",
+        name: "sessionId",
         type: AttributeType.STRING,
       },
       timeToLiveAttribute: "ExpiresAfter",

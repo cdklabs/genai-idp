@@ -6,31 +6,30 @@ SPDX-License-Identifier: Apache-2.0
 import * as path from "path";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
 import * as cdk from "aws-cdk-lib";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../../functions/idp-python-function-options";
+import { IMessagesTable } from "../messages-table";
 import { ISessionTable } from "../session-table";
 
 /**
- * Properties for the Chat Session Resolver function.
+ * Properties for the Delete Agent Chat Session function.
  *
- * This function handles GraphQL resolvers for chat session management
- * including creating, listing, updating, and deleting chat sessions.
+ * This function deletes a chat session and all its associated messages.
  */
-export interface ChatSessionResolverFunctionProps extends IdpPythonFunctionOptions {
+export interface DeleteAgentChatSessionFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The DynamoDB table for chat session storage.
-   * The function uses this table to manage conversation sessions and metadata.
+   * The function deletes session metadata from this table.
    */
   readonly sessionTable: ISessionTable;
 
   /**
    * The DynamoDB table for chat messages storage.
-   * The function uses this table to manage conversation messages.
+   * The function deletes all messages for the session from this table.
    */
-  readonly messagesTable: dynamodb.ITable;
+  readonly messagesTable: IMessagesTable;
 
   /**
    * Optional encryption key for the function.
@@ -40,20 +39,19 @@ export interface ChatSessionResolverFunctionProps extends IdpPythonFunctionOptio
 }
 
 /**
- * Lambda function that handles GraphQL resolvers for chat session management.
+ * Lambda function that deletes a chat session and its messages.
  *
- * This function provides resolvers for:
- * - createChatSession: Create a new chat session
- * - listChatSessions: List all chat sessions for a user with pagination
- * - deleteChatSession: Delete a chat session and all its messages
- * - updateChatSessionTitle: Update the title of an existing chat session
- * - getChatSessionDetails: Get detailed information about a specific session
+ * This function performs a batch delete operation to remove:
+ * 1. The session metadata from ChatSessionsTable
+ * 2. All messages associated with the session from ChatMessagesTable
  */
-export class ChatSessionResolverFunction extends lambda_python.PythonFunction {
+export class DeleteAgentChatSessionFunction
+  extends lambda_python.PythonFunction
+{
   constructor(
     scope: Construct,
     id: string,
-    props: ChatSessionResolverFunctionProps,
+    props: DeleteAgentChatSessionFunctionProps,
   ) {
     super(scope, id, {
       ...props,
@@ -66,7 +64,7 @@ export class ChatSessionResolverFunction extends lambda_python.PythonFunction {
         "..",
         "assets",
         "lambdas",
-        "create_chat_session_resolver",
+        "delete_agent_chat_session_resolver",
       ),
       bundling: {
         commandHooks: {
@@ -83,11 +81,12 @@ export class ChatSessionResolverFunction extends lambda_python.PythonFunction {
           },
         },
       },
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 256,
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
       environment: {
-        CHAT_HISTORY_TABLE: props.messagesTable.tableName,
         LOG_LEVEL: "INFO",
+        CHAT_MESSAGES_TABLE: props.messagesTable.tableName,
+        CHAT_SESSIONS_TABLE: props.sessionTable.tableName,
       },
     });
 

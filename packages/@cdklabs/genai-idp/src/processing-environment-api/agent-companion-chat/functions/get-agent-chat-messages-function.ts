@@ -6,31 +6,23 @@ SPDX-License-Identifier: Apache-2.0
 import * as path from "path";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
 import * as cdk from "aws-cdk-lib";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../../functions/idp-python-function-options";
-import { ISessionTable } from "../session-table";
+import { IMessagesTable } from "../messages-table";
 
 /**
- * Properties for the Chat Session Resolver function.
+ * Properties for the Get Agent Chat Messages function.
  *
- * This function handles GraphQL resolvers for chat session management
- * including creating, listing, updating, and deleting chat sessions.
+ * This function retrieves chat messages for a given session.
  */
-export interface ChatSessionResolverFunctionProps extends IdpPythonFunctionOptions {
-  /**
-   * The DynamoDB table for chat session storage.
-   * The function uses this table to manage conversation sessions and metadata.
-   */
-  readonly sessionTable: ISessionTable;
-
+export interface GetAgentChatMessagesFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The DynamoDB table for chat messages storage.
-   * The function uses this table to manage conversation messages.
+   * The function queries this table to retrieve conversation history.
    */
-  readonly messagesTable: dynamodb.ITable;
+  readonly messagesTable: IMessagesTable;
 
   /**
    * Optional encryption key for the function.
@@ -40,20 +32,16 @@ export interface ChatSessionResolverFunctionProps extends IdpPythonFunctionOptio
 }
 
 /**
- * Lambda function that handles GraphQL resolvers for chat session management.
+ * Lambda function that retrieves chat messages for a session.
  *
- * This function provides resolvers for:
- * - createChatSession: Create a new chat session
- * - listChatSessions: List all chat sessions for a user with pagination
- * - deleteChatSession: Delete a chat session and all its messages
- * - updateChatSessionTitle: Update the title of an existing chat session
- * - getChatSessionDetails: Get detailed information about a specific session
+ * This function queries the ChatMessagesTable by PK/SK to retrieve
+ * the conversation history for a specific chat session.
  */
-export class ChatSessionResolverFunction extends lambda_python.PythonFunction {
+export class GetAgentChatMessagesFunction extends lambda_python.PythonFunction {
   constructor(
     scope: Construct,
     id: string,
-    props: ChatSessionResolverFunctionProps,
+    props: GetAgentChatMessagesFunctionProps,
   ) {
     super(scope, id, {
       ...props,
@@ -66,7 +54,7 @@ export class ChatSessionResolverFunction extends lambda_python.PythonFunction {
         "..",
         "assets",
         "lambdas",
-        "create_chat_session_resolver",
+        "get_agent_chat_messages_resolver",
       ),
       bundling: {
         commandHooks: {
@@ -83,17 +71,16 @@ export class ChatSessionResolverFunction extends lambda_python.PythonFunction {
           },
         },
       },
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 256,
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
       environment: {
-        CHAT_HISTORY_TABLE: props.messagesTable.tableName,
         LOG_LEVEL: "INFO",
+        CHAT_MESSAGES_TABLE: props.messagesTable.tableName,
       },
     });
 
     // Grant permissions
-    props.sessionTable.grantReadWriteData(this);
-    props.messagesTable.grantReadWriteData(this);
+    props.messagesTable.grantReadData(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
   }
 }

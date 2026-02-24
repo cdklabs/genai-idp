@@ -23,7 +23,7 @@ import { AgentAnalytics, IAgentAnalytics } from "./agent-analytics";
 import { IDocumentDiscovery } from "../document-discovery";
 import { LogLevel } from "../log-level";
 import { IAgentCompanionChat } from "./agent-companion-chat";
-import { ChatSessionResolverFunction } from "./agent-companion-chat/functions";
+import * as agentCompanionChatFunctions from "./agent-companion-chat/functions";
 import { ProcessingEnvironmentApiBaseProps } from "./processing-environment-api-base-props";
 import { IConfigurationTable } from "../configuration-table";
 import { IErrorAnalyzer } from "./error-analyzer";
@@ -2120,13 +2120,19 @@ export class ProcessingEnvironmentApi
   public addAgentCompanionChat(agentCompanionChat: IAgentCompanionChat): void {
     // Import the resolver functions
     const { AgentChatResolverFunction } = functions;
+    const {
+      ListAgentChatSessionsFunction,
+      GetAgentChatMessagesFunction,
+      DeleteAgentChatSessionFunction,
+    } = agentCompanionChatFunctions;
 
-    // Create agent chat resolver function
+    // Create agent chat resolver function (handles sendAgentChatMessage)
     const agentChatResolverFunction = new AgentChatResolverFunction(
       this,
       "AgentChatResolverFunction",
       {
         sessionTable: agentCompanionChat.sessionTable!,
+        messagesTable: agentCompanionChat.messagesTable!,
         orchestratorFunction: agentCompanionChat.orchestratorFunction,
         enableCodeIntelligence: true, // Default to enabled
         encryptionKey: this._encryptionKey,
@@ -2136,12 +2142,37 @@ export class ProcessingEnvironmentApi
       },
     );
 
-    // Create chat session resolver function
-    const chatSessionResolverFunction = new ChatSessionResolverFunction(
+    // Create list sessions function
+    const listAgentChatSessionsFunction = new ListAgentChatSessionsFunction(
       this,
-      "ChatSessionResolverFunction",
+      "ListAgentChatSessionsFunction",
       {
         sessionTable: agentCompanionChat.sessionTable!,
+        encryptionKey: this._encryptionKey,
+        logRetention: this._logRetention,
+        ...this._vpcConfiguration,
+      },
+    );
+
+    // Create get messages function
+    const getAgentChatMessagesFunction = new GetAgentChatMessagesFunction(
+      this,
+      "GetAgentChatMessagesFunction",
+      {
+        messagesTable: agentCompanionChat.messagesTable!,
+        encryptionKey: this._encryptionKey,
+        logRetention: this._logRetention,
+        ...this._vpcConfiguration,
+      },
+    );
+
+    // Create delete session function
+    const deleteAgentChatSessionFunction = new DeleteAgentChatSessionFunction(
+      this,
+      "DeleteAgentChatSessionFunction",
+      {
+        sessionTable: agentCompanionChat.sessionTable!,
+        messagesTable: agentCompanionChat.messagesTable!,
         encryptionKey: this._encryptionKey,
         logRetention: this._logRetention,
         ...this._vpcConfiguration,
@@ -2154,41 +2185,43 @@ export class ProcessingEnvironmentApi
       agentChatResolverFunction,
     );
 
-    const chatSessionDataSource = this.addLambdaDataSource(
-      "ChatSessionDataSource",
-      chatSessionResolverFunction,
+    const listSessionsDataSource = this.addLambdaDataSource(
+      "ListAgentChatSessionsDataSource",
+      listAgentChatSessionsFunction,
     );
 
-    // Create agent chat message resolvers
+    const getMessagesDataSource = this.addLambdaDataSource(
+      "GetAgentChatMessagesDataSource",
+      getAgentChatMessagesFunction,
+    );
+
+    const deleteSessionDataSource = this.addLambdaDataSource(
+      "DeleteAgentChatSessionDataSource",
+      deleteAgentChatSessionFunction,
+    );
+
+    // Create agent chat message resolver (mutation)
     agentChatDataSource.createResolver("SendAgentChatMessageResolver", {
       typeName: "Mutation",
       fieldName: "sendAgentChatMessage",
     });
 
-    agentChatDataSource.createResolver("GetAgentChatMessagesResolver", {
-      typeName: "Query",
-      fieldName: "getAgentChatMessages",
-    });
-
-    agentChatDataSource.createResolver("GetChatMessagesResolver", {
-      typeName: "Query",
-      fieldName: "getChatMessages",
-    });
-
-    // Create chat session management resolvers
-    chatSessionDataSource.createResolver("ListChatSessionsResolver", {
+    // Create list sessions resolver (query)
+    listSessionsDataSource.createResolver("ListChatSessionsResolver", {
       typeName: "Query",
       fieldName: "listChatSessions",
     });
 
-    chatSessionDataSource.createResolver("DeleteChatSessionResolver", {
-      typeName: "Mutation",
-      fieldName: "deleteChatSession",
+    // Create get messages resolver (query)
+    getMessagesDataSource.createResolver("GetChatMessagesResolver", {
+      typeName: "Query",
+      fieldName: "getChatMessages",
     });
 
-    chatSessionDataSource.createResolver("UpdateChatSessionTitleResolver", {
+    // Create delete session resolver (mutation)
+    deleteSessionDataSource.createResolver("DeleteChatSessionResolver", {
       typeName: "Mutation",
-      fieldName: "updateChatSessionTitle",
+      fieldName: "deleteChatSession",
     });
   }
 

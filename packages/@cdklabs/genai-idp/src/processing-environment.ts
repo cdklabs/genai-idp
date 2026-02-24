@@ -94,6 +94,12 @@ export interface IProcessingEnvironment {
   readonly trackingTable: ITrackingTable;
 
   /**
+   * Lambda function that looks up document information from the tracking table.
+   * Used to retrieve document metadata and processing status.
+   */
+  readonly lookupFunction: lambda.IFunction;
+
+  /**
    * Optional VPC configuration for document processing components.
    * When provided, deploys processing components within a VPC with specified settings.
    */
@@ -395,7 +401,7 @@ export class ProcessingEnvironment
    * Lambda function that looks up document information from the tracking table.
    * Used to retrieve document metadata and processing status.
    */
-  private readonly lookupFunction: lambda.IFunction;
+  public readonly lookupFunction: lambda.IFunction;
 
   constructor(scope: Construct, id: string, props: ProcessingEnvironmentProps) {
     super(scope, id);

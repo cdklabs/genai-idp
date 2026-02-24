@@ -26,6 +26,12 @@ export interface AgentChatResolverFunctionProps extends IdpPythonFunctionOptions
   readonly sessionTable: dynamodb.ITable;
 
   /**
+   * The DynamoDB table for chat messages storage.
+   * The function uses this table to store individual messages and conversation turns.
+   */
+  readonly messagesTable: dynamodb.ITable;
+
+  /**
    * The Lambda function for agent orchestration.
    * Used to process chat messages and coordinate agent responses.
    */
@@ -100,8 +106,11 @@ export class AgentChatResolverFunction extends lambda_python.PythonFunction {
       timeout: cdk.Duration.minutes(2),
       memorySize: 512,
       environment: {
-        SESSION_TABLE_NAME: props.sessionTable.tableName,
+        CHAT_SESSIONS_TABLE: props.sessionTable.tableName,
+        CHAT_MESSAGES_TABLE: props.messagesTable.tableName,
         ORCHESTRATOR_FUNCTION_NAME: props.orchestratorFunction.functionName,
+        AGENT_CHAT_PROCESSOR_FUNCTION: props.orchestratorFunction.functionName,
+        DATA_RETENTION_DAYS: "30",
         ENABLE_CODE_INTELLIGENCE: props.enableCodeIntelligence
           ? "true"
           : "false",
@@ -110,6 +119,7 @@ export class AgentChatResolverFunction extends lambda_python.PythonFunction {
 
     // Grant permissions
     props.sessionTable.grantReadWriteData(this);
+    props.messagesTable.grantReadWriteData(this);
     props.orchestratorFunction.grantInvoke(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
   }

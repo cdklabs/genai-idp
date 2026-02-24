@@ -1,6 +1,7 @@
 import path from "path";
 import { Database } from "@aws-cdk/aws-glue-alpha";
 import {
+  AgentCompanionChat,
   ConfigurationTable,
   DocumentDiscovery,
   ProcessingEnvironment,
@@ -162,6 +163,27 @@ export class BdaLendingStack extends Stack {
       //   vpcSubnets,
       // },
     });
+
+    // Create Agent Companion Chat after environment is created
+    // so we have access to lookupFunction and other resources
+    const agentCompanionChat = new AgentCompanionChat(
+      this,
+      "AgentCompanionChat",
+      {
+        configurationTable,
+        trackingTable,
+        lookupFunction: environment.lookupFunction,
+        appsyncApiUrl: api.graphqlUrl,
+        cloudWatchLogGroupPrefix: `/aws/lambda/${this.stackName}`,
+        athenaDatabase: reportingEnvironment.reportingDatabase,
+        athenaOutputLocation: `s3://${reportingEnvironment.reportingBucket.bucketName}/athena-results/`,
+        encryptionKey: key,
+        tracing: environment.tracing,
+      },
+    );
+
+    // Integrate agent companion chat with API
+    api.addAgentCompanionChat(agentCompanionChat);
 
     const bda = new BedrockDataAutomation(this, "LendingBda");
 
