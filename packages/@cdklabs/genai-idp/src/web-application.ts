@@ -136,7 +136,7 @@ export class WebApplication extends Construct implements IWebApplication {
       {
         stringValue: JSON.stringify({
           StackName: cdk.Stack.of(this).stackName,
-          Version: "0.3.18",
+          Version: "0.4.8",
           InputBucket: props.environment.inputBucket.bucketName,
           DiscoveryBucket:
             props.documentDiscovery?.discoveryBucket.bucketName || "",
@@ -209,10 +209,10 @@ export class WebApplication extends Construct implements IWebApplication {
                 "echo `ls -altr`",
                 "echo `pwd`",
                 "echo Installing NodeJS",
-                "n 18.19.1",
-                "npm install -g npm@10.2.4",
+                "n 22.14.0",
+                "npm install -g npm@11.1.0",
                 "echo Installing Web UI dependencies",
-                "npm install",
+                "npm ci",
               ],
             },
             build: {
@@ -239,7 +239,7 @@ export class WebApplication extends Construct implements IWebApplication {
             files: ["build.json"],
           },
         }),
-        timeout: cdk.Duration.minutes(10),
+        timeout: cdk.Duration.minutes(30),
       },
     );
 
@@ -551,26 +551,26 @@ export class WebApplication extends Construct implements IWebApplication {
       },
       WEBAPP_BUCKET: { value: this.bucket.bucketName },
       CLOUDFRONT_DISTRIBUTION_ID: { value: this.distribution.distributionId },
-      REACT_APP_SETTINGS_PARAMETER: {
+      VITE_SETTINGS_PARAMETER: {
         value: settingsParameter.parameterName,
       },
-      REACT_APP_USER_POOL_ID: {
+      VITE_USER_POOL_ID: {
         value: props.userIdentity.userPool.userPoolId,
       },
-      REACT_APP_USER_POOL_CLIENT_ID: {
+      VITE_USER_POOL_CLIENT_ID: {
         value: props.userIdentity.userPoolClient.userPoolClientId,
       },
-      REACT_APP_IDENTITY_POOL_ID: {
+      VITE_IDENTITY_POOL_ID: {
         value: props.userIdentity.identityPool.identityPoolId,
       },
-      REACT_APP_APPSYNC_GRAPHQL_URL: {
+      VITE_APPSYNC_GRAPHQL_URL: {
         value: props.apiUrl,
       },
-      REACT_APP_AWS_REGION: { value: cdk.Stack.of(this).region },
-      REACT_APP_SHOULD_HIDE_SIGN_UP: {
+      VITE_AWS_REGION: { value: cdk.Stack.of(this).region },
+      VITE_SHOULD_HIDE_SIGN_UP: {
         value: props.shouldAllowSignUpEmailDomain ? "false" : "true",
       },
-      REACT_APP_CLOUDFRONT_DOMAIN: {
+      VITE_CLOUDFRONT_DOMAIN: {
         value: `https://${this.distribution.distributionDomainName}/`,
       },
     };
