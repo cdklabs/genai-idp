@@ -120,6 +120,14 @@ export interface WebApplicationProps {
    * @default true
    */
   readonly autoConfigure?: boolean;
+
+  /**
+   * Whether a Document Knowledge Base is configured for this deployment.
+   * When true, enables knowledge base features in the UI for querying processed documents.
+   *
+   * @default false
+   */
+  readonly enableDocumentKnowledgeBase?: boolean;
 }
 
 export class WebApplication extends Construct implements IWebApplication {
@@ -144,7 +152,7 @@ export class WebApplication extends Construct implements IWebApplication {
           ReportingBucket:
             props.environment.reportingEnvironment?.reportingBucket
               .bucketName || "",
-          ShouldUseDocumentKnowledgeBase: false,
+          ShouldUseDocumentKnowledgeBase: props.enableDocumentKnowledgeBase ? "true" : "false",
         }),
       },
     );
