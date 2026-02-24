@@ -164,7 +164,7 @@ export class BedrockLlmStack extends Stack {
       },
     });
 
-    new BedrockLlmProcessor(this, "Processor", {
+    const processor = new BedrockLlmProcessor(this, "Processor", {
       environment,
       configuration: BedrockLlmProcessorConfiguration.lendingPackageSample(),
     });
@@ -186,6 +186,8 @@ export class BedrockLlmStack extends Stack {
         ],
       },
     });
+
+    api.addStateMachine(processor.stateMachine);
 
     api.grantQuery(userIdentity.identityPool.authenticatedRole);
     api.grantSubscription(userIdentity.identityPool.authenticatedRole);
