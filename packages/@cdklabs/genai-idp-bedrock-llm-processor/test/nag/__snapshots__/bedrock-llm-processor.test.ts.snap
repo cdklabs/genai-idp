@@ -3987,6 +3987,56 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
       "Type": "AWS::KMS::Key",
       "UpdateReplacePolicy": "Retain",
     },
+    "MockLookupFunction73615123": {
+      "DependsOn": [
+        "MockLookupFunctionServiceRole29852EBF",
+      ],
+      "Properties": {
+        "Code": {
+          "ZipFile": "def handler(event, context): return {}",
+        },
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "MockLookupFunctionServiceRole29852EBF",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "MockLookupFunctionServiceRole29852EBF": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
     "MockOutputBucket40EE28D0": {
       "DeletionPolicy": "Retain",
       "Type": "AWS::S3::Bucket",

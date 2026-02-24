@@ -193,7 +193,6 @@ export class WebApplication extends Construct implements IWebApplication {
       this,
       "UICodeBuildProject",
       {
-        // projectName: `${cdk.Stack.of(this).stackName}-webui-build`,
         description: `Web UI build for GenAIDP stack - ${cdk.Stack.of(this).stackName}`,
         encryptionKey: cdk.aws_kms.Alias.fromAliasName(
           this,
@@ -400,7 +399,6 @@ export class WebApplication extends Construct implements IWebApplication {
       this,
       "SecurityHeadersPolicy",
       {
-        // responseHeadersPolicyName: `${cdk.Stack.of(this).stackName}-security-headers-policy`,
         comment: "Security headers policy",
         securityHeadersBehavior: {
           contentSecurityPolicy: {
@@ -455,7 +453,6 @@ export class WebApplication extends Construct implements IWebApplication {
         cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD_OPTIONS,
         responseHeadersPolicy: securityHeadersPolicy,
         cachePolicy: new cloudfront.CachePolicy(this, "WebUICachePolicy", {
-          // cachePolicyName: `${cdk.Stack.of(this).stackName}-WebUICachePolicy`,
           defaultTtl: cdk.Duration.seconds(600),
           minTtl: cdk.Duration.seconds(300),
           maxTtl: cdk.Duration.seconds(900),
