@@ -55,6 +55,7 @@ export class GetStepFunctionExecutionResolverFunction
     props: GetStepFunctionExecutionResolverFunctionProps,
   ) {
     super(scope, id, {
+      ...props,
       entry: path.join(
         __dirname,
         "..",
@@ -64,7 +65,7 @@ export class GetStepFunctionExecutionResolverFunction
         "lambdas",
         "get_stepfunction_execution_resolver",
       ),
-      handler: "index.lambda_handler",
+      handler: "lambda_handler",
       bundling: {
         command: [
           "bash",
@@ -98,7 +99,6 @@ export class GetStepFunctionExecutionResolverFunction
       memorySize: 512,
       description:
         "This AWS Lambda Function gets Step Functions execution details for GraphQL API.",
-      ...props,
     });
 
     // Grant permissions to describe executions and get execution history
