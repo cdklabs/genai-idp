@@ -55,6 +55,7 @@ export class MockProcessingEnvironment implements IProcessingEnvironment {
   public readonly outputBucket: s3.IBucket;
   public readonly workingBucket: s3.IBucket;
   public readonly configurationFunction: lambda.IFunction;
+  public readonly lookupFunction: lambda.IFunction;
   public readonly api: any;
   public readonly vpcConfiguration = {};
 
@@ -78,6 +79,11 @@ export class MockProcessingEnvironment implements IProcessingEnvironment {
         code: lambda.Code.fromInline("def handler(event, context): return {}"),
       },
     );
+    this.lookupFunction = new lambda.Function(stack, "MockLookupFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: "index.handler",
+      code: lambda.Code.fromInline("def handler(event, context): return {}"),
+    });
     this.api = {
       graphqlUrl: "https://example.com/graphql",
       apiId: "test-api-id",

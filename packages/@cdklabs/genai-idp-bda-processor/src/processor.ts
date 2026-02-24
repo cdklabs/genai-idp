@@ -263,6 +263,13 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
     let evaluationFunction: lambda.IFunction | undefined;
     if (evaluationBaselineBucket && renderedDefinition.evaluationModel) {
       evaluationFunction = new EvaluationFunction(this, "EvaluationFunction", {
+        entry: path.join(
+          __dirname,
+          "..",
+          "assets",
+          "lambdas",
+          "evaluation_function",
+        ),
         metricNamespace: this.environment.metricNamespace,
         logLevel: this.environment.logLevel,
         outputBucket: this.environment.outputBucket,

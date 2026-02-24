@@ -3,7 +3,6 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-import path from "path";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import { Duration } from "aws-cdk-lib";
 import { IFunction, Runtime } from "aws-cdk-lib/aws-lambda";
@@ -23,6 +22,12 @@ import { ITrackingTable } from "../../tracking-table";
  * to measure accuracy and quality of the document processing.
  */
 export interface EvaluationFunctionProps extends IdpPythonFunctionOptions {
+  /**
+   * The path to the evaluation function code.
+   * Each processor provides its own evaluation function implementation.
+   */
+  readonly entry: string;
+
   /**
    * The namespace for CloudWatch metrics emitted by the evaluation function.
    * Used to organize and identify metrics related to document evaluation.
@@ -106,15 +111,7 @@ export class EvaluationFunction extends PythonFunction {
     super(scope, id, {
       ...props,
       runtime: Runtime.PYTHON_3_12,
-      entry: path.join(
-        __dirname,
-        "..",
-        "..",
-        "..",
-        "assets",
-        "lambdas",
-        "evaluation_function",
-      ),
+      // entry: props.entry,
       bundling: {
         command: [
           "bash",
