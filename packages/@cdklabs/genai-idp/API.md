@@ -62,6 +62,7 @@ new AgentAnalytics(scope: Construct, id: string, props: AgentAnalyticsProps)
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalytics.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.with">with</a></code> | Applies one or more mixins to this construct. |
 
 ---
 
@@ -72,6 +73,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.AgentAnalytics.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.AgentAnalytics.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -232,6 +254,7 @@ new AgentChatProcessorFunction(scope: Construct, id: string, props: AgentChatPro
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -264,6 +287,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.AgentChatProcessorFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.AgentChatProcessorFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentChatProcessorFunction.applyRemovalPolicy"></a>
 
@@ -430,6 +474,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentChatProcessorFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -443,6 +489,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.AgentChatProcessorFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -458,6 +506,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentChatProcessorFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -472,6 +522,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentChatProcessorFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -485,6 +537,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentChatProcessorFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -1413,6 +1467,7 @@ new AgentCompanionChat(scope: Construct, id: string, props: AgentCompanionChatPr
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.integrateWithApi">integrateWithApi</a></code> | Integrate Agent Companion Chat with ProcessingEnvironmentApi. |
 
 ---
@@ -1424,6 +1479,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.AgentCompanionChat.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.AgentCompanionChat.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `integrateWithApi` <a name="integrateWithApi" id="@cdklabs/genai-idp.AgentCompanionChat.integrateWithApi"></a>
 
@@ -1605,6 +1681,7 @@ new AgentCoreAnalyticsProcessorFunction(scope: Construct, id: string, props: Age
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -1637,6 +1714,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.applyRemovalPolicy"></a>
 
@@ -1803,6 +1901,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -1816,6 +1916,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -1831,6 +1933,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -1845,6 +1949,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -1858,6 +1964,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -2778,6 +2886,7 @@ new AgentCoreGatewayDeployer(scope: Construct, id: string, props: AgentCoreGatew
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayDeployer.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayDeployer.with">with</a></code> | Applies one or more mixins to this construct. |
 
 ---
 
@@ -2788,6 +2897,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.AgentCoreGatewayDeployer.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.AgentCoreGatewayDeployer.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -2975,6 +3105,7 @@ new AgentCoreGatewayManagerFunction(scope: Construct, id: string, props: AgentCo
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -3007,6 +3138,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.applyRemovalPolicy"></a>
 
@@ -3173,6 +3325,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -3186,6 +3340,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -3201,6 +3357,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -3215,6 +3373,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -3228,6 +3388,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -4147,6 +4309,7 @@ new AgentProcessorFunction(scope: Construct, id: string, props: AgentProcessorFu
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -4179,6 +4342,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.AgentProcessorFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.AgentProcessorFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentProcessorFunction.applyRemovalPolicy"></a>
 
@@ -4345,6 +4529,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -4358,6 +4544,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -4373,6 +4561,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -4387,6 +4577,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -4400,6 +4592,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentProcessorFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -5318,6 +5512,7 @@ new AgentRequestHandlerFunction(scope: Construct, id: string, props: AgentReques
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -5350,6 +5545,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.applyRemovalPolicy"></a>
 
@@ -5516,6 +5732,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -5529,6 +5747,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -5544,6 +5764,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -5558,6 +5780,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -5571,6 +5795,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -6490,6 +6716,7 @@ new AgentTable(scope: Construct, id: string, props?: FixedKeyTableProps)
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.AgentTable.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.AgentTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
@@ -6530,6 +6757,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.AgentTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.AgentTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentTable.applyRemovalPolicy"></a>
 
@@ -6583,6 +6831,7 @@ Adds an IAM policy statement associated with this table to an IAM principal's po
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grant.parameter.grantee"></a>
 
@@ -6610,6 +6859,11 @@ Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantFullAccess.parameter.grantee"></a>
 
@@ -6650,6 +6904,11 @@ Permits an IAM principal all data read operations from this table: BatchGetItem,
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantReadData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -6672,6 +6931,11 @@ BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantReadWriteData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -6690,6 +6954,11 @@ Adds an IAM policy statement associated with this table's stream to an IAM princ
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantStream.parameter.grantee"></a>
 
@@ -6718,6 +6987,11 @@ Permits an IAM principal all stream data read operations for this table's stream
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantStreamRead.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -6733,6 +7007,10 @@ public grantTableListStreams(grantee: IGrantable): Grant
 ```
 
 Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantTableListStreams.parameter.grantee"></a>
 
@@ -6752,6 +7030,11 @@ Permits an IAM principal all data write operations to this table: BatchWriteItem
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.AgentTable.grantWriteData.parameter.grantee"></a>
 
@@ -7513,6 +7796,7 @@ new ChatSessionResolverFunction(scope: Construct, id: string, props: ChatSession
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -7545,6 +7829,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ChatSessionResolverFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ChatSessionResolverFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ChatSessionResolverFunction.applyRemovalPolicy"></a>
 
@@ -7711,6 +8016,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ChatSessionResolverFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -7724,6 +8031,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.ChatSessionResolverFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -7739,6 +8048,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ChatSessionResolverFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -7753,6 +8064,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ChatSessionResolverFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -7766,6 +8079,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ChatSessionResolverFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -8693,6 +9008,7 @@ Configuration properties for the function.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -8725,6 +9041,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction.applyRemovalPolicy"></a>
 
@@ -8891,6 +9228,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -8904,6 +9243,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -8919,6 +9260,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -8933,6 +9276,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -8946,6 +9291,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -9873,6 +10220,7 @@ Configuration properties for the DynamoDB table.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.ConcurrencyTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
@@ -9913,6 +10261,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ConcurrencyTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ConcurrencyTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ConcurrencyTable.applyRemovalPolicy"></a>
 
@@ -9966,6 +10335,7 @@ Adds an IAM policy statement associated with this table to an IAM principal's po
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConcurrencyTable.grant.parameter.grantee"></a>
 
@@ -9993,6 +10363,11 @@ Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConcurrencyTable.grantFullAccess.parameter.grantee"></a>
 
@@ -10033,6 +10408,11 @@ Permits an IAM principal all data read operations from this table: BatchGetItem,
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConcurrencyTable.grantReadData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -10055,6 +10435,11 @@ BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConcurrencyTable.grantReadWriteData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -10073,6 +10458,11 @@ Adds an IAM policy statement associated with this table's stream to an IAM princ
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConcurrencyTable.grantStream.parameter.grantee"></a>
 
@@ -10101,6 +10491,11 @@ Permits an IAM principal all stream data read operations for this table's stream
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConcurrencyTable.grantStreamRead.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -10116,6 +10511,10 @@ public grantTableListStreams(grantee: IGrantable): Grant
 ```
 
 Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConcurrencyTable.grantTableListStreams.parameter.grantee"></a>
 
@@ -10135,6 +10534,11 @@ Permits an IAM principal all data write operations to this table: BatchWriteItem
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConcurrencyTable.grantWriteData.parameter.grantee"></a>
 
@@ -10909,6 +11313,7 @@ Configuration properties for the DynamoDB table.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ConfigurationTable.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.ConfigurationTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
@@ -10949,6 +11354,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ConfigurationTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ConfigurationTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ConfigurationTable.applyRemovalPolicy"></a>
 
@@ -11002,6 +11428,7 @@ Adds an IAM policy statement associated with this table to an IAM principal's po
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConfigurationTable.grant.parameter.grantee"></a>
 
@@ -11029,6 +11456,11 @@ Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConfigurationTable.grantFullAccess.parameter.grantee"></a>
 
@@ -11069,6 +11501,11 @@ Permits an IAM principal all data read operations from this table: BatchGetItem,
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConfigurationTable.grantReadData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -11091,6 +11528,11 @@ BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConfigurationTable.grantReadWriteData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -11109,6 +11551,11 @@ Adds an IAM policy statement associated with this table's stream to an IAM princ
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConfigurationTable.grantStream.parameter.grantee"></a>
 
@@ -11137,6 +11584,11 @@ Permits an IAM principal all stream data read operations for this table's stream
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConfigurationTable.grantStreamRead.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -11152,6 +11604,10 @@ public grantTableListStreams(grantee: IGrantable): Grant
 ```
 
 Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConfigurationTable.grantTableListStreams.parameter.grantee"></a>
 
@@ -11171,6 +11627,11 @@ Permits an IAM principal all data write operations to this table: BatchWriteItem
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ConfigurationTable.grantWriteData.parameter.grantee"></a>
 
@@ -11941,6 +12402,7 @@ Configuration properties for the function.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -11973,6 +12435,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.CreateA2IResourcesFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.CreateA2IResourcesFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.CreateA2IResourcesFunction.applyRemovalPolicy"></a>
 
@@ -12139,6 +12622,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CreateA2IResourcesFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -12152,6 +12637,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.CreateA2IResourcesFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -12167,6 +12654,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CreateA2IResourcesFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -12181,6 +12670,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CreateA2IResourcesFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -12194,6 +12685,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CreateA2IResourcesFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -13126,6 +13619,7 @@ new CustomPromptGenerator(scope: Construct, id: string, props: CustomPromptGener
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGenerator.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGenerator.with">with</a></code> | Applies one or more mixins to this construct. |
 
 ---
 
@@ -13136,6 +13630,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.CustomPromptGenerator.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.CustomPromptGenerator.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -13267,6 +13782,7 @@ new CustomPromptGeneratorFunction(scope: Construct, id: string, props: CustomPro
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -13299,6 +13815,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.applyRemovalPolicy"></a>
 
@@ -13465,6 +14002,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -13478,6 +14017,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -13493,6 +14034,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -13507,6 +14050,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -13520,6 +14065,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.CustomPromptGeneratorFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -14439,6 +14986,7 @@ new DeleteAgentChatSessionFunction(scope: Construct, id: string, props: DeleteAg
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -14471,6 +15019,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.DeleteAgentChatSessionFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DeleteAgentChatSessionFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.DeleteAgentChatSessionFunction.applyRemovalPolicy"></a>
 
@@ -14637,6 +15206,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DeleteAgentChatSessionFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -14650,6 +15221,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.DeleteAgentChatSessionFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -14665,6 +15238,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DeleteAgentChatSessionFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -14679,6 +15254,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DeleteAgentChatSessionFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -14692,6 +15269,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DeleteAgentChatSessionFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -15610,6 +16189,7 @@ new DiscoveryProcessorFunction(scope: Construct, id: string, props: DiscoveryPro
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -15642,6 +16222,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.applyRemovalPolicy"></a>
 
@@ -15808,6 +16409,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -15821,6 +16424,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -15836,6 +16441,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -15850,6 +16457,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -15863,6 +16472,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -16789,6 +17400,7 @@ Configuration properties for the SQS queue.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the IAM resource policy associated with this queue. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryQueue.grant">grant</a></code> | Grant the actions defined in queueActions to the identity Principal given on this SQS queue resource. |
@@ -16816,6 +17428,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.DiscoveryQueue.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DiscoveryQueue.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.DiscoveryQueue.applyRemovalPolicy"></a>
 
@@ -16865,6 +17498,8 @@ public grant(grantee: IGrantable, actions: ...string[]): Grant
 
 Grant the actions defined in queueActions to the identity Principal given on this SQS queue resource.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryQueue.grant.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -16902,6 +17537,11 @@ If encryption is used, permission to use the key to decrypt the contents of the 
 This will grant the following KMS permissions:
 
   - kms:Decrypt
+
+
+The use of this method is discouraged. Please use `grants.consumeMessages()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryQueue.grantConsumeMessages.parameter.grantee"></a>
 
@@ -16945,6 +17585,11 @@ This will grant the following permissions:
  - sqs:GetQueueAttributes
  - sqs:GetQueueUrl
 
+
+The use of this method is discouraged. Please use `grants.purge()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryQueue.grantPurge.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -16975,6 +17620,11 @@ This will grant the following KMS permissions:
  - kms:Encrypt
  - kms:ReEncrypt*
  - kms:GenerateDataKey*
+
+
+The use of this method is discouraged. Please use `grants.sendMessages()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryQueue.grantSendMessages.parameter.grantee"></a>
 
@@ -17533,6 +18183,7 @@ Configuration properties for the DynamoDB table.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryTable.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
@@ -17573,6 +18224,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.DiscoveryTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DiscoveryTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.DiscoveryTable.applyRemovalPolicy"></a>
 
@@ -17626,6 +18298,7 @@ Adds an IAM policy statement associated with this table to an IAM principal's po
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryTable.grant.parameter.grantee"></a>
 
@@ -17653,6 +18326,11 @@ Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryTable.grantFullAccess.parameter.grantee"></a>
 
@@ -17693,6 +18371,11 @@ Permits an IAM principal all data read operations from this table: BatchGetItem,
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryTable.grantReadData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -17715,6 +18398,11 @@ BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryTable.grantReadWriteData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -17733,6 +18421,11 @@ Adds an IAM policy statement associated with this table's stream to an IAM princ
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryTable.grantStream.parameter.grantee"></a>
 
@@ -17761,6 +18454,11 @@ Permits an IAM principal all stream data read operations for this table's stream
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryTable.grantStreamRead.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -17776,6 +18474,10 @@ public grantTableListStreams(grantee: IGrantable): Grant
 ```
 
 Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryTable.grantTableListStreams.parameter.grantee"></a>
 
@@ -17795,6 +18497,11 @@ Permits an IAM principal all data write operations to this table: BatchWriteItem
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryTable.grantWriteData.parameter.grantee"></a>
 
@@ -18552,6 +19259,7 @@ new DiscoveryUploadResolverFunction(scope: Construct, id: string, props: Discove
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -18584,6 +19292,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.applyRemovalPolicy"></a>
 
@@ -18750,6 +19479,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -18763,6 +19494,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -18778,6 +19511,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -18792,6 +19527,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -18805,6 +19542,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -19726,6 +20465,7 @@ new DocumentDiscovery(scope: Construct, id: string, props: DocumentDiscoveryProp
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions">initializeFunctions</a></code> | Initialize the Lambda functions with API URL. |
 
 ---
@@ -19737,6 +20477,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.DocumentDiscovery.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DocumentDiscovery.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `initializeFunctions` <a name="initializeFunctions" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions"></a>
 
@@ -19940,6 +20701,7 @@ new ErrorAnalyzer(scope: Construct, id: string, props?: ErrorAnalyzerProps)
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzer.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ErrorAnalyzer.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzer.integrateWithApi">integrateWithApi</a></code> | Integrate Error Analyzer with ProcessingEnvironmentApi. |
 
 ---
@@ -19951,6 +20713,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ErrorAnalyzer.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ErrorAnalyzer.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `integrateWithApi` <a name="integrateWithApi" id="@cdklabs/genai-idp.ErrorAnalyzer.integrateWithApi"></a>
 
@@ -20104,6 +20887,7 @@ new ErrorAnalyzerFunction(scope: Construct, id: string, props: ErrorAnalyzerFunc
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -20136,6 +20920,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ErrorAnalyzerFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ErrorAnalyzerFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ErrorAnalyzerFunction.applyRemovalPolicy"></a>
 
@@ -20302,6 +21107,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ErrorAnalyzerFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -20315,6 +21122,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.ErrorAnalyzerFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -20330,6 +21139,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ErrorAnalyzerFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -20344,6 +21155,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ErrorAnalyzerFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -20357,6 +21170,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ErrorAnalyzerFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -21279,6 +22094,7 @@ new FccDatasetDeployer(scope: Construct, id: string, props: FccDatasetDeployerPr
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployer.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.FccDatasetDeployer.with">with</a></code> | Applies one or more mixins to this construct. |
 
 ---
 
@@ -21289,6 +22105,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.FccDatasetDeployer.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.FccDatasetDeployer.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -21463,6 +22300,7 @@ new FccDatasetDeployerFunction(scope: Construct, id: string, props: FccDatasetDe
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -21495,6 +22333,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.FccDatasetDeployerFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.FccDatasetDeployerFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.FccDatasetDeployerFunction.applyRemovalPolicy"></a>
 
@@ -21661,6 +22520,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.FccDatasetDeployerFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -21674,6 +22535,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.FccDatasetDeployerFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -21689,6 +22552,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.FccDatasetDeployerFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -21703,6 +22568,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.FccDatasetDeployerFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -21716,6 +22583,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.FccDatasetDeployerFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -22634,6 +23503,7 @@ new GetAgentChatMessagesFunction(scope: Construct, id: string, props: GetAgentCh
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -22666,6 +23536,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.GetAgentChatMessagesFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.GetAgentChatMessagesFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.GetAgentChatMessagesFunction.applyRemovalPolicy"></a>
 
@@ -22832,6 +23723,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.GetAgentChatMessagesFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -22845,6 +23738,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.GetAgentChatMessagesFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -22860,6 +23755,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.GetAgentChatMessagesFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -22874,6 +23771,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.GetAgentChatMessagesFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -22887,6 +23786,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.GetAgentChatMessagesFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -23814,6 +24715,7 @@ Configuration properties for the function.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -23846,6 +24748,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.GetWorkforceUrlFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.GetWorkforceUrlFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.GetWorkforceUrlFunction.applyRemovalPolicy"></a>
 
@@ -24012,6 +24935,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.GetWorkforceUrlFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -24025,6 +24950,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.GetWorkforceUrlFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -24040,6 +24967,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.GetWorkforceUrlFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -24054,6 +24983,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.GetWorkforceUrlFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -24067,6 +24998,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.GetWorkforceUrlFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -24999,6 +25932,7 @@ Configuration properties for the HITL environment.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.HitlEnvironment.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.HitlEnvironment.with">with</a></code> | Applies one or more mixins to this construct. |
 
 ---
 
@@ -25009,6 +25943,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.HitlEnvironment.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.HitlEnvironment.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -25182,6 +26137,7 @@ new ListAgentChatSessionsFunction(scope: Construct, id: string, props: ListAgent
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -25214,6 +26170,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ListAgentChatSessionsFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ListAgentChatSessionsFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ListAgentChatSessionsFunction.applyRemovalPolicy"></a>
 
@@ -25380,6 +26357,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAgentChatSessionsFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -25393,6 +26372,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.ListAgentChatSessionsFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -25408,6 +26389,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAgentChatSessionsFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -25422,6 +26405,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAgentChatSessionsFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -25435,6 +26420,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAgentChatSessionsFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -26353,6 +27340,7 @@ new ListAvailableAgentsFunction(scope: Construct, id: string, props: ListAvailab
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -26385,6 +27373,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.applyRemovalPolicy"></a>
 
@@ -26551,6 +27560,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -26564,6 +27575,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -26579,6 +27592,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -26593,6 +27608,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -26606,6 +27623,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -27532,6 +28551,7 @@ new MCPIntegration(scope: Construct, id: string, props: MCPIntegrationProps)
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.MCPIntegration.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.MCPIntegration.with">with</a></code> | Applies one or more mixins to this construct. |
 
 ---
 
@@ -27542,6 +28562,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.MCPIntegration.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.MCPIntegration.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -27718,6 +28759,7 @@ Configuration properties for the DynamoDB table.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.MessagesTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.MessagesTable.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.MessagesTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.MessagesTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.MessagesTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
@@ -27758,6 +28800,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.MessagesTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.MessagesTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.MessagesTable.applyRemovalPolicy"></a>
 
@@ -27811,6 +28874,7 @@ Adds an IAM policy statement associated with this table to an IAM principal's po
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.MessagesTable.grant.parameter.grantee"></a>
 
@@ -27838,6 +28902,11 @@ Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.MessagesTable.grantFullAccess.parameter.grantee"></a>
 
@@ -27878,6 +28947,11 @@ Permits an IAM principal all data read operations from this table: BatchGetItem,
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.MessagesTable.grantReadData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -27900,6 +28974,11 @@ BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.MessagesTable.grantReadWriteData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -27918,6 +28997,11 @@ Adds an IAM policy statement associated with this table's stream to an IAM princ
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.MessagesTable.grantStream.parameter.grantee"></a>
 
@@ -27946,6 +29030,11 @@ Permits an IAM principal all stream data read operations for this table's stream
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.MessagesTable.grantStreamRead.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -27961,6 +29050,10 @@ public grantTableListStreams(grantee: IGrantable): Grant
 ```
 
 Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.MessagesTable.grantTableListStreams.parameter.grantee"></a>
 
@@ -27980,6 +29073,11 @@ Permits an IAM principal all data write operations to this table: BatchWriteItem
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.MessagesTable.grantWriteData.parameter.grantee"></a>
 
@@ -28751,6 +29849,7 @@ new ProcessingEnvironment(scope: Construct, id: string, props: ProcessingEnviron
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.attach">attach</a></code> | Attaches a document processor to this processing environment. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.metricQueueLatency">metricQueueLatency</a></code> | Creates a CloudWatch metric for queue latency. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironment.metricTotalLatency">metricTotalLatency</a></code> | Creates a CloudWatch metric for total processing latency. |
@@ -28765,6 +29864,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ProcessingEnvironment.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ProcessingEnvironment.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `attach` <a name="attach" id="@cdklabs/genai-idp.ProcessingEnvironment.attach"></a>
 
@@ -29207,6 +30327,7 @@ Configuration properties for the API.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addDynamoDbDataSource">addDynamoDbDataSource</a></code> | add a new DynamoDB data source to this API. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addElasticsearchDataSource">addElasticsearchDataSource</a></code> | add a new elasticsearch data source to this API. |
@@ -29245,6 +30366,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.applyRemovalPolicy"></a>
 
@@ -29627,6 +30769,8 @@ public grant(grantee: IGrantable, resources: IamResource, actions: ...string[]):
 
 Adds an IAM policy statement associated with this GraphQLApi to an IAM principal's policy.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.grant.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -29659,6 +30803,8 @@ public grantMutation(grantee: IGrantable, fields: ...string[]): Grant
 
 Adds an IAM policy statement for Mutation access to this GraphQLApi to an IAM principal's policy.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.grantMutation.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -29683,6 +30829,8 @@ public grantQuery(grantee: IGrantable, fields: ...string[]): Grant
 
 Adds an IAM policy statement for Query access to this GraphQLApi to an IAM principal's policy.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.grantQuery.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -29706,6 +30854,8 @@ public grantSubscription(grantee: IGrantable, fields: ...string[]): Grant
 ```
 
 Adds an IAM policy statement for Subscription access to this GraphQLApi to an IAM principal's policy.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.grantSubscription.parameter.grantee"></a>
 
@@ -30310,6 +31460,7 @@ GraphQL API Attributes of an API.
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.apiId">apiId</a></code> | <code>string</code> | an unique AWS AppSync GraphQL API identifier i.e. 'lxz775lwdrgcndgz3nurvac7oa'. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.arn">arn</a></code> | <code>string</code> | the ARN of the API. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.graphQlApiRef">graphQlApiRef</a></code> | <code>aws-cdk-lib.interfaces.aws_appsync.GraphQLApiReference</code> | A reference to a GraphQLApi resource. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.graphQLEndpointArn">graphQLEndpointArn</a></code> | <code>string</code> | The GraphQL endpoint ARN. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.modes">modes</a></code> | <code>aws-cdk-lib.aws_appsync.AuthorizationType[]</code> | The Authorization Types for this GraphQL Api. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.visibility">visibility</a></code> | <code>aws-cdk-lib.aws_appsync.Visibility</code> | the visibility of the API. |
@@ -30387,6 +31538,18 @@ public readonly arn: string;
 - *Type:* string
 
 the ARN of the API.
+
+---
+
+##### `graphQlApiRef`<sup>Required</sup> <a name="graphQlApiRef" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.property.graphQlApiRef"></a>
+
+```typescript
+public readonly graphQlApiRef: GraphQLApiReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_appsync.GraphQLApiReference
+
+A reference to a GraphQLApi resource.
 
 ---
 
@@ -30573,6 +31736,7 @@ new ReportingEnvironment(scope: Construct, id: string, props: ReportingEnvironme
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ReportingEnvironment.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ReportingEnvironment.with">with</a></code> | Applies one or more mixins to this construct. |
 
 ---
 
@@ -30583,6 +31747,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ReportingEnvironment.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ReportingEnvironment.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -30795,6 +31980,7 @@ Configuration properties for the function.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -30827,6 +32013,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.SaveReportingDataFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.SaveReportingDataFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.SaveReportingDataFunction.applyRemovalPolicy"></a>
 
@@ -30993,6 +32200,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SaveReportingDataFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -31006,6 +32215,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.SaveReportingDataFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -31021,6 +32232,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SaveReportingDataFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -31035,6 +32248,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SaveReportingDataFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -31048,6 +32263,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SaveReportingDataFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -31981,6 +33198,7 @@ Configuration properties for the DynamoDB table.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.SessionTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.SessionTable.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.SessionTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.SessionTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.SessionTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
@@ -32021,6 +33239,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.SessionTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.SessionTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.SessionTable.applyRemovalPolicy"></a>
 
@@ -32074,6 +33313,7 @@ Adds an IAM policy statement associated with this table to an IAM principal's po
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SessionTable.grant.parameter.grantee"></a>
 
@@ -32101,6 +33341,11 @@ Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SessionTable.grantFullAccess.parameter.grantee"></a>
 
@@ -32141,6 +33386,11 @@ Permits an IAM principal all data read operations from this table: BatchGetItem,
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SessionTable.grantReadData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -32163,6 +33413,11 @@ BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SessionTable.grantReadWriteData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -32181,6 +33436,11 @@ Adds an IAM policy statement associated with this table's stream to an IAM princ
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SessionTable.grantStream.parameter.grantee"></a>
 
@@ -32209,6 +33469,11 @@ Permits an IAM principal all stream data read operations for this table's stream
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SessionTable.grantStreamRead.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -32224,6 +33489,10 @@ public grantTableListStreams(grantee: IGrantable): Grant
 ```
 
 Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SessionTable.grantTableListStreams.parameter.grantee"></a>
 
@@ -32243,6 +33512,11 @@ Permits an IAM principal all data write operations to this table: BatchWriteItem
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.SessionTable.grantWriteData.parameter.grantee"></a>
 
@@ -33002,6 +34276,7 @@ new TestResultsResolverFunction(scope: Construct, id: string, props: TestResults
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -33034,6 +34309,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.TestResultsResolverFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.TestResultsResolverFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.TestResultsResolverFunction.applyRemovalPolicy"></a>
 
@@ -33200,6 +34496,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestResultsResolverFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -33213,6 +34511,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.TestResultsResolverFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -33228,6 +34528,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestResultsResolverFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -33242,6 +34544,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestResultsResolverFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -33255,6 +34559,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestResultsResolverFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -34173,6 +35479,7 @@ new TestRunnerFunction(scope: Construct, id: string, props: TestRunnerFunctionPr
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.TestRunnerFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.TestRunnerFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.TestRunnerFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.TestRunnerFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.TestRunnerFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -34205,6 +35512,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.TestRunnerFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.TestRunnerFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.TestRunnerFunction.applyRemovalPolicy"></a>
 
@@ -34371,6 +35699,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestRunnerFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -34384,6 +35714,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.TestRunnerFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -34399,6 +35731,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestRunnerFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -34413,6 +35747,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestRunnerFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -34426,6 +35762,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestRunnerFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -35346,6 +36684,7 @@ new TestSetResolverFunction(scope: Construct, id: string, props: TestSetResolver
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.TestSetResolverFunction.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.TestSetResolverFunction.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.TestSetResolverFunction.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.TestSetResolverFunction.addEventSource">addEventSource</a></code> | Adds an event source to this function. |
 | <code><a href="#@cdklabs/genai-idp.TestSetResolverFunction.addEventSourceMapping">addEventSourceMapping</a></code> | Adds an event source that maps to this AWS Lambda function. |
@@ -35378,6 +36717,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.TestSetResolverFunction.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.TestSetResolverFunction.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.TestSetResolverFunction.applyRemovalPolicy"></a>
 
@@ -35544,6 +36904,8 @@ public grantInvoke(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestSetResolverFunction.grantInvoke.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -35557,6 +36919,8 @@ public grantInvokeCompositePrincipal(compositePrincipal: CompositePrincipal): Gr
 ```
 
 Grant multiple principals the ability to invoke this Lambda via CompositePrincipal.
+
+[disable-awslint:no-grants]
 
 ###### `compositePrincipal`<sup>Required</sup> <a name="compositePrincipal" id="@cdklabs/genai-idp.TestSetResolverFunction.grantInvokeCompositePrincipal.parameter.compositePrincipal"></a>
 
@@ -35572,6 +36936,8 @@ public grantInvokeLatestVersion(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke the $LATEST version or unqualified version of this Lambda.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestSetResolverFunction.grantInvokeLatestVersion.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -35586,6 +36952,8 @@ public grantInvokeUrl(grantee: IGrantable): Grant
 
 Grant the given identity permissions to invoke this Lambda Function URL.
 
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestSetResolverFunction.grantInvokeUrl.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -35599,6 +36967,8 @@ public grantInvokeVersion(grantee: IGrantable, version: IVersion): Grant
 ```
 
 Grant the given identity permissions to invoke the given version of this Lambda.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestSetResolverFunction.grantInvokeVersion.parameter.grantee"></a>
 
@@ -36525,6 +37895,7 @@ new TestStudio(scope: Construct, id: string, props?: TestStudioProps)
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.TestStudio.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.TestStudio.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.TestStudio.integrateWithApi">integrateWithApi</a></code> | Integrate Test Studio with ProcessingEnvironmentApi. |
 
 ---
@@ -36536,6 +37907,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.TestStudio.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.TestStudio.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `integrateWithApi` <a name="integrateWithApi" id="@cdklabs/genai-idp.TestStudio.integrateWithApi"></a>
 
@@ -36791,6 +38183,7 @@ Configuration properties for the DynamoDB table.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.TestTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.TestTable.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.TestTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.TestTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.TestTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
@@ -36831,6 +38224,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.TestTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.TestTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.TestTable.applyRemovalPolicy"></a>
 
@@ -36884,6 +38298,7 @@ Adds an IAM policy statement associated with this table to an IAM principal's po
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestTable.grant.parameter.grantee"></a>
 
@@ -36911,6 +38326,11 @@ Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestTable.grantFullAccess.parameter.grantee"></a>
 
@@ -36951,6 +38371,11 @@ Permits an IAM principal all data read operations from this table: BatchGetItem,
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestTable.grantReadData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -36973,6 +38398,11 @@ BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestTable.grantReadWriteData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -36991,6 +38421,11 @@ Adds an IAM policy statement associated with this table's stream to an IAM princ
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestTable.grantStream.parameter.grantee"></a>
 
@@ -37019,6 +38454,11 @@ Permits an IAM principal all stream data read operations for this table's stream
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestTable.grantStreamRead.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -37034,6 +38474,10 @@ public grantTableListStreams(grantee: IGrantable): Grant
 ```
 
 Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestTable.grantTableListStreams.parameter.grantee"></a>
 
@@ -37053,6 +38497,11 @@ Permits an IAM principal all data write operations to this table: BatchWriteItem
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TestTable.grantWriteData.parameter.grantee"></a>
 
@@ -37821,6 +39270,7 @@ Configuration properties for the DynamoDB table.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.TrackingTable.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp.TrackingTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
@@ -37861,6 +39311,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.TrackingTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.TrackingTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.TrackingTable.applyRemovalPolicy"></a>
 
@@ -37914,6 +39385,7 @@ Adds an IAM policy statement associated with this table to an IAM principal's po
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TrackingTable.grant.parameter.grantee"></a>
 
@@ -37941,6 +39413,11 @@ Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TrackingTable.grantFullAccess.parameter.grantee"></a>
 
@@ -37981,6 +39458,11 @@ Permits an IAM principal all data read operations from this table: BatchGetItem,
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TrackingTable.grantReadData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -38003,6 +39485,11 @@ BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TrackingTable.grantReadWriteData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -38021,6 +39508,11 @@ Adds an IAM policy statement associated with this table's stream to an IAM princ
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TrackingTable.grantStream.parameter.grantee"></a>
 
@@ -38049,6 +39541,11 @@ Permits an IAM principal all stream data read operations for this table's stream
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TrackingTable.grantStreamRead.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -38064,6 +39561,10 @@ public grantTableListStreams(grantee: IGrantable): Grant
 ```
 
 Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TrackingTable.grantTableListStreams.parameter.grantee"></a>
 
@@ -38083,6 +39584,11 @@ Permits an IAM principal all data write operations to this table: BatchWriteItem
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.TrackingTable.grantWriteData.parameter.grantee"></a>
 
@@ -38848,6 +40354,7 @@ new UserIdentity(scope: Construct, id: string, props?: UserIdentityProps)
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.UserIdentity.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.UserIdentity.with">with</a></code> | Applies one or more mixins to this construct. |
 
 ---
 
@@ -38858,6 +40365,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.UserIdentity.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.UserIdentity.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -39002,6 +40530,7 @@ new WebApplication(scope: Construct, id: string, props: WebApplicationProps)
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.WebApplication.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.WebApplication.with">with</a></code> | Applies one or more mixins to this construct. |
 
 ---
 
@@ -39012,6 +40541,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.WebApplication.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.WebApplication.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -39159,6 +40709,7 @@ Configuration properties for the workteam.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.Workteam.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.Workteam.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp.Workteam.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 
 ---
@@ -39170,6 +40721,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.Workteam.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.Workteam.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.Workteam.applyRemovalPolicy"></a>
 
@@ -39577,7 +41149,7 @@ const agentChatProcessorFunctionProps: AgentChatProcessorFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.AgentChatProcessorFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -39929,10 +41501,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.AgentChatProcessorFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -40942,7 +42514,7 @@ const agentCoreAnalyticsProcessorFunctionProps: AgentCoreAnalyticsProcessorFunct
 | <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -41279,10 +42851,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -41877,7 +43449,7 @@ const agentCoreGatewayManagerFunctionProps: AgentCoreGatewayManagerFunctionProps
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.AgentCoreGatewayManagerFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -42213,10 +43785,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.AgentCoreGatewayManagerFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -42703,7 +44275,7 @@ const agentProcessorFunctionProps: AgentProcessorFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -43045,10 +44617,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -43604,7 +45176,7 @@ const agentRequestHandlerFunctionProps: AgentRequestHandlerFunctionProps = { ...
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -43941,10 +45513,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.AgentRequestHandlerFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -44440,7 +46012,7 @@ const chatSessionResolverFunctionProps: ChatSessionResolverFunctionProps = { ...
 | <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.ChatSessionResolverFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -44774,10 +46346,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.ChatSessionResolverFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -45238,7 +46810,7 @@ const cognitoUpdaterHitlFunctionProps: CognitoUpdaterHitlFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -45574,10 +47146,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.CognitoUpdaterHitlFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -46106,7 +47678,7 @@ const createA2IResourcesFunctionProps: CreateA2IResourcesFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -46442,10 +48014,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.CreateA2IResourcesFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -46929,7 +48501,7 @@ const customPromptGeneratorFunctionProps: CustomPromptGeneratorFunctionProps = {
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -47268,10 +48840,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.CustomPromptGeneratorFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -47837,7 +49409,7 @@ const deleteAgentChatSessionFunctionProps: DeleteAgentChatSessionFunctionProps =
 | <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.DeleteAgentChatSessionFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -48171,10 +49743,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.DeleteAgentChatSessionFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -48635,7 +50207,7 @@ const discoveryProcessorFunctionProps: DiscoveryProcessorFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -48973,10 +50545,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.DiscoveryProcessorFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -49794,7 +51366,7 @@ const discoveryUploadResolverFunctionProps: DiscoveryUploadResolverFunctionProps
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -50130,10 +51702,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -50853,7 +52425,7 @@ const errorAnalyzerFunctionProps: ErrorAnalyzerFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzerFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -51190,10 +52762,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.ErrorAnalyzerFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -51817,7 +53389,7 @@ const fccDatasetDeployerFunctionProps: FccDatasetDeployerFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.FccDatasetDeployerFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -52151,10 +53723,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.FccDatasetDeployerFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -53129,7 +54701,7 @@ const getAgentChatMessagesFunctionProps: GetAgentChatMessagesFunctionProps = { .
 | <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.GetAgentChatMessagesFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -53462,10 +55034,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.GetAgentChatMessagesFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -53912,7 +55484,7 @@ const getWorkforceUrlFunctionProps: GetWorkforceUrlFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -54247,10 +55819,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.GetWorkforceUrlFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -54845,7 +56417,7 @@ const idpPythonFunctionOptions: IdpPythonFunctionOptions = { ... }
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.IdpPythonFunctionOptions.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -55176,10 +56748,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.IdpPythonFunctionOptions.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -55600,7 +57172,7 @@ const listAgentChatSessionsFunctionProps: ListAgentChatSessionsFunctionProps = {
 | <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.ListAgentChatSessionsFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -55933,10 +57505,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.ListAgentChatSessionsFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -56383,7 +57955,7 @@ const listAvailableAgentsFunctionProps: ListAvailableAgentsFunctionProps = { ...
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -56718,10 +58290,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.ListAvailableAgentsFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -58366,7 +59938,7 @@ const saveReportingDataFunctionProps: SaveReportingDataFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -58702,10 +60274,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.SaveReportingDataFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -59188,7 +60760,7 @@ const testResultsResolverFunctionProps: TestResultsResolverFunctionProps = { ...
 | <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.TestResultsResolverFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -59523,10 +61095,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.TestResultsResolverFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -60004,7 +61576,7 @@ const testRunnerFunctionProps: TestRunnerFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.TestRunnerFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.TestRunnerFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.TestRunnerFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.TestRunnerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.TestRunnerFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.TestRunnerFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.TestRunnerFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.TestRunnerFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -60340,10 +61912,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.TestRunnerFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -60835,7 +62407,7 @@ const testSetResolverFunctionProps: TestSetResolverFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.TestSetResolverFunctionProps.property.ipv6AllowedForDualStack">ipv6AllowedForDualStack</a></code> | <code>boolean</code> | Allows outbound IPv6 traffic on VPC functions that are connected to dual-stack subnets. |
 | <code><a href="#@cdklabs/genai-idp.TestSetResolverFunctionProps.property.logFormat">logFormat</a></code> | <code>string</code> | Sets the logFormat for the function. |
 | <code><a href="#@cdklabs/genai-idp.TestSetResolverFunctionProps.property.loggingFormat">loggingFormat</a></code> | <code>aws-cdk-lib.aws_lambda.LoggingFormat</code> | Sets the loggingFormat for the function. |
-| <code><a href="#@cdklabs/genai-idp.TestSetResolverFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.aws_logs.ILogGroup</code> | The log group the function sends logs to. |
+| <code><a href="#@cdklabs/genai-idp.TestSetResolverFunctionProps.property.logGroup">logGroup</a></code> | <code>aws-cdk-lib.interfaces.aws_logs.ILogGroupRef</code> | The log group the function sends logs to. |
 | <code><a href="#@cdklabs/genai-idp.TestSetResolverFunctionProps.property.logRemovalPolicy">logRemovalPolicy</a></code> | <code>aws-cdk-lib.RemovalPolicy</code> | Determine the removal policy of the log group that is auto-created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.TestSetResolverFunctionProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The number of days log events are kept in CloudWatch Logs. |
 | <code><a href="#@cdklabs/genai-idp.TestSetResolverFunctionProps.property.logRetentionRetryOptions">logRetentionRetryOptions</a></code> | <code>aws-cdk-lib.aws_lambda.LogRetentionRetryOptions</code> | When log retention is specified, a custom resource attempts to create the CloudWatch log group. |
@@ -61171,10 +62743,10 @@ Sets the loggingFormat for the function.
 ##### `logGroup`<sup>Optional</sup> <a name="logGroup" id="@cdklabs/genai-idp.TestSetResolverFunctionProps.property.logGroup"></a>
 
 ```typescript
-public readonly logGroup: ILogGroup;
+public readonly logGroup: ILogGroupRef;
 ```
 
-- *Type:* aws-cdk-lib.aws_logs.ILogGroup
+- *Type:* aws-cdk-lib.interfaces.aws_logs.ILogGroupRef
 - *Default:* `/aws/lambda/${this.functionName}` - default log group created by Lambda
 
 The log group the function sends logs to.
@@ -62639,6 +64211,7 @@ Interface for Agent Table implementations.
 | <code><a href="#@cdklabs/genai-idp.IAgentTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.IAgentTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IAgentTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.IAgentTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.IAgentTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IAgentTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IAgentTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
@@ -62687,6 +64260,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.IAgentTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
 
 ---
 
@@ -62757,6 +64342,7 @@ preventing resource exhaustion and ensuring system stability under load.
 | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IConcurrencyTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
@@ -62805,6 +64391,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.IConcurrencyTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
 
 ---
 
@@ -62982,6 +64580,7 @@ including extraction schemas, model parameters, evaluation criteria, and UI sett
 | <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IConfigurationTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
@@ -63030,6 +64629,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.IConfigurationTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
 
 ---
 
@@ -63305,6 +64916,7 @@ This table tracks discovery job status and metadata.
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
@@ -63353,6 +64965,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.IDiscoveryTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
 
 ---
 
@@ -63854,6 +65478,7 @@ This table stores individual chat messages and conversation history for Agent Co
 | <code><a href="#@cdklabs/genai-idp.IMessagesTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.IMessagesTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IMessagesTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.IMessagesTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.IMessagesTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IMessagesTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.IMessagesTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
@@ -63902,6 +65527,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.IMessagesTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
 
 ---
 
@@ -64361,6 +65998,7 @@ Optional SQS queue for test result cache updates.
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.graphQlApiRef">graphQlApiRef</a></code> | <code>aws-cdk-lib.interfaces.aws_appsync.GraphQLApiReference</code> | A reference to a GraphQLApi resource. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.apiId">apiId</a></code> | <code>string</code> | an unique AWS AppSync GraphQL API identifier i.e. 'lxz775lwdrgcndgz3nurvac7oa'. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.arn">arn</a></code> | <code>string</code> | the ARN of the API. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.graphQLEndpointArn">graphQLEndpointArn</a></code> | <code>string</code> | The GraphQL endpoint ARN. |
@@ -64411,6 +66049,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `graphQlApiRef`<sup>Required</sup> <a name="graphQlApiRef" id="@cdklabs/genai-idp.IProcessingEnvironmentApi.property.graphQlApiRef"></a>
+
+```typescript
+public readonly graphQlApiRef: GraphQLApiReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_appsync.GraphQLApiReference
+
+A reference to a GraphQLApi resource.
 
 ---
 
@@ -64614,6 +66264,7 @@ enabling persistent conversation management and context retention across interac
 | <code><a href="#@cdklabs/genai-idp.ISessionTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.ISessionTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.ISessionTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.ISessionTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.ISessionTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.ISessionTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.ISessionTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
@@ -64662,6 +66313,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.ISessionTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
 
 ---
 
@@ -64892,6 +66555,7 @@ enabling comprehensive testing and analysis of document processing workflows.
 | <code><a href="#@cdklabs/genai-idp.ITestTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.ITestTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.ITestTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.ITestTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.ITestTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.ITestTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.ITestTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
@@ -64940,6 +66604,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.ITestTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
 
 ---
 
@@ -65010,6 +66686,7 @@ enabling tracking of documents throughout their processing lifecycle from upload
 | <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp.ITrackingTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
@@ -65058,6 +66735,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.ITrackingTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
 
 ---
 

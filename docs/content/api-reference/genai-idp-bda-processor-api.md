@@ -65,6 +65,7 @@ Configuration properties for the DynamoDB table.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
@@ -105,6 +106,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.applyRemovalPolicy"></a>
 
@@ -158,6 +180,7 @@ Adds an IAM policy statement associated with this table to an IAM principal's po
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grant.parameter.grantee"></a>
 
@@ -185,6 +208,11 @@ Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantFullAccess.parameter.grantee"></a>
 
@@ -225,6 +253,11 @@ Permits an IAM principal all data read operations from this table: BatchGetItem,
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantReadData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -247,6 +280,11 @@ BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantReadWriteData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -265,6 +303,11 @@ Adds an IAM policy statement associated with this table's stream to an IAM princ
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantStream.parameter.grantee"></a>
 
@@ -293,6 +336,11 @@ Permits an IAM principal all stream data read operations for this table's stream
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantStreamRead.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -308,6 +356,10 @@ public grantTableListStreams(grantee: IGrantable): Grant
 ```
 
 Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantTableListStreams.parameter.grantee"></a>
 
@@ -327,6 +379,11 @@ Permits an IAM principal all data write operations to this table: BatchWriteItem
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantWriteData.parameter.grantee"></a>
 
@@ -1081,6 +1138,7 @@ new BdaProcessor(scope: Construct, id: string, props: BdaProcessorProps)
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBdaJobsFailed">metricBdaJobsFailed</a></code> | Creates a CloudWatch metric for failed BDA jobs. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBdaJobsSucceeded">metricBdaJobsSucceeded</a></code> | Creates a CloudWatch metric for successful BDA jobs. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBdaJobsTotal">metricBdaJobsTotal</a></code> | Creates a CloudWatch metric for total BDA jobs. |
@@ -1108,6 +1166,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `metricBdaJobsFailed` <a name="metricBdaJobsFailed" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBdaJobsFailed"></a>
 
@@ -2429,6 +2508,7 @@ enabling tracking of individual document processing records within BDA jobs.
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
@@ -2477,6 +2557,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
 
 ---
 

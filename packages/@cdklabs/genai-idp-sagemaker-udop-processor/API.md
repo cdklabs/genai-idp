@@ -70,6 +70,7 @@ new BasicSagemakerClassifier(scope: Construct, id: string, props: BasicSagemaker
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.BasicSagemakerClassifier.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.BasicSagemakerClassifier.with">with</a></code> | Applies one or more mixins to this construct. |
 
 ---
 
@@ -80,6 +81,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp-sagemaker-udop-processor.BasicSagemakerClassifier.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp-sagemaker-udop-processor.BasicSagemakerClassifier.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 #### Static Functions <a name="Static Functions" id="Static Functions"></a>
 
@@ -212,6 +234,7 @@ new SagemakerUdopProcessor(scope: Construct, id: string, props: SagemakerUdopPro
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricClassificationRequestsTotal">metricClassificationRequestsTotal</a></code> | Creates a CloudWatch metric for total classification requests. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocumentPages">metricInputDocumentPages</a></code> | Creates a CloudWatch metric for input document pages processed. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocuments">metricInputDocuments</a></code> | Creates a CloudWatch metric for input documents processed. |
@@ -225,6 +248,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `metricClassificationRequestsTotal` <a name="metricClassificationRequestsTotal" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricClassificationRequestsTotal"></a>
 
