@@ -3,10 +3,10 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import * as sagemaker from "@aws-cdk/aws-sagemaker-alpha";
 import * as cxapi from "@aws-cdk/cx-api";
 import { ProcessingEnvironment } from "@cdklabs/genai-idp";
-import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import { App, Stack } from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import * as kms from "aws-cdk-lib/aws-kms";
@@ -78,7 +78,7 @@ describe("SagemakerUdopProcessor", () => {
     test("creates processor with all optional props", () => {
       const evaluationBucket = new s3.Bucket(stack, "EvaluationBucket");
       const guardrail = new bedrock.Guardrail(stack, "TestGuardrail", {
-        name: "test-guardrail",
+        guardrailName: "test-guardrail",
         blockedInputMessaging: "Blocked input",
         blockedOutputsMessaging: "Blocked output",
       });
@@ -138,9 +138,9 @@ describe("SagemakerUdopProcessor", () => {
 
       // Resource count assertions
       template.resourceCountIs("AWS::StepFunctions::StateMachine", 1);
-      template.resourceCountIs("AWS::Lambda::Function", 12); // Includes ProcessingEnvironment functions
-      template.resourceCountIs("AWS::IAM::Role", 13); // Roles for all Lambda functions and Step Functions
-      template.resourceCountIs("AWS::IAM::Policy", 13); // Policies for all functions
+      template.resourceCountIs("AWS::Lambda::Function", 13); // Includes no-op evaluation function
+      template.resourceCountIs("AWS::IAM::Role", 14); // Roles for all Lambda functions and Step Functions
+      template.resourceCountIs("AWS::IAM::Policy", 13); // Policies for all functions (no-op has minimal policy)
       template.resourceCountIs("AWS::SQS::Queue", 4); // DLQ and main queues from environment
       template.resourceCountIs("AWS::S3::Bucket", 3); // Input, output, working buckets from environment
       template.resourceCountIs("AWS::DynamoDB::Table", 3); // Tables from ProcessingEnvironment
@@ -169,8 +169,8 @@ describe("SagemakerUdopProcessor", () => {
 
       // Resource count assertions with evaluation enabled
       template.resourceCountIs("AWS::StepFunctions::StateMachine", 1);
-      template.resourceCountIs("AWS::Lambda::Function", 12); // Same as base - evaluation doesn't add functions
-      template.resourceCountIs("AWS::IAM::Role", 13); // Same as base
+      template.resourceCountIs("AWS::Lambda::Function", 13); // Includes evaluation function
+      template.resourceCountIs("AWS::IAM::Role", 14); // Includes evaluation function role
       template.resourceCountIs("AWS::S3::Bucket", 4); // Including evaluation bucket
     });
 
@@ -193,15 +193,16 @@ describe("SagemakerUdopProcessor", () => {
 
       // Resource count assertions with assessment enabled
       template.resourceCountIs("AWS::StepFunctions::StateMachine", 1);
-      template.resourceCountIs("AWS::Lambda::Function", 12); // Same as base - assessment doesn't add functions
-      template.resourceCountIs("AWS::IAM::Role", 13); // Same as base
+      template.resourceCountIs("AWS::Lambda::Function", 13); // Includes no-op evaluation function
+      template.resourceCountIs("AWS::IAM::Role", 14); // Includes evaluation function role
+      template.resourceCountIs("AWS::IAM::Policy", 13); // Policies (no-op has minimal policy)
       template.resourceCountIs("AWS::S3::Bucket", 3); // Base buckets from environment
     });
 
     test("validates complete resource counts with all features enabled", () => {
       const evaluationBucket = new s3.Bucket(stack, "EvaluationBucket");
       const guardrail = new bedrock.Guardrail(stack, "TestGuardrail", {
-        name: "test-guardrail",
+        guardrailName: "test-guardrail",
         blockedInputMessaging: "Blocked input",
         blockedOutputsMessaging: "Blocked output",
       });
@@ -223,9 +224,9 @@ describe("SagemakerUdopProcessor", () => {
 
       // Comprehensive resource count validation
       template.resourceCountIs("AWS::StepFunctions::StateMachine", 1);
-      template.resourceCountIs("AWS::Lambda::Function", 12); // All functions from processor and environment
-      template.resourceCountIs("AWS::IAM::Role", 13); // All roles including additional features
-      template.resourceCountIs("AWS::IAM::Policy", 13); // Policies for all Lambda functions
+      template.resourceCountIs("AWS::Lambda::Function", 13); // All functions from processor and environment, including evaluation
+      template.resourceCountIs("AWS::IAM::Role", 14); // All roles including evaluation function role
+      template.resourceCountIs("AWS::IAM::Policy", 14); // Policies for all Lambda functions including evaluation
       template.resourceCountIs("AWS::SQS::Queue", 4); // DLQ and main queues from environment
       template.resourceCountIs("AWS::S3::Bucket", 4); // Input, output, working, evaluation buckets
       template.resourceCountIs("AWS::Bedrock::Guardrail", 1); // Shared guardrail

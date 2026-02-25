@@ -405,7 +405,7 @@ def process_completed_hitl(detail, execution_id, section_id, page_number, s3_buc
         logger.error(f"Error processing completed HITL: {str(e)}")
         return False
 
-def lambda_handler(event, context):
+def handler(event, context):
     """
     AWS Lambda entry point for processing HITL status changes.
     """

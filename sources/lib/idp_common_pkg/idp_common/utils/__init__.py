@@ -6,6 +6,8 @@ import time
 import logging
 from typing import Tuple, Dict, Any, Optional
 
+from idp_common.config.models import IDPConfig
+
 # Import yaml with fallback for systems that don't have it installed
 try:
     import yaml
@@ -620,7 +622,7 @@ def extract_structured_data_from_text(text: str, preferred_format: str = 'auto')
         logger.warning("Could not parse as either JSON or YAML, returning original text")
         return text, 'unknown'
 
-def check_token_limit(document_text: str, extraction_results: Dict[str, Any], config: Dict[str, Any]) -> \
+def check_token_limit(document_text: str, extraction_results: Dict[str, Any], config: IDPConfig) -> \
 Optional[str]:
     """
     Create token limit warning message based on the configured value of max_tokens
@@ -634,11 +636,11 @@ Optional[str]:
         Error message based on the configured_max_tokens, None otherwise
     """
     # Information for logging and troubleshooting
-    assessment_config = config.get("assessment", {})
+    assessment_config = config.assessment
     logger.info(f"assessment_config: {assessment_config}")
-    model_id = config.get("model_id") or assessment_config.get("model", "unknown")
+    model_id = assessment_config.model or "unknown"
     logger.info(f"model_id: {model_id}")
-    configured_max_tokens = assessment_config.get("max_tokens")
+    configured_max_tokens = assessment_config.max_tokens
     logger.info(f"configured_max_tokens: {configured_max_tokens}")
     estimated_tokens = (len(document_text) + len(str(extraction_results))) / 4
     logger.info(f"Estimated tokens: {estimated_tokens}")

@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import path from "path";
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import {
   IdpPythonFunctionOptions,
@@ -12,7 +13,6 @@ import {
   ITrackingTable,
   LogLevel,
 } from "@cdklabs/genai-idp";
-import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
@@ -93,7 +93,7 @@ export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
    * The AI foundation model that will generate document summaries,
    * such as Claude or Titan Text models with appropriate capabilities.
    */
-  readonly summarizationModel?: bedrock.IInvokable;
+  readonly summarizationModel?: bedrock.IBedrockInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to summarization model interactions.
@@ -135,7 +135,7 @@ export class SummarizationFunction extends PythonFunction {
             `rsync -rL /asset-input/ /tmp/builddir`,
             // Install dependencies to temporary directory
             `cd /tmp/builddir`,
-            `sed -i '/\\.\\/lib/d' requirements.txt || true`,
+            `sed -i '/lib\\/idp_common_pkg/d' requirements.txt || true`,
             `python -m pip install -r requirements.txt -t /tmp/builddir || true`,
             // Clean up unnecessary files in the temp directory
             `find /tmp/builddir -type d -name "*.egg-info" -exec rm -rf {} +`,

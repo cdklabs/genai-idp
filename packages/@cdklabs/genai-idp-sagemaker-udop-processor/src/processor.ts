@@ -4,15 +4,19 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import * as path from "path";
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import * as sagemaker from "@aws-cdk/aws-sagemaker-alpha";
 import {
   DocumentProcessorProps,
   IProcessingEnvironment,
   IDocumentProcessor,
   ICustomPromptGenerator,
+  SectionSplittingStrategy,
 } from "@cdklabs/genai-idp";
-import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
+import { EvaluationFunction } from "@cdklabs/genai-idp/lib/internal/functions/evaluation-function";
+import * as cdk from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
@@ -149,6 +153,34 @@ export interface SagemakerUdopProcessorProps extends DocumentProcessorProps {
    * @default - No custom prompt generator is used
    */
   readonly customPromptGenerator?: ICustomPromptGenerator;
+
+  /**
+   * Enable edit sections feature for classification updates.
+   *
+   * When enabled, allows users to modify document classification through the UI
+   * and trigger selective reprocessing of affected sections. This provides
+   * flexibility to correct classification errors without reprocessing entire documents.
+   *
+   * @default false
+   * @since v0.4.8
+   */
+  readonly enableEditSections?: boolean;
+
+  /**
+   * Section splitting strategy configuration.
+   *
+   * Controls how multi-page documents are divided into sections during classification.
+   * This affects how documents of the same type are grouped together and processed.
+   *
+   * Options:
+   * - DISABLED: Entire document treated as single section with first detected class
+   * - PAGE: One section per page preventing automatic joining of same-type documents
+   * - LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
+   *
+   * @default SectionSplittingStrategy.LLM_DETERMINED
+   * @since v0.4.8
+   */
+  readonly sectionSplittingStrategy?: SectionSplittingStrategy;
 }
 
 /**
@@ -321,6 +353,53 @@ export class SagemakerUdopProcessor
       },
     );
 
+    // Create evaluation function if baseline bucket and model are provided
+    // Otherwise create a no-op function to satisfy the workflow
+    let evaluationFunction: lambda.IFunction;
+    if (props.evaluationBaselineBucket && renderedDefinition.evaluationModel) {
+      evaluationFunction = new EvaluationFunction(this, "EvaluationFunction", {
+        entry: path.join(
+          __dirname,
+          "..",
+          "assets",
+          "lambdas",
+          "evaluation_function",
+        ),
+        metricNamespace: this.environment.metricNamespace,
+        logLevel: this.environment.logLevel,
+        outputBucket: this.environment.outputBucket,
+        workingBucket: this.environment.workingBucket,
+        trackingTable: this.environment.trackingTable,
+        configurationTable: this.environment.configurationTable,
+        baselineBucket: props.evaluationBaselineBucket,
+        reportingEnvironment: this.environment.reportingEnvironment,
+        saveReportingDataFunction: this.environment.saveReportingDataFunction,
+        api: this.environment.api,
+        logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
+          encryptionKey: this.environment.encryptionKey,
+          retention: this.environment.logRetention,
+        }),
+        ...this.environment.vpcConfiguration,
+      });
+
+      this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
+      renderedDefinition.evaluationModel.grantInvoke(evaluationFunction);
+    } else {
+      // Create a no-op function when evaluation is not configured
+      evaluationFunction = new lambda.Function(this, "NoOpEvaluationFunction", {
+        runtime: lambda.Runtime.PYTHON_3_12,
+        handler: "index.handler",
+        code: lambda.Code.fromInline(`
+def handler(event, context):
+    # No-op function when evaluation is not configured
+    return event.get('document', event)
+`),
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 128,
+        description: "No-op function when evaluation is not configured",
+      });
+    }
+
     // Create the state machine
     const sm = new sfn.StateMachine(this, "DocumentProcessingStateMachine", {
       definitionBody: sfn.DefinitionBody.fromFile(
@@ -339,6 +418,7 @@ export class SagemakerUdopProcessor
           ? "true"
           : "false",
         SummarizationLambdaArn: summarizationFunction.functionArn,
+        EvaluationLambdaArn: evaluationFunction.functionArn,
         OutputBucket: this.environment.outputBucket.bucketName,
       },
       logs: {
@@ -357,6 +437,7 @@ export class SagemakerUdopProcessor
     assessmentFunction.grantInvoke(sm);
     processResultsFunction.grantInvoke(sm);
     summarizationFunction.grantInvoke(sm);
+    evaluationFunction.grantInvoke(sm);
 
     this.stateMachine = sm;
     this.environment.attach(this);

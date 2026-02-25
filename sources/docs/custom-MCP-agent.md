@@ -149,7 +149,7 @@ In the AWS account where the IDP solution is deployed, create a secret with your
        "cognito_user_pool_id": "us-east-1_XXXXXXXXX",
        "cognito_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
        "cognito_username": "mcp-service-user-1", 
-       "cognito_password": "SecurePassword123!",
+       "cognito_password": "SecurePassword123!", //<!-- pragma: allowlist secret - Example password for documentation only -->
        "agent_name": "My Custom Calculator Agent",
        "agent_description": "Provides advanced mathematical calculations for document analysis"
      },
@@ -158,7 +158,7 @@ In the AWS account where the IDP solution is deployed, create a secret with your
        "cognito_user_pool_id": "us-east-1_YYYYYYYYY",
        "cognito_client_id": "yyyyyyyyyyyyyyyyyyyyyyyyyy",
        "cognito_username": "mcp-service-user-2", 
-       "cognito_password": "AnotherSecurePassword456!"
+       "cognito_password": "AnotherSecurePassword456!" //<!-- pragma: allowlist secret - Example password for documentation only --> 
      }
    ]
    ```

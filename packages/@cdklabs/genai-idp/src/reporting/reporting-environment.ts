@@ -110,6 +110,30 @@ export interface ReportingEnvironmentProps {
    * @default CrawlerSchedule.DAILY
    */
   readonly crawlerSchedule?: CrawlerSchedule;
+
+  /**
+   * Enable Stickler-based evaluation for enhanced accuracy metrics.
+   *
+   * When enabled, uses the AWS Labs Stickler library for advanced evaluation
+   * with field importance weights and enhanced comparators (Levenshtein, Hungarian, etc.).
+   * This provides more sophisticated evaluation metrics beyond simple string matching.
+   *
+   * @default true
+   * @since v0.4.8
+   */
+  readonly enableSticklerEvaluation?: boolean;
+
+  /**
+   * Enable document split classification metrics for page-level accuracy tracking.
+   *
+   * When enabled, tracks classification accuracy at the page level and provides
+   * split accuracy metrics for multi-page documents. This helps identify
+   * classification issues in specific sections of documents.
+   *
+   * @default false
+   * @since v0.4.8
+   */
+  readonly enableSplitClassificationMetrics?: boolean;
 }
 
 /**

@@ -101,6 +101,15 @@ export interface WebApplicationProps {
   readonly userIdentity: IUserIdentity;
 
   /**
+   * Optional document discovery integration for the web application.
+   * When provided, enables document discovery features in the UI including
+   * sample document uploads and automatic configuration generation.
+   *
+   * @default - Document discovery features are disabled in the UI
+   */
+  readonly documentDiscovery?: import("./document-discovery").IDocumentDiscovery;
+
+  /**
    * Whether to automatically configure CORS rules on S3 buckets for CloudFront access.
    * When true, the library will configure CORS rules on the input, output, and discovery buckets
    * to allow access from the CloudFront distribution domain.
@@ -111,6 +120,14 @@ export interface WebApplicationProps {
    * @default true
    */
   readonly autoConfigure?: boolean;
+
+  /**
+   * Whether a Document Knowledge Base is configured for this deployment.
+   * When true, enables knowledge base features in the UI for querying processed documents.
+   *
+   * @default false
+   */
+  readonly enableDocumentKnowledgeBase?: boolean;
 }
 
 export class WebApplication extends Construct implements IWebApplication {
@@ -127,16 +144,17 @@ export class WebApplication extends Construct implements IWebApplication {
       {
         stringValue: JSON.stringify({
           StackName: cdk.Stack.of(this).stackName,
-          Version: "0.3.18",
+          Version: "0.4.8",
           InputBucket: props.environment.inputBucket.bucketName,
           DiscoveryBucket:
-            props.environment.documentDiscovery?.discoveryBucket.bucketName ||
-            "",
+            props.documentDiscovery?.discoveryBucket.bucketName || "",
           OutputBucket: props.environment.outputBucket.bucketName,
           ReportingBucket:
             props.environment.reportingEnvironment?.reportingBucket
               .bucketName || "",
-          ShouldUseDocumentKnowledgeBase: false,
+          ShouldUseDocumentKnowledgeBase: props.enableDocumentKnowledgeBase
+            ? "true"
+            : "false",
         }),
       },
     );
@@ -175,7 +193,6 @@ export class WebApplication extends Construct implements IWebApplication {
       this,
       "UICodeBuildProject",
       {
-        projectName: `${cdk.Stack.of(this).stackName}-webui-build`,
         description: `Web UI build for GenAIDP stack - ${cdk.Stack.of(this).stackName}`,
         encryptionKey: cdk.aws_kms.Alias.fromAliasName(
           this,
@@ -201,10 +218,10 @@ export class WebApplication extends Construct implements IWebApplication {
                 "echo `ls -altr`",
                 "echo `pwd`",
                 "echo Installing NodeJS",
-                "n 18.19.1",
-                "npm install -g npm@10.2.4",
+                "n 22.14.0",
+                "npm install -g npm@11.1.0",
                 "echo Installing Web UI dependencies",
-                "npm install",
+                "npm ci",
               ],
             },
             build: {
@@ -231,7 +248,7 @@ export class WebApplication extends Construct implements IWebApplication {
             files: ["build.json"],
           },
         }),
-        timeout: cdk.Duration.minutes(10),
+        timeout: cdk.Duration.minutes(30),
       },
     );
 
@@ -382,7 +399,6 @@ export class WebApplication extends Construct implements IWebApplication {
       this,
       "SecurityHeadersPolicy",
       {
-        responseHeadersPolicyName: `${cdk.Stack.of(this).stackName}-security-headers-policy`,
         comment: "Security headers policy",
         securityHeadersBehavior: {
           contentSecurityPolicy: {
@@ -509,10 +525,8 @@ export class WebApplication extends Construct implements IWebApplication {
     }
 
     // Configure CORS on discovery bucket
-    if (
-      props.environment.documentDiscovery?.discoveryBucket instanceof s3.Bucket
-    ) {
-      props.environment.documentDiscovery.discoveryBucket.addCorsRule({
+    if (props.documentDiscovery?.discoveryBucket instanceof s3.Bucket) {
+      props.documentDiscovery.discoveryBucket.addCorsRule({
         allowedHeaders: [
           "Content-Type",
           "x-amz-content-sha256",
@@ -545,26 +559,26 @@ export class WebApplication extends Construct implements IWebApplication {
       },
       WEBAPP_BUCKET: { value: this.bucket.bucketName },
       CLOUDFRONT_DISTRIBUTION_ID: { value: this.distribution.distributionId },
-      REACT_APP_SETTINGS_PARAMETER: {
+      VITE_SETTINGS_PARAMETER: {
         value: settingsParameter.parameterName,
       },
-      REACT_APP_USER_POOL_ID: {
+      VITE_USER_POOL_ID: {
         value: props.userIdentity.userPool.userPoolId,
       },
-      REACT_APP_USER_POOL_CLIENT_ID: {
+      VITE_USER_POOL_CLIENT_ID: {
         value: props.userIdentity.userPoolClient.userPoolClientId,
       },
-      REACT_APP_IDENTITY_POOL_ID: {
+      VITE_IDENTITY_POOL_ID: {
         value: props.userIdentity.identityPool.identityPoolId,
       },
-      REACT_APP_APPSYNC_GRAPHQL_URL: {
+      VITE_APPSYNC_GRAPHQL_URL: {
         value: props.apiUrl,
       },
-      REACT_APP_AWS_REGION: { value: cdk.Stack.of(this).region },
-      REACT_APP_SHOULD_HIDE_SIGN_UP: {
+      VITE_AWS_REGION: { value: cdk.Stack.of(this).region },
+      VITE_SHOULD_HIDE_SIGN_UP: {
         value: props.shouldAllowSignUpEmailDomain ? "false" : "true",
       },
-      REACT_APP_CLOUDFRONT_DOMAIN: {
+      VITE_CLOUDFRONT_DOMAIN: {
         value: `https://${this.distribution.distributionDomainName}/`,
       },
     };

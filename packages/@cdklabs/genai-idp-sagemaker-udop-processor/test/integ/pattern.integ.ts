@@ -3,13 +3,13 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-import { InstanceType, ModelData } from "@aws-cdk/aws-sagemaker-alpha";
-import { ProcessingEnvironment } from "@cdklabs/genai-idp";
 import {
   BedrockFoundationModel,
   CrossRegionInferenceProfile,
   CrossRegionInferenceProfileRegion,
-} from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
+} from "@aws-cdk/aws-bedrock-alpha/bedrock";
+import { InstanceType, ModelData } from "@aws-cdk/aws-sagemaker-alpha";
+import { ProcessingEnvironment } from "@cdklabs/genai-idp";
 import { App, Aspects, CfnResource, RemovalPolicy, Stack } from "aws-cdk-lib";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 

@@ -235,7 +235,7 @@ Now, let's create the core infrastructure for our document processing solution. 
           // evaluationBaselineBucket: new Bucket(this, 'BaselineBucket'),
         });
 
-        // Add the processor's state machine to the API
+        // Add the processor's state machine to the API for workflow monitoring
         api.addStateMachine(processor.stateMachine);
 
         // Grant API permissions to authenticated users
@@ -404,7 +404,7 @@ Now, let's create the core infrastructure for our document processing solution. 
                 # evaluation_baseline_bucket=Bucket(self, "BaselineBucket"),
             )
 
-            # Add the processor's state machine to the API
+            # Add the processor's state machine to the API for workflow monitoring
             api.add_state_machine(processor.state_machine)
 
             # Grant API permissions to authenticated users
@@ -566,7 +566,7 @@ Now, let's create the core infrastructure for our document processing solution. 
                     // EvaluationBaselineBucket = new Bucket(this, "BaselineBucket"),
                 });
 
-                // Add the processor's state machine to the API
+                // Add the processor's state machine to the API for workflow monitoring
                 api.AddStateMachine(processor.StateMachine);
 
                 // Grant API permissions to authenticated users

@@ -3,7 +3,13 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-import { IProcessingEnvironment, LogLevel } from "@cdklabs/genai-idp";
+import {
+  IProcessingEnvironment,
+  LogLevel,
+  DocumentProcessorAttachmentResult,
+  IDocumentProcessor,
+  DocumentProcessorAttachmentOptions,
+} from "@cdklabs/genai-idp";
 import { Stack } from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import { Grant, IGrantable } from "aws-cdk-lib/aws-iam";
@@ -49,6 +55,7 @@ export class MockProcessingEnvironment implements IProcessingEnvironment {
   public readonly outputBucket: s3.IBucket;
   public readonly workingBucket: s3.IBucket;
   public readonly configurationFunction: lambda.IFunction;
+  public readonly lookupFunction: lambda.IFunction;
   public readonly api: any;
   public readonly vpcConfiguration = {};
 
@@ -72,6 +79,11 @@ export class MockProcessingEnvironment implements IProcessingEnvironment {
         code: lambda.Code.fromInline("def handler(event, context): return {}"),
       },
     );
+    this.lookupFunction = new lambda.Function(stack, "MockLookupFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: "index.handler",
+      code: lambda.Code.fromInline("def handler(event, context): return {}"),
+    });
     this.api = {
       graphqlUrl: "https://example.com/graphql",
       apiId: "test-api-id",
@@ -90,8 +102,12 @@ export class MockProcessingEnvironment implements IProcessingEnvironment {
     };
   }
 
-  public attach(_construct: any): void {
+  public attach(
+    _processor: IDocumentProcessor,
+    _options?: DocumentProcessorAttachmentOptions,
+  ): DocumentProcessorAttachmentResult {
     // Mock implementation
+    return {};
   }
 }
 
@@ -157,6 +173,9 @@ export class MockBedrockLlmProcessorConfiguration implements IBedrockLlmProcesso
           },
         ],
       }),
+      validate: () => ({ valid: true, errors: [], warnings: [] }),
+      isLegacyFormat: () => true,
+      isJsonSchemaFormat: () => false,
     };
   }
 }

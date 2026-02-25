@@ -74,7 +74,7 @@ export class RvlCdipStack extends Stack {
       metricNamespace,
     });
 
-    new SagemakerUdopProcessor(this, "Processor", {
+    const processor = new SagemakerUdopProcessor(this, "Processor", {
       environment,
       classifierEndpoint: classifier.endpoint, // Pass the endpoint directly
       configuration: SagemakerUdopProcessorConfiguration.rvlCdipPackageSample(),
@@ -97,6 +97,8 @@ export class RvlCdipStack extends Stack {
         ],
       },
     });
+
+    api.addStateMachine(processor.stateMachine);
 
     api.grantQuery(userIdentity.identityPool.authenticatedRole);
     api.grantSubscription(userIdentity.identityPool.authenticatedRole);

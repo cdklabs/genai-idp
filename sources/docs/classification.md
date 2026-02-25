@@ -148,6 +148,154 @@ Despite its strengths in handling full-document context, this method has several
 - Performs multi-modal page-level classification (classifies each page based on OCR data and page image)
 - Not configurable inside the GenAIIDP solution
 
+## Section Splitting Strategies
+
+The `sectionSplitting` configuration controls how classified pages are grouped into document sections. This setting works with both classification methods and provides three strategies:
+
+### Available Strategies
+
+#### 1. `disabled` - No Splitting (Entire Document = One Section)
+
+**Behavior:**
+- All pages are assigned to a single section
+- Uses the first detected document class for the entire document
+- Ignores any page-level classification boundaries
+
+**Use Cases:**
+- Documents known to be single-type with no internal divisions
+- Simplified processing where granular section splitting isn't needed
+- When you want to force all pages to be treated as one cohesive document
+
+**Configuration Example:**
+```yaml
+classification:
+  sectionSplitting: disabled
+  classificationMethod: multimodalPageLevelClassification
+```
+
+**Result:**
+- Document with 10 pages → 1 section containing all 10 pages
+- All pages assigned the first detected class
+
+#### 2. `page` - Per-Page Splitting (Each Page = Own Section)
+
+**Behavior:**
+- Every page becomes an independent section
+- Each page keeps its individually classified document type
+- **Prevents automatic joining of same-type documents**
+
+**Use Cases:**
+- **Critical for long documents with multiple same-type forms** (e.g., multiple W-2 forms, multiple invoices)
+- When LLM boundary detection is unreliable or fails frequently
+- Government form processing where each form must be processed independently
+- Scenarios where deterministic splitting is required
+
+**Configuration Example:**
+```yaml
+classification:
+  sectionSplitting: page
+  classificationMethod: multimodalPageLevelClassification
+```
+
+**Result:**
+- Document with 10 pages → 10 sections (one per page)
+- Each page maintains its individual classification
+
+**GitHub Issue Reference:**
+This strategy directly addresses [Issue #146](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/146) where long documents with multiple same-type forms were being incorrectly joined together.
+
+#### 3. `llm_determined` - LLM Boundary Detection (Default)
+
+**Behavior:**
+- Uses "Start"/"Continue" boundary indicators from LLM responses
+- Automatically groups related pages into logical sections
+- Implements BIO-like tagging for sophisticated document segmentation
+
+**Use Cases:**
+- Complex multi-document packets requiring intelligent boundary detection
+- When LLM boundary detection works reliably
+- Default behavior that works well for most use cases
+
+**Configuration Example:**
+```yaml
+classification:
+  sectionSplitting: llm_determined  # This is the default
+  classificationMethod: multimodalPageLevelClassification
+```
+
+**Result:**
+- Document with 10 pages → Variable number of sections based on LLM boundary detection
+- Pages grouped according to document boundaries and type changes
+
+### Strategy Comparison Table
+
+| Strategy | Sections Created | Boundary Detection | Same-Type Handling | Deterministic | Performance |
+|----------|-----------------|-------------------|-------------------|---------------|-------------|
+| `disabled` | 1 section always | None | All joined | Yes | Fastest |
+| `page` | N sections (N pages) | Per-page | Never joined | Yes | Fast |
+| `llm_determined` | Variable | LLM boundaries | May join | No | Standard |
+
+### Configuration Placement
+
+The `sectionSplitting` setting is placed in the classification configuration section:
+
+```yaml
+classification:
+  model: us.amazon.nova-pro-v1:0
+  classificationMethod: multimodalPageLevelClassification
+  sectionSplitting: page  # Options: disabled, page, llm_determined
+  maxPagesForClassification: "ALL"
+  temperature: "0.0"
+  # ... other classification settings
+```
+
+### Interaction with Classification Methods
+
+The `sectionSplitting` setting works with both classification methods:
+
+**With `multimodalPageLevelClassification`:**
+- `disabled`: First page's class applies to all pages in one section
+- `page`: Each page's individual classification preserved in separate sections
+- `llm_determined`: Pages grouped by class + boundary metadata
+
+**With `textbasedHolisticClassification`:**
+- `disabled`: First segment's class applies to all pages in one section
+- `page`: Each page gets its own section with the class assigned by holistic method
+- `llm_determined`: LLM-determined segments used as sections (default behavior)
+
+### Real-World Example: Multiple W-2 Forms
+
+Consider a 6-page document containing three W-2 forms (2 pages each):
+
+**With `sectionSplitting: llm_determined` (may work or may fail):**
+```
+Result depends on LLM boundary detection accuracy
+Best case: 3 sections (one per W-2)
+Worst case: 1 section (all W-2s incorrectly joined)
+```
+
+**With `sectionSplitting: page` (deterministic solution):**
+```
+Page 1 → Section 1 (W-2)
+Page 2 → Section 2 (W-2)
+Page 3 → Section 3 (W-2)
+Page 4 → Section 4 (W-2)
+Page 5 → Section 5 (W-2)
+Page 6 → Section 6 (W-2)
+
+Result: 6 independent sections
+Each W-2 page processed separately
+No risk of incorrect joining
+```
+
+**With `sectionSplitting: disabled` (simplest case):**
+```
+All 6 pages → Section 1 (W-2)
+
+Result: Single section
+Entire document treated as one unit
+```
+
 ## Choosing Between Classification Methods
 
 When deciding between Text-Based Holistic Classification and MultiModal Page-Level Classification with Sequence Segmentation, consider these factors:
@@ -401,11 +549,11 @@ classification:
 
 ### Multi-Page Documents
 
-For documents with multiple pages, the system automatically handles image limits:
+For documents with multiple pages, the system provides comprehensive image support:
 
-- **Bedrock Limit**: Maximum 20 images per request (automatically enforced)
-- **Warning Logging**: System logs warnings when images are truncated due to limits
-- **Smart Handling**: Images are processed in page order, with excess images automatically dropped
+- **No Image Limits**: All document pages are processed following Bedrock API removal of image count restrictions
+- **Info Logging**: System logs image counts for monitoring and debugging purposes
+- **Automatic Pagination**: Images are processed in page order for all pages
 
 ## Setting Up Few Shot Examples in Pattern 2
 
@@ -602,13 +750,16 @@ When you want all pages of a document to be classified as the same class, you ca
 
 ```yaml
 classes:
-  - name: Payslip
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Payslip
+    x-aws-idp-document-type: Payslip
+    type: object
     description: "Employee wage statement showing earnings and deductions"
-    document_name_regex: "(?i).*(payslip|paystub|salary|wage).*"
-    attributes:
-      - name: EmployeeName
+    x-aws-idp-document-name-regex: "(?i).*(payslip|paystub|salary|wage).*"
+    properties:
+      EmployeeName:
+        type: string
         description: "Name of the employee"
-        attributeType: simple
 ```
 
 **Benefits:**
@@ -632,24 +783,33 @@ classification:
   classificationMethod: multimodalPageLevelClassification
 
 classes:
-  - name: Invoice
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Invoice
+    x-aws-idp-document-type: Invoice
+    type: object
     description: "Business invoice document"
-    document_page_content_regex: "(?i)(invoice\\s+number|bill\\s+to|amount\\s+due)"
-    attributes:
-      - name: InvoiceNumber
+    x-aws-idp-document-page-content-regex: "(?i)(invoice\\s+number|bill\\s+to|amount\\s+due)"
+    properties:
+      InvoiceNumber:
+        type: string
         description: "Invoice number"
-        attributeType: simple
-  - name: Payslip
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Payslip
+    x-aws-idp-document-type: Payslip
+    type: object
     description: "Employee wage statement"
-    document_page_content_regex: "(?i)(gross\\s+pay|net\\s+pay|employee\\s+id)"
-    attributes:
-      - name: EmployeeName
+    x-aws-idp-document-page-content-regex: "(?i)(gross\\s+pay|net\\s+pay|employee\\s+id)"
+    properties:
+      EmployeeName:
+        type: string
         description: "Employee name"
-        attributeType: simple
-  - name: Other
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Other
+    x-aws-idp-document-type: Other
+    type: object
     description: "Documents that don't match specific patterns"
     # No regex - will always use LLM
-    attributes: []
+    properties: {}
 ```
 
 **Benefits:**

@@ -29,8 +29,8 @@ def handler(event, context):
     logger.info(f"Event: {json.dumps(event)}")
 
     # Load configuration
-    config = get_config()
-    logger.info(f"Config: {json.dumps(config)}")
+    config = get_config(as_model=True)
+    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
     
     # For Map state, we get just one section from the document
     # Extract the document and section from the event - handle both compressed and uncompressed

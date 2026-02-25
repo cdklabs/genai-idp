@@ -65,4 +65,11 @@ export interface IDocumentProcessor extends IConstruct {
    * resources needed for document processing operations.
    */
   readonly environment: IProcessingEnvironment;
+
+  /**
+   * The evaluation function if evaluation is enabled for this processor.
+   * The evaluation function is created by the ProcessingEnvironment when
+   * evaluation baseline bucket and model are provided.
+   */
+  readonly evaluationFunction?: any;
 }

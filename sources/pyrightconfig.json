@@ -1,0 +1,45 @@
+{
+  "include": [
+    "lib/idp_common_pkg/idp_common",
+    "idp_cli/idp_cli",
+    "src/lambda"
+  ],
+  
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.venv",
+    "**/.aws-sam",
+    "**/build",
+    "**/dist",
+    "**/cdk.out",
+    "notebooks",
+    "patterns/*/src",
+    "options/*/src"
+  ],
+  
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Linux",
+  
+  "typeCheckingMode": "basic",
+  
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportImportCycles": "warning",
+  "reportUnusedImport": "none",
+  "reportUnusedVariable": "none",
+  "reportDuplicateImport": "warning",
+  "reportUndefinedVariable": "error",
+  
+  "reportGeneralTypeIssues": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportOptionalSubscript": "none",
+  "reportPrivateImportUsage": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownVariableType": "none",
+  "reportArgumentType": "none",
+  
+  "venvPath": ".",
+  "venv": ".venv"
+}

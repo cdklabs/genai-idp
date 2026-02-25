@@ -51,10 +51,22 @@
           "spawn": "bundle:lambdas:lib"
         },
         {
+          "spawn": "bundle:handler:agent_chat_processor"
+        },
+        {
+          "spawn": "bundle:handler:agent_chat_resolver"
+        },
+        {
           "spawn": "bundle:handler:agent_processor"
         },
         {
           "spawn": "bundle:handler:agent_request_handler"
+        },
+        {
+          "spawn": "bundle:handler:agentcore_analytics_processor"
+        },
+        {
+          "spawn": "bundle:handler:agentcore_gateway_manager"
         },
         {
           "spawn": "bundle:handler:chat_with_document_resolver"
@@ -72,13 +84,22 @@
           "spawn": "bundle:handler:create_a2i_resources"
         },
         {
+          "spawn": "bundle:handler:create_chat_session_resolver"
+        },
+        {
           "spawn": "bundle:handler:create_document_resolver"
         },
         {
           "spawn": "bundle:handler:dashboard_merger"
         },
         {
+          "spawn": "bundle:handler:delete_agent_chat_session_resolver"
+        },
+        {
           "spawn": "bundle:handler:delete_document_resolver"
+        },
+        {
+          "spawn": "bundle:handler:delete_tests"
         },
         {
           "spawn": "bundle:handler:discovery_processor"
@@ -87,10 +108,19 @@
           "spawn": "bundle:handler:discovery_upload_resolver"
         },
         {
-          "spawn": "bundle:handler:evaluation_function"
+          "spawn": "bundle:handler:error_analyzer"
+        },
+        {
+          "spawn": "bundle:handler:error_analyzer_resolver"
+        },
+        {
+          "spawn": "bundle:handler:fcc_dataset_deployer"
         },
         {
           "spawn": "bundle:handler:get-workforce-url"
+        },
+        {
+          "spawn": "bundle:handler:get_agent_chat_messages_resolver"
         },
         {
           "spawn": "bundle:handler:get_file_contents_resolver"
@@ -105,10 +135,16 @@
           "spawn": "bundle:handler:ipset_updater"
         },
         {
+          "spawn": "bundle:handler:list_agent_chat_sessions_resolver"
+        },
+        {
           "spawn": "bundle:handler:list_available_agents"
         },
         {
           "spawn": "bundle:handler:lookup_function"
+        },
+        {
+          "spawn": "bundle:handler:post_processing_decompressor"
         },
         {
           "spawn": "bundle:handler:process_changes_resolver"
@@ -130,6 +166,24 @@
         },
         {
           "spawn": "bundle:handler:start_codebuild"
+        },
+        {
+          "spawn": "bundle:handler:test_file_copier"
+        },
+        {
+          "spawn": "bundle:handler:test_results_resolver"
+        },
+        {
+          "spawn": "bundle:handler:test_runner"
+        },
+        {
+          "spawn": "bundle:handler:test_set_file_copier"
+        },
+        {
+          "spawn": "bundle:handler:test_set_resolver"
+        },
+        {
+          "spawn": "bundle:handler:test_set_zip_extractor"
         },
         {
           "spawn": "bundle:handler:update_configuration"
@@ -162,6 +216,28 @@
         }
       ]
     },
+    "bundle:handler:agent_chat_processor": {
+      "name": "bundle:handler:agent_chat_processor",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/agent_chat_processor"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/agent_chat_processor/ assets/lambdas/agent_chat_processor/."
+        }
+      ]
+    },
+    "bundle:handler:agent_chat_resolver": {
+      "name": "bundle:handler:agent_chat_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/agent_chat_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/agent_chat_resolver/ assets/lambdas/agent_chat_resolver/."
+        }
+      ]
+    },
     "bundle:handler:agent_processor": {
       "name": "bundle:handler:agent_processor",
       "steps": [
@@ -181,6 +257,28 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/src/lambda/agent_request_handler/ assets/lambdas/agent_request_handler/."
+        }
+      ]
+    },
+    "bundle:handler:agentcore_analytics_processor": {
+      "name": "bundle:handler:agentcore_analytics_processor",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/agentcore_analytics_processor"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/agentcore_analytics_processor/ assets/lambdas/agentcore_analytics_processor/."
+        }
+      ]
+    },
+    "bundle:handler:agentcore_gateway_manager": {
+      "name": "bundle:handler:agentcore_gateway_manager",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/agentcore_gateway_manager"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/agentcore_gateway_manager/ assets/lambdas/agentcore_gateway_manager/."
         }
       ]
     },
@@ -239,6 +337,17 @@
         }
       ]
     },
+    "bundle:handler:create_chat_session_resolver": {
+      "name": "bundle:handler:create_chat_session_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/create_chat_session_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/create_chat_session_resolver/ assets/lambdas/create_chat_session_resolver/."
+        }
+      ]
+    },
     "bundle:handler:create_document_resolver": {
       "name": "bundle:handler:create_document_resolver",
       "steps": [
@@ -261,6 +370,17 @@
         }
       ]
     },
+    "bundle:handler:delete_agent_chat_session_resolver": {
+      "name": "bundle:handler:delete_agent_chat_session_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/delete_agent_chat_session_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/delete_agent_chat_session_resolver/ assets/lambdas/delete_agent_chat_session_resolver/."
+        }
+      ]
+    },
     "bundle:handler:delete_document_resolver": {
       "name": "bundle:handler:delete_document_resolver",
       "steps": [
@@ -269,6 +389,17 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/src/lambda/delete_document_resolver/ assets/lambdas/delete_document_resolver/."
+        }
+      ]
+    },
+    "bundle:handler:delete_tests": {
+      "name": "bundle:handler:delete_tests",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/delete_tests"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/delete_tests/ assets/lambdas/delete_tests/."
         }
       ]
     },
@@ -294,14 +425,47 @@
         }
       ]
     },
-    "bundle:handler:evaluation_function": {
-      "name": "bundle:handler:evaluation_function",
+    "bundle:handler:error_analyzer": {
+      "name": "bundle:handler:error_analyzer",
       "steps": [
         {
-          "exec": "mkdir -p assets/lambdas/evaluation_function"
+          "exec": "mkdir -p assets/lambdas/error_analyzer"
         },
         {
-          "exec": "rsync -rLct ../../../sources/src/lambda/evaluation_function/ assets/lambdas/evaluation_function/."
+          "exec": "rsync -rLct ../../../sources/src/lambda/error_analyzer/ assets/lambdas/error_analyzer/."
+        }
+      ]
+    },
+    "bundle:handler:error_analyzer_resolver": {
+      "name": "bundle:handler:error_analyzer_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/error_analyzer_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/error_analyzer_resolver/ assets/lambdas/error_analyzer_resolver/."
+        }
+      ]
+    },
+    "bundle:handler:fcc_dataset_deployer": {
+      "name": "bundle:handler:fcc_dataset_deployer",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/fcc_dataset_deployer"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/fcc_dataset_deployer/ assets/lambdas/fcc_dataset_deployer/."
+        }
+      ]
+    },
+    "bundle:handler:get_agent_chat_messages_resolver": {
+      "name": "bundle:handler:get_agent_chat_messages_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/get_agent_chat_messages_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/get_agent_chat_messages_resolver/ assets/lambdas/get_agent_chat_messages_resolver/."
         }
       ]
     },
@@ -360,6 +524,17 @@
         }
       ]
     },
+    "bundle:handler:list_agent_chat_sessions_resolver": {
+      "name": "bundle:handler:list_agent_chat_sessions_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/list_agent_chat_sessions_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/list_agent_chat_sessions_resolver/ assets/lambdas/list_agent_chat_sessions_resolver/."
+        }
+      ]
+    },
     "bundle:handler:list_available_agents": {
       "name": "bundle:handler:list_available_agents",
       "steps": [
@@ -379,6 +554,17 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/src/lambda/lookup_function/ assets/lambdas/lookup_function/."
+        }
+      ]
+    },
+    "bundle:handler:post_processing_decompressor": {
+      "name": "bundle:handler:post_processing_decompressor",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/post_processing_decompressor"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/post_processing_decompressor/ assets/lambdas/post_processing_decompressor/."
         }
       ]
     },
@@ -456,6 +642,72 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/src/lambda/start_codebuild/ assets/lambdas/start_codebuild/."
+        }
+      ]
+    },
+    "bundle:handler:test_file_copier": {
+      "name": "bundle:handler:test_file_copier",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/test_file_copier"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/test_file_copier/ assets/lambdas/test_file_copier/."
+        }
+      ]
+    },
+    "bundle:handler:test_results_resolver": {
+      "name": "bundle:handler:test_results_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/test_results_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/test_results_resolver/ assets/lambdas/test_results_resolver/."
+        }
+      ]
+    },
+    "bundle:handler:test_runner": {
+      "name": "bundle:handler:test_runner",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/test_runner"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/test_runner/ assets/lambdas/test_runner/."
+        }
+      ]
+    },
+    "bundle:handler:test_set_file_copier": {
+      "name": "bundle:handler:test_set_file_copier",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/test_set_file_copier"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/test_set_file_copier/ assets/lambdas/test_set_file_copier/."
+        }
+      ]
+    },
+    "bundle:handler:test_set_resolver": {
+      "name": "bundle:handler:test_set_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/test_set_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/test_set_resolver/ assets/lambdas/test_set_resolver/."
+        }
+      ]
+    },
+    "bundle:handler:test_set_zip_extractor": {
+      "name": "bundle:handler:test_set_zip_extractor",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/test_set_zip_extractor"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/test_set_zip_extractor/ assets/lambdas/test_set_zip_extractor/."
         }
       ]
     },

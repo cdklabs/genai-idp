@@ -8,8 +8,10 @@ Lambda function to process agent queries using Strands agents.
 import json
 import logging
 import os
+import sys
 import time
 from datetime import datetime
+from io import StringIO  # Used for capturing stdout during agent execution
 
 import boto3
 import requests
@@ -128,10 +130,37 @@ def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id
             )
             logger.info("Orchestrator agent created successfully")
         
+        # Note: DynamoDB message tracker is automatically added by IDPAgent
+        # if job_id and user_id are provided in kwargs
+        
         # Process the query using context manager for MCP agents
         logger.info(f"Processing query: {query}")
-        with agent:
-            response = agent(query)
+
+        # The Strands framework seem to output complete LLM responses directly to stdout
+        # statements or str() conversions, bypassing the logging system. This causes large
+        # unformatted text blocks to appear in CloudWatch logs without proper log prefixes.
+        # 
+        # Temporarily redirect stdout during agent execution to capture and suppress
+        # these unwanted outputs while preserving stderr for the logging system.
+        old_stdout = sys.stdout
+        captured_output = StringIO()
+        
+        try:
+            # Redirect stdout to capture any print statements
+            sys.stdout = captured_output
+            
+            with agent:
+                response = agent(query)
+                
+        finally:
+            # Restore stdout
+            sys.stdout = old_stdout
+            
+        # Log any captured stdout content
+        captured_text = captured_output.getvalue()
+        if captured_text.strip():
+            logger.info(f"Result from agent execution: {captured_text[:200]}...")
+            
         logger.info("Query processed successfully")
         
         # Parse the response using the new parsing function
@@ -145,7 +174,7 @@ def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id
             # Return a text response with the raw output
             return {
                 "responseType": "text",
-                "content": f"Error parsing response: {response}"
+                "content": f"Error parsing response: {response}",
             }
             
     except Exception as e:

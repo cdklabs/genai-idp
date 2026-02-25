@@ -14,14 +14,17 @@ import path from "path";
 import fs from 'fs';
 
 const stability = Stability.EXPERIMENTAL;
-const CDK_VERSION = '2.232.2';
-const CONSTRUCTS_VERSION = '10.4.4';
-const GENAI_CONSTRUCTS_VERSION = '0.1.312';
+const CDK_VERSION = '2.240.0';
+const CONSTRUCTS_VERSION = '10.5.1';
+const GENAI_CONSTRUCTS_VERSION = '0.1.314';
+const JSII_VERSION = '~5.9';
 
 const idpDeps = [
   `@aws-cdk/aws-lambda-python-alpha@^${CDK_VERSION}-alpha.0`,
   `@aws-cdk/aws-sagemaker-alpha@^${CDK_VERSION}-alpha.0`,
   `@aws-cdk/aws-glue-alpha@^${CDK_VERSION}-alpha.0`,
+  `@aws-cdk/aws-bedrock-alpha@^${CDK_VERSION}-alpha.0`,
+  `@aws-cdk/aws-bedrock-agentcore-alpha@^${CDK_VERSION}-alpha.0`,
   // INFO: atm, GenAI CDK Constructs only support NPM, PyPI, and .NET
   `@cdklabs/generative-ai-cdk-constructs@^${GENAI_CONSTRUCTS_VERSION}`
 ];
@@ -57,7 +60,7 @@ const genaiIdp = new AwsCdkTypeScriptWorkspace({
   cdkVersion: CDK_VERSION,
   constructsVersion: CONSTRUCTS_VERSION,
   jsiiOptions: {
-    jsiiVersion: "~5.8",
+    jsiiVersion: JSII_VERSION,
     stability,
     publishToPypi: {
       distName: `cdklabs.genai-idp`,
@@ -158,7 +161,7 @@ const idpPattern1 = new AwsCdkTypeScriptWorkspace({
   cdkVersion: CDK_VERSION,
   constructsVersion: CONSTRUCTS_VERSION,
   jsiiOptions: {
-    jsiiVersion: "~5.8",
+    jsiiVersion: JSII_VERSION,
     stability,
     publishToPypi: {
       distName: `cdklabs.genai-idp-bda-processor`,
@@ -228,7 +231,7 @@ const idpPattern2 = new AwsCdkTypeScriptWorkspace({
   cdkVersion: CDK_VERSION,
   constructsVersion: CONSTRUCTS_VERSION,
   jsiiOptions: {
-    jsiiVersion: "~5.8",
+    jsiiVersion: JSII_VERSION,
     stability,
     publishToPypi: {
       distName: `cdklabs.genai-idp-bedrock-llm-processor`,
@@ -302,7 +305,7 @@ const idpPattern3 = new AwsCdkTypeScriptWorkspace({
   cdkVersion: CDK_VERSION,
   constructsVersion: CONSTRUCTS_VERSION,
   jsiiOptions: {
-    jsiiVersion: "~5.8",
+    jsiiVersion: JSII_VERSION,
     stability,
     publishToPypi: {
       distName: `cdklabs.genai-idp-sagemaker-udop-processor`,

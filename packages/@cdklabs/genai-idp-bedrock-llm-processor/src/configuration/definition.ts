@@ -4,13 +4,13 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import path from "path";
+import { IBedrockInvokable as IInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import {
   ConfigurationDefinition,
   ConfigurationDefinitionLoader,
   IConfigurationDefinition,
   modelNameToInvokable,
 } from "@cdklabs/genai-idp";
-import { IInvokable } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import { Arn, ArnFormat } from "aws-cdk-lib";
 import { ClassificationMethod } from "../classification-method";
 
@@ -517,6 +517,18 @@ export class BedrockLlmProcessorConfigurationDefinition {
 
       raw(): { [key: string]: any } {
         return def.raw();
+      }
+
+      validate() {
+        return def.validate();
+      }
+
+      isLegacyFormat(): boolean {
+        return def.isLegacyFormat();
+      }
+
+      isJsonSchemaFormat(): boolean {
+        return def.isJsonSchemaFormat();
       }
     }
     return new LoadedDefinition();

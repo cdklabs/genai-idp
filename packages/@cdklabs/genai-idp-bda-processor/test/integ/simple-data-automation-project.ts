@@ -120,17 +120,21 @@ export class SimpleDataAutomationProject
   }
 
   grantInvokeAsync(grantee: IGrantable): Grant {
-    // NOTE: as of now BDA works only in the US
     return Grant.addToPrincipal({
       grantee,
       actions: ["bedrock:InvokeDataAutomationAsync"],
       resourceArns: [
         this.arn,
-        // TODO: for now it is only US. Make sure this is resolved once other geos support BDA
+        // US regions
         `arn:${Aws.PARTITION}:bedrock:us-east-1:${Aws.ACCOUNT_ID}:data-automation-profile/us.data-automation-v1`,
         `arn:${Aws.PARTITION}:bedrock:us-east-2:${Aws.ACCOUNT_ID}:data-automation-profile/us.data-automation-v1`,
         `arn:${Aws.PARTITION}:bedrock:us-west-1:${Aws.ACCOUNT_ID}:data-automation-profile/us.data-automation-v1`,
         `arn:${Aws.PARTITION}:bedrock:us-west-2:${Aws.ACCOUNT_ID}:data-automation-profile/us.data-automation-v1`,
+        // EU regions
+        `arn:${Aws.PARTITION}:bedrock:eu-central-1:${Aws.ACCOUNT_ID}:data-automation-profile/eu.data-automation-v1`,
+        `arn:${Aws.PARTITION}:bedrock:eu-west-1:${Aws.ACCOUNT_ID}:data-automation-profile/eu.data-automation-v1`,
+        `arn:${Aws.PARTITION}:bedrock:eu-west-2:${Aws.ACCOUNT_ID}:data-automation-profile/eu.data-automation-v1`,
+        `arn:${Aws.PARTITION}:bedrock:eu-west-3:${Aws.ACCOUNT_ID}:data-automation-profile/eu.data-automation-v1`,
       ],
     });
   }

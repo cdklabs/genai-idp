@@ -3,9 +3,12 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
+**Questions?** [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws)
+
 ## Table of Contents
 
 - [Introduction](#introduction)
+- [Alternative Implementations](#alternative-implementations)
 - [Key Features](#key-features)
 - [Architecture Overview](#architecture-overview)
 - [Quick Start](#quick-start)
@@ -25,12 +28,19 @@ A scalable, serverless solution for automated document processing and informatio
 
 https://github.com/user-attachments/assets/272b543b-e506-48ce-acc1-361422d22322
 
-White-glove customization, deployment, and integration support for production use cases is also available through [AWS Professional Services](https://aws.amazon.com/professional-services/).
+Concierge support for customization, deployment, and integration of production use cases is available through [AWS Professional Services](https://aws.amazon.com/professional-services/).
+
+## Alternative Implementations
+
+**Prefer AWS CDK?** This solution is also available as [GenAI IDP Accelerator for AWS CDK](https://github.com/cdklabs/genai-idp), providing the same functional capabilities through AWS CDK constructs for customers who prefer Infrastructure-as-Code with CDK.
+
+**Prefer Terraform?** This solution is also available as [GenAI IDP Terraform](https://github.com/awslabs/genai-idp-terraform), providing the same functional capabilities as a Terraform module that integrates with existing infrastructure and supports customization through module variables.
 
 ## Key Features
 
 - **Serverless Architecture**: Built entirely on AWS serverless technologies including Lambda, Step Functions, SQS, and DynamoDB
 - **Modular, pluggable patterns**: Pre-built processing patterns using state-of-the-art models and AWS services
+- **Command Line Interface**: Programmatic batch processing with evaluation framework and analytics integration
 - **Advanced Classification**: Support for page-level and holistic document packet classification
 - **Few Shot Example Support**: Improve accuracy through example-based prompting
 - **Custom Business Logic Integration**: Inject custom prompt generation logic via Lambda functions for specialized document processing
@@ -44,6 +54,8 @@ White-glove customization, deployment, and integration support for production us
 - **AI-Powered Evaluation**: Framework to assess accuracy against baseline data
 - **Extraction Confidence Assessment**: LLM-powered assessment of extraction confidence with multimodal document analysis
 - **Document Knowledge Base Query**: Ask questions about your processed documents
+- **IDP Accelerator Help Chat Bot**: Ask questions about the IDP code base or features
+- **MCP Integration**: Model Context Protocol integration enabling external applications like Amazon Quick Suite to access IDP data and analytics through AWS Bedrock AgentCore Gateway
 
 ## Architecture Overview
 
@@ -67,29 +79,57 @@ To quickly deploy the GenAI-IDP solution in your AWS account:
 | --------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | US West (Oregon)      | us-west-2   | [![Launch Stack](https://cdn.rawgit.com/buildkite/cloudformation-launch-stack-button-svg/master/launch-stack.svg)](https://us-west-2.console.aws.amazon.com/cloudformation/home?region=us-west-2#/stacks/create/review?templateURL=https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main.yaml&stackName=IDP) |
 | US East (N.Virginia)      | us-east-1   | [![Launch Stack](https://cdn.rawgit.com/buildkite/cloudformation-launch-stack-button-svg/master/launch-stack.svg)](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/create/review?templateURL=https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main.yaml&stackName=IDP) |
+| EU Central (Frankfurt)      | eu-central-1   | [![Launch Stack](https://cdn.rawgit.com/buildkite/cloudformation-launch-stack-button-svg/master/launch-stack.svg)](https://eu-central-1.console.aws.amazon.com/cloudformation/home?region=eu-central-1#/stacks/create/review?templateURL=https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main.yaml&stackName=IDP) |
 
 3. When the stack deploys for the first time, you'll receive an email with a temporary password to access the web UI
 4. Use this temporary password for your first login to set up a permanent password
 
 ### Processing Your First Document
 
-After deployment, you can quickly process a document and view results:
+After deployment, choose the processing method that fits your use case:
 
-1. **Upload a Document**:
-   - **Via Web UI**: Open the Web UI URL from the CloudFormation stack's Outputs tab, log in, and click "Upload Document"
-   - **Via S3**: Upload directly to the S3 input bucket (find the bucket URL in CloudFormation stack Outputs)
+#### Method 1: Web UI (Interactive)
 
-2. **Use Sample Documents**:
-   - For Patterns 1 (BDA) and Pattern 2: Use [samples/lending_package.pdf](./samples/lending_package.pdf)
-   - For Pattern 3 (UDOP): Use [samples/rvl_cdip_package.pdf](./samples/rvl_cdip_package.pdf)
+1. Open the Web UI URL from CloudFormation stack Outputs
+2. Log in and click "Upload Document"
+3. Upload a sample document:
+   - For Patterns 1 & 2: [samples/lending_package.pdf](./samples/lending_package.pdf)
+   - For Pattern 3: [samples/rvl_cdip_package.pdf](./samples/rvl_cdip_package.pdf)
+4. Monitor processing and view results in the dashboard
 
-3. **Monitor Processing**:
-   - **Via Web UI**: Track document status on the dashboard
-   - **Via Step Functions**: Open the StateMachine URL from CloudFormation stack Outputs to observe workflow execution
+#### Method 2: Direct S3 Upload (Simple)
 
-4. **View Results**:
-   - **Via Web UI**: Access processing results through the document details page
-   - **Via S3**: Check the output bucket for structured JSON files with extracted data
+1. Upload to the InputBucket (URL in CloudFormation Outputs)
+2. Monitor via Step Functions console
+3. Results appear in OutputBucket automatically
+
+#### Method 3: IDP CLI (Batch/Programmatic)
+
+For batch processing, automation, or evaluation workflows:
+
+```bash
+# Install CLI
+cd idp_cli && pip install -e .
+
+# Process documents
+idp-cli run-inference \
+    --stack-name <your-stack-name> \
+    --dir ./samples/ \
+    --monitor
+
+# Download results
+idp-cli download-results \
+    --stack-name <your-stack-name> \
+    --batch-id <batch-id> \
+    --output-dir ./results/
+```
+
+**See [IDP CLI Documentation](./docs/idp-cli.md)** for:
+- CLI-based stack deployment and updates
+- Batch document processing
+- Complete evaluation workflows with baselines
+- Athena and Agent Analytics integration
+- CI/CD integration examples
 
 See the [Deployment Guide](./docs/deployment.md#testing-the-solution) for more detailed testing instructions.
 
@@ -108,6 +148,7 @@ To update an existing GenAIIDP stack to a new version:
 5. Enter the template URL: 
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main.yaml`
    - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main.yaml`
 6. Follow the prompts to update your stack, reviewing any parameter changes
 7. For detailed instructions, see the [Deployment Guide](./docs/deployment.md#updating-an-existing-stack)
 
@@ -124,10 +165,12 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 
 - [Architecture](./docs/architecture.md) - Detailed component architecture and data flow
 - [Deployment](./docs/deployment.md) - Build, publish, deploy, and test instructions
+- [IDP CLI](./docs/idp-cli.md) - Command line interface for batch processing and evaluation workflows
 - [Web UI](./docs/web-ui.md) - Web interface features and usage
 - [Agent Analysis](./docs/agent-analysis.md) - Natural language analytics and data visualization feature
 - [Custom MCP Agent](./docs/custom-MCP-agent.md) - Integrating external MCP servers for custom tools and capabilities
 - [Configuration](./docs/configuration.md) - Configuration and customization options
+- [JSON Schema Migration](./docs/json-schema-migration.md) - JSON Schema format guide and legacy migration details
 - [Discovery](./docs/discovery.md) - Pattern-neutral discovery process and BDA blueprint automation
 - [Classification](./docs/classification.md) - Customizing document classification
 - [Extraction](./docs/extraction.md) - Customizing information extraction
@@ -136,6 +179,8 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Evaluation Framework](./docs/evaluation.md) - Accuracy assessment system with analytics database and reporting
 - [Knowledge Base](./docs/knowledge-base.md) - Document knowledge base query feature
 - [Monitoring](./docs/monitoring.md) - Monitoring and logging capabilities
+- [IDP Accelerator Help Chat Bot](./docs/code-intelligence.md) - Chat bot for asking question about the IDP code base and features
+- [MCP Integration](./docs/mcp-integration.md) - Model Context Protocol integration for external applications like Amazon Quick Suite
 - [Reporting Database](./docs/reporting-database.md) - Analytics database for evaluation metrics and metering data
 - [Troubleshooting](./docs/troubleshooting.md) - Troubleshooting and performance guides
 

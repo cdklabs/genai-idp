@@ -37,7 +37,9 @@ class UDOPModel(pl.LightningModule):
                 model_id, revision=revision, dropout_rate=dropout_rate
             )
         else:
-            # Fallback for custom models without managed versions
+            # nosec B615 - Sample training code for demonstration purposes
+            # This fallback path is only for custom models during development/testing
+            # Production deployments should use pinned revisions from model_versions.py
             print(f"Loading model {model_id} without revision pinning (not in managed list)")
             self.model = UdopForConditionalGeneration.from_pretrained(
                 model_id, dropout_rate=dropout_rate

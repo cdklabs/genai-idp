@@ -305,8 +305,9 @@ assess each extracted field:
 
 ### Automatic Image Handling
 - Supports both single and multiple document images
-- Automatically limits to 20 images per Bedrock constraints
+- Processes all document pages without image count restrictions
 - Graceful fallback when images are unavailable
+- Info logging for image count monitoring
 
 ## Attribute Types and Assessment Formats
 

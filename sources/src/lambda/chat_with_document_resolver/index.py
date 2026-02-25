@@ -170,7 +170,7 @@ def handler(event, context):
             # Invoke a model
             response = client.invoke_model(
                 model_id=selectedModelId,
-                system_prompt="You are an assistant that's responsible for getting details from document text attached here based on questions from the user.\n\nIf you don't know the answer, just say that you don't know. Don't try to make up an answer.\n\nAdditionally, use the user and assistant responses in the following JSON object to see what's been asked and what the resposes were in the past.\n\n",
+                system_prompt="You are an assistant that's responsible for getting details from document text attached here based on questions from the user.\n\nIf you don't know the answer, just say that you don't know. Don't try to make up an answer.\n\nAdditionally, use the user and assistant responses in the following JSON object to see what's been asked and what the resposes were in the past. Your response should always be in plain text, not JSON.\n\n",
                 content=content,
                 temperature=0.0
             )

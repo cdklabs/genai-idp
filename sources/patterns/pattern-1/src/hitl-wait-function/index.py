@@ -18,7 +18,7 @@ TRACKING_TABLE = os.environ.get('TRACKING_TABLE')
 BDA_METADATA_TABLE = os.environ.get('DYNAMODB_TABLE')
 SAGEMAKER_A2I_REVIEW_PORTAL_URL = os.environ.get('SAGEMAKER_A2I_REVIEW_PORTAL_URL', '')
 
-def lambda_handler(event, context):
+def handler(event, context):
     """
     Enhanced HITL wait function that:
     1. Creates task tokens for sections and pages that need human review

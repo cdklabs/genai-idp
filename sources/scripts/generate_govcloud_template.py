@@ -74,6 +74,8 @@ class GovCloudTemplateGenerator:
             'ConfigurationDataSource',
             'GetConfigurationResolver',
             'UpdateConfigurationResolver',
+            'ListConfigurationLibraryResolver',
+            'GetConfigurationLibraryFileResolver',
             'CopyToBaselineResolverFunction',
             'CopyToBaselineResolverFunctionLogGroup',
             'CopyToBaselineDataSource',
@@ -116,7 +118,86 @@ class GovCloudTemplateGenerator:
             'DiscoveryTableDataSource',
             'DiscoveryUploadDocumentResolver',
             'DiscoveryUploadResolverDataSource',
-            'UpdateDiscoveryJobStatusResolver'
+            'UpdateDiscoveryJobStatusResolver',
+            'ProcessChangesResolverFunction',
+            'ProcessChangesResolverFunctionLogGroup',
+            'ProcessChangesDataSource',
+            'ProcessChangesResolver',
+            # Chat Session Management Resources (added for GovCloud compatibility)
+            'ChatSessionsTable',
+            'ListAgentChatSessionsFunction',
+            'ListAgentChatSessionsFunctionLogGroup',
+            'GetAgentChatMessagesFunction',
+            'GetAgentChatMessagesFunctionLogGroup',
+            'DeleteAgentChatSessionFunction',
+            'DeleteAgentChatSessionFunctionLogGroup',
+            'ListAgentChatSessionsDataSource',
+            'GetAgentChatMessagesDataSource',
+            'DeleteAgentChatSessionDataSource',
+            'ListChatSessionsResolver',
+            'GetChatMessagesResolver',
+            'DeleteChatSessionResolver',
+            # Chat Infrastructure Resources (added for GovCloud compatibility)
+            'ChatMessagesTable',
+            'IdHelperChatMemoryTable',
+            'NoneDataSource',
+            'ChatMessagesDataSource',
+            'OnAgentChatMessageUpdateResolver',
+            'SendAgentChatMessageResolver',
+            'AgentChatDataSource',
+            'AgentChatResolverDataSource',
+            # Agent Chat Lambda Functions (added for GovCloud compatibility)
+            'AgentChatProcessorFunction',
+            'AgentChatProcessorLogGroup',
+            'AgentChatResolverFunction',
+            'AgentChatResolverLogGroup',
+            # Test Studio Resources (added for GovCloud compatibility)
+            'DeleteTestsResolverFunction',
+            'DeleteTestsResolverFunctionLogGroup',
+            'DeleteTestsDataSource',
+            'DeleteTestsResolver',
+            'TestRunnerFunction',
+            'TestRunnerFunctionLogGroup',
+            'TestRunnerDataSource',
+            'TestRunnerResolver',
+            'TestResultsResolverFunction',
+            'TestResultsResolverFunctionLogGroup',
+            'TestResultsDataSource',
+            'GetTestRunsResolver',
+            'CompareTestRunsResolver',
+            'GetTestRunResolver',
+            'GetTestRunStatusResolver',
+            'TestSetResolverFunction',
+            'TestSetResolverFunctionLogGroup',
+            'TestSetDataSource',
+            'AddTestSetResolver',
+            'AddTestSetFromUploadResolver',
+            'DeleteTestSetsResolver',
+            'GetTestSetsResolver',
+            'ListBucketFilesResolver',
+            'ValidateTestFileNameResolver',
+            'TestResultCacheUpdateQueue',
+            'TestFileCopierFunction',
+            'TestFileCopierFunctionLogGroup',
+            'TestFileCopierFunctionDLQ',
+            'TestFileCopyQueue',
+            'TestFileCopyQueueDLQ',
+            'TestFileCopyQueuePolicy',
+            'TestFileCopyQueueDLQPolicy',
+            'TestSetFileCopierFunction',
+            'TestSetFileCopierFunctionLogGroup',
+            'TestSetFileCopierFunctionDLQ',
+            'TestSetFileCopyQueue',
+            'TestSetFileCopyQueueDLQ',
+            'TestSetFileCopyQueuePolicy',
+            'TestSetFileCopyQueueDLQPolicy',
+            'TestSetZipExtractorFunction',
+            'TestSetZipExtractorFunctionLogGroup',
+            'TestSetZipExtractorFunctionInvokePermission',
+            'TestSetZipExtractorS3Policy',
+            'TestSetBucketNotificationFunction',
+            'TestSetBucketNotificationConfiguration',
+            'TestSetResolverS3Policy'
         }
         
         self.auth_resources = {
@@ -153,7 +234,15 @@ class GovCloudTemplateGenerator:
             'AgentProcessorLogGroup',
             'ExternalMCPAgentsSecret',
             'ListAvailableAgentsFunction',
-            'ListAvailableAgentsLogGroup'
+            'ListAvailableAgentsLogGroup',
+            # MCP/AgentCore Gateway Resources (depend on Cognito UserPool)
+            'AgentCoreAnalyticsLambdaFunction',
+            'AgentCoreAnalyticsLambdaLogGroup',
+            'AgentCoreGatewayManagerFunction',
+            'AgentCoreGatewayManagerLogGroup',
+            'AgentCoreGatewayExecutionRole',
+            'AgentCoreGateway',
+            'ExternalAppClient'
         }
         
         self.hitl_resources = {
@@ -187,8 +276,9 @@ class GovCloudTemplateGenerator:
             'CloudFrontAllowedGeos',
             'WAFAllowedIPv4Ranges',
             'DocumentKnowledgeBase',
+            'KnowledgeBaseVectorStore',
             'KnowledgeBaseModelId',
-            'DocumentAnalysisAgentModelId',
+            'ChatCompanionModelId',
             'EnableHITL',
             'ExistingPrivateWorkforceArn'
         }
@@ -201,7 +291,16 @@ class GovCloudTemplateGenerator:
             'SageMakerA2IReviewPortalURL',
             'LabelingConsoleURL',
             'ExternalMCPAgentsSecretName',
-            'PrivateWorkteamArn'
+            'PrivateWorkteamArn',
+            # MCP/AgentCore Gateway Outputs (depend on Cognito UserPool)
+            'MCPServerEndpoint',
+            'MCPClientId',
+            'MCPClientSecret',
+            'MCPUserPool',
+            'MCPTokenURL',
+            'MCPAuthorizationURL',
+            'DynamoDBAgentTableName',
+            'DynamoDBAgentTableConsoleURL'
         }
 
     def setup_logging(self):
@@ -236,11 +335,11 @@ class GovCloudTemplateGenerator:
         self.logger.info("✅ Publish script completed successfully")
         return True
 
-    def validate_template_via_s3(self, template_url: str) -> bool:
+    def validate_template_via_s3(self, template_url: str, region: str) -> bool:
         """Validate template using CloudFormation API with S3 URL (avoids size limitations)"""
         try:
-            self.logger.info("Performing CloudFormation API validation via S3 URL")
-            cf_client = boto3.client('cloudformation')
+            self.logger.info(f"Performing CloudFormation API validation via S3 URL in region {region}")
+            cf_client = boto3.client('cloudformation', region_name=region)
             
             # Validate template using CloudFormation API with S3 URL
             response = cf_client.validate_template(TemplateURL=template_url)
@@ -386,7 +485,7 @@ class GovCloudTemplateGenerator:
         return template
 
     def remove_parameters(self, template: Dict[str, Any]) -> Dict[str, Any]:
-        """Remove parameters related to unsupported services"""
+        """Remove parameters related to unsupported services and restrict IDPPattern to Pattern-2"""
         parameters = template.get('Parameters', {})
         original_count = len(parameters)
         
@@ -395,6 +494,23 @@ class GovCloudTemplateGenerator:
             if param_name in self.ui_parameters:
                 del parameters[param_name]
                 removed_parameters.append(param_name)
+        
+        # Modify IDPPattern parameter to only allow Pattern-2 as the default
+        if 'IDPPattern' in parameters:
+            parameters['IDPPattern'] = {
+                'Type': 'String',
+                'Default': 'Pattern2 - Packet processing with Textract and Bedrock',
+                'Description': 'Document processing pattern (GovCloud version supports Pattern-2 only)',
+                'AllowedValues': [
+                    'Pattern2 - Packet processing with Textract and Bedrock'
+                ]
+            }
+            self.logger.info("Modified IDPPattern parameter to only support Pattern-2")
+        
+        # Set EnableMCP default to false for GovCloud (MCP integration depends on Cognito/AgentCore)
+        if 'EnableMCP' in parameters:
+            parameters['EnableMCP']['Default'] = 'false'
+            self.logger.info("Modified EnableMCP parameter default to 'false' for GovCloud")
         
         self.logger.info(f"Removed {len(removed_parameters)} UI-related parameters")
         self.logger.debug(f"Removed parameters: {', '.join(removed_parameters)}")
@@ -424,9 +540,15 @@ class GovCloudTemplateGenerator:
         return template
 
     def remove_conditions(self, template: Dict[str, Any]) -> Dict[str, Any]:
-        """Remove conditions related to unsupported services"""
+        """Remove conditions related to unsupported services and force S3 Vectors to False"""
         conditions = template.get('Conditions', {})
         original_count = len(conditions)
+        
+        # Force IsS3VectorsVectorStore to always evaluate to false for GovCloud (S3 Vectors service not available)
+        # Use CloudFormation intrinsic function that always evaluates to false
+        if 'IsS3VectorsVectorStore' in conditions:
+            conditions['IsS3VectorsVectorStore'] = {'Fn::Equals': ['false', 'true']}
+            self.logger.info("Forced IsS3VectorsVectorStore condition to always evaluate to False for GovCloud")
         
         ui_conditions = {
             'ShouldAllowSignUpEmailDomain',
@@ -681,7 +803,7 @@ class GovCloudTemplateGenerator:
                             if len(policy['Statement']) != len(statements):
                                 self.logger.debug(f"Removed AppSync permissions from {func_name}")
         
-        # Clean nested stack parameters comprehensively
+        # Clean nested stack parameters comprehensively (all patterns need AppSync params removed)
         pattern_stacks = ['PATTERN1STACK', 'PATTERN2STACK', 'PATTERN3STACK']
         for stack_name in pattern_stacks:
             if stack_name in resources:
@@ -846,7 +968,7 @@ class GovCloudTemplateGenerator:
         if missing_core:
             issues.append(f"Missing core resources: {', '.join(missing_core)}")
         
-        # Check that nested stacks are still present
+        # Check that pattern nested stacks are still present
         pattern_stacks = {'PATTERN1STACK', 'PATTERN2STACK', 'PATTERN3STACK'}
         present_patterns = pattern_stacks & set(resources.keys())
         if not present_patterns:
@@ -917,7 +1039,7 @@ class GovCloudTemplateGenerator:
             # 1-Click Launch for GovCloud template
             encoded_govcloud_url = quote(govcloud_url, safe=":/?#[]@!$&'()*+,;=")
             if "us-gov" in region:
-                domain="aws.amazonaws-us-gov.com"
+                domain="amazonaws-us-gov.com"
             else:
                 domain="aws.amazon.com"
             govcloud_launch_url = f"https://{region}.console.{domain}/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_govcloud_url}&stackName=IDP-GovCloud"
@@ -1040,7 +1162,7 @@ Examples:
         else:
             # Step 3.5: Validate uploaded GovCloud template using CloudFormation API
             print("🔍 Validating uploaded GovCloud template with CloudFormation API")
-            if not generator.validate_template_via_s3(govcloud_url):
+            if not generator.validate_template_via_s3(govcloud_url, args.region):
                 print("❌ GovCloud template validation failed - template may have issues")
                 # Don't exit - let user decide based on the error details shown
             else:

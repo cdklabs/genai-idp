@@ -10,6 +10,9 @@ import logging
 from typing import Dict, Any, Tuple
 from idp_common.models import Document, Status
 from idp_common.docs_service import create_document_service
+from aws_xray_sdk.core import xray_recorder, patch_all
+
+patch_all()
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -138,7 +141,15 @@ def process_message(record: Dict[str, Any]) -> Tuple[bool, str]:
         document = Document.load_document(message_data, working_bucket, logger)
         object_key = document.input_key
         logger.info(f"Processing message {message_id} for object {object_key}")
-        
+
+        # X-Ray annotations
+        xray_recorder.put_annotation('document_id', {document.id})
+        xray_recorder.put_annotation('processing_stage', 'queue_processor')
+        current_segment = xray_recorder.current_segment()
+        if current_segment:
+            document.trace_id = current_segment.trace_id
+            logger.info(f"Updated {document.id} trace_id: {document.trace_id}")
+
         # Try to increment counter
         if not update_counter(increment=True):
             logger.warning(f"Concurrency limit reached for {object_key}")
@@ -175,6 +186,7 @@ def process_message(record: Dict[str, Any]) -> Tuple[bool, str]:
         logger.error(f"Unexpected error processing message {message_id}: {str(e)}", exc_info=True)
         return False, message_id
 
+@xray_recorder.capture('queue_processor')
 def handler(event, context):
     logger.info(f"Processing event: {json.dumps(event)}")
     logger.info(f"Processing batch of {len(event['Records'])} messages")

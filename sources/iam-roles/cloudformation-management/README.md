@@ -15,6 +15,8 @@ This approach enables a security model where:
 
 The **IDPAcceleratorCloudFormationServiceRole** is a CloudFormation service role that provides the necessary permissions for AWS CloudFormation to deploy, update, and manage GenAI IDP Accelerator stacks across all patterns (Pattern 1: BDA, Pattern 2: Textract+Bedrock, Pattern 3: Textract+UDOP+Bedrock). This role can only be assumed by the CloudFormation service, not by users directly.
 
+Demo (5 minutes)
+
 ### Key Capabilities
 - **Full CloudFormation Management**: Create, update, delete IDP stacks - This IAM service role (which CloudFormation assumes) gives necessary privileges to create/update/delete the stack which is helpful in development and sandbox environments. In production environments, admins can further limit these permissions to their discretion (e.g. disabling stack deletion).
 

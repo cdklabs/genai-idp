@@ -57,7 +57,7 @@ def handler(event, context):
         document_service.update_document(document)
         
         # Load configuration and create the summarization service
-        config = get_config()
+        config = get_config(as_model=True)
         summarization_service = summarization.SummarizationService(
             config=config
         )        

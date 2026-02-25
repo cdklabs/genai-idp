@@ -17,7 +17,7 @@ dynamodb = boto3.resource('dynamodb')
 TRACKING_TABLE = os.environ.get('TRACKING_TABLE')
 SAGEMAKER_A2I_REVIEW_PORTAL_URL = os.environ.get('SAGEMAKER_A2I_REVIEW_PORTAL_URL', '')
 
-def lambda_handler(event, context):
+def handler(event, context):
     """
     HITL wait function for Pattern-2 that:
     1. Creates task tokens for sections and pages that need human review

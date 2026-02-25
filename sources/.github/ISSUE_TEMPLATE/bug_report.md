@@ -23,16 +23,24 @@ A clear and concise description of what you expected to happen.
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+**AWS Region**
+What AWS region have you deployed in?
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+**Accelerator Pattern**
+Which Pattern did you deploy?
+
+**Custom Stack Parameters**
+What non-default stack parameters did you configure when deploying?
+
+**Custom Configuartions**
+What configuration serttings did you customize?
+
+**Output of the 'TroubleShoot' agent (if issue is a document processing failure)**
+*See [error analyzer](../../docs/error-analyzer.md)*
+
+**Link to DeepWiki answer**
+Try [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws)
+And share the response link here.
 
 **Additional context**
 Add any other context about the problem here.

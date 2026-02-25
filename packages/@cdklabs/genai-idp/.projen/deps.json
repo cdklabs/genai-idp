@@ -1,18 +1,28 @@
 {
   "dependencies": [
     {
+      "name": "@aws-cdk/aws-bedrock-agentcore-alpha",
+      "version": "^2.240.0-alpha.0",
+      "type": "build"
+    },
+    {
+      "name": "@aws-cdk/aws-bedrock-alpha",
+      "version": "^2.240.0-alpha.0",
+      "type": "build"
+    },
+    {
       "name": "@aws-cdk/aws-glue-alpha",
-      "version": "^2.232.2-alpha.0",
+      "version": "^2.240.0-alpha.0",
       "type": "build"
     },
     {
       "name": "@aws-cdk/aws-lambda-python-alpha",
-      "version": "^2.232.2-alpha.0",
+      "version": "^2.240.0-alpha.0",
       "type": "build"
     },
     {
       "name": "@aws-cdk/aws-sagemaker-alpha",
-      "version": "^2.232.2-alpha.0",
+      "version": "^2.240.0-alpha.0",
       "type": "build"
     },
     {
@@ -21,7 +31,7 @@
     },
     {
       "name": "@cdklabs/generative-ai-cdk-constructs",
-      "version": "^0.1.312",
+      "version": "^0.1.314",
       "type": "build"
     },
     {
@@ -96,12 +106,12 @@
     },
     {
       "name": "jsii-rosetta",
-      "version": "~5.8",
+      "version": "~5.9",
       "type": "build"
     },
     {
       "name": "jsii",
-      "version": "~5.8",
+      "version": "~5.9",
       "type": "build"
     },
     {
@@ -121,33 +131,43 @@
       "type": "bundled"
     },
     {
+      "name": "@aws-cdk/aws-bedrock-agentcore-alpha",
+      "version": "^2.240.0-alpha.0",
+      "type": "peer"
+    },
+    {
+      "name": "@aws-cdk/aws-bedrock-alpha",
+      "version": "^2.240.0-alpha.0",
+      "type": "peer"
+    },
+    {
       "name": "@aws-cdk/aws-glue-alpha",
-      "version": "^2.232.2-alpha.0",
+      "version": "^2.240.0-alpha.0",
       "type": "peer"
     },
     {
       "name": "@aws-cdk/aws-lambda-python-alpha",
-      "version": "^2.232.2-alpha.0",
+      "version": "^2.240.0-alpha.0",
       "type": "peer"
     },
     {
       "name": "@aws-cdk/aws-sagemaker-alpha",
-      "version": "^2.232.2-alpha.0",
+      "version": "^2.240.0-alpha.0",
       "type": "peer"
     },
     {
       "name": "@cdklabs/generative-ai-cdk-constructs",
-      "version": "^0.1.312",
+      "version": "^0.1.314",
       "type": "peer"
     },
     {
       "name": "aws-cdk-lib",
-      "version": "^2.232.2",
+      "version": "^2.240.0",
       "type": "peer"
     },
     {
       "name": "constructs",
-      "version": "^10.4.4",
+      "version": "^10.5.1",
       "type": "peer"
     }
   ],

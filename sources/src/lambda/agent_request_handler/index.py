@@ -77,12 +77,12 @@ def handler(event, context):
             error_msg = "Query parameter is required"
             logger.error(error_msg)
             raise Exception(error_msg)
-            
+        
         if len(query) > 100000:
             error_msg = "Query exceeds maximum length of 100000 characters"
             logger.error(f"{error_msg}. Query length: {len(query)}")
             raise Exception(error_msg)
-            
+        
         if not agent_ids:
             error_msg = "At least one agent ID is required"
             logger.error(error_msg)

@@ -65,6 +65,7 @@ Configuration properties for the DynamoDB table.
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
@@ -105,6 +106,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.applyRemovalPolicy"></a>
 
@@ -158,6 +180,7 @@ Adds an IAM policy statement associated with this table to an IAM principal's po
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grant.parameter.grantee"></a>
 
@@ -185,6 +208,11 @@ Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantFullAccess.parameter.grantee"></a>
 
@@ -225,6 +253,11 @@ Permits an IAM principal all data read operations from this table: BatchGetItem,
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantReadData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -247,6 +280,11 @@ BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantReadWriteData.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -265,6 +303,11 @@ Adds an IAM policy statement associated with this table's stream to an IAM princ
 
 If `encryptionKey` is present, appropriate grants to the key needs to be added
 separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantStream.parameter.grantee"></a>
 
@@ -293,6 +336,11 @@ Permits an IAM principal all stream data read operations for this table's stream
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
 
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantStreamRead.parameter.grantee"></a>
 
 - *Type:* aws-cdk-lib.aws_iam.IGrantable
@@ -308,6 +356,10 @@ public grantTableListStreams(grantee: IGrantable): Grant
 ```
 
 Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantTableListStreams.parameter.grantee"></a>
 
@@ -327,6 +379,11 @@ Permits an IAM principal all data write operations to this table: BatchWriteItem
 
 Appropriate grants will also be added to the customer-managed KMS key
 if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
 
 ###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.grantWriteData.parameter.grantee"></a>
 
@@ -1081,6 +1138,7 @@ new BdaProcessor(scope: Construct, id: string, props: BdaProcessorProps)
 | **Name** | **Description** |
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.with">with</a></code> | Applies one or more mixins to this construct. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBdaJobsFailed">metricBdaJobsFailed</a></code> | Creates a CloudWatch metric for failed BDA jobs. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBdaJobsSucceeded">metricBdaJobsSucceeded</a></code> | Creates a CloudWatch metric for successful BDA jobs. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBdaJobsTotal">metricBdaJobsTotal</a></code> | Creates a CloudWatch metric for total BDA jobs. |
@@ -1108,6 +1166,27 @@ public toString(): string
 ```
 
 Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
 
 ##### `metricBdaJobsFailed` <a name="metricBdaJobsFailed" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBdaJobsFailed"></a>
 
@@ -1932,18 +2011,18 @@ const bdaProcessorConfigurationDefinitionOptions: BdaProcessorConfigurationDefin
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional configuration for the evaluation stage. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.summarizationModel">summarizationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional configuration for the summarization stage. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional configuration for the evaluation stage. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional configuration for the summarization stage. |
 
 ---
 
 ##### `evaluationModel`<sup>Optional</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.evaluationModel"></a>
 
 ```typescript
-public readonly evaluationModel: IInvokable;
+public readonly evaluationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional configuration for the evaluation stage.
 
@@ -1954,10 +2033,10 @@ Defines the model and parameters used for evaluating extraction accuracy.
 ##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.summarizationModel"></a>
 
 ```typescript
-public readonly summarizationModel: IInvokable;
+public readonly summarizationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional configuration for the summarization stage.
 
@@ -1993,10 +2072,12 @@ const bdaProcessorProps: BdaProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.configuration">configuration</a></code> | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfiguration">IBdaProcessorConfiguration</a></code> | Configuration for the BDA document processor. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.dataAutomationProject">dataAutomationProject</a></code> | <code><a href="#@cdklabs/genai-idp-bda-processor.IDataAutomationProject">IDataAutomationProject</a></code> | The Bedrock Data Automation Project used for document processing. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableDiscovery">enableDiscovery</a></code> | <code>boolean</code> | Enable discovery integration for BDA blueprint generation. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableHITL">enableHITL</a></code> | <code>boolean</code> | Enable Human In The Loop (HITL) review for documents with low confidence scores. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline evaluation data for model performance assessment. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sageMakerA2IReviewPortalURL">sageMakerA2IReviewPortalURL</a></code> | <code>string</code> | URL for the SageMaker A2I review portal used for HITL tasks. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sectionSplittingStrategy">sectionSplittingStrategy</a></code> | <code>@cdklabs/genai-idp.SectionSplittingStrategy</code> | Section splitting strategy configuration. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
 
 ---
 
@@ -2060,6 +2141,22 @@ including document types, extraction schemas, and processing rules.
 
 ---
 
+##### `enableDiscovery`<sup>Optional</sup> <a name="enableDiscovery" id="@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableDiscovery"></a>
+
+```typescript
+public readonly enableDiscovery: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Enable discovery integration for BDA blueprint generation.
+
+When enabled, allows the discovery module to automatically generate
+BDA blueprints from document samples, streamlining the configuration process.
+
+---
+
 ##### `enableHITL`<sup>Optional</sup> <a name="enableHITL" id="@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableHITL"></a>
 
 ```typescript
@@ -2108,13 +2205,34 @@ manual review and correction.
 
 ---
 
+##### `sectionSplittingStrategy`<sup>Optional</sup> <a name="sectionSplittingStrategy" id="@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sectionSplittingStrategy"></a>
+
+```typescript
+public readonly sectionSplittingStrategy: SectionSplittingStrategy;
+```
+
+- *Type:* @cdklabs/genai-idp.SectionSplittingStrategy
+- *Default:* SectionSplittingStrategy.LLM_DETERMINED
+
+Section splitting strategy configuration.
+
+Controls how multi-page documents are divided into sections during classification.
+This affects how documents of the same type are grouped together and processed.
+
+Options:
+- DISABLED: Entire document treated as single section with first detected class
+- PAGE: One section per page preventing automatic joining of same-type documents
+- LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
+
+---
+
 ##### `summarizationGuardrail`<sup>Optional</sup> <a name="summarizationGuardrail" id="@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.summarizationGuardrail"></a>
 
 ```typescript
 public readonly summarizationGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to summarization model interactions.
@@ -2390,6 +2508,7 @@ enabling tracking of individual document processing records within BDA jobs.
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
@@ -2438,6 +2557,18 @@ public readonly stack: Stack;
 - *Type:* aws-cdk-lib.Stack
 
 The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp-bda-processor.IBdaMetadataTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
 
 ---
 
@@ -2516,6 +2647,7 @@ Use BDA Processor when:
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the document processing workflow. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessor.property.evaluationFunction">evaluationFunction</a></code> | <code>any</code> | The evaluation function if evaluation is enabled for this processor. |
 
 ---
 
@@ -2576,6 +2708,21 @@ and coordinates the entire extraction pipeline.
 
 ---
 
+##### `evaluationFunction`<sup>Optional</sup> <a name="evaluationFunction" id="@cdklabs/genai-idp-bda-processor.IBdaProcessor.property.evaluationFunction"></a>
+
+```typescript
+public readonly evaluationFunction: any;
+```
+
+- *Type:* any
+
+The evaluation function if evaluation is enabled for this processor.
+
+The evaluation function is created by the ProcessingEnvironment when
+evaluation baseline bucket and model are provided.
+
+---
+
 ### IBdaProcessorConfiguration <a name="IBdaProcessorConfiguration" id="@cdklabs/genai-idp-bda-processor.IBdaProcessorConfiguration"></a>
 
 - *Implemented By:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration">BdaProcessorConfiguration</a>, <a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfiguration">IBdaProcessorConfiguration</a>
@@ -2626,18 +2773,18 @@ Defines the structure and capabilities of configuration for Bedrock Data Automat
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The invokable model used for evaluating extraction results. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for document summarization. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model used for evaluating extraction results. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for document summarization. |
 
 ---
 
 ##### `evaluationModel`<sup>Required</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.evaluationModel"></a>
 
 ```typescript
-public readonly evaluationModel: IInvokable;
+public readonly evaluationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 The invokable model used for evaluating extraction results.
 
@@ -2649,10 +2796,10 @@ comparing extraction results against expected values.
 ##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.summarizationModel"></a>
 
 ```typescript
-public readonly summarizationModel: IInvokable;
+public readonly summarizationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional invokable model used for document summarization.
 

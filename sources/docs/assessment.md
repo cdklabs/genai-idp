@@ -318,9 +318,9 @@ For basic single-value extractions like dates, amounts, or names:
 
 **Configuration:**
 ```yaml
-attributes:
-  - name: "StatementDate"
-    attributeType: "simple"
+properties:
+  StatementDate:
+    type: string
     description: "The date of the bank statement"
 ```
 
@@ -360,14 +360,16 @@ For nested object structures with multiple related fields:
 
 **Configuration:**
 ```yaml
-attributes:
-  - name: "AccountDetails"
-    attributeType: "group"
+properties:
+  AccountDetails:
+    type: object
     description: "Bank account information"
-    groupAttributes:
-      - name: "AccountNumber"
+    properties:
+      AccountNumber:
+        type: string
         description: "The account number"
-      - name: "RoutingNumber"
+      RoutingNumber:
+        type: string
         description: "The bank routing number"
 ```
 
@@ -413,18 +415,22 @@ For arrays of items, such as transactions in a bank statement:
 
 **Configuration:**
 ```yaml
-attributes:
-  - name: "Transactions"
-    attributeType: "list"
+properties:
+  Transactions:
+    type: array
     description: "List of all transactions on the statement"
-    listItemTemplate:
-      itemDescription: "Individual transaction entry"
-      itemAttributes:
-        - name: "Date"
+    x-aws-idp-list-item-description: "Individual transaction entry"
+    items:
+      type: object
+      properties:
+        Date:
+          type: string
           description: "Transaction date"
-        - name: "Description"
+        Description:
+          type: string
           description: "Transaction description"
-        - name: "Amount"
+        Amount:
+          type: string
           description: "Transaction amount"
 ```
 
@@ -979,27 +985,34 @@ attributes:
 Processes complex nested structures as single units:
 ```yaml
 # Each group becomes one focused task
-attributes:
-  - name: "AccountDetails"
-    attributeType: "group"
-    groupAttributes:
-      - name: "AccountNumber"
-      - name: "RoutingNumber"
-      - name: "AccountType"
+properties:
+  AccountDetails:
+    type: object
+    properties:
+      AccountNumber:
+        type: string
+      RoutingNumber:
+        type: string
+      AccountType:
+        type: string
 ```
 
 #### List Item Tasks
 Assesses each list item individually for maximum accuracy:
 ```yaml
 # 100 transactions = 100 individual assessment tasks
-attributes:
-  - name: "Transactions"
-    attributeType: "list"
-    listItemTemplate:
-      itemAttributes:
-        - name: "Date"
-        - name: "Description"
-        - name: "Amount"
+properties:
+  Transactions:
+    type: array
+    items:
+      type: object
+      properties:
+        Date:
+          type: string
+        Description:
+          type: string
+        Amount:
+          type: string
 ```
 
 ### Performance Tuning

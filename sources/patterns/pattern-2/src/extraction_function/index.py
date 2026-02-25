@@ -11,6 +11,9 @@ from idp_common import metrics, get_config, extraction
 from idp_common.models import Document, Section, Status
 from idp_common.docs_service import create_document_service
 from idp_common.utils import calculate_lambda_metering, merge_metering_data
+from aws_xray_sdk.core import xray_recorder, patch_all
+
+patch_all()
 
 # Configuration will be loaded in handler function
 
@@ -20,7 +23,7 @@ logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_LOG_LEVEL", "INFO"))
 
-
+@xray_recorder.capture('extraction_function')
 def handler(event, context):
     """
     Process a single section of a document for information extraction
@@ -29,8 +32,8 @@ def handler(event, context):
     logger.info(f"Event: {json.dumps(event)}")
 
     # Load configuration
-    config = get_config()
-    logger.info(f"Config: {json.dumps(config)}")
+    config = get_config(as_model=True)
+    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
     
     # For Map state, we get just one section from the document
     # Extract the document and section from the event - handle both compressed and uncompressed
@@ -43,6 +46,10 @@ def handler(event, context):
     logger.info(f"Document status: {full_document.status}, num_pages: {full_document.num_pages}")
     logger.info(f"Document pages count: {len(full_document.pages)}, sections count: {len(full_document.sections)}")
     logger.info(f"Full document content: {json.dumps(full_document.to_dict(), default=str)}")
+
+    # X-Ray annotations
+    xray_recorder.put_annotation('document_id', {full_document.id})
+    xray_recorder.put_annotation('processing_stage', 'extraction')
     
     # Get the section ID directly from the Map state input
     # Now using the simplified array of section IDs format

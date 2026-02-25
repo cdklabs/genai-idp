@@ -54,6 +54,9 @@
           "spawn": "bundle:lambda:classification_function"
         },
         {
+          "spawn": "bundle:lambda:evaluation_function"
+        },
+        {
           "spawn": "bundle:lambda:extraction_function"
         },
         {
@@ -171,6 +174,17 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/classification_function/* assets/lambdas/classification_function/."
+        }
+      ]
+    },
+    "bundle:lambda:evaluation_function": {
+      "name": "bundle:lambda:evaluation_function",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/evaluation_function"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/evaluation_function/* assets/lambdas/evaluation_function/."
         }
       ]
     },

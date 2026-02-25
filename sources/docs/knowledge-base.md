@@ -55,8 +55,8 @@ The Knowledge Base feature supports two vector storage backends to optimize for 
 
 ### Choosing Your Vector Store
 
-- **OpenSearch Serverless** (Default): Choose for applications requiring ultra-fast retrieval and real-time performance
-- **S3 Vectors**: Choose for cost optimization when query latency is acceptable
+- **S3 Vectors** (Default): Choose for cost optimization with acceptable sub-second query latency
+- **OpenSearch Serverless**: Choose for applications requiring ultra-fast retrieval and real-time performance
 
 ## Configuration
 
@@ -73,7 +73,7 @@ ShouldUseDocumentKnowledgeBase:
 
 KnowledgeBaseVectorStore:
   Type: String
-  Default: "OPENSEARCH_SERVERLESS"
+  Default: "S3_VECTORS"
   AllowedValues:
     - "OPENSEARCH_SERVERLESS"
     - "S3_VECTORS"

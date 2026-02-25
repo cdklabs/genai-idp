@@ -44,7 +44,7 @@ cd accelerated-intelligent-document-processing-on-aws
 ```
 This script automatically installs:
 - Git, Python 3, pip, and build tools
-- Node.js 18
+- Node.js 22
 - AWS CLI v2
 - AWS SAM CLI
 - Python dependencies
@@ -77,8 +77,8 @@ Enter your AWS credentials when prompted. Refer to: https://docs.aws.amazon.com/
 python3 --version (Example: Python 3.12.3)
 aws --version (Example: aws-cli/2.28.26)
 sam --version (Example: SAM CLI, version 1.143.0)
-node --version (Example: v18.20.8)
-npm --version (Example: 10.8.2)
+node --version (Example: v22.12.0)
+npm --version (Example: 11.0.0)
 ```
 ### 4.2 Test Build Process
 ```

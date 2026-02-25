@@ -13,7 +13,7 @@ This folder contains detailed documentation on various aspects of the GenAI Inte
 - [Agent Analysis](./agent-analysis.md) - Natural language analytics and data visualization feature
 - [Knowledge Base](./knowledge-base.md) - Document knowledge base query feature
 - [Post-Processing Lambda Hook](./post-processing-lambda-hook.md) - Custom downstream processing integration
-- [Evaluation Framework](./evaluation.md) - Accuracy assessment system
+- [Evaluation Framework](./evaluation.md) - Accuracy assessment system powered by Stickler
 - [Assessment Feature](./assessment.md) - Extraction confidence evaluation using LLMs
 - [Configuration](./configuration.md) - Configuration and customization options
 - [Classification](./classification.md) - Customizing document classification

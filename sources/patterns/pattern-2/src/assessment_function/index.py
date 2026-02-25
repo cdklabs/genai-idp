@@ -12,6 +12,9 @@ from idp_common.docs_service import create_document_service
 from idp_common import s3
 from idp_common.utils import normalize_boolean_value, calculate_lambda_metering, merge_metering_data
 from assessment_validator import AssessmentValidator
+from aws_xray_sdk.core import xray_recorder, patch_all
+
+patch_all()
 
 # Custom exception for throttling scenarios
 class ThrottlingException(Exception):
@@ -88,6 +91,7 @@ def check_document_for_throttling_errors(document):
     
     return False, None
 
+@xray_recorder.capture('assessment_function')
 def handler(event, context):
     """
     Lambda handler for document assessment.
@@ -98,9 +102,9 @@ def handler(event, context):
     logger.info(f"Starting assessment processing for event: {json.dumps(event, default=str)}")
 
     # Load configuration
-    config = get_config()
+    config = get_config(as_model=True)
     # Use default=str to handle Decimal and other non-serializable types
-    logger.info(f"Config: {json.dumps(config, default=str)}")
+    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
     
     # Extract input from event - handle both compressed and uncompressed
     document_data = event.get('document', {})
@@ -118,6 +122,10 @@ def handler(event, context):
     document = Document.load_document(document_data, working_bucket, logger)
     logger.info(f"Processing assessment for document {document.id}, section {section_id}")
 
+    # X-Ray annotations
+    xray_recorder.put_annotation('document_id', {document.id})
+    xray_recorder.put_annotation('processing_stage', 'assessment')
+
     # Find the section we're processing
     section = None
     for s in document.sections:
@@ -129,10 +137,8 @@ def handler(event, context):
         raise ValueError(f"Section {section_id} not found in document")
 
     # Check if granular assessment is enabled (moved earlier for Lambda metering context)
-    granular_config = config.get('assessment', {}).get('granular', {})
-    granular_enabled = granular_config.get('enabled', False)
-    assessment_context = "GranularAssessment" if granular_enabled else "Assessment"
-    logger.info(f"Assessment mode: {'Granular' if granular_enabled else 'Regular'} (context: {assessment_context})")
+    assessment_context = "GranularAssessment" if config.assessment.granular.enabled else "Assessment"
+    logger.info(f"Assessment mode: {'Granular' if config.assessment.granular.enabled else 'Regular'} (context: {assessment_context})")
 
     # Intelligent Assessment Skip: Check if extraction results already contain explainability_info
     if section.extraction_result_uri and section.extraction_result_uri.strip():
@@ -212,10 +218,8 @@ def handler(event, context):
     cache_table = os.environ.get('TRACKING_TABLE')
     
     # Check if granular assessment is enabled
-    granular_config = config.get('assessment', {}).get('granular', {})
-    granular_enabled = granular_config.get('enabled', False)
     
-    if granular_enabled:
+    if config.assessment.granular.enabled:
         # Use enhanced granular assessment service with caching and retry support
         from idp_common.assessment.granular_service import GranularAssessmentService
         assessment_service = GranularAssessmentService(config=config, cache_table=cache_table)
@@ -280,12 +284,10 @@ def handler(event, context):
             updated_document.errors.append(str(e))
 
     # Assessment validation
-    assessment_config = config.get('assessment', {})
-    assessment_enabled = normalize_boolean_value(assessment_config.get('enabled', False))
-    validation_enabled = assessment_enabled and normalize_boolean_value(assessment_config.get('validation_enabled', True))
-    logger.info(f"Assessment Enabled:{assessment_enabled}")
+    validation_enabled = config.assessment.granular.enabled and config.assessment.validation_enabled
+    logger.info(f"Assessment Enabled:{config.assessment.granular.enabled}")
     logger.info(f"Validation Enabled:{validation_enabled}")
-    if not assessment_enabled:
+    if not config.assessment.granular.enabled:
         logger.info("Assessment is disabled.")
     elif not validation_enabled:
         logger.info("Assessment validation is disabled.")
@@ -296,7 +298,7 @@ def handler(event, context):
                 # Load extraction data with assessment results
                 extraction_data = s3.get_json_content(section.extraction_result_uri)
                 validator = AssessmentValidator(extraction_data,
-                                                assessment_config=assessment_config,
+                                                assessment_config=config.assessment,
                                                 enable_missing_check=True,
                                                 enable_count_check=True)
                 validation_results = validator.validate_all()

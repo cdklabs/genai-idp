@@ -34,21 +34,40 @@ def resize_image(image_data: bytes,
     if isinstance(target_height, str) and not target_height.strip():
         target_height = None
     
-    # If either dimension is None, return original image unchanged
-    if target_width is None or target_height is None:
-        logger.info("No resize requested (width or height is None/empty), returning original image")
+    # If BOTH dimensions are None, return original image unchanged
+    if target_width is None and target_height is None:
+        logger.info("No resize requested (both dimensions are None), returning original image")
         return image_data
     
-    # Convert to int if needed
+    # Convert to int if needed (before opening image)
     try:
-        target_width = int(target_width)
-        target_height = int(target_height)
+        if target_width is not None:
+            target_width = int(target_width)
+        if target_height is not None:
+            target_height = int(target_height)
     except (ValueError, TypeError):
         logger.warning(f"Invalid resize dimensions: width={target_width}, height={target_height}, returning original image")
         return image_data
+    
+    # Open image to get dimensions and calculate missing dimension if needed
     image = Image.open(io.BytesIO(image_data))
     current_width, current_height = image.size
     original_format = image.format  # Store original format
+    
+    # Calculate missing dimension if only one provided (preserving aspect ratio)
+    if target_width is None and target_height is not None:
+        # Only height provided - calculate width preserving aspect ratio
+        aspect_ratio = current_width / current_height
+        target_width = int(target_height * aspect_ratio)
+        logger.info(f"Calculated target_width={target_width} from target_height={target_height} (aspect={aspect_ratio:.3f})")
+    elif target_height is None and target_width is not None:
+        # Only width provided - calculate height preserving aspect ratio  
+        aspect_ratio = current_height / current_width
+        target_height = int(target_width * aspect_ratio)
+        logger.info(f"Calculated target_height={target_height} from target_width={target_width} (aspect={aspect_ratio:.3f})")
+    
+    # At this point, both dimensions must be set (type guard for Pylance)
+    assert target_width is not None and target_height is not None, "Both dimensions should be set after calculation"
     
     # Calculate scaling factor to fit within bounds while preserving aspect ratio
     width_ratio = target_width / current_width
@@ -62,7 +81,7 @@ def resize_image(image_data: bytes,
         new_width = int(current_width * scale_factor)
         new_height = int(current_height * scale_factor)
         logger.info(f"Resizing image from {current_width}x{current_height} to {new_width}x{new_height} (scale: {scale_factor:.3f})")
-        image = image.resize((new_width, new_height), Image.LANCZOS)
+        image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
         
         # Save in original format if possible
         img_byte_array = io.BytesIO()

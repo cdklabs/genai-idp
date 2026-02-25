@@ -4,9 +4,10 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import * as path from "path";
+import { IGuardrail } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
+// Keep bedrock namespace from old package for IKnowledgeBase
 import { bedrock } from "@cdklabs/generative-ai-cdk-constructs";
-import { IGuardrail } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import * as cdk from "aws-cdk-lib";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";

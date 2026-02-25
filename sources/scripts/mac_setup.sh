@@ -23,7 +23,7 @@ fi
 
 echo "==> Installing Homebrew (if needed)..."
 if ! command -v brew >/dev/null 2>&1; then
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"  # nosemgrep: bash.curl.security.curl-pipe-bash.curl-pipe-bash - Official Homebrew installation script for development environment only
 else
   echo "Homebrew already installed."
 fi
@@ -80,7 +80,7 @@ fi
 
 echo "==> Installing nvm and Node 18 (if needed)..."
 if [ ! -d "$HOME/.nvm" ]; then
-  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash  # nosemgrep: bash.curl.security.curl-pipe-bash.curl-pipe-bash - Official NVM installation script for development environment only
 fi
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"

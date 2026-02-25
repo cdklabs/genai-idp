@@ -242,3 +242,40 @@ def _list_local_images(directory_path: str, image_extensions: set) -> List[str]:
     except Exception as e:
         logger.error(f"Error listing images from local directory {directory_path}: {e}")
         raise
+
+def find_matching_files(bucket: str, pattern: str) -> List[str]:
+    """
+    Find files in S3 bucket that match a given pattern.
+    
+    Args:
+        bucket: S3 bucket name
+        pattern: File pattern with wildcards (* and ?) - case sensitive, * doesn't match /
+        
+    Returns:
+        List of matching file keys
+    """
+    import re
+    
+    try:
+        s3 = get_s3_client()
+        paginator = s3.get_paginator('list_objects_v2')
+        
+        # Convert pattern: * matches anything except /, ? matches single char except /
+        regex_pattern = pattern.replace('*', '[^/]*').replace('?', '[^/]')
+        regex = re.compile(f'^{regex_pattern}$')
+        
+        matching_files = []
+        
+        for page in paginator.paginate(Bucket=bucket):
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    key = obj['Key']
+                    if regex.match(key):
+                        matching_files.append(key)
+        
+        logger.info(f"Found {len(matching_files)} files matching pattern '{pattern}' in bucket '{bucket}'")
+        return sorted(matching_files)
+        
+    except Exception as e:
+        logger.error(f"Error finding matching files in bucket {bucket} with pattern {pattern}: {e}")
+        raise

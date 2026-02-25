@@ -13,4 +13,8 @@ export * from "./process-changes-resolver-function";
 export * from "./query-knowledge-base-resolver-function";
 export * from "./reprocess-document-resolver-function";
 export * from "./upload-resolver-function";
+export * from "./test-set-resolver-function";
+export * from "./test-results-resolver-function";
+export * from "./agent-chat-resolver-function";
+export * from "./error-analyzer-resolver-function";
 export * from "../../document-discovery/functions";

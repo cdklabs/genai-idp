@@ -3,7 +3,6 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-import { IInvokable } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import * as cdk from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -19,7 +18,6 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { ConcurrencyTable, IConcurrencyTable } from "./concurrency-table";
 import { ConfigurationTable, IConfigurationTable } from "./configuration-table";
-import { IDocumentDiscovery } from "./document-discovery";
 import { IDocumentProcessor } from "./document-processor";
 import * as functions from "./internal/functions";
 import { LogLevel } from "./log-level";
@@ -30,9 +28,9 @@ import { VpcConfiguration } from "./vpc-configuration";
 
 export interface DocumentProcessorAttachmentOptions {
   readonly prefix?: string;
-  readonly evaluationBucket?: IBucket;
-  readonly evaluationModel?: IInvokable;
 }
+
+export interface DocumentProcessorAttachmentResult {}
 
 export interface IProcessingEnvironment {
   /**
@@ -96,6 +94,12 @@ export interface IProcessingEnvironment {
   readonly trackingTable: ITrackingTable;
 
   /**
+   * Lambda function that looks up document information from the tracking table.
+   * Used to retrieve document metadata and processing status.
+   */
+  readonly lookupFunction: lambda.IFunction;
+
+  /**
    * Optional VPC configuration for document processing components.
    * When provided, deploys processing components within a VPC with specified settings.
    */
@@ -121,10 +125,10 @@ export interface IProcessingEnvironment {
   readonly api?: IProcessingEnvironmentApi;
 
   /**
-   * Optional document discovery system for automated configuration generation.
-   * When provided, enables discovery job processing, status tracking, and UI upload functionality.
+   * Enable AWS X-Ray tracing for Lambda functions in the processing environment.
+   * When enabled, provides distributed tracing capabilities for debugging and performance analysis.
    */
-  readonly documentDiscovery?: IDocumentDiscovery;
+  readonly tracing?: lambda.Tracing;
 
   /**
    * Attaches a document processor to this processing environment.
@@ -132,11 +136,13 @@ export interface IProcessingEnvironment {
    * to enable the processor to work with this environment.
    *
    * @param processor The document processor to attach to this environment
+   * @param options Optional configuration for the attachment
+   * @returns Object containing evaluation function and bucket if evaluation is configured
    */
   attach(
     processor: IDocumentProcessor,
     options?: DocumentProcessorAttachmentOptions,
-  ): void;
+  ): DocumentProcessorAttachmentResult;
 }
 /**
  * Configuration properties for the Intelligent Document Processing environment.
@@ -242,10 +248,12 @@ export interface ProcessingEnvironmentProps {
   readonly api?: IProcessingEnvironmentApi;
 
   /**
-   * Optional document discovery construct.
-   * When provided, enables document discovery functionality including UI uploads.
+   * Enable AWS X-Ray tracing for Lambda functions in the processing environment.
+   * When enabled, provides distributed tracing capabilities for debugging and performance analysis.
+   *
+   * @default lambda.Tracing.DISABLED
    */
-  readonly documentDiscovery?: IDocumentDiscovery;
+  readonly tracing?: lambda.Tracing;
 }
 
 /**
@@ -349,10 +357,10 @@ export class ProcessingEnvironment
   public readonly api?: IProcessingEnvironmentApi;
 
   /**
-   * Optional document discovery system for automated configuration generation.
-   * When provided, enables discovery job processing, status tracking, and UI upload functionality.
+   * Enable AWS X-Ray tracing for Lambda functions in the processing environment.
+   * When enabled, provides distributed tracing capabilities for debugging and performance analysis.
    */
-  public readonly documentDiscovery?: IDocumentDiscovery;
+  public readonly tracing?: lambda.Tracing;
 
   /**
    * The DynamoDB table that tracks document processing status and metadata.
@@ -393,7 +401,7 @@ export class ProcessingEnvironment
    * Lambda function that looks up document information from the tracking table.
    * Used to retrieve document metadata and processing status.
    */
-  private readonly lookupFunction: lambda.IFunction;
+  public readonly lookupFunction: lambda.IFunction;
 
   constructor(scope: Construct, id: string, props: ProcessingEnvironmentProps) {
     super(scope, id);
@@ -418,6 +426,7 @@ export class ProcessingEnvironment
     this.logLevel = logLevel;
     this.concurrencyTable = concurrencyTable;
     this.vpcConfiguration = props.vpcConfiguration;
+    this.tracing = props.tracing;
 
     this.trackingTable =
       props.trackingTable ??
@@ -439,9 +448,6 @@ export class ProcessingEnvironment
 
     // Use provided API for progress notifications
     this.api = props.api;
-
-    // Use provided document discovery
-    this.documentDiscovery = props.documentDiscovery;
 
     this.configurationFunction = new functions.UpdateConfigurationFunction(
       this,
@@ -563,7 +569,7 @@ export class ProcessingEnvironment
   attach(
     processor: IDocumentProcessor,
     options?: DocumentProcessorAttachmentOptions,
-  ): void {
+  ): DocumentProcessorAttachmentResult {
     // QueueProcessor Lambda Function
     const queueProcessor = new functions.QueueProcessorFunction(
       processor,
@@ -637,64 +643,7 @@ export class ProcessingEnvironment
 
     processor.stateMachine.grantRead(this.lookupFunction);
 
-    if (options?.evaluationBucket && options?.evaluationModel) {
-      this.createEvaluationFunction(
-        processor,
-        options.evaluationModel,
-        options.evaluationBucket,
-      );
-    }
-  }
-
-  private createEvaluationFunction(
-    processor: IDocumentProcessor,
-    evaluationInvokable: IInvokable,
-    evaluationBaselineBucket: cdk.aws_s3.IBucket,
-  ) {
-    if (evaluationBaselineBucket) {
-      const evaluationFunction = new functions.EvaluationFunction(
-        processor,
-        "EvaluationFunction",
-        {
-          metricNamespace: this.metricNamespace,
-          logLevel: this.logLevel,
-          outputBucket: this.outputBucket,
-          workingBucket: this.workingBucket,
-          trackingTable: this.trackingTable,
-          configurationTable: this.configurationTable,
-          baselineBucket: evaluationBaselineBucket,
-          reportingEnvironment: this.reportingEnvironment,
-          saveReportingDataFunction: this.saveReportingDataFunction,
-          api: this.api,
-          deadLetterQueue: new sqs.Queue(this, "EvaluationFunctionDLQ", {
-            encryptionMasterKey: this.encryptionKey,
-            visibilityTimeout: cdk.Duration.seconds(30),
-            retentionPeriod: cdk.Duration.days(4),
-          }),
-          logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
-            encryptionKey: this.encryptionKey,
-            retention: this.logRetention,
-          }),
-        },
-      );
-
-      // TODO: check if this is even needed.
-      this.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
-      // INFO: this IInvokable is not passed to the function via env vars, but through configuration in DDB
-      evaluationInvokable.grantInvoke(evaluationFunction);
-
-      new events.Rule(this, "EvaluationFunctionRule", {
-        eventPattern: {
-          source: ["aws.states"],
-          detailType: ["Step Functions Execution Status Change"],
-          detail: {
-            stateMachineArn: [processor.stateMachine.stateMachineArn],
-            status: ["SUCCEEDED"],
-          },
-        },
-        targets: [new eventtargets.LambdaFunction(evaluationFunction)],
-      });
-    }
+    return {};
   }
 
   /**

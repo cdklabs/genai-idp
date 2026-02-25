@@ -20,6 +20,16 @@ export * from "./web-application";
 export * from "./idp-python-layer-version";
 export * from "./log-level";
 export * from "./custom-prompt-generator";
-export * from "./agent-analytics";
+export * from "./processing-environment-api/agent-analytics";
 export * from "./document-discovery";
+export * from "./section-splitting-strategy";
+export * from "./max-pages-for-classification";
+export * from "./vector-store-type";
+export * from "./json-schema-validator";
+
+// Feature modules (now under processing-environment-api)
+export * from "./processing-environment-api/test-studio";
+export * from "./processing-environment-api/agent-companion-chat";
+export * from "./processing-environment-api/mcp-integration";
+export * from "./processing-environment-api/error-analyzer";
 export * from "./internal";
