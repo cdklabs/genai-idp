@@ -12,6 +12,16 @@
   resolved "https://registry.yarnpkg.com/@aws-cdk/asset-node-proxy-agent-v6/-/asset-node-proxy-agent-v6-2.1.0.tgz#6d3c7860354d4856a7e75375f2f0ecab313b4989"
   integrity sha512-7bY3J8GCVxLupn/kNmpPc5VJz8grx+4RKfnnJiO1LG+uxkZfANZG3RMHhE+qQxxwkyQ9/MfPtTpf748UhR425A==
 
+"@aws-cdk/aws-bedrock-agentcore-alpha@2.240.0-alpha.0", "@aws-cdk/aws-bedrock-agentcore-alpha@^2.240.0-alpha.0":
+  version "2.240.0-alpha.0"
+  resolved "https://registry.yarnpkg.com/@aws-cdk/aws-bedrock-agentcore-alpha/-/aws-bedrock-agentcore-alpha-2.240.0-alpha.0.tgz#2738f4d299059303643b09bbac5ac566cf8cabc7"
+  integrity sha512-RUnUzbCN0KJLregaeqDUtB22rfCWAHBik/oRMpG+7V8D6stlNEumOwPMnX5PIiL7+KauIQGrazla/GMm0n4IxA==
+
+"@aws-cdk/aws-bedrock-alpha@2.240.0-alpha.0", "@aws-cdk/aws-bedrock-alpha@^2.240.0-alpha.0":
+  version "2.240.0-alpha.0"
+  resolved "https://registry.yarnpkg.com/@aws-cdk/aws-bedrock-alpha/-/aws-bedrock-alpha-2.240.0-alpha.0.tgz#7bb37164d1cd32dcd76b1fb90b0814d4fa600c99"
+  integrity sha512-MenG1goSRExkwlwx2D7VPZEH2/PK3c0ztx7eIwee6RBlM5dv5NG6YfRqIrUrr7BPSTiV8e1BuYKig4gE4dUQ1g==
+
 "@aws-cdk/aws-glue-alpha@2.240.0-alpha.0", "@aws-cdk/aws-glue-alpha@^2.240.0-alpha.0":
   version "2.240.0-alpha.0"
   resolved "https://registry.yarnpkg.com/@aws-cdk/aws-glue-alpha/-/aws-glue-alpha-2.240.0-alpha.0.tgz#a6435b5607611f5a7f3e7a4aecfba4b6d1b61b09"

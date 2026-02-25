@@ -612,20 +612,20 @@ const sagemakerUdopProcessorConfigurationDefinitionOptions: SagemakerUdopProcess
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.assessmentModel">assessmentModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for evaluating assessment results. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional configuration for the evaluation stage. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.extractionModel">extractionModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional configuration for the extraction stage. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.summarizationModel">summarizationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional configuration for the summarization stage. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.assessmentModel">assessmentModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating assessment results. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional configuration for the evaluation stage. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.extractionModel">extractionModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional configuration for the extraction stage. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional configuration for the summarization stage. |
 
 ---
 
 ##### `assessmentModel`<sup>Optional</sup> <a name="assessmentModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.assessmentModel"></a>
 
 ```typescript
-public readonly assessmentModel: IInvokable;
+public readonly assessmentModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 - *Default:* as defined in the definition file
 
 Optional invokable model used for evaluating assessment results.
@@ -639,10 +639,10 @@ comparing assessment results against expected values.
 ##### `evaluationModel`<sup>Optional</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.evaluationModel"></a>
 
 ```typescript
-public readonly evaluationModel: IInvokable;
+public readonly evaluationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional configuration for the evaluation stage.
 
@@ -653,10 +653,10 @@ Defines the model and parameters used for evaluating extraction accuracy.
 ##### `extractionModel`<sup>Optional</sup> <a name="extractionModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.extractionModel"></a>
 
 ```typescript
-public readonly extractionModel: IInvokable;
+public readonly extractionModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional configuration for the extraction stage.
 
@@ -667,10 +667,10 @@ Defines the model and parameters used for information extraction.
 ##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.summarizationModel"></a>
 
 ```typescript
-public readonly summarizationModel: IInvokable;
+public readonly summarizationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional configuration for the summarization stage.
 
@@ -708,16 +708,16 @@ const sagemakerUdopProcessorProps: SagemakerUdopProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classifierEndpoint">classifierEndpoint</a></code> | <code>@aws-cdk/aws-sagemaker-alpha.IEndpoint</code> | The SageMaker endpoint used for document classification. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.configuration">configuration</a></code> | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfiguration">ISagemakerUdopProcessorConfiguration</a></code> | Configuration for the SageMaker UDOP document processor. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.assessmentGuardrail">assessmentGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to assessment model interactions. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.assessmentGuardrail">assessmentGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to assessment model interactions. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.customPromptGenerator">customPromptGenerator</a></code> | <code>@cdklabs/genai-idp.ICustomPromptGenerator</code> | Optional custom prompt generator for injecting business logic into extraction processing. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.enableEditSections">enableEditSections</a></code> | <code>boolean</code> | Enable edit sections feature for classification updates. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline documents for evaluation. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationEnabled">evaluationEnabled</a></code> | <code>boolean</code> | Controls whether extraction results are evaluated for accuracy. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.extractionGuardrail">extractionGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to extraction model interactions. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.extractionGuardrail">extractionGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to extraction model interactions. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.ocrMaxWorkers">ocrMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for OCR processing. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.sectionSplittingStrategy">sectionSplittingStrategy</a></code> | <code>@cdklabs/genai-idp.SectionSplittingStrategy</code> | Section splitting strategy configuration. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
 
 ---
 
@@ -792,7 +792,7 @@ including schema definitions, prompts, and evaluation settings.
 public readonly assessmentGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to assessment model interactions.
@@ -808,7 +808,7 @@ by filtering inappropriate content and enforcing usage policies.
 public readonly classificationGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to classification model interactions.
@@ -891,7 +891,7 @@ to measure extraction quality and identify improvement areas.
 public readonly extractionGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to extraction model interactions.
@@ -944,7 +944,7 @@ Options:
 public readonly summarizationGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to summarization model interactions.
@@ -1358,20 +1358,20 @@ Defines the structure and capabilities of configuration for SageMaker UDOP proce
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.extractionModel">extractionModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The invokable model used for information extraction. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.assessmentModel">assessmentModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for document assessment. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for evaluating extraction results. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for document summarization. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.extractionModel">extractionModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model used for information extraction. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.assessmentModel">assessmentModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for document assessment. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating extraction results. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for document summarization. |
 
 ---
 
 ##### `extractionModel`<sup>Required</sup> <a name="extractionModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.extractionModel"></a>
 
 ```typescript
-public readonly extractionModel: IInvokable;
+public readonly extractionModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 The invokable model used for information extraction.
 
@@ -1384,10 +1384,10 @@ transforming unstructured content into structured information.
 ##### `assessmentModel`<sup>Optional</sup> <a name="assessmentModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.assessmentModel"></a>
 
 ```typescript
-public readonly assessmentModel: IInvokable;
+public readonly assessmentModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional invokable model used for document assessment.
 
@@ -1398,10 +1398,10 @@ Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
 ##### `evaluationModel`<sup>Optional</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.evaluationModel"></a>
 
 ```typescript
-public readonly evaluationModel: IInvokable;
+public readonly evaluationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional invokable model used for evaluating extraction results.
 
@@ -1414,10 +1414,10 @@ comparing extraction results against expected values.
 ##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.summarizationModel"></a>
 
 ```typescript
-public readonly summarizationModel: IInvokable;
+public readonly summarizationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional invokable model used for document summarization.
 

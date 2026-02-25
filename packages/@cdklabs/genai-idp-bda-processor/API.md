@@ -2011,18 +2011,18 @@ const bdaProcessorConfigurationDefinitionOptions: BdaProcessorConfigurationDefin
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional configuration for the evaluation stage. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.summarizationModel">summarizationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional configuration for the summarization stage. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional configuration for the evaluation stage. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional configuration for the summarization stage. |
 
 ---
 
 ##### `evaluationModel`<sup>Optional</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.evaluationModel"></a>
 
 ```typescript
-public readonly evaluationModel: IInvokable;
+public readonly evaluationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional configuration for the evaluation stage.
 
@@ -2033,10 +2033,10 @@ Defines the model and parameters used for evaluating extraction accuracy.
 ##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions.property.summarizationModel"></a>
 
 ```typescript
-public readonly summarizationModel: IInvokable;
+public readonly summarizationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional configuration for the summarization stage.
 
@@ -2077,7 +2077,7 @@ const bdaProcessorProps: BdaProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline evaluation data for model performance assessment. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sageMakerA2IReviewPortalURL">sageMakerA2IReviewPortalURL</a></code> | <code>string</code> | URL for the SageMaker A2I review portal used for HITL tasks. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sectionSplittingStrategy">sectionSplittingStrategy</a></code> | <code>@cdklabs/genai-idp.SectionSplittingStrategy</code> | Section splitting strategy configuration. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
 
 ---
 
@@ -2232,7 +2232,7 @@ Options:
 public readonly summarizationGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to summarization model interactions.
@@ -2773,18 +2773,18 @@ Defines the structure and capabilities of configuration for Bedrock Data Automat
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The invokable model used for evaluating extraction results. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for document summarization. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model used for evaluating extraction results. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for document summarization. |
 
 ---
 
 ##### `evaluationModel`<sup>Required</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.evaluationModel"></a>
 
 ```typescript
-public readonly evaluationModel: IInvokable;
+public readonly evaluationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 The invokable model used for evaluating extraction results.
 
@@ -2796,10 +2796,10 @@ comparing extraction results against expected values.
 ##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.summarizationModel"></a>
 
 ```typescript
-public readonly summarizationModel: IInvokable;
+public readonly summarizationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional invokable model used for document summarization.
 

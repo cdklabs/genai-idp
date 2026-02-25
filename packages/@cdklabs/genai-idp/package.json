@@ -88,6 +88,8 @@
     "organization": false
   },
   "devDependencies": {
+    "@aws-cdk/aws-bedrock-agentcore-alpha": "2.240.0-alpha.0",
+    "@aws-cdk/aws-bedrock-alpha": "2.240.0-alpha.0",
     "@aws-cdk/aws-glue-alpha": "2.240.0-alpha.0",
     "@aws-cdk/aws-lambda-python-alpha": "2.240.0-alpha.0",
     "@aws-cdk/aws-sagemaker-alpha": "2.240.0-alpha.0",
@@ -118,6 +120,8 @@
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
+    "@aws-cdk/aws-bedrock-agentcore-alpha": "^2.240.0-alpha.0",
+    "@aws-cdk/aws-bedrock-alpha": "^2.240.0-alpha.0",
     "@aws-cdk/aws-glue-alpha": "^2.240.0-alpha.0",
     "@aws-cdk/aws-lambda-python-alpha": "^2.240.0-alpha.0",
     "@aws-cdk/aws-sagemaker-alpha": "^2.240.0-alpha.0",

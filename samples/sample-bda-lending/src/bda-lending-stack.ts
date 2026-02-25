@@ -1,4 +1,10 @@
 import path from "path";
+import {
+  // Inference models - use alpha package
+  BedrockFoundationModel,
+  CrossRegionInferenceProfile,
+  CrossRegionInferenceProfileRegion,
+} from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { Database } from "@aws-cdk/aws-glue-alpha";
 import {
   AgentCompanionChat,
@@ -16,12 +22,12 @@ import {
   BdaProcessorConfiguration,
 } from "@cdklabs/genai-idp-bda-processor";
 import {
-  BedrockFoundationModel,
-  ChunkingStrategy,
-  CrossRegionInferenceProfile,
-  CrossRegionInferenceProfileRegion,
-  S3DataSource,
+  // Knowledge Base constructs - keep from old package
   VectorKnowledgeBase,
+  S3DataSource,
+  ChunkingStrategy,
+  // Embedding models - keep from old package for type compatibility
+  BedrockFoundationModel as EmbeddingModel,
 } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import { CfnOutput, Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
 import {
@@ -214,7 +220,7 @@ export class BdaLendingStack extends Stack {
     });
 
     const knowledgeBase = new VectorKnowledgeBase(this, "GenAIIDPKB", {
-      embeddingsModel: BedrockFoundationModel.TITAN_EMBED_TEXT_V2_512,
+      embeddingsModel: EmbeddingModel.TITAN_EMBED_TEXT_V2_512,
     });
 
     const s3DataSource = new S3DataSource(this, "GenAIIDPKBDS", {

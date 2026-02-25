@@ -660,23 +660,23 @@ const bedrockLlmProcessorConfigurationDefinitionOptions: BedrockLlmProcessorConf
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.assessmentModel">assessmentModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional model for the assessment stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.assessmentModel">assessmentModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the assessment stage. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationMethod">classificationMethod</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.ClassificationMethod">ClassificationMethod</a></code> | Optional classification method to use for document categorization. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationModel">classificationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional model for the classification stage. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional model for the evaluation stage. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.extractionModel">extractionModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional model for the extraction stage. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.ocrModel">ocrModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional model for the OCR stage when using Bedrock-based OCR. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.summarizationModel">summarizationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional model for the summarization stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationModel">classificationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the classification stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the evaluation stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.extractionModel">extractionModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the extraction stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.ocrModel">ocrModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the OCR stage when using Bedrock-based OCR. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the summarization stage. |
 
 ---
 
 ##### `assessmentModel`<sup>Optional</sup> <a name="assessmentModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.assessmentModel"></a>
 
 ```typescript
-public readonly assessmentModel: IInvokable;
+public readonly assessmentModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional model for the assessment stage.
 
@@ -699,10 +699,10 @@ Determines how documents are analyzed and categorized before extraction.
 ##### `classificationModel`<sup>Optional</sup> <a name="classificationModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationModel"></a>
 
 ```typescript
-public readonly classificationModel: IInvokable;
+public readonly classificationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional model for the classification stage.
 
@@ -711,10 +711,10 @@ Optional model for the classification stage.
 ##### `evaluationModel`<sup>Optional</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.evaluationModel"></a>
 
 ```typescript
-public readonly evaluationModel: IInvokable;
+public readonly evaluationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional model for the evaluation stage.
 
@@ -723,10 +723,10 @@ Optional model for the evaluation stage.
 ##### `extractionModel`<sup>Optional</sup> <a name="extractionModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.extractionModel"></a>
 
 ```typescript
-public readonly extractionModel: IInvokable;
+public readonly extractionModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional model for the extraction stage.
 
@@ -735,10 +735,10 @@ Optional model for the extraction stage.
 ##### `ocrModel`<sup>Optional</sup> <a name="ocrModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.ocrModel"></a>
 
 ```typescript
-public readonly ocrModel: IInvokable;
+public readonly ocrModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional model for the OCR stage when using Bedrock-based OCR.
 
@@ -749,10 +749,10 @@ Only used when the OCR backend is set to 'bedrock' in the configuration.
 ##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.summarizationModel"></a>
 
 ```typescript
-public readonly summarizationModel: IInvokable;
+public readonly summarizationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional model for the summarization stage.
 
@@ -787,8 +787,8 @@ const bedrockLlmProcessorProps: BedrockLlmProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.configuration">configuration</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfiguration">IBedrockLlmProcessorConfiguration</a></code> | Configuration for the Bedrock LLM document processor. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.assessmentGuardrail">assessmentGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to assessment model interactions. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.assessmentGuardrail">assessmentGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to assessment model interactions. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationMaxWorkers">classificationMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for document classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.customPromptGenerator">customPromptGenerator</a></code> | <code>@cdklabs/genai-idp.ICustomPromptGenerator</code> | Optional custom prompt generator for injecting business logic into extraction processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableAgenticExtraction">enableAgenticExtraction</a></code> | <code>boolean</code> | Enable agentic extraction with Strands framework. |
@@ -796,13 +796,13 @@ const bedrockLlmProcessorProps: BedrockLlmProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableHitl">enableHitl</a></code> | <code>boolean</code> | Enable Human In The Loop (A2I) for document review. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableRegexClassification">enableRegexClassification</a></code> | <code>boolean</code> | Enable regex-based classification for performance optimization. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline documents for evaluation. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.extractionGuardrail">extractionGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to extraction model interactions. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.extractionGuardrail">extractionGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to extraction model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.maxPagesForClassification">maxPagesForClassification</a></code> | <code>number \| @cdklabs/genai-idp.MaxPagesForClassification</code> | Maximum pages for classification. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.ocrGuardrail">ocrGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to OCR model interactions. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.ocrGuardrail">ocrGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to OCR model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.ocrMaxWorkers">ocrMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for OCR processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.sageMakerA2IReviewPortalUrl">sageMakerA2IReviewPortalUrl</a></code> | <code>string</code> | Optional SageMaker A2I Review Portal URL for HITL workflows. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.sectionSplittingStrategy">sectionSplittingStrategy</a></code> | <code>@cdklabs/genai-idp.SectionSplittingStrategy</code> | Section splitting strategy configuration. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
 
 ---
 
@@ -857,7 +857,7 @@ including schema definitions, prompts, and evaluation settings.
 public readonly assessmentGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to assessment model interactions.
@@ -873,7 +873,7 @@ by filtering inappropriate content and enforcing usage policies.
 public readonly classificationGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to classification model interactions.
@@ -1002,7 +1002,7 @@ comparing extraction results against known correct values.
 public readonly extractionGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to extraction model interactions.
@@ -1035,7 +1035,7 @@ optimize costs and performance for large documents.
 public readonly ocrGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to OCR model interactions.
@@ -1104,7 +1104,7 @@ Options:
 public readonly summarizationGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 - *Default:* No guardrail is applied
 
 Optional Bedrock guardrail to apply to summarization model interactions.
@@ -1800,13 +1800,13 @@ The Bedrock LLM document processor to apply to.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationMethod">classificationMethod</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.ClassificationMethod">ClassificationMethod</a></code> | The method used for document classification. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationModel">classificationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The invokable model used for document classification. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.extractionModel">extractionModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The invokable model used for information extraction. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationModel">classificationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model used for document classification. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.extractionModel">extractionModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model used for information extraction. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrBackend">ocrBackend</a></code> | <code>string</code> | OCR backend to use for text extraction. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.assessmentModel">assessmentModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for evaluating assessment results. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for evaluating extraction results. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrModel">ocrModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for OCR when using Bedrock-based OCR. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model used for document summarization. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.assessmentModel">assessmentModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating assessment results. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating extraction results. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrModel">ocrModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for OCR when using Bedrock-based OCR. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for document summarization. |
 
 ---
 
@@ -1829,10 +1829,10 @@ Different methods offer varying levels of accuracy and performance.
 ##### `classificationModel`<sup>Required</sup> <a name="classificationModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationModel"></a>
 
 ```typescript
-public readonly classificationModel: IInvokable;
+public readonly classificationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 - *Default:* as defined in the definition file
 
 The invokable model used for document classification.
@@ -1846,10 +1846,10 @@ enabling targeted extraction strategies for different document types.
 ##### `extractionModel`<sup>Required</sup> <a name="extractionModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.extractionModel"></a>
 
 ```typescript
-public readonly extractionModel: IInvokable;
+public readonly extractionModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 - *Default:* as defined in the definition file
 
 The invokable model used for information extraction.
@@ -1878,10 +1878,10 @@ Determines whether to use Amazon Textract or Bedrock for OCR processing.
 ##### `assessmentModel`<sup>Optional</sup> <a name="assessmentModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.assessmentModel"></a>
 
 ```typescript
-public readonly assessmentModel: IInvokable;
+public readonly assessmentModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 - *Default:* as defined in the definition file
 
 Optional invokable model used for evaluating assessment results.
@@ -1895,10 +1895,10 @@ comparing assessment results against expected values.
 ##### `evaluationModel`<sup>Optional</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.evaluationModel"></a>
 
 ```typescript
-public readonly evaluationModel: IInvokable;
+public readonly evaluationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 - *Default:* as defined in the definition file
 
 Optional invokable model used for evaluating extraction results.
@@ -1912,10 +1912,10 @@ comparing extraction results against expected values.
 ##### `ocrModel`<sup>Optional</sup> <a name="ocrModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrModel"></a>
 
 ```typescript
-public readonly ocrModel: IInvokable;
+public readonly ocrModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 - *Default:* as defined in the definition file
 
 Optional invokable model used for OCR when using Bedrock-based OCR.
@@ -1929,10 +1929,10 @@ Provides vision-based text extraction capabilities for document processing.
 ##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.summarizationModel"></a>
 
 ```typescript
-public readonly summarizationModel: IInvokable;
+public readonly summarizationModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 - *Default:* as defined in the definition file
 
 Optional invokable model used for document summarization.

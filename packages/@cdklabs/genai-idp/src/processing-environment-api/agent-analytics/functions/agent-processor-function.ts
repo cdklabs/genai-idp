@@ -4,9 +4,9 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import path from "path";
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import * as glue from "@aws-cdk/aws-glue-alpha";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
-import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import { Duration, Stack } from "aws-cdk-lib";
 import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -65,7 +65,7 @@ export interface AgentProcessorFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The foundation model or inference profile to use for document analysis agent.
    */
-  readonly model: bedrock.IInvokable;
+  readonly model: bedrock.IBedrockInvokable;
 
   /**
    * The KMS key used for encryption.

@@ -23,6 +23,8 @@ const idpDeps = [
   `@aws-cdk/aws-lambda-python-alpha@^${CDK_VERSION}-alpha.0`,
   `@aws-cdk/aws-sagemaker-alpha@^${CDK_VERSION}-alpha.0`,
   `@aws-cdk/aws-glue-alpha@^${CDK_VERSION}-alpha.0`,
+  `@aws-cdk/aws-bedrock-alpha@^${CDK_VERSION}-alpha.0`,
+  `@aws-cdk/aws-bedrock-agentcore-alpha@^${CDK_VERSION}-alpha.0`,
   // INFO: atm, GenAI CDK Constructs only support NPM, PyPI, and .NET
   `@cdklabs/generative-ai-cdk-constructs@^${GENAI_CONSTRUCTS_VERSION}`
 ];

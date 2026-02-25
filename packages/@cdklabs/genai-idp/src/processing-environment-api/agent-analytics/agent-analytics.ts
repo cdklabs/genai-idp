@@ -3,7 +3,7 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -92,7 +92,7 @@ export interface AgentAnalyticsProps {
    * The foundation model or inference profile to use for document analysis agent.
    * @default - No model specified, must be provided
    */
-  readonly model: bedrock.IInvokable;
+  readonly model: bedrock.IBedrockInvokable;
 
   /**
    * Log level for agent analytics functions.

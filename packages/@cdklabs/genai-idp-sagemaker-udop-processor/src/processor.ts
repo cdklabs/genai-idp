@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import * as path from "path";
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import * as sagemaker from "@aws-cdk/aws-sagemaker-alpha";
 import {
   DocumentProcessorProps,
@@ -13,7 +14,6 @@ import {
   SectionSplittingStrategy,
 } from "@cdklabs/genai-idp";
 import { EvaluationFunction } from "@cdklabs/genai-idp/lib/internal/functions/evaluation-function";
-import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import * as cdk from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as lambda from "aws-cdk-lib/aws-lambda";

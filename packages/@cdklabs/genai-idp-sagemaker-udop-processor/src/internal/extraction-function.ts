@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import path from "path";
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import {
   IConfigurationTable,
@@ -13,7 +14,6 @@ import {
   ITrackingTable,
   LogLevel,
 } from "@cdklabs/genai-idp";
-import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import { Arn, ArnFormat, Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { IKey } from "aws-cdk-lib/aws-kms";
@@ -82,7 +82,7 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
    * The Bedrock model to use for extraction.
    * The AI model that will extract information from documents.
    */
-  readonly extractionModel: bedrock.IInvokable;
+  readonly extractionModel: bedrock.IBedrockInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to extraction model interactions.

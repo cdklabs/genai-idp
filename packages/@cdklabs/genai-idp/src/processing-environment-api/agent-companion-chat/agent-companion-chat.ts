@@ -3,8 +3,8 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import { IGuardrail } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { IDatabase } from "@aws-cdk/aws-glue-alpha";
-import { IGuardrail } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as kms from "aws-cdk-lib/aws-kms";

@@ -8,20 +8,26 @@ import {
   BedrockFoundationModel,
   CrossRegionInferenceProfile,
   CrossRegionInferenceProfileRegion,
-  IInvokable,
-} from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
+  IBedrockInvokable,
+} from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { FoundationModelIdentifier } from "aws-cdk-lib/aws-bedrock";
 import yaml from "yaml";
 
 /**
- * Converts a model name string to an appropriate IInvokable implementation.
+ * Type alias for backward compatibility.
+ * IInvokable is now IBedrockInvokable from the alpha module.
+ */
+export type IInvokable = IBedrockInvokable;
+
+/**
+ * Converts a model name string to an appropriate IBedrockInvokable implementation.
  * Handles region-specific model identifiers with prefixes (us., eu., apac.)
  * and creates the appropriate cross-region inference profile when needed.
  *
  * @param modelName The model identifier string, optionally with region prefix
- * @returns An IInvokable implementation for the specified model
+ * @returns An IBedrockInvokable implementation for the specified model
  */
-export function modelNameToInvokable(modelName: string): IInvokable {
+export function modelNameToInvokable(modelName: string): IBedrockInvokable {
   if (modelName.startsWith("us.")) {
     return CrossRegionInferenceProfile.fromConfig({
       geoRegion: CrossRegionInferenceProfileRegion.US,

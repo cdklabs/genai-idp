@@ -1,6 +1,16 @@
 {
   "dependencies": [
     {
+      "name": "@aws-cdk/aws-bedrock-agentcore-alpha",
+      "version": "^2.240.0-alpha.0",
+      "type": "build"
+    },
+    {
+      "name": "@aws-cdk/aws-bedrock-alpha",
+      "version": "^2.240.0-alpha.0",
+      "type": "build"
+    },
+    {
       "name": "@aws-cdk/aws-glue-alpha",
       "version": "^2.240.0-alpha.0",
       "type": "build"
@@ -119,6 +129,16 @@
     {
       "name": "yaml",
       "type": "bundled"
+    },
+    {
+      "name": "@aws-cdk/aws-bedrock-agentcore-alpha",
+      "version": "^2.240.0-alpha.0",
+      "type": "peer"
+    },
+    {
+      "name": "@aws-cdk/aws-bedrock-alpha",
+      "version": "^2.240.0-alpha.0",
+      "type": "peer"
     },
     {
       "name": "@aws-cdk/aws-glue-alpha",

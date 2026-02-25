@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import path from "path";
+import { IBedrockInvokable as IInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import {
   IdpPythonFunctionOptions,
@@ -12,7 +13,6 @@ import {
   ITrackingTable,
   LogLevel,
 } from "@cdklabs/genai-idp";
-import { IInvokable } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";

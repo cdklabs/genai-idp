@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import * as path from "path";
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import {
   DocumentProcessorProps,
   IProcessingEnvironment,
@@ -13,7 +14,6 @@ import {
   MaxPagesForClassification,
 } from "@cdklabs/genai-idp";
 import { EvaluationFunction } from "@cdklabs/genai-idp/lib/internal/functions/evaluation-function";
-import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as events from "aws-cdk-lib/aws-events";
 import * as eventtargets from "aws-cdk-lib/aws-events-targets";

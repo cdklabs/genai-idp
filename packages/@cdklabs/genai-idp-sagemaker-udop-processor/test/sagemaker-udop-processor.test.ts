@@ -3,10 +3,10 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import * as sagemaker from "@aws-cdk/aws-sagemaker-alpha";
 import * as cxapi from "@aws-cdk/cx-api";
 import { ProcessingEnvironment } from "@cdklabs/genai-idp";
-import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import { App, Stack } from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import * as kms from "aws-cdk-lib/aws-kms";
@@ -78,7 +78,7 @@ describe("SagemakerUdopProcessor", () => {
     test("creates processor with all optional props", () => {
       const evaluationBucket = new s3.Bucket(stack, "EvaluationBucket");
       const guardrail = new bedrock.Guardrail(stack, "TestGuardrail", {
-        name: "test-guardrail",
+        guardrailName: "test-guardrail",
         blockedInputMessaging: "Blocked input",
         blockedOutputsMessaging: "Blocked output",
       });
@@ -202,7 +202,7 @@ describe("SagemakerUdopProcessor", () => {
     test("validates complete resource counts with all features enabled", () => {
       const evaluationBucket = new s3.Bucket(stack, "EvaluationBucket");
       const guardrail = new bedrock.Guardrail(stack, "TestGuardrail", {
-        name: "test-guardrail",
+        guardrailName: "test-guardrail",
         blockedInputMessaging: "Blocked input",
         blockedOutputsMessaging: "Blocked output",
       });

@@ -4,12 +4,13 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import * as path from "path";
-import { bedrock } from "@cdklabs/generative-ai-cdk-constructs";
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import {
   IGuardrail,
-  IInvokable,
-  IKnowledgeBase,
-} from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
+  IBedrockInvokable,
+} from "@aws-cdk/aws-bedrock-alpha/bedrock";
+// Keep IKnowledgeBase from old package until it's available in alpha
+import { IKnowledgeBase } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import * as cdk from "aws-cdk-lib";
 import * as appsync from "aws-cdk-lib/aws-appsync";
 import * as kms from "aws-cdk-lib/aws-kms";
@@ -33,6 +34,12 @@ import { IReportingEnvironment } from "../reporting/reporting-environment";
 import { ITrackingTable } from "../tracking-table";
 import { VpcConfiguration } from "../vpc-configuration";
 import * as functions from "./functions";
+
+/**
+ * Type alias for backward compatibility.
+ * IInvokable is now IBedrockInvokable from the alpha module.
+ */
+type IInvokable = IBedrockInvokable;
 
 /**
  * Interface for the document processing environment API.
@@ -149,14 +156,14 @@ export interface ProcessingEnvironmentApiProps extends ProcessingEnvironmentApiB
    *
    * @default bedrock.BedrockFoundationModel.AMAZON_NOVA_PRO_V1_0
    */
-  readonly knowledgeBaseModel?: bedrock.IInvokable;
+  readonly knowledgeBaseModel?: bedrock.IBedrockInvokable;
 
   /**
    * Optional knowledge base identifier for document querying capabilities.
    * When provided, enables natural language querying of processed documents
    * using the specified Amazon Bedrock knowledge base.
    */
-  readonly knowledgeBase?: bedrock.IKnowledgeBase;
+  readonly knowledgeBase?: IKnowledgeBase;
 
   /**
    * Optional Bedrock guardrail to apply to model interactions.
@@ -464,8 +471,8 @@ export class ProcessingEnvironmentApi
    * @param knowledgeBaseGuardrail Optional Bedrock guardrail to apply to model interactions
    */
   public addKnowledgeBase(
-    knowledgeBase: bedrock.IKnowledgeBase,
-    knowledgeBaseModel: bedrock.IInvokable,
+    knowledgeBase: IKnowledgeBase,
+    knowledgeBaseModel: bedrock.IBedrockInvokable,
     knowledgeBaseGuardrail?: bedrock.IGuardrail,
   ): void {
     const queryKnowledgeBaseDataSource = this.addQueryKnowledgeBaseDataSource(
@@ -591,7 +598,7 @@ export class ProcessingEnvironmentApi
    */
   public addAgentAnalytics(
     trackingTable: ITrackingTable,
-    model: bedrock.IInvokable,
+    model: bedrock.IBedrockInvokable,
     reportingEnvironment: IReportingEnvironment,
     externalMcpAgentsSecret?: secretsmanager.ISecret,
     guardrail?: bedrock.IGuardrail,
@@ -634,8 +641,8 @@ export class ProcessingEnvironmentApi
    * @param guardrail Optional Bedrock guardrail for content filtering
    */
   public addChatWithDocument(
-    knowledgeBase: bedrock.IKnowledgeBase,
-    chatModel: bedrock.IInvokable,
+    knowledgeBase: IKnowledgeBase,
+    chatModel: bedrock.IBedrockInvokable,
     guardrail?: bedrock.IGuardrail,
   ): void {
     const chatWithDocumentDataSource = this.addChatWithDocumentDataSource(

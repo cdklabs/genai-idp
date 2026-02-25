@@ -30896,7 +30896,7 @@ Add an environment variable to the construct.
 ##### `addAgentAnalytics` <a name="addAgentAnalytics" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics"></a>
 
 ```typescript
-public addAgentAnalytics(trackingTable: ITrackingTable, model: IInvokable, reportingEnvironment: IReportingEnvironment, externalMcpAgentsSecret?: ISecret, guardrail?: IGuardrail): void
+public addAgentAnalytics(trackingTable: ITrackingTable, model: IBedrockInvokable, reportingEnvironment: IReportingEnvironment, externalMcpAgentsSecret?: ISecret, guardrail?: IGuardrail): void
 ```
 
 Add Agent Analytics capabilities to the GraphQL API.
@@ -30929,7 +30929,7 @@ The DynamoDB table that tracks document processing status.
 
 ###### `model`<sup>Required</sup> <a name="model" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics.parameter.model"></a>
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 The foundation model or inference profile for analytics queries.
 
@@ -30953,7 +30953,7 @@ Optional Secrets Manager secret for external MCP agents.
 
 ###### `guardrail`<sup>Optional</sup> <a name="guardrail" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addAgentAnalytics.parameter.guardrail"></a>
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 
 Optional Bedrock guardrail for content filtering.
 
@@ -30993,7 +30993,7 @@ The Agent Companion Chat construct with orchestrator and session management.
 ##### `addChatWithDocument` <a name="addChatWithDocument" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument"></a>
 
 ```typescript
-public addChatWithDocument(knowledgeBase: IKnowledgeBase, chatModel: IInvokable, guardrail?: IGuardrail): void
+public addChatWithDocument(knowledgeBase: IKnowledgeBase, chatModel: IBedrockInvokable, guardrail?: IGuardrail): void
 ```
 
 Add Chat with Document capabilities to the GraphQL API.
@@ -31024,7 +31024,7 @@ The Bedrock knowledge base for document context.
 
 ###### `chatModel`<sup>Required</sup> <a name="chatModel" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument.parameter.chatModel"></a>
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 The invokable model for chat functionality.
 
@@ -31032,7 +31032,7 @@ The invokable model for chat functionality.
 
 ###### `guardrail`<sup>Optional</sup> <a name="guardrail" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument.parameter.guardrail"></a>
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 
 Optional Bedrock guardrail for content filtering.
 
@@ -31144,7 +31144,7 @@ The S3 bucket for storing evaluation baseline documents.
 ##### `addKnowledgeBase` <a name="addKnowledgeBase" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addKnowledgeBase"></a>
 
 ```typescript
-public addKnowledgeBase(knowledgeBase: IKnowledgeBase, knowledgeBaseModel: IInvokable, knowledgeBaseGuardrail?: IGuardrail): void
+public addKnowledgeBase(knowledgeBase: IKnowledgeBase, knowledgeBaseModel: IBedrockInvokable, knowledgeBaseGuardrail?: IGuardrail): void
 ```
 
 Add knowledge base querying capabilities to the GraphQL API.
@@ -31175,7 +31175,7 @@ The Amazon Bedrock knowledge base for document querying.
 
 ###### `knowledgeBaseModel`<sup>Required</sup> <a name="knowledgeBaseModel" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addKnowledgeBase.parameter.knowledgeBaseModel"></a>
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 The invokable model to use for knowledge base queries.
 
@@ -31183,7 +31183,7 @@ The invokable model to use for knowledge base queries.
 
 ###### `knowledgeBaseGuardrail`<sup>Optional</sup> <a name="knowledgeBaseGuardrail" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addKnowledgeBase.parameter.knowledgeBaseGuardrail"></a>
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 
 Optional Bedrock guardrail to apply to model interactions.
 
@@ -40941,13 +40941,13 @@ const agentAnalyticsProps: AgentAnalyticsProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.appSyncApiUrl">appSyncApiUrl</a></code> | <code>string</code> | AppSync GraphQL API URL for publishing updates. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | The DynamoDB table that stores configuration settings. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.metricNamespace">metricNamespace</a></code> | <code>string</code> | The namespace for CloudWatch metrics. |
-| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.model">model</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The foundation model or inference profile to use for document analysis agent. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.model">model</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The foundation model or inference profile to use for document analysis agent. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.reportingEnvironment">reportingEnvironment</a></code> | <code><a href="#@cdklabs/genai-idp.IReportingEnvironment">IReportingEnvironment</a></code> | Athena database for analytics queries. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table that tracks document processing status and metadata. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.dataRetentionDays">dataRetentionDays</a></code> | <code>number</code> | Data retention period in days. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The KMS key for encryption. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.externalMcpAgentsSecret">externalMcpAgentsSecret</a></code> | <code>aws-cdk-lib.aws_secretsmanager.ISecret</code> | Optional Secrets Manager secret for external MCP agents. |
-| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.guardrail">guardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail for content filtering. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.guardrail">guardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail for content filtering. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | Log level for agent analytics functions. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | Log retention period. |
 
@@ -40994,10 +40994,10 @@ The namespace for CloudWatch metrics.
 ##### `model`<sup>Required</sup> <a name="model" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.model"></a>
 
 ```typescript
-public readonly model: IInvokable;
+public readonly model: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 - *Default:* No model specified, must be provided
 
 The foundation model or inference profile to use for document analysis agent.
@@ -41074,7 +41074,7 @@ Optional Secrets Manager secret for external MCP agents.
 public readonly guardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 
 Optional Bedrock guardrail for content filtering.
 
@@ -42219,7 +42219,7 @@ const agentCompanionChatProps: AgentCompanionChatProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.dataRetention">dataRetention</a></code> | <code>aws-cdk-lib.Duration</code> | Data retention period for chat messages and sessions. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.enableCodeIntelligence">enableCodeIntelligence</a></code> | <code>boolean</code> | Enable Code Intelligence agent for code-related queries. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting chat data. |
-| <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.guardrail">guardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock Guardrail for agent responses. |
+| <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.guardrail">guardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock Guardrail for agent responses. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.messagesTable">messagesTable</a></code> | <code><a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a></code> | Optional DynamoDB table for chat messages storage. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.sessionTable">sessionTable</a></code> | <code><a href="#@cdklabs/genai-idp.ISessionTable">ISessionTable</a></code> | Optional DynamoDB table for chat session storage. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray tracing for Lambda functions. |
@@ -42420,7 +42420,7 @@ When provided, ensures chat sessions and messages are encrypted at rest.
 public readonly guardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 
 Optional Bedrock Guardrail for agent responses.
 
@@ -44305,10 +44305,10 @@ const agentProcessorFunctionProps: AgentProcessorFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.athenaDatabase">athenaDatabase</a></code> | <code>@aws-cdk/aws-glue-alpha.IDatabase</code> | Athena database for analytics queries. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | The DynamoDB table that stores configuration settings. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.metricNamespace">metricNamespace</a></code> | <code>string</code> | The namespace for CloudWatch metrics. |
-| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.model">model</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | The foundation model or inference profile to use for document analysis agent. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.model">model</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The foundation model or inference profile to use for document analysis agent. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | The KMS key used for encryption. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.externalMcpAgentsSecret">externalMcpAgentsSecret</a></code> | <code>aws-cdk-lib.aws_secretsmanager.ISecret</code> | Optional Secrets Manager secret for external MCP agents. |
-| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.guardrail">guardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail for content filtering. |
+| <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.guardrail">guardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail for content filtering. |
 | <code><a href="#@cdklabs/genai-idp.AgentProcessorFunctionProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the function. |
 
 ---
@@ -45079,10 +45079,10 @@ The namespace for CloudWatch metrics.
 ##### `model`<sup>Required</sup> <a name="model" id="@cdklabs/genai-idp.AgentProcessorFunctionProps.property.model"></a>
 
 ```typescript
-public readonly model: IInvokable;
+public readonly model: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 The foundation model or inference profile to use for document analysis agent.
 
@@ -45118,7 +45118,7 @@ Optional Secrets Manager secret for external MCP agents.
 public readonly guardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 
 Optional Bedrock guardrail for content filtering.
 
@@ -59062,8 +59062,8 @@ const processingEnvironmentApiProps: ProcessingEnvironmentApiProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.errorAnalyzer">errorAnalyzer</a></code> | <code><a href="#@cdklabs/genai-idp.IErrorAnalyzer">IErrorAnalyzer</a></code> | Optional Error Analyzer construct for AI-powered failure diagnosis. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket name for storing evaluation baseline documents. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBase">knowledgeBase</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase</code> | Optional knowledge base identifier for document querying capabilities. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBaseGuardrail">knowledgeBaseGuardrail</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail</code> | Optional Bedrock guardrail to apply to model interactions. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBaseModel">knowledgeBaseModel</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable</code> | Optional invokable model to use for knowledge base queries. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBaseGuardrail">knowledgeBaseGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to model interactions. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBaseModel">knowledgeBaseModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model to use for knowledge base queries. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for document processing components. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs generated by document processing components. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.mcpIntegration">mcpIntegration</a></code> | <code><a href="#@cdklabs/genai-idp.IMCPIntegration">IMCPIntegration</a></code> | Optional MCP Integration construct for external application access. |
@@ -59410,7 +59410,7 @@ using the specified Amazon Bedrock knowledge base.
 public readonly knowledgeBaseGuardrail: IGuardrail;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IGuardrail
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
 
 Optional Bedrock guardrail to apply to model interactions.
 
@@ -59422,10 +59422,10 @@ by filtering inappropriate content and enforcing usage policies.
 ##### `knowledgeBaseModel`<sup>Optional</sup> <a name="knowledgeBaseModel" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBaseModel"></a>
 
 ```typescript
-public readonly knowledgeBaseModel: IInvokable;
+public readonly knowledgeBaseModel: IBedrockInvokable;
 ```
 
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IInvokable
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 - *Default:* bedrock.BedrockFoundationModel.AMAZON_NOVA_PRO_V1_0
 
 Optional invokable model to use for knowledge base queries.

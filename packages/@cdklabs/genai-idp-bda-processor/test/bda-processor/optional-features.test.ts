@@ -3,9 +3,9 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import * as cxapi from "@aws-cdk/cx-api";
 import { ProcessingEnvironment } from "@cdklabs/genai-idp";
-import * as bedrock from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import { App, Stack } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { Bucket } from "aws-cdk-lib/aws-s3";
