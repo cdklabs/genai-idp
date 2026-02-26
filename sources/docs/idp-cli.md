@@ -25,13 +25,24 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
 - [Commands Reference](#commands-reference)
   - [deploy](#deploy)
   - [delete](#delete)
-  - [run-inference](#run-inference)
-  - [rerun-inference](#rerun-inference)
+  - [process](#process)
+  - [reprocess](#reprocess)
   - [status](#status)
   - [download-results](#download-results)
+  - [delete-documents](#delete-documents)
   - [generate-manifest](#generate-manifest)
   - [validate-manifest](#validate-manifest)
   - [list-batches](#list-batches)
+  - [stop-workflows](#stop-workflows)
+  - [load-test](#load-test)
+  - [remove-deleted-stack-resources](#remove-deleted-stack-resources)
+  - [config-create](#config-create)
+  - [config-validate](#config-validate)
+  - [config-download](#config-download)
+  - [config-upload](#config-upload)
+  - [config-list](#config-list)
+  - [config-activate](#config-activate)
+  - [config-delete](#config-delete)
 - [Complete Evaluation Workflow](#complete-evaluation-workflow)
   - [Step 1: Deploy Your Stack](#step-1-deploy-your-stack)
   - [Step 2: Initial Processing from Local Directory](#step-2-initial-processing-from-local-directory)
@@ -51,21 +62,21 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - AWS credentials configured (via AWS CLI or environment variables)
 - An active IDP Accelerator CloudFormation stack
 
 ### Install from source
 
 ```bash
-cd idp_cli
+cd lib/idp_cli_pkg
 pip install -e .
 ```
 
 ### Install with test dependencies
 
 ```bash
-cd idp_cli
+cd lib/idp_cli_pkg
 pip install -e ".[test]"
 ```
 
@@ -82,7 +93,7 @@ idp-cli deploy \
     --wait
 
 # 2. Process documents from a local directory
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-idp-stack \
     --dir ./my-documents/ \
     --monitor
@@ -117,6 +128,7 @@ idp-cli deploy [OPTIONS]
 - `--admin-email`: Admin user email
 
 **Optional Parameters:**
+- `--from-code`: Deploy from local code by building with publish.py (path to project root)
 - `--template-url`: URL to CloudFormation template in S3 (optional, auto-selected based on region)
 - `--custom-config`: Path to local config file or S3 URI
 - `--max-concurrent`: Maximum concurrent workflows (default: 100)
@@ -125,7 +137,34 @@ idp-cli deploy [OPTIONS]
 - `--pattern-config`: Pattern-specific configuration preset (optional, distinct from --pattern)
 - `--parameters`: Additional parameters as `key=value,key2=value2`
 - `--wait`: Wait for stack operation to complete
+- `--no-rollback`: Disable rollback on stack creation failure
 - `--region`: AWS region (optional, auto-detected)
+- `--role-arn`: CloudFormation service role ARN (optional)
+
+**Note:** `--from-code` and `--template-url` are mutually exclusive. Use `--from-code` for development/testing from local source, or `--template-url` for production deployments.
+
+**Auto-Monitoring for In-Progress Operations:**
+
+If you run `deploy` on a stack that already has an operation in progress (CREATE, UPDATE, ROLLBACK), the command automatically switches to monitoring mode instead of failing. This is useful if you forgot to use `--wait` on the initial deploy - simply run the same command again to monitor progress:
+
+```bash
+# First run without --wait starts the deployment
+$ idp-cli deploy --stack-name my-stack --pattern pattern-2 --admin-email user@example.com
+✓ Stack CREATE initiated successfully!
+
+# Second run - automatically monitors the in-progress operation
+$ idp-cli deploy --stack-name my-stack
+Stack 'my-stack' has an operation in progress
+Current status: CREATE_IN_PROGRESS
+
+Switching to monitoring mode...
+
+[Live progress display...]
+
+✓ Stack CREATE completed successfully!
+```
+
+Supported in-progress states: `CREATE_IN_PROGRESS`, `UPDATE_IN_PROGRESS`, `DELETE_IN_PROGRESS`, `ROLLBACK_IN_PROGRESS`, `UPDATE_ROLLBACK_IN_PROGRESS`, and cleanup states.
 
 **Examples:**
 
@@ -157,6 +196,37 @@ idp-cli deploy \
     --admin-email user@example.com \
     --template-url https://s3.eu-west-1.amazonaws.com/my-bucket/idp-main.yaml \
     --region eu-west-1 \
+    --wait
+
+# Deploy with CloudFormation service role and permissions boundary
+idp-cli deploy \
+    --stack-name my-idp \
+    --pattern pattern-2 \
+    --admin-email user@example.com \
+    --role-arn arn:aws:iam::123456789012:role/IDP-Cloudformation-Service-Role \
+    --parameters "PermissionsBoundaryArn=arn:aws:iam::123456789012:policy/MyPermissionsBoundary" \
+    --wait
+
+# Deploy from local source code (for development/testing)
+idp-cli deploy \
+    --stack-name my-idp-dev \
+    --from-code . \
+    --pattern pattern-2 \
+    --admin-email user@example.com \
+    --wait
+
+# Update existing stack from local code changes
+idp-cli deploy \
+    --stack-name my-idp-dev \
+    --from-code . \
+    --wait
+
+# Deploy with rollback disabled (useful for debugging failed deployments)
+idp-cli deploy \
+    --stack-name my-idp \
+    --pattern pattern-2 \
+    --admin-email user@example.com \
+    --no-rollback \
     --wait
 ```
 
@@ -193,15 +263,30 @@ idp-cli delete [OPTIONS]
 The `--force-delete-all` flag performs a comprehensive cleanup AFTER CloudFormation deletion completes:
 
 1. **CloudFormation Deletion Phase**: Standard stack deletion
-2. **Analysis Phase**: Identifies resources with DELETE_SKIPPED or retained status
-3. **Cleanup Phase**: Deletes remaining resources in order:
+2. **Additional Resource Cleanup Phase** (happens with `--wait` on all deletions and always with `--force-delete-all`): Removes stack-specific resources not tracked by CloudFormation:
+   - CloudWatch Log Groups (Lambda functions, Glue crawlers)
+   - AppSync APIs and their log groups
+   - CloudFront distributions (two-phase cleanup - initiates disable, takes 15-20 minutes to propagate globally)
+   - CloudFront Response Headers Policies (from previously deleted stacks)
+   - IAM custom policies and permissions boundaries
+   - CloudWatch Logs resource policies
+3. **Retained Resource Cleanup Phase** (only with `--force-delete-all`): Deletes remaining resources in order:
    - DynamoDB tables (disables PITR, then deletes)
    - CloudWatch Log Groups (matching stack name pattern)
    - S3 buckets (regular buckets first, LoggingBucket last)
 
-**Resources Deleted by --force-delete-all:**
+**Resources Always Cleaned Up (with `--wait` or `--force-delete-all`):**
+- IAM custom policies (containing stack name)
+- IAM permissions boundary policies
+- CloudFront response header policies (custom)
+- CloudWatch Logs resource policies (stack-specific)
+- AppSync log groups
+- Additional log groups containing stack name
+- Gracefully handles missing/already-deleted resources
+
+**Resources Deleted Only by --force-delete-all:**
 - All DynamoDB tables from stack
-- All CloudWatch Log Groups (including nested stack logs)
+- All CloudWatch Log Groups (retained by CloudFormation)
 - All S3 buckets including LoggingBucket
 - Handles nested stack resources automatically
 
@@ -307,14 +392,70 @@ Stack 'test-stack' and all resources completely removed.
 - Safe to run - only deletes resources that weren't deleted by CloudFormation
 - Progress bars show real-time deletion status
 
+**Auto-Monitoring for In-Progress Deletions:**
+
+If you run `delete` on a stack that already has a DELETE operation in progress, the command automatically switches to monitoring mode instead of failing. This is useful if you started a deletion without `--wait` - simply run the command again to monitor:
+
+```bash
+# First run without --wait starts the deletion
+$ idp-cli delete --stack-name test-stack --force --no-wait
+✓ Stack DELETE initiated successfully!
+
+# Second run - automatically monitors the in-progress deletion
+$ idp-cli delete --stack-name test-stack
+Stack 'test-stack' is already being deleted
+Current status: DELETE_IN_PROGRESS
+
+Switching to monitoring mode...
+
+[Live progress display...]
+
+✓ Stack deleted successfully!
+```
+
+**Canceling In-Progress Operations:**
+
+If a non-delete operation is in progress (CREATE, UPDATE), the delete command offers options to handle it:
+
+```bash
+$ idp-cli delete --stack-name test-stack
+Stack 'test-stack' has an operation in progress: CREATE_IN_PROGRESS
+
+Options:
+  1. Wait for CREATE to complete first
+  2. Cancel the CREATE and proceed with deletion
+
+Do you want to cancel the CREATE and delete the stack? [yes/no/wait]: _
+```
+
+- **yes**: Cancel the operation (if possible) and proceed with deletion
+- **no**: Exit without making changes
+- **wait**: Wait for the current operation to complete, then delete
+
+With `--force` flag, the command automatically cancels the operation and proceeds with deletion:
+
+```bash
+# Force mode - automatically cancels and deletes
+$ idp-cli delete --stack-name test-stack --force
+Force mode: Canceling operation and proceeding with deletion...
+
+✓ Stack reached stable state: ROLLBACK_COMPLETE
+
+Proceeding with stack deletion...
+```
+
+**Note:** CREATE operations cannot be cancelled directly - they must complete or roll back naturally. UPDATE operations can be cancelled immediately.
+
 ---
 
-### `run-inference`
+### `process` / `run-inference`
 
 Process a batch of documents.
 
 **Usage:**
 ```bash
+idp-cli process [OPTIONS]
+# or (deprecated alias)
 idp-cli run-inference [OPTIONS]
 ```
 
@@ -322,47 +463,103 @@ idp-cli run-inference [OPTIONS]
 - `--manifest`: Path to manifest file (CSV or JSON)
 - `--dir`: Local directory containing documents
 - `--s3-uri`: S3 URI in InputBucket
+- `--test-set`: Test set ID from test set bucket
 
 **Options:**
 - `--stack-name` (required): CloudFormation stack name
-- `--batch-id`: Custom batch ID (auto-generated if omitted)
+- `--batch-id`: Custom batch ID (auto-generated if omitted, ignored with --test-set)
 - `--batch-prefix`: Prefix for auto-generated batch ID (default: `cli-batch`)
 - `--file-pattern`: File pattern for directory/S3 scanning (default: `*.pdf`)
 - `--recursive/--no-recursive`: Include subdirectories (default: recursive)
+- `--number-of-files`: Limit number of files to process
+- `--config`: Path to configuration YAML file (optional)
+- `--config-version`: Configuration version to use for processing (e.g., v1, v2)
+- `--context`: Context description for test run (used with --test-set, e.g., "Model v2.1", "Production validation")
 - `--monitor`: Monitor progress until completion
 - `--refresh-interval`: Seconds between status checks (default: 5)
 - `--region`: AWS region (optional)
+
+**Test Set Integration:**
+For test runs to appear properly in the Test Studio UI, use either:
+- `--test-set`: Process test set directly by ID (recommended for test sets)
+- `--manifest`: Use manifest file with populated baseline_source column for evaluation tracking
+
+Other options (`--dir`, `--s3-uri`) are for general document processing but won't integrate with test studio tracking.
 
 **Examples:**
 
 ```bash
 # Process from local directory
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --dir ./documents/ \
     --monitor
 
 # Process from manifest with baselines (enables evaluation)
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --manifest documents-with-baselines.csv \
     --monitor
 
+# Process from manifest with limited files
+idp-cli process \
+    --stack-name my-stack \
+    --manifest documents-with-baselines.csv \
+    --number-of-files 10 \
+    --monitor
+
+# Process test set (integrates with Test Studio UI - use test set ID)
+idp-cli process \
+    --stack-name my-stack \
+    --test-set fcc-example-test \
+    --monitor
+
+# Process test set with limited files for quick testing
+idp-cli process \
+    --stack-name my-stack \
+    --test-set fcc-example-test \
+    --number-of-files 5 \
+    --monitor
+
+# Process test set with custom context (for tracking in Test Studio)
+idp-cli process \
+    --stack-name my-stack \
+    --test-set fcc-example-test \
+    --context "Model v2.1 - improved prompts" \
+    --monitor
+
 # Process S3 URI
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --s3-uri archive/2024/ \
+    --monitor
+
+# Process with specific configuration version
+idp-cli process \
+    --stack-name my-stack \
+    --dir ./documents/ \
+    --config-version v2 \
+    --monitor
+
+# Process test set with configuration version
+idp-cli process \
+    --stack-name my-stack \
+    --test-set fcc-example-test \
+    --config-version v1 \
+    --context "Testing with config v1" \
     --monitor
 ```
 
 ---
 
-### `rerun-inference`
+### `reprocess` / `rerun-inference`
 
 Reprocess existing documents from a specific pipeline step.
 
 **Usage:**
 ```bash
+idp-cli reprocess [OPTIONS]
+# or (deprecated alias)
 idp-cli rerun-inference [OPTIONS]
 ```
 
@@ -390,21 +587,21 @@ idp-cli rerun-inference [OPTIONS]
 
 ```bash
 # Rerun classification for specific documents
-idp-cli rerun-inference \
+idp-cli reprocess \
     --stack-name my-stack \
     --step classification \
     --document-ids "batch-123/doc1.pdf,batch-123/doc2.pdf" \
     --monitor
 
 # Rerun extraction for entire batch
-idp-cli rerun-inference \
+idp-cli reprocess \
     --stack-name my-stack \
     --step extraction \
     --batch-id cli-batch-20251015-143000 \
     --monitor
 
 # Automated rerun (skip confirmation - perfect for CI/CD)
-idp-cli rerun-inference \
+idp-cli reprocess \
     --stack-name my-stack \
     --step classification \
     --batch-id test-set \
@@ -610,9 +807,97 @@ idp-cli download-results \
 
 ---
 
+### `delete-documents`
+
+Delete documents and all associated data from the IDP system.
+
+**⚠️ WARNING:** This action cannot be undone.
+
+**Usage:**
+```bash
+idp-cli delete-documents [OPTIONS]
+```
+
+**Document Selection (choose ONE):**
+- `--document-ids`: Comma-separated list of document IDs (S3 object keys) to delete
+- `--batch-id`: Delete all documents in this batch
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--status-filter`: Only delete documents with this status (use with --batch-id)
+  - Options: `FAILED`, `COMPLETED`, `PROCESSING`, `QUEUED`
+- `--dry-run`: Show what would be deleted without actually deleting
+- `--force`, `-y`: Skip confirmation prompt
+- `--region`: AWS region (optional)
+
+**What Gets Deleted:**
+- Source files from input bucket
+- Processed outputs from output bucket
+- DynamoDB tracking records
+- List entries in tracking table
+
+**Examples:**
+
+```bash
+# Delete specific documents by ID
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --document-ids "batch-123/doc1.pdf,batch-123/doc2.pdf"
+
+# Delete all documents in a batch
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --batch-id cli-batch-20250123
+
+# Delete only failed documents in a batch
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --batch-id cli-batch-20250123 \
+    --status-filter FAILED
+
+# Dry run to see what would be deleted
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --batch-id cli-batch-20250123 \
+    --dry-run
+
+# Force delete without confirmation
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --document-ids "batch-123/doc1.pdf" \
+    --force
+```
+
+**Output Example:**
+```
+Connecting to stack: my-stack
+Getting documents for batch: cli-batch-20250123
+Found 15 document(s) in batch
+  (filtered by status: FAILED)
+
+⚠️  Documents to be deleted:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  • cli-batch-20250123/doc1.pdf
+  • cli-batch-20250123/doc2.pdf
+  • cli-batch-20250123/doc3.pdf
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Delete 3 document(s) permanently? [y/N]: y
+
+✓ Successfully deleted 3 document(s)
+```
+
+**Use Cases:**
+- Clean up failed documents after fixing issues
+- Remove test documents from a batch
+- Free up storage by removing old processed documents
+- Prepare for reprocessing by removing previous results
+
+---
+
 ### `generate-manifest`
 
-Generate a manifest file from directory or S3 URI.
+Generate a manifest file from directory or S3 URI, or create a test set in the test set bucket.
 
 **Usage:**
 ```bash
@@ -624,10 +909,13 @@ idp-cli generate-manifest [OPTIONS]
   - `--dir`: Local directory to scan
   - `--s3-uri`: S3 URI to scan
 - `--baseline-dir`: Baseline directory for automatic matching (only with --dir)
-- `--output` (required): Output manifest file path (CSV)
+- `--output`: Output manifest file path (CSV) - optional when using --test-set
 - `--file-pattern`: File pattern (default: `*.pdf`)
 - `--recursive/--no-recursive`: Include subdirectories (default: recursive)
 - `--region`: AWS region (optional)
+- **Test Set Creation:**
+  - `--test-set`: Test set name - creates folder in test set bucket and uploads files
+  - `--stack-name`: CloudFormation stack name (required with --test-set)
 
 **Examples:**
 
@@ -642,6 +930,41 @@ idp-cli generate-manifest \
     --dir ./documents/ \
     --baseline-dir ./validated-baselines/ \
     --output manifest-with-baselines.csv
+
+# Create test set and upload files (no manifest needed - use test set name)
+idp-cli generate-manifest \
+    --dir ./documents/ \
+    --baseline-dir ./baselines/ \
+    --test-set "fcc example test" \
+    --stack-name IDP
+
+# Create test set with manifest output
+idp-cli generate-manifest \
+    --dir ./documents/ \
+    --baseline-dir ./baselines/ \
+    --test-set "fcc example test" \
+    --stack-name IDP \
+    --output test-manifest.csv
+```
+
+**Test Set Creation:**
+When using `--test-set`, the command:
+1. Requires `--stack-name`, `--baseline-dir`, and `--dir`
+2. Uploads input files to `s3://test-set-bucket/{test-set-id}/input/`
+3. Uploads baseline files to `s3://test-set-bucket/{test-set-id}/baseline/`
+4. Creates proper test set structure for evaluation workflows
+5. Test set will be auto-detected by the Test Studio UI
+
+Process the created test set:
+```bash
+# Using test set ID (from UI or after creation)
+idp-cli process --stack-name IDP --test-set fcc-example-test --monitor
+
+# Or using S3 URI to process input files directly
+idp-cli run-inference --stack-name IDP --s3-uri s3://test-set-bucket/fcc-example-test/input/
+
+# Or using manifest if generated
+idp-cli run-inference --stack-name IDP --manifest test-manifest.csv
 ```
 
 ---
@@ -1143,6 +1466,425 @@ exit $?
 
 ---
 
+### `stop-workflows`
+
+Stop all running workflows for a stack. Useful for halting processing during development or when issues are detected.
+
+**Usage:**
+```bash
+idp-cli stop-workflows [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--skip-purge`: Skip purging the SQS queue
+- `--skip-stop`: Skip stopping Step Function executions
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# Stop all workflows (purge queue + stop executions)
+idp-cli stop-workflows --stack-name my-stack
+
+# Only purge the queue (don't stop running executions)
+idp-cli stop-workflows --stack-name my-stack --skip-stop
+
+# Only stop executions (don't purge queue)
+idp-cli stop-workflows --stack-name my-stack --skip-purge
+```
+
+---
+
+### `load-test`
+
+Run load tests by copying files to the input bucket at specified rates.
+
+**Usage:**
+```bash
+idp-cli load-test [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--source-file` (required): Source file to copy (local path or s3://bucket/key)
+- `--rate`: Files per minute (default: 100)
+- `--duration`: Duration in minutes (default: 1)
+- `--schedule`: CSV schedule file (minute,count) - overrides --rate and --duration
+- `--dest-prefix`: Destination prefix in input bucket (default: load-test)
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# Constant rate: 100 files/minute for 5 minutes
+idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 100 --duration 5
+
+# High volume: 2500 files/minute for 1 minute
+idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 2500
+
+# Use schedule file for variable rates
+idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --schedule schedule.csv
+
+# Use S3 source file
+idp-cli load-test --stack-name my-stack --source-file s3://my-bucket/test.pdf --rate 500
+```
+
+**Schedule File Format (CSV):**
+```csv
+minute,count
+1,100
+2,200
+3,500
+4,1000
+5,500
+```
+
+See `lib/idp_cli_pkg/examples/load-test-schedule.csv` for a sample schedule file.
+
+---
+
+### `remove-deleted-stack-resources`
+
+Remove residual AWS resources left behind from deleted IDP CloudFormation stacks.
+
+**⚠️ CAUTION:** This command permanently deletes AWS resources. Always run with `--dry-run` first.
+
+> **Intended Use:** This command is designed for **development and test accounts** where IDP stacks are frequently created and deleted, and where the consequences of accidentally deleting resources or data are low. **Do not use this command in production accounts** where data retention is critical. For production cleanup, manually review and delete resources through the AWS Console.
+
+**Usage:**
+```bash
+idp-cli remove-deleted-stack-resources [OPTIONS]
+```
+
+**How It Works:**
+
+This command safely identifies and removes ONLY resources belonging to IDP stacks that have been deleted:
+
+1. **Multi-region Stack Discovery** - Scans CloudFormation in multiple regions (us-east-1, us-west-2, eu-central-1 by default)
+2. **IDP Stack Identification** - Identifies IDP stacks by their Description ("AWS GenAI IDP Accelerator") or naming patterns (IDP-*, PATTERN1/2/3)
+3. **Active Stack Protection** - Tracks both ACTIVE and DELETED stacks; resources from active stacks are NEVER touched
+4. **Safe Cleanup** - Only targets resources belonging to stacks in DELETE_COMPLETE state
+
+**Safety Features:**
+- Resources from ACTIVE stacks are protected and skipped
+- Resources from UNKNOWN stacks (not verified as IDP) are skipped
+- Interactive confirmation for each resource (unless --yes)
+- Options: y=yes, n=no, a=yes to all of type, s=skip all of type
+- --dry-run mode shows exactly what would be deleted
+
+**Resources Cleaned:**
+- CloudFront distributions and response header policies
+- CloudWatch log groups  
+- AppSync APIs
+- IAM policies
+- CloudWatch Logs resource policy entries
+- S3 buckets (automatically emptied before deletion)
+- DynamoDB tables (PITR disabled before deletion)
+
+> **Note:** This command targets resources that remain in AWS after IDP stacks have already been deleted. These are typically resources with RetainOnDelete policies or non-empty S3 buckets that CloudFormation couldn't delete. All resources are identified by their naming pattern and verified against the deleted stack registry before deletion.
+
+**Options:**
+- `--region`: Primary AWS region for regional resources (default: us-west-2)
+- `--profile`: AWS profile to use
+- `--dry-run`: Preview changes without making them **(RECOMMENDED first step)**
+- `--yes`, `-y`: Auto-approve all deletions (skip confirmations)
+- `--check-stack-regions`: Comma-separated regions to check for stacks (default: us-east-1,us-west-2,eu-central-1)
+
+**Examples:**
+
+```bash
+# RECOMMENDED: Always dry-run first to see what would be deleted
+idp-cli remove-deleted-stack-resources --dry-run
+
+# Interactive cleanup with confirmations for each resource
+idp-cli remove-deleted-stack-resources
+
+# Use specific AWS profile
+idp-cli remove-deleted-stack-resources --profile my-profile
+
+# Auto-approve all deletions (USE WITH CAUTION)
+idp-cli remove-deleted-stack-resources --yes
+
+# Check additional regions for stacks
+idp-cli remove-deleted-stack-resources --check-stack-regions us-east-1,us-west-2,eu-central-1,eu-west-1
+```
+
+**CloudFront Two-Phase Cleanup:**
+
+CloudFront requires distributions to be disabled before deletion:
+1. **First run:** Disables orphaned distributions (you confirm each)
+2. **Wait 15-20 minutes** for CloudFront global propagation
+3. **Second run:** Deletes the previously disabled distributions
+
+**Interactive Confirmation:**
+
+```
+Delete orphaned CloudFront distribution?
+  Resource: E1H6W47Z36CQE2 (exists in AWS)
+  Originally from stack: IDP-P2-DevTest1
+  Stack status: DELETE_COMPLETE (stack no longer exists)
+  Stack was in region: us-west-2
+
+  Options: y=yes, n=no, a=yes to all CloudFront distribution, s=skip all CloudFront distribution
+Delete? [y/n/a/s]: 
+```
+
+**Important Limitation - 90-Day Window:**
+
+CloudFormation only retains deleted stack information for approximately 90 days. After this period, stacks in `DELETE_COMPLETE` status are removed from the CloudFormation API.
+
+This means:
+- Resources from stacks deleted **within the past 90 days** → Identified and offered for cleanup
+- Resources from stacks deleted **more than 90 days ago** → Not identified (silently skipped)
+
+**Best Practice:** Run `remove-deleted-stack-resources` promptly after deleting IDP stacks to ensure complete cleanup. For maximum effectiveness, run this command within 90 days of stack deletion.
+
+---
+
+### `config-create`
+
+Generate an IDP configuration template from system defaults.
+
+**Usage:**
+```bash
+idp-cli config-create [OPTIONS]
+```
+
+**Options:**
+- `--features`: Feature set (default: `min`)
+  - `min`: classification, extraction, classes only (simplest)
+  - `core`: min + ocr, assessment
+  - `all`: all sections with full defaults
+  - Or comma-separated list: `"classification,extraction,summarization"`
+- `--pattern`: Pattern to use for defaults (default: `pattern-2`)
+- `--output`, `-o`: Output file path (default: stdout)
+- `--include-prompts`: Include full prompt templates (default: stripped for readability)
+- `--no-comments`: Omit explanatory header comments
+
+**Examples:**
+
+```bash
+# Generate minimal config to stdout
+idp-cli config-create
+
+# Generate minimal config for Pattern-1
+idp-cli config-create --pattern pattern-1 --output config.yaml
+
+# Generate full config with all sections
+idp-cli config-create --features all --output full-config.yaml
+
+# Custom section selection
+idp-cli config-create --features "classification,extraction,summarization" --output config.yaml
+```
+
+---
+
+### `config-validate`
+
+Validate a configuration file against system defaults and Pydantic models.
+
+**Usage:**
+```bash
+idp-cli config-validate [OPTIONS]
+```
+
+**Options:**
+- `--custom-config` (required): Path to configuration file to validate
+- `--pattern`: Pattern to validate against (default: `pattern-2`)
+- `--show-merged`: Show the full merged configuration
+
+**Examples:**
+
+```bash
+# Validate a config file
+idp-cli config-validate --custom-config ./my-config.yaml
+
+# Validate against Pattern-1 defaults
+idp-cli config-validate --custom-config ./config.yaml --pattern pattern-1
+
+# Show full merged config
+idp-cli config-validate --custom-config ./config.yaml --show-merged
+```
+
+---
+
+### `config-download`
+
+Download configuration from a deployed IDP stack.
+
+**Usage:**
+```bash
+idp-cli config-download [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--output`, `-o`: Output file path (default: stdout)
+- `--format`: Output format - `full` (default) or `minimal` (only differences from defaults)
+- `--pattern`: Pattern for minimal diff (auto-detected if not specified)
+- `--config-version`: Configuration version to download (e.g., v1, v2). If not specified, downloads active version
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# Download full config from active version
+idp-cli config-download --stack-name my-stack --output config.yaml
+
+# Download specific version
+idp-cli config-download --stack-name my-stack --config-version v2 --output config.yaml
+
+# Download minimal config (only customizations)
+idp-cli config-download --stack-name my-stack --format minimal --output config.yaml
+
+# Print to stdout
+idp-cli config-download --stack-name my-stack
+```
+
+---
+
+### `config-upload`
+
+Upload a configuration file to a deployed IDP stack.
+
+**Usage:**
+```bash
+idp-cli config-upload [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--config-file`, `-f` (required): Path to configuration file (YAML or JSON)
+- `--validate/--no-validate`: Validate config before uploading (default: validate)
+- `--pattern`: Pattern for validation (auto-detected if not specified)
+- `--config-version`: Configuration version to update (e.g., v1, v2). If version doesn't exist, it will be created
+- `--version-description`: Description for the configuration version (used when creating new versions)
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# Upload config to active version
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml
+
+# Update existing version
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version Production
+
+# Create new version with description
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version NewVersion --version-description "Test configuration for new feature"
+
+# Skip validation (use with caution)
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-validate
+
+# Explicit pattern for validation
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --pattern pattern-2
+```
+
+---
+
+### `config-list`
+
+List all configuration versions in a deployed IDP stack.
+
+**Usage:**
+```bash
+idp-cli config-list [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--region`: AWS region (optional)
+
+**Examples:**
+```bash
+# List all configuration versions
+idp-cli config-list --stack-name my-stack
+```
+
+**Output:**
+Shows a table with version names, active status, creation/update timestamps, and descriptions.
+
+---
+
+### `config-activate`
+
+Activate a configuration version in a deployed IDP stack.
+
+**Usage:**
+```bash
+idp-cli config-activate [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--config-version` (required): Configuration version to activate
+- `--region`: AWS region (optional)
+
+**Examples:**
+```bash
+# Activate a specific version
+idp-cli config-activate --stack-name my-stack --config-version v2
+
+# Activate default version
+idp-cli config-activate --stack-name my-stack --config-version default
+```
+
+**Notes:**
+- Sets the specified version as active for all new document processing
+- Version must exist (use `config-list` to see available versions)
+
+---
+
+### `config-delete`
+
+Delete a configuration version from a deployed IDP stack.
+
+**Usage:**
+```bash
+idp-cli config-delete [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--config-version` (required): Configuration version to delete
+- `--force`: Skip confirmation prompt
+- `--region`: AWS region (optional)
+
+**Examples:**
+```bash
+# Delete a version with confirmation
+idp-cli config-delete --stack-name my-stack --config-version old-version
+
+# Delete without confirmation prompt
+idp-cli config-delete --stack-name my-stack --config-version old-version --force
+```
+
+**Restrictions:**
+- Cannot delete the 'default' configuration version
+- Cannot delete currently active versions (activate another version first)
+- Includes confirmation prompt unless `--force` is used
+
+**What Happens:**
+1. Loads and parses your YAML or JSON config file
+2. Validates against system defaults (unless `--no-validate`)
+3. If version exists: Updates the existing version with the uploaded configuration (saved as a complete snapshot)
+4. If version doesn't exist: Creates a new version with the uploaded configuration
+5. Uploads to the stack's ConfigurationTable in DynamoDB
+6. Configuration is immediately available for document processing
+
+**Configuration Versioning:**
+- **No version specified**: Updates the currently active version
+- **Existing version**: Saves the uploaded configuration as the full version snapshot
+- **New version**: Creates a new independent version with the uploaded configuration
+- **Version descriptions**: Can be added to new versions for better organization
+
+For full details on configuration versioning, see [configuration-versions.md](configuration-versions.md).
+
+This uses the same mechanism as the Web UI configuration management system.
+
+---
+
 ## Troubleshooting
 
 ### Stack Not Found
@@ -1206,7 +1948,7 @@ aws logs tail /aws/lambda/<LookupFunctionName> --follow
 Run the test suite:
 
 ```bash
-cd idp_cli
+cd lib/idp_cli_pkg
 pytest
 ```
 

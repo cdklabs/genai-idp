@@ -87,18 +87,24 @@ This ensures reliable extraction even in accounts with low service quotas, with 
 
 ### Document Classes and Attributes
 
-Specify document classes and the fields to extract from each:
+Specify document classes and the fields to extract from each using JSON Schema format:
 
 ```yaml
 classes:
-  - name: "invoice"
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Invoice
+    x-aws-idp-document-type: Invoice
+    type: object
     description: "A billing document listing items/services, quantities, prices, payment terms, and transaction totals"
-    attributes:
-      - name: "invoice_number"
+    properties:
+      InvoiceNumber:
+        type: string
         description: "The unique identifier for this invoice, typically labeled as 'Invoice #', 'Invoice Number', or similar"
-      - name: "invoice_date"
+      InvoiceDate:
+        type: string
         description: "The date when the invoice was issued, typically labeled as 'Date', 'Invoice Date', or similar"
-      - name: "due_date"
+      DueDate:
+        type: string
         description: "The date by which payment is due, typically labeled as 'Due Date', 'Payment Due', or similar"
 ```
 
@@ -716,24 +722,28 @@ You can define custom extraction attributes through the Web UI:
 
 ### Few-Shot Extraction
 
-Improve extraction accuracy by providing examples within each document class configuration:
+Improve extraction accuracy by providing examples within each document class configuration using JSON Schema format:
 
 ```yaml
 classes:
-  - name: "invoice"
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Invoice
+    x-aws-idp-document-type: Invoice
+    type: object
     description: "A billing document for goods or services"
-    attributes:
-      - name: "invoice_number"
+    properties:
+      InvoiceNumber:
+        type: string
         description: "The unique identifier for this invoice"
-      # Other attributes...
-    examples:
+      # Other properties...
+    x-aws-idp-examples:
       - name: "SampleInvoice1"
-        attributesPrompt: |
+        x-aws-idp-attributes-prompt: |
           Expected attributes are:
-            "invoice_number": "INV-12345"
-            "invoice_date": "2023-04-15"
-            "total_amount": "$1,234.56"
-        imagePath: "config_library/pattern-2/examples/invoice-samples/invoice1.jpg"
+            "InvoiceNumber": "INV-12345"
+            "InvoiceDate": "2023-04-15"
+            "TotalAmount": "$1,234.56"
+        x-aws-idp-image-path: "config_library/pattern-2/examples/invoice-samples/invoice1.jpg"
       # Additional examples...
 ```
 

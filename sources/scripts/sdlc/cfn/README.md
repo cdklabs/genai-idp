@@ -14,7 +14,7 @@ SPDX-License-Identifier: MIT-0
     * Enter the gitlap project name (e.g. `genaiic-idp-accelerator`)
     * Enter the bucket name created in the last step (e.g. `genaiic-sdlc-source-code-YOUR_AWS_ACCOUNT-YOUR_REGION`)
 * Customize the environment variables in your CodePipeline/CodeBuild configuration.
-* The deployment will use the new `scripts/codebuild_deployment.py` script automatically.
+* The deployment will use the new `scripts/sdlc/codebuild_deployment.py` script automatically.
     * This will ensure that an archive is there to install, when 
 * Optional: Install the `sdlc-iam-role.yml` for least privilege sdlc operation (coming soon!)
 * Install the `codepipeline-s3.yml` cloudformation template.

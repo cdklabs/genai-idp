@@ -28,6 +28,8 @@ def handler(event, context):
             
             test_run_id = message['testRunId']
             test_set_id = message['testSetId']
+            number_of_files = message.get('numberOfFiles')  # Optional parameter
+            config_version = message.get('configVersion')  # Optional parameter
             tracking_table = message['trackingTable']
             
             # Get environment variables
@@ -44,7 +46,15 @@ def handler(event, context):
             if not input_files:
                 raise ValueError(f"No input files found for test set: {test_set_id}")
             
-            logger.info(f"Found {len(input_files)} input files and {len(baseline_files)} baseline files")
+            # Limit files if numberOfFiles is specified
+            if number_of_files is not None:
+                input_files = input_files[:number_of_files]
+                # Filter baseline files to match the selected input files in one pass
+                input_file_set = set(input_file + '/' for input_file in input_files)
+                baseline_files = [bf for bf in baseline_files if any(bf.startswith(prefix) for prefix in input_file_set)]
+                logger.info(f"Limited to first {number_of_files} input files with {len(baseline_files)} corresponding baseline files")
+            
+            logger.info(f"Processing {len(input_files)} input files and {len(baseline_files)} baseline files")
             
             # Update test run with file list and set status to IN_PROGRESS
             _update_tracking_in_progress(tracking_table, test_run_id, input_files)
@@ -53,7 +63,7 @@ def handler(event, context):
             successful_input_files = _copy_files_to_bucket(
                 test_set_bucket, f"{test_set_id}/input/", 
                 input_bucket, f"{test_run_id}/", 
-                input_files
+                input_files, config_version
             )
             
             # Copy baseline files from test set bucket to baseline bucket with test_run_id prefix
@@ -89,16 +99,20 @@ def _list_test_set_files(test_set_bucket, test_set_id, folder_type):
     """List files from test set bucket folder (input or baseline)"""
     try:
         prefix = f"{test_set_id}/{folder_type}/"
-        response = s3.list_objects_v2(Bucket=test_set_bucket, Prefix=prefix)
-        
         files = []
-        if 'Contents' in response:
-            for obj in response['Contents']:
-                # Skip folder itself, only get actual files
-                if not obj['Key'].endswith('/'):
-                    # Preserve full relative path after the folder_type prefix
-                    relative_path = obj['Key'][len(prefix):]
-                    files.append(relative_path)
+        
+        # Use paginator to handle more than 1000 files
+        paginator = s3.get_paginator('list_objects_v2')
+        page_iterator = paginator.paginate(Bucket=test_set_bucket, Prefix=prefix)
+        
+        for page in page_iterator:
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    # Skip folder itself, only get actual files
+                    if not obj['Key'].endswith('/'):
+                        # Preserve full relative path after the folder_type prefix
+                        relative_path = obj['Key'][len(prefix):]
+                        files.append(relative_path)
         
         logger.info(f"Found {len(files)} {folder_type} files for test set {test_set_id}")
         return files
@@ -107,27 +121,47 @@ def _list_test_set_files(test_set_bucket, test_set_id, folder_type):
         logger.error(f"Error listing {folder_type} files for test set {test_set_id}: {e}")
         return []
 
-def _copy_files_to_bucket(source_bucket, source_prefix, dest_bucket, dest_prefix, files):
+def _copy_files_to_bucket(source_bucket, source_prefix, dest_bucket, dest_prefix, files, config_version=None):
     """Copy files from source bucket to destination bucket - track failures"""
     successful_files = []
     
-    for filename in files:
+    def copy_single_file(filename):
+        """Copy a single file and return result"""
         try:
             source_key = f"{source_prefix}{filename}"
             dest_key = f"{dest_prefix}{filename}"
             
-            # Copy file
-            s3.copy_object(
-                CopySource={'Bucket': source_bucket, 'Key': source_key},
-                Bucket=dest_bucket,
-                Key=dest_key
-            )
+            # Copy file with config version as S3 metadata instead of filename suffix
+            copy_args = {
+                'CopySource': {'Bucket': source_bucket, 'Key': source_key},
+                'Bucket': dest_bucket,
+                'Key': dest_key
+            }
             
-            successful_files.append(filename)
+            if config_version:
+                copy_args['Metadata'] = {'config-version': config_version}
+                copy_args['MetadataDirective'] = 'REPLACE'
+            
+            s3.copy_object(**copy_args)
+            
             logger.info(f"Copied file: {source_key} -> {dest_bucket}/{dest_key}")
+            return filename, None
             
         except Exception as e:
             logger.error(f"Failed to copy file {filename}: {e}")
+            return filename, str(e)
+    
+    # Use ThreadPoolExecutor for parallel copying
+    max_workers = min(10, len(files))  # Limit to 10 threads or number of files
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all copy tasks
+        future_to_file = {executor.submit(copy_single_file, filename): filename for filename in files}
+        
+        # Collect results
+        for future in concurrent.futures.as_completed(future_to_file):
+            filename, error = future.result()
+            if error is None:
+                successful_files.append(filename)
     
     return successful_files
 

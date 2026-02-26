@@ -8,60 +8,248 @@ The Test Studio consists of two main tabs:
 1. **Test Sets**: Create and manage reusable collections of test documents
 2. **Test Executions**: Execute tests, view results, and compare test runs
 
-## Pre-Deployed Test Set: RealKIE-FCC-Verified
+https://github.com/user-attachments/assets/7c5adf30-8d5c-4292-93b0-0149506322c7
 
-The accelerator automatically deploys the **RealKIE-FCC-Verified** dataset from HuggingFace (https://huggingface.co/datasets/amazon-agi/RealKIE-FCC-Verified) as a ready-to-use test set during stack deployment. This public dataset contains 75 invoice documents sourced from the Federal Communications Commission (FCC).
 
-### Fully Automatic Deployment
+## Pre-Deployed Test Sets
+
+The accelerator automatically deploys **three benchmark datasets** from HuggingFace as ready-to-use test sets during stack deployment:
+
+1. **RealKIE-FCC-Verified**: 75 FCC invoice documents
+2. **OmniAI-OCR-Benchmark**: 293 diverse document images across 9 formats
+3. **DocSplit-Poly-Seq**: 500 multi-page packets with 13 document types
+
+All datasets are deployed automatically with zero manual steps required.
+
+---
+
+### RealKIE-FCC-Verified
+
+**Source**: https://huggingface.co/datasets/amazon-agi/RealKIE-FCC-Verified
+
+This dataset contains 75 invoice documents sourced from the Federal Communications Commission (FCC).
+
+https://github.com/user-attachments/assets/d952fd37-1bd0-437f-8f67-5a634e9422e0
+
+#### Deployment Details
 
 During stack deployment, the system automatically:
 
-1. **Downloads Dataset** from HuggingFace (75 documents)
-2. **Reconstructs PDFs** from PNG page images using lossless img2pdf conversion
+1. **Downloads Dataset Metadata** from HuggingFace parquet file (75 documents)
+2. **Downloads PDFs** directly from HuggingFace's `pdfs/` directory
 3. **Uploads PDFs** to `s3://TestSetBucket/realkie-fcc-verified/input/`
 4. **Extracts Ground Truth** from `json_response` field (already in accelerator format!)
 5. **Uploads Baselines** to `s3://TestSetBucket/realkie-fcc-verified/baseline/`
 6. **Registers Test Set** in DynamoDB with metadata
 
-**Zero Manual Steps Required** - Everything is sourced from the public HuggingFace dataset and deployed automatically.
+#### Key Features
 
 ### Key Features
 
 - **Fully Automatic**: Complete deployment during stack creation with zero user effort
-- **PDF Reconstruction**: Converts PNG page images to PDF documents using img2pdf for lossless quality
+- **Direct PDF Downloads**: PDFs are downloaded directly from HuggingFace's repository (no image conversion needed)
 - **Complete Ground Truth**: Structured invoice attributes (Agency, Advertiser, GrossTotal, PaymentTerms, AgencyCommission, NetAmountDue, LineItems)
-- **Version Control**: Dataset version pinned in CloudFormation (DatasetVersion: "1.0"), updateable via parameter
-- **Smart Updates**: Skips re-download on stack updates unless version changes
-- **Single Public Source**: Everything from HuggingFace - fully reproducible anywhere
 - **Benchmark Ready**: 75 FCC invoice documents ideal for extraction evaluation
 
+#### Corresponding Config
+
+Use with: `config_library/pattern-2/realkie-fcc-verified/config.yaml`
+
+---
+
+### OmniAI-OCR-Benchmark
+
+**Source**: https://huggingface.co/datasets/getomni-ai/ocr-benchmark
+
+This dataset contains 293 pre-selected document images across 9 diverse document formats, filtered from the OmniAI OCR benchmark dataset.
+
+#### Document Classes
+
+| Class | Count | Description |
+|-------|-------|-------------|
+| BANK_CHECK | 52 | Bank checks with MICR encoding |
+| COMMERCIAL_LEASE_AGREEMENT | 52 | Commercial property leases |
+| CREDIT_CARD_STATEMENT | 11 | Account statements with transactions |
+| DELIVERY_NOTE | 8 | Shipping/delivery documents |
+| EQUIPMENT_INSPECTION | 11 | Inspection reports with checkpoints |
+| GLOSSARY | 31 | Alphabetized term lists |
+| PETITION_FORM | 51 | Election petition forms |
+| REAL_ESTATE | 59 | Real estate transaction data |
+| SHIFT_SCHEDULE | 18 | Employee scheduling documents |
+
+#### Deployment Details
+
+During stack deployment, the system automatically:
+
+1. **Downloads Metadata** from HuggingFace (metadata.jsonl)
+2. **Downloads Images** for 293 pre-selected image IDs
+3. **Converts to PNG** and uploads to `s3://TestSetBucket/ocr-benchmark/input/`
+4. **Extracts Ground Truth** from `true_json_output` field
+5. **Uploads Baselines** to `s3://TestSetBucket/ocr-benchmark/baseline/`
+6. **Registers Test Set** in DynamoDB with format distribution metadata
+
+#### Key Features
+
+- **Multi-Format**: 9 different document types for comprehensive testing
+- **Nested Schemas**: Complex JSON schemas with nested objects and arrays
+- **Pre-Selected**: 293 images filtered for formats with >5 samples per schema
+- **Deterministic**: Same images deployed every time for reproducible benchmarks
+
+#### Corresponding Config
+
+Use with: `config_library/pattern-2/ocr-benchmark/config.yaml`
+
+---
+
+### Common Features
+
+Both datasets share these deployment characteristics:
+
+- **Fully Automatic**: Complete deployment during stack creation with zero user effort
+- **Version Control**: Dataset version pinned in CloudFormation, updateable via parameter
+- **Smart Updates**: Skips re-download on stack updates unless version changes
+- **Single Public Source**: Everything from HuggingFace - fully reproducible anywhere
+
+- **First Deployment**: Adds ~5-10 minutes to stack deployment (downloads PDFs and metadata)
+- **Stack Updates**: Near-instant (skips if version unchanged)
+>>>>>>> develop
+- **Version Updates**: Re-downloads and re-processes when DatasetVersion changes
 ### Deployment Time
 
-- **First Deployment**: Adds ~5-10 minutes to stack deployment (downloads dataset + converts images)
+- **First Deployment**: Adds ~15-20 minutes to stack deployment (downloads all three datasets)
+- **Stack Updates**: Near-instant (skips if versions unchanged)
+- **Version Updates**: Re-downloads and re-processes when DatasetVersion changes
+=======
+- **First Deployment**: Adds ~5-10 minutes to stack deployment (downloads PDFs and metadata)
 - **Stack Updates**: Near-instant (skips if version unchanged)
+>>>>>>> develop
 - **Version Updates**: Re-downloads and re-processes when DatasetVersion changes
 
 ### Usage
 
-The RealKIE-FCC-Verified test set is immediately available after stack deployment:
+All test sets are immediately available after stack deployment:
 
 1. Navigate to **Test Executions** tab
-2. Select "RealKIE-FCC-Verified" from the **Select Test Set** dropdown
+2. Select the test set from the **Select Test Set** dropdown:
+   - "RealKIE-FCC-Verified" for invoice extraction testing
+   - "OmniAI-OCR-Benchmark" for multi-format document testing
+   - "DocSplit-Poly-Seq" for document splitting and classification testing
 3. Enter a description in the **Context** field
 4. Click **Run Test** to start processing
 5. Monitor progress and view results when complete
 
-This dataset provides an excellent benchmark for:
+**RealKIE-FCC-Verified** is ideal for:
 - Evaluating extraction accuracy on invoice documents
 - Comparing different model configurations
 - Testing prompt engineering improvements
-- Training and demonstration purposes
 
+**OmniAI-OCR-Benchmark** is ideal for:
+- Testing classification across diverse document types
+- Evaluating extraction on complex nested schemas
+- Benchmarking multi-format document processing pipelines
 
-https://github.com/user-attachments/assets/7c5adf30-8d5c-4292-93b0-0149506322c7
+**DocSplit-Poly-Seq** is ideal for:
+- Evaluating document splitting and classification accuracy
+- Testing multi-document packet processing capabilities
+- Benchmarking page-level classification across diverse document types
+- Assessing document boundary detection in complex packets
 
+**OmniAI-OCR-Benchmark** is ideal for:
+- Testing classification across diverse document types
+- Evaluating extraction on complex nested schemas
+- Benchmarking multi-format document processing pipelines
 
-## Architecture
+---
+
+### DocSplit-Poly-Seq
+
+**DocSplit Dataset**: https://huggingface.co/datasets/amazon/doc_split  
+**Documents Source**: https://huggingface.co/datasets/jordyvl/rvl_cdip_n_mp
+
+The DocSplit dataset contains 500 multi-page packet PDFs created by combining pages from 13 different document types. Documents are sourced from the RVL-CDIP-N-MP dataset. Each packet contains multiple subdocuments of different types to test classification and document splitting capabilities.
+
+#### Benchmark Methodology
+
+**DocSplit-Poly-Seq (Multi Category Documents Concatenation Sequentially):** Creates document packets by first determining a target page count (5-20 pages), then sequentially selecting documents from different categories without repetition. For each selected document, all of its pages are included while preserving the original page ordering, and this process continues until the target page count is reached.
+
+This benchmark simulates the most common real-world scenario where heterogeneous documents are assembled into packets, as observed in medical claims processing where prescription records, laboratory results, and insurance forms are concatenated. The varying document types test models' ability to detect inter-document boundaries based on content and structural transitions, a fundamental requirement for accurate packet splitting.
+
+#### Document Types
+
+The dataset includes 13 document types spanning common business and administrative documents:
+- **invoice**, **email**, **form**, **letter**, **memo**, **resume**
+- **budget**, **news article**, **scientific publication**, **specification**
+- **questionnaire**, **handwritten**, **language** (non-English documents)
+
+#### Packet Statistics
+
+| Metric | Value |
+|--------|-------|
+| Total Document Packets | 500 |
+| Total Pages | 7,330 |
+| Total Sections | 2,027 |
+| Avg Pages/Packet | 14.7 |
+| Avg Pages/Sections | 3.62 |
+| Avg Sections/Packet | 4.1 |
+| Avg Unique Document Type/Packet | 3.67 |
+
+#### Deployment Details
+
+During stack deployment, the system automatically:
+
+1. **Downloads Dataset** from HuggingFace (data.tar.gz containing source PDFs)
+2. **Creates Packet PDFs** by merging pages from source documents based on bundled manifest
+3. **Uploads Packets** to `s3://TestSetBucket/docsplit/input/`
+4. **Generates Ground Truth** with document class and page split information
+5. **Uploads Baselines** to `s3://TestSetBucket/docsplit/baseline/`
+6. **Registers Test Set** in DynamoDB with metadata and document type distribution
+
+#### Key Features
+
+- **Multi-Document Packets**: Each PDF contains 2-10 distinct documents of different types
+- **Splitting Evaluation**: Tests ability to correctly split multi-document packets into individual sections
+- **Classification Diversity**: 13 document types provide comprehensive classification testing
+- **Variable Page Counts**: Packets range from 5 to 20 pages with varying complexity
+- **Ground Truth Included**: Complete page-level classification and splitting information
+
+#### Corresponding Config
+
+Use with: `config_library/pattern-2/rvl-cdip/config.yaml` or `config_library/pattern-3/rvl-cdip/config.yaml`
+
+#### Evaluation Metrics
+
+This test set enables evaluation of:
+- **Page-Level Classification**: Accuracy of classifying each page to correct document type
+- **Document Splitting**: Accuracy of identifying document boundaries within packets
+- **Split Order**: Accuracy of maintaining correct page order within each split section
+
+**DocSplit-Poly-Seq** is ideal for:
+- Evaluating document splitting and classification accuracy
+- Testing multi-document packet processing capabilities
+- Benchmarking page-level classification across diverse document types
+- Assessing document boundary detection in complex packets
+
+---
+
+### Common Features
+
+Both datasets share these deployment characteristics:
+**OmniAI-OCR-Benchmark** is ideal for:
+- Testing classification across diverse document types
+- Evaluating extraction on complex nested schemas
+- Benchmarking multi-format document processing pipelines
+
+**DocSplit-Poly-Seq** is ideal for:
+- Evaluating document splitting and classification accuracy
+- Testing multi-document packet processing capabilities
+- Benchmarking page-level classification across diverse document types
+- Assessing document boundary detection in complex packets
+
+---
+
+### Common Features
+
+All datasets share these deployment characteristics:
 
 ### Backend Components
 
@@ -146,7 +334,9 @@ components/
 1. **Pattern-based**: Define file patterns (e.g., `*.pdf`) with bucket type selection
    - **Input Bucket**: Scan main processing bucket for matching files
    - **Test Set Bucket**: Scan dedicated test set bucket for matching files
+   - **Description**: Optional description field to document the test set purpose
 2. **Zip Upload**: Upload zip containing `input/` and `baseline/` folders
+   - **Description**: Optional description field to document the test set purpose
 3. **Direct Upload**: Files uploaded directly to TestSetBucket are auto-detected
 
 ### File Structure Requirements
@@ -175,9 +365,21 @@ my-test-set/
 
 ### Running Tests
 1. Select test set from dropdown
-2. Click "Run Test" (single test execution only)
-3. Monitor progress via TestRunnerStatus
-4. View results in integrated listing
+2. **Optional**: Select configuration version to use for processing
+3. **Optional**: Enter number of files to limit processing (useful for quick testing)
+4. **Optional**: Add context description for the test run
+5. Click "Run Test" (single test execution only)
+6. Monitor progress via TestRunnerStatus
+7. View results in integrated listing
+
+### Configuration Versioning
+The Test Studio supports running tests with specific configuration versions:
+- **Version Selection**: Choose from available configuration versions (e.g., `default`, `Production`, `v1`)
+- **Version Tracking**: Test results display which configuration version was used
+- **Version Comparison**: Compare test runs across different configuration versions
+- **Context Generation**: Test context automatically includes the selected version information
+
+For full details on configuration versioning, see [configuration-versions.md](configuration-versions.md).
 
 ### Test States
 - **QUEUED**: File copying jobs queued in SQS
@@ -196,18 +398,30 @@ my-test-set/
 ### Test Set Management
 - Reusable collections with file patterns across multiple buckets
 - Dual bucket support (Input Bucket and Test Set Bucket)
+- Optional description field for documenting test set purpose
 - Zip upload with automatic extraction
 - Direct upload detection via dual polling
 - File structure validation with error reporting
 
 ### Test Execution
 - Single test concurrency prevention
+- Optional file count limiting for quick testing
 - Real-time status monitoring
 - Global state persistence across navigation
 - SQS-based asynchronous processing
 
 ### Results Analysis
-- Comprehensive metrics display
-- Side-by-side test comparison
-- Export capabilities
+- Comprehensive metrics display including:
+  - **Test run metadata**: Configuration version, duration, context, file counts
+  - **Overall accuracy and confidence metrics**
+  - **Accuracy breakdown** (precision, recall, F1-score, false alarm rate, false discovery rate)
+  - **Average Document Split Classification Metrics**:
+    - Page Level Accuracy (average across documents)
+    - Split Accuracy Without Order (average across documents)
+    - Split Accuracy With Order (average across documents)  
+    - Total Pages, Total Splits (sums across documents)
+    - Correctly Classified Pages, Correctly Split counts (sums across documents)
+  - **Cost breakdown** by service and context
+- Side-by-side test comparison with all metrics including configuration versions
+- Export capabilities (JSON/CSV downloads include all metrics)
 - Integrated delete operations

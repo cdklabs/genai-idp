@@ -799,19 +799,31 @@ When neither confidence nor threshold data is available, no confidence indicator
 
 ### Interface Coverage
 
-**1. Form View (JSONViewer)**
-- Color-coded confidence display in the editable form interface
-- Supports nested data structures (arrays, objects)
-- Real-time visual feedback during data editing
-
-**2. Visual Editor Modal**
-- Same confidence indicators in the document image overlay editor
-- **Bounding Box Visualization**: When assessment includes geometry data, bounding boxes are automatically displayed on the document page image
+**1. Visual Editor Tab**
+- Split-pane layout with document image (left) and form-based field editing (right)
+- Color-coded confidence display (green=meets threshold, red=below threshold, black=no threshold)
+- **Bounding Box Visualization**: Assessment geometry data automatically displayed as overlays on document images
 - Visual connection between form fields and document bounding boxes with spatial localization
 - Interactive overlay showing precise field locations from assessment spatial data
-- Confidence display for deeply nested extraction results
+- Supports nested data structures (arrays, objects) with recursive confidence display
+- Inline editing with change tracking (✏️ Edited badges, blue/orange left borders)
 
-**3. Nested Data Support**
+**2. JSON Editor Tab**
+- Raw JSON editing for advanced users with full JSON validation
+- Section filtering with multiselect dropdown
+- Same confidence data available in JSON structure
+
+**3. Revision History Tab**
+- Complete audit trail showing all edits with timestamps
+- Reviewer identification and field-level diffs
+- Confidence scores preserved in edit history
+
+**4. Smart Filtering**
+- **Low Confidence Filter**: Toggle to show only fields with confidence below threshold
+- **Evaluation Mismatches Filter**: Show only fields where prediction doesn't match baseline
+- **Collapsible Tree Navigation**: Expand/Collapse All controls for nested structures
+
+**5. Nested Data Support**
 Confidence indicators work with complex document structures:
 ```
 FederalTaxes[0]:

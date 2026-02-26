@@ -89,6 +89,10 @@ Familiarize yourself with the project structure:
 
 1. **Local Testing**:
    ```bash
+   # Run all tests with make
+   make test
+
+   # Or run tests manually:
    # Run Python unit tests
    pytest lib/idp_common_pkg/tests/
 
@@ -98,8 +102,8 @@ Familiarize yourself with the project structure:
    sam local invoke OCRFunction -e ../../testing/OCRFunction-event.json --env-vars ../../testing/env.json
    
    # Verify UI code passes linting checks
-   cd src/ui/
-   npm run lint
+   make ui-lint
+   # Or manually: cd src/ui/ && npm run lint
    ```
 
 2. **Integration Testing**:
@@ -117,6 +121,67 @@ Familiarize yourself with the project structure:
    - Any relevant context or considerations
 4. **Address Review Feedback**: Be responsive to review comments and make requested changes
 5. **Merge**: Once approved, your contribution will be merged
+
+## Make Commands
+
+The project uses `make` to simplify common development tasks. Run `make` or `make all` to execute the default lint and test workflow.
+
+### Setup & Dependencies
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | Install `idp-cli` and `idp_common` packages in development mode |
+
+### Code Quality
+
+| Command | Description |
+|---------|-------------|
+| `make lint` | Run all linting: ruff, formatting, ARN partition checks, buildspec validation, UI lint |
+| `make fastlint` | Quick lint without UI checks |
+| `make ruff-lint` | Run ruff linting with auto-fix |
+| `make format` | Format Python code with ruff |
+| `make typecheck` | Run type checking with basedpyright |
+| `make typecheck-stats` | Type checking with detailed statistics |
+| `make typecheck-pr` | Type check only files changed in current PR (vs main branch) |
+| `make lint-cicd` | CI/CD version - checks only, no modifications |
+| `make check-arn-partitions` | Verify CloudFormation templates use `${AWS::Partition}` for GovCloud compatibility |
+| `make validate-buildspec` | Validate CodeBuild buildspec files |
+
+### Testing
+
+| Command | Description |
+|---------|-------------|
+| `make test` | Run tests for `idp_common_pkg` and `idp_cli` |
+| `make all` | Run both lint and test (default target) |
+
+### UI Development
+
+| Command | Description |
+|---------|-------------|
+| `make ui-start` | Start UI dev server. Use `STACK_NAME=<name>` to auto-generate `.env` from stack outputs |
+| `make ui-lint` | Run UI linting with checksum caching (skips if unchanged) |
+| `make ui-build` | Build UI for production |
+
+**Example**: Start UI with auto-configured environment:
+```bash
+make ui-start STACK_NAME=my-idp-stack
+```
+
+### Git Workflow
+
+| Command | Description |
+|---------|-------------|
+| `make commit` | Run lint+test, auto-generate commit message, commit and push |
+| `make fastcommit` | Fast lint only, auto-generate commit message, commit and push |
+
+### Security (DSR)
+
+| Command | Description |
+|---------|-------------|
+| `make dsr` | Run DSR security scan (sets up if needed), optionally run fix |
+| `make dsr-setup` | Set up DSR tool |
+| `make dsr-scan` | Run DSR security scan |
+| `make dsr-fix` | Run DSR interactive fix |
 
 ## Coding Standards
 

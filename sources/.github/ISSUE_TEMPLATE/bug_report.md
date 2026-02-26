@@ -29,10 +29,13 @@ What AWS region have you deployed in?
 **Accelerator Pattern**
 Which Pattern did you deploy?
 
+**Accelerator Version / Build**
+Which Version did you deploy?  (Please ensure problem exists in latest version)
+
 **Custom Stack Parameters**
 What non-default stack parameters did you configure when deploying?
 
-**Custom Configuartions**
+**Custom Configurations**
 What configuration serttings did you customize?
 
 **Output of the 'TroubleShoot' agent (if issue is a document processing failure)**

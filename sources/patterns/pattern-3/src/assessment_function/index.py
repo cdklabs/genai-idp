@@ -6,10 +6,13 @@ import json
 import time
 import logging
 
-from idp_common import get_config, assessment
+from idp_common import get_config, assessment, s3
 from idp_common.models import Document, Status
 from idp_common.docs_service import create_document_service
 from idp_common.utils import calculate_lambda_metering, merge_metering_data
+from aws_xray_sdk.core import xray_recorder, patch_all
+
+patch_all()
 
 # Configuration will be loaded in handler function
 
@@ -17,6 +20,7 @@ logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_LOG_LEVEL", "INFO"))
 
+@xray_recorder.capture('assessment_function')
 def handler(event, context):
     """
     Lambda handler for document assessment.
@@ -26,10 +30,6 @@ def handler(event, context):
     start_time = time.time()  # Capture start time for Lambda metering
     logger.info(f"Starting assessment processing for event: {json.dumps(event, default=str)}")
 
-    # Load configuration
-    config = get_config(as_model = True)
-    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
-    
     # Extract input from event - handle both compressed and uncompressed
     document_data = event.get('document', {})
     section_id = event.get('section_id')
@@ -44,7 +44,17 @@ def handler(event, context):
     # Convert document data to Document object - handle compression
     working_bucket = os.environ.get('WORKING_BUCKET')
     document = Document.load_document(document_data, working_bucket, logger)
+    
+    # Load configuration - use document's version if specified, otherwise use active version
+    config_version = getattr(document, 'config_version', None)
+    config = get_config(as_model=True, version=config_version)
+    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
+    
     logger.info(f"Processing assessment for document {document.id}, section {section_id}")
+
+    # X-Ray annotations
+    xray_recorder.put_annotation('document_id', {document.id})
+    xray_recorder.put_annotation('processing_stage', 'assessment')
 
     # Find the section we're processing
     section = None
@@ -56,6 +66,11 @@ def handler(event, context):
     if not section:
         raise ValueError(f"Section {section_id} not found in document")
 
+    # Capture section index BEFORE any potential modifications to document.sections
+    # This is needed for atomic section updates to DynamoDB
+    section_index = next(i for i, s in enumerate(document.sections) if s.section_id == section_id)
+    logger.info(f"Section {section_id} is at index {section_index} in the Sections array")
+
     # Check if granular assessment is enabled (for Lambda metering context)
     granular_config = config.assessment.granular
     granular_enabled = granular_config.enabled
@@ -65,7 +80,6 @@ def handler(event, context):
     # Intelligent Assessment Skip: Check if extraction results already contain explainability_info
     if section.extraction_result_uri and section.extraction_result_uri.strip():
         try:
-            from idp_common import s3
             logger.info(f"Checking extraction results for existing assessment: {section.extraction_result_uri}")
             extraction_data = s3.get_json_content(section.extraction_result_uri)
             
@@ -126,16 +140,20 @@ def handler(event, context):
     # Normal assessment processing
     document.status = Status.ASSESSING
 
-    # Update document status to ASSESSING for UI only
-    # Create new 'shell' document since our input document has only 1 section. 
-    docStatus = Document(
-        id=document.id,
-        input_key=document.input_key,
-        status=Status.ASSESSING,
-    )
+    # Update document status to ASSESSING using lightweight status-only update
+    # This reduces DynamoDB WCU consumption by ~94% (~500 bytes vs ~100KB)
+    # Previously we created a 'shell' document, but now we use update_document_status
     document_service = create_document_service()
-    logger.info(f"Updating document status to {docStatus.status}")
-    document_service.update_document(docStatus)
+    logger.info(f"Updating document status to ASSESSING (lightweight update) for document {document.input_key}")
+    try:
+        status_result = document_service.update_document_status(
+            document_id=document.input_key,
+            status=Status.ASSESSING,
+            workflow_execution_arn=document.workflow_execution_arn,
+        )
+        logger.info(f"Status update result: {json.dumps(status_result, default=str)[:500]}")
+    except Exception as e:
+        logger.error(f"Failed to update document status: {str(e)}", exc_info=True)
 
     # Initialize assessment service
     assessment_service = assessment.AssessmentService(config=config)
@@ -159,6 +177,22 @@ def handler(event, context):
         updated_document.metering = merge_metering_data(updated_document.metering, lambda_metering)
     except Exception as e:
         logger.warning(f"Failed to add Lambda metering for assessment: {str(e)}")
+
+    # Update the section in DynamoDB for immediate UI visibility
+    # This allows the UI to show assessment results (confidence alerts) as they complete
+    try:
+        # Use section_index captured at start (before any potential modifications)
+        updated_section = next(s for s in updated_document.sections if s.section_id == section_id)
+        original_input_key = document.input_key
+        logger.info(f"Persisting assessment results for section {section_id} (index {section_index}) to DynamoDB for document {original_input_key}")
+        result = document_service.update_document_section(
+            document_id=original_input_key,
+            section_index=section_index,
+            section=updated_section,
+        )
+        logger.info(f"Section update result: {json.dumps(result, default=str)[:500]}")
+    except Exception as e:
+        logger.error(f"Failed to update section in DynamoDB: {str(e)}", exc_info=True)
     
     # Prepare output with automatic compression if needed
     result = {

@@ -61,9 +61,10 @@ def handler(event, context):
         
         # Check if dataset already exists with this version
         if check_existing_version(dataset_version):
-            logger.info(f"Dataset version {dataset_version} already deployed, skipping")
+            logger.info(f"Dataset version {dataset_version} already deployed, updating description only")
+            update_description_only(dataset_description)
             cfnresponse.send(event, context, cfnresponse.SUCCESS, {
-                'Message': f'Dataset version {dataset_version} already exists'
+                'Message': f'Dataset version {dataset_version} already exists, description updated'
             })
             return
         
@@ -77,6 +78,28 @@ def handler(event, context):
         logger.error(f"Error deploying dataset: {str(e)}", exc_info=True)
         cfnresponse.send(event, context, cfnresponse.FAILED, {}, 
                         reason=f"Error deploying dataset: {str(e)}")
+
+
+def update_description_only(description: str):
+    """
+    Update only the description field in the existing DynamoDB record.
+    """
+    try:
+        table = dynamodb.Table(TRACKING_TABLE)  # type: ignore[attr-defined]
+        table.update_item(
+            Key={
+                'PK': f'testset#{TEST_SET_ID}',
+                'SK': 'metadata'
+            },
+            UpdateExpression='SET description = :desc',
+            ExpressionAttributeValues={
+                ':desc': description
+            }
+        )
+        logger.info(f"Updated description for test set {TEST_SET_ID}")
+    except Exception as e:
+        logger.error(f"Failed to update description: {e}")
+        raise
 
 
 def check_existing_version(version: str) -> bool:
@@ -138,66 +161,6 @@ def get_page_count(data_dict: dict, idx: int) -> int:
     
     logger.warning(f"Could not determine page count for document index {idx}")
     return 0
-
-
-def transform_line_item_days(days_string: str) -> list:
-    """
-    Transform LineItemDays from string format to array format.
-    
-    The HuggingFace dataset stores days as a string like "M T W T F . ."
-    where letters represent days the ad ran and dots represent days it didn't.
-    
-    Args:
-        days_string: Space-separated string with day abbreviations and dots
-                    (e.g., "M T W T F . .", ". . . T . . .")
-    
-    Returns:
-        List of day abbreviations (e.g., ["M", "T", "W", "T", "F"])
-    
-    Examples:
-        "M T W T F . ." -> ["M", "T", "W", "T", "F"]
-        ". . . T . . ." -> ["T"]
-        ". . . . . S ." -> ["S"]
-    """
-    if not days_string or not isinstance(days_string, str):
-        return []
-    
-    # Split by whitespace and filter out dots
-    tokens = days_string.split()
-    return [token for token in tokens if token != '.']
-
-
-def transform_json_response(json_response: dict) -> dict:
-    """
-    Transform the json_response from HuggingFace format to match IDP schema.
-    
-    Specifically handles:
-    - LineItemDays: string -> array transformation
-    
-    Args:
-        json_response: Original json_response from HuggingFace
-    
-    Returns:
-        Transformed json_response matching IDP schema expectations
-    """
-    if not json_response or not isinstance(json_response, dict):
-        return json_response
-    
-    # Deep copy to avoid modifying original
-    import copy
-    transformed = copy.deepcopy(json_response)
-    
-    # Transform LineItems if present
-    if 'LineItems' in transformed and isinstance(transformed['LineItems'], list):
-        for item in transformed['LineItems']:
-            if isinstance(item, dict) and 'LineItemDays' in item:
-                # Transform string to array
-                days_string = item['LineItemDays']
-                if isinstance(days_string, str):
-                    item['LineItemDays'] = transform_line_item_days(days_string)
-                    logger.debug(f"Transformed LineItemDays: '{days_string}' -> {item['LineItemDays']}")
-    
-    return transformed
 
 
 def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
@@ -271,9 +234,6 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
                     skipped_count += 1
                     continue
                 
-                # Transform json_response to match IDP schema
-                transformed_json = transform_json_response(json_response)
-                
                 # Track statistics
                 total_pages += page_count
                 page_count_distribution[page_count] = page_count_distribution.get(page_count, 0) + 1
@@ -320,7 +280,7 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
                     "split_document": {
                         "page_indices": page_indices
                     },
-                    "inference_result": transformed_json
+                    "inference_result": json_response
                 }
                 
                 # Upload ground truth baseline
@@ -377,12 +337,14 @@ def create_testset_record(version: str, description: str, file_count: int):
         'SK': 'metadata',
         'id': TEST_SET_ID,
         'name': DATASET_NAME,
+        'description': description,
         'filePattern': '',
         'fileCount': file_count,
         'status': 'COMPLETED',
         'createdAt': timestamp,
         'datasetVersion': version,
-        'source': 'huggingface:amazon-agi/RealKIE-FCC-Verified'
+        'source': 'huggingface:amazon-agi/RealKIE-FCC-Verified',
+        'description': description or 'RealKIE-FCC-Verified dataset from HuggingFace'
     }
     
     table.put_item(Item=item)

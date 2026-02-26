@@ -66,6 +66,86 @@ Page 6: type="invoice", boundary="continue"   → Section 3 (Invoice #2)
 
 The system automatically creates three sections, properly separating the two invoices despite them having the same document type.
 
+##### Page Context for Classification
+
+The multimodal page-level classification supports including surrounding pages as context to improve classification accuracy. This is particularly useful when a single page doesn't contain enough information to determine its document type or boundary status.
+
+**Configuration:**
+
+```yaml
+classification:
+  classificationMethod: multimodalPageLevelClassification
+  contextPagesCount: 1  # Include 1 page before and 1 page after as context
+  # contextPagesCount: 0  # Default: no additional context (current behavior)
+  # contextPagesCount: 2  # Include 2 pages before and 2 pages after
+```
+
+**How It Works:**
+
+When `contextPagesCount` is set to a value greater than 0, the classification prompt includes surrounding pages as additional context:
+
+- **`contextPagesCount: 1`**: Includes 1 page before and 1 page after the target page
+- **`contextPagesCount: 2`**: Includes 2 pages before and 2 pages after the target page
+- **Edge handling**: At document boundaries, only available pages are included (e.g., first page has no "before" pages)
+
+**Enhanced Prompt Structure:**
+
+The system replaces the standard `{DOCUMENT_TEXT}` and `{DOCUMENT_IMAGE}` placeholders with context-aware versions that clearly separate context pages from the page being classified:
+
+**Text Context Structure:**
+```xml
+For context, here is the OCR text for the page(s) immediately prior to the page you should classify:
+<context-pages-before>
+[OCR text from all context pages before - combined if multiple pages]
+</context-pages-before>
+
+Here is the OCR text for the page to classify:
+<current-page>
+[OCR text for the page being classified]
+</current-page>
+
+For context, here is the OCR text for the page(s) immediately after the page you should classify:
+<context-pages-after>
+[OCR text from all context pages after - combined if multiple pages]
+</context-pages-after>
+```
+
+**Image Context Structure:**
+```
+For context, here are the image(s) for the page(s) immediately prior to the page you should classify:
+[Image 1 - context page before]
+[Image 2 - context page before (if contextPagesCount >= 2)]
+
+Here is the image for the page to classify:
+[Image - current page being classified]
+
+For context, here are the image(s) for the page(s) immediately after the page you should classify:
+[Image 1 - context page after]
+[Image 2 - context page after (if contextPagesCount >= 2)]
+```
+
+**Note:** Context pages are combined within their respective sections (before or after). The structure uses descriptive text labels and XML tags (`<context-pages-before>`, `<current-page>`, `<context-pages-after>`) to clearly indicate which content is for context versus which content should be classified.
+
+**Benefits:**
+
+- **Improved Boundary Detection**: Context helps the LLM identify document transitions
+- **Better Classification Accuracy**: Surrounding pages provide additional clues
+- **Handles Ambiguous Pages**: Pages that look similar can be distinguished by context
+- **Flexible Configuration**: Adjust context size based on document complexity
+
+**Use Cases:**
+
+- Documents where headers/footers span multiple pages
+- Multi-page forms where individual pages look similar
+- Document packages with varying page layouts
+- Cases where LLM boundary detection has been unreliable
+
+**Considerations:**
+
+- Increases token usage proportionally to the number of context pages
+- May increase latency due to larger prompts
+- Works best when surrounding pages provide meaningful classification hints
+
 **Configuration for Boundary Detection:**
 
 The boundary detection is automatically included in the classification results. No special configuration is needed - the system will populate the `document_boundary` field in the metadata for each page:
@@ -158,13 +238,16 @@ The `sectionSplitting` configuration controls how classified pages are grouped i
 
 **Behavior:**
 - All pages are assigned to a single section
-- Uses the first detected document class for the entire document
+- Uses **majority voting** to determine the document class (most common classification wins)
+- Excludes unclassifiable/blank pages from voting to prevent them from affecting the result
+- If there's a tie, uses the first page's classification for determinism
 - Ignores any page-level classification boundaries
 
 **Use Cases:**
 - Documents known to be single-type with no internal divisions
 - Simplified processing where granular section splitting isn't needed
 - When you want to force all pages to be treated as one cohesive document
+- **Documents with occasional blank or unclassifiable pages** (these won't affect the final classification)
 
 **Configuration Example:**
 ```yaml
@@ -175,7 +258,39 @@ classification:
 
 **Result:**
 - Document with 10 pages → 1 section containing all 10 pages
-- All pages assigned the first detected class
+- All pages assigned the most common (voted) class
+
+**Voting Behavior:**
+
+The `disabled` strategy uses majority voting to determine the document classification, which provides robust handling of edge cases:
+
+1. **Config-Driven Voting**: Only pages whose classification matches a valid document type defined in your configuration are eligible to vote. This automatically excludes:
+   - Blank pages (`unclassifiable_blank_page`, `blank`, etc.)
+   - Error states (`error (backoff/retry)`, `unclassified`)
+   - LLM hallucinations or typos that don't match any defined class
+
+2. **Majority Wins**: The classification that appears most frequently among votable pages becomes the document classification.
+
+3. **Tie-Breaking**: If multiple classifications have the same count, the classification from the earliest page (by page number) is used for determinism.
+
+4. **Fallback**: If no pages have valid classifications (all are unclassifiable types), the first page's classification is used.
+
+**Example:**
+```
+6-page document with classifications:
+- Page 1: DRILLING_PLAN_GEOLOGIC
+- Page 2: DRILLING_PLAN_GEOLOGIC  
+- Page 3: DRILLING_PLAN_GEOLOGIC
+- Page 4: DRILLING_PLAN_GEOLOGIC
+- Page 5: DRILLING_PLAN_GEOLOGIC
+- Page 6: unclassifiable_blank_page (excluded from voting)
+
+Voting result: DRILLING_PLAN_GEOLOGIC (5 votes)
+→ Entire document classified as DRILLING_PLAN_GEOLOGIC
+```
+
+**GitHub Issue Reference:**
+This voting behavior addresses [Issue #167](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/167) where documents with blank last pages were incorrectly classified as the blank page type.
 
 #### 2. `page` - Per-Page Splitting (Each Page = Own Section)
 
@@ -569,22 +684,26 @@ Pattern 2's multimodal page-level classification supports few-shot example promp
 
 ### Few Shot Example Configuration
 
-In Pattern 2, few-shot examples are configured within document class definitions:
+In Pattern 2, few-shot examples are configured within document class definitions using JSON Schema format:
 
 ```yaml
 classes:
-  - name: letter
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Letter
+    x-aws-idp-document-type: Letter
+    type: object
     description: "A formal written correspondence..."
-    attributes:
-      - name: sender_name
+    properties:
+      SenderName:
+        type: string
         description: "The name of the person who wrote the letter..."
-    examples:
-      - classPrompt: "This is an example of the class 'letter'"
+    x-aws-idp-examples:
+      - x-aws-idp-class-prompt: "This is an example of the class 'Letter'"
         name: "Letter1"
-        imagePath: "config_library/pattern-2/your_config/example-images/letter1.jpg"
-      - classPrompt: "This is an example of the class 'letter'"
+        x-aws-idp-image-path: "config_library/pattern-2/your_config/example-images/letter1.jpg"
+      - x-aws-idp-class-prompt: "This is an example of the class 'Letter'"
         name: "Letter2"
-        imagePath: "config_library/pattern-2/your_config/example-images/letter2.png"
+        x-aws-idp-image-path: "config_library/pattern-2/your_config/example-images/letter2.png"
 ```
 
 ### Example Image Path Support
@@ -873,20 +992,40 @@ The regex system includes robust error handling:
 ```yaml
 classes:
   # W2 Tax Forms
-  - name: W2
-    document_page_content_regex: "(?i)(form\\s+w-?2|wage\\s+and\\s+tax|social\\s+security)"
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: W2
+    x-aws-idp-document-type: W2
+    type: object
+    description: "W2 Tax Form"
+    x-aws-idp-document-page-content-regex: "(?i)(form\\s+w-?2|wage\\s+and\\s+tax|social\\s+security)"
+    properties: {}
     
   # Bank Statements  
-  - name: Bank-Statement
-    document_page_content_regex: "(?i)(account\\s+number|statement\\s+period|beginning\\s+balance)"
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Bank-Statement
+    x-aws-idp-document-type: Bank-Statement
+    type: object
+    description: "Bank Statement"
+    x-aws-idp-document-page-content-regex: "(?i)(account\\s+number|statement\\s+period|beginning\\s+balance)"
+    properties: {}
     
   # Driver Licenses
-  - name: US-drivers-licenses
-    document_page_content_regex: "(?i)(driver\\s+license|state\\s+id|date\\s+of\\s+birth)"
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: US-drivers-licenses
+    x-aws-idp-document-type: US-drivers-licenses
+    type: object
+    description: "US Driver's License"
+    x-aws-idp-document-page-content-regex: "(?i)(driver\\s+license|state\\s+id|date\\s+of\\s+birth)"
+    properties: {}
     
   # Invoices
-  - name: Invoice
-    document_page_content_regex: "(?i)(invoice\\s+number|bill\\s+to|remit\\s+payment)"
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Invoice
+    x-aws-idp-document-type: Invoice
+    type: object
+    description: "Invoice"
+    x-aws-idp-document-page-content-regex: "(?i)(invoice\\s+number|bill\\s+to|remit\\s+payment)"
+    properties: {}
 ```
 
 ## Best Practices for Classification

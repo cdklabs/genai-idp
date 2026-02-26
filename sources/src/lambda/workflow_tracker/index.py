@@ -6,8 +6,8 @@ import json
 import os
 from datetime import datetime, timezone
 import logging
-from idp_common.models import Document, Status, Page, Section
-from idp_common.docs_service import create_document_service
+from idp_common.models import Document, Status, Page, Section  # type: ignore[import-untyped]
+from idp_common.docs_service import create_document_service  # type: ignore[import-untyped]
 from botocore.exceptions import ClientError
 from typing import Dict, Any, Optional
 
@@ -20,12 +20,19 @@ METRIC_NAMESPACE = os.environ['METRIC_NAMESPACE']
 REPORTING_BUCKET = os.environ.get('REPORTING_BUCKET')
 SAVE_REPORTING_FUNCTION_NAME = os.environ.get('SAVE_REPORTING_FUNCTION_NAME')
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb.service_resource import Table
+else:
+    Table = object
+
 dynamodb = boto3.resource('dynamodb')
 cloudwatch = boto3.client('cloudwatch')
 s3 = boto3.client('s3')
 lambda_client = boto3.client('lambda')
 document_service = create_document_service()
-concurrency_table = dynamodb.Table(os.environ['CONCURRENCY_TABLE'])
+concurrency_table: Table = dynamodb.Table(os.environ['CONCURRENCY_TABLE'])
 COUNTER_ID = 'workflow_counter'
 
 
@@ -35,17 +42,26 @@ def update_document_completion(object_key: str, workflow_status: str, output_dat
     
     Args:
         object_key: The document object key (ID)
-        workflow_status: The final workflow status (SUCCEEDED or FAILED)
+        workflow_status: The final workflow status (SUCCEEDED, FAILED, ABORTED, TIMED_OUT)
         output_data: The output data from the workflow execution
         
     Returns:
         The updated Document object
     """
+    # Map workflow status to document status
+    # ABORTED workflows should keep ABORTED status (set by abort_workflow_resolver)
+    if workflow_status == 'SUCCEEDED':
+        doc_status = Status.COMPLETED
+    elif workflow_status == 'ABORTED':
+        doc_status = Status.ABORTED
+    else:
+        doc_status = Status.FAILED
+    
     # Create a document with basic properties (fallback for failed workflows)
     document = Document(
         id=object_key,
         input_key=object_key,
-        status=Status.COMPLETED if workflow_status == 'SUCCEEDED' else Status.FAILED,
+        status=doc_status,
         completion_time=datetime.now(timezone.utc).isoformat()
     )
     
@@ -117,6 +133,11 @@ def update_document_completion(object_key: str, workflow_status: str, output_dat
             if sections_with_results:
                 data_to_save.append('sections')
                 logger.info(f"Found {len(sections_with_results)} sections with extraction results")
+        
+        # Check if rule validation results are available
+        if hasattr(document, 'rule_validation_result') and document.rule_validation_result:
+            data_to_save.append('rule_validation_results')
+            logger.info("Found rule validation results")
         
         if data_to_save:
             try:

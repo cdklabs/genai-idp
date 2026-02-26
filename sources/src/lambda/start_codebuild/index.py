@@ -9,7 +9,7 @@ from typing import List
 import boto3
 from botocore.config import Config as BotoCoreConfig
 from botocore.exceptions import ClientError
-from crhelper import CfnResource
+from crhelper import CfnResource  # type: ignore[import-untyped]
 
 
 LOGGER = logging.getLogger(__name__)

@@ -7,24 +7,31 @@ SPDX-License-Identifier: MIT-0
 
 ## Table of Contents
 
-- [Introduction](#introduction)
-- [Alternative Implementations](#alternative-implementations)
-- [Key Features](#key-features)
-- [Architecture Overview](#architecture-overview)
-- [Quick Start](#quick-start)
-  - [Processing Your First Document](#processing-your-first-document)
-- [Updating an Existing Deployment](#updating-an-existing-deployment)
-- [Detailed Documentation](#detailed-documentation)
-  - [Core Documentation](#core-documentation)
-  - [Processing Patterns](#processing-patterns)
-  - [Python Development](#python-development)
-  - [Planning & Operations](#planning--operations)
-- [Contributing](#contributing)
-- [License](#license)
+- [Gen AI Intelligent Document Processing (GenAIIDP)](#gen-ai-intelligent-document-processing-genaiidp)
+  - [Table of Contents](#table-of-contents)
+  - [Introduction](#introduction)
+  - [Alternative Implementations](#alternative-implementations)
+  - [Key Features](#key-features)
+  - [Architecture Overview](#architecture-overview)
+  - [Quick Start](#quick-start)
+    - [Processing Your First Document](#processing-your-first-document)
+      - [Method 1: Web UI (Interactive)](#method-1-web-ui-interactive)
+      - [Method 2: Direct S3 Upload (Simple)](#method-2-direct-s3-upload-simple)
+      - [Method 3: IDP CLI (Batch/Programmatic)](#method-3-idp-cli-batchprogrammatic)
+  - [Updating an Existing Deployment](#updating-an-existing-deployment)
+  - [Detailed Documentation](#detailed-documentation)
+    - [Core Documentation](#core-documentation)
+    - [Processing Patterns](#processing-patterns)
+    - [Python Development](#python-development)
+    - [Planning \& Operations](#planning--operations)
+  - [Contributing](#contributing)
+  - [License](#license)
 
 ## Introduction
 
 A scalable, serverless solution for automated document processing and information extraction using AWS services. This system combines OCR capabilities with generative AI to convert unstructured documents into structured data at scale.
+
+TODO Placeholder - replace asset with new short demo video
 
 https://github.com/user-attachments/assets/272b543b-e506-48ce-acc1-361422d22322
 
@@ -49,7 +56,8 @@ Concierge support for customization, deployment, and integration of production u
 - **Cost Optimization**: Pay-per-use pricing model with built-in controls
 - **Comprehensive Monitoring**: Rich CloudWatch dashboard with detailed metrics and logs
 - **Web User Interface**: Modern UI for inspecting document workflow status and results
-- **Human-in-the-Loop (HITL)**: Amazon A2I integration for human review workflows (Pattern 1 & Pattern 2)
+- **Configuration Versioning**: Support for multiple configuration versions with version-specific processing and test comparison
+- **Human-in-the-Loop (HITL)**: Built-in review system for human validation workflows (Pattern 1 & Pattern 2)
   - **Note**: When deploying multiple patterns with HITL, reuse existing private workteam ARN due to AWS account limits
 - **AI-Powered Evaluation**: Framework to assess accuracy against baseline data
 - **Extraction Confidence Assessment**: LLM-powered assessment of extraction confidence with multimodal document analysis
@@ -109,7 +117,7 @@ For batch processing, automation, or evaluation workflows:
 
 ```bash
 # Install CLI
-cd idp_cli && pip install -e .
+cd lib/idp_cli_pkg && pip install -e .
 
 # Process documents
 idp-cli run-inference \
@@ -164,6 +172,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 ### Core Documentation
 
 - [Architecture](./docs/architecture.md) - Detailed component architecture and data flow
+- [Demo Videos](./docs/demo-videos.md) - Comprehensive collection of feature demonstration videos
 - [Deployment](./docs/deployment.md) - Build, publish, deploy, and test instructions
 - [IDP CLI](./docs/idp-cli.md) - Command line interface for batch processing and evaluation workflows
 - [Web UI](./docs/web-ui.md) - Web interface features and usage
@@ -174,8 +183,9 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Discovery](./docs/discovery.md) - Pattern-neutral discovery process and BDA blueprint automation
 - [Classification](./docs/classification.md) - Customizing document classification
 - [Extraction](./docs/extraction.md) - Customizing information extraction
-- [Human-in-the-Loop Review](./docs/human-review.md) - Human review workflows with Amazon A2I
+- [Human-in-the-Loop Review](./docs/human-review.md) - Human review workflows with built-in review system
 - [Assessment](./docs/assessment.md) - Extraction confidence evaluation using LLMs
+- [Rule Validation](./docs/rule-validation.md) - Business rule validation and compliance checking
 - [Evaluation Framework](./docs/evaluation.md) - Accuracy assessment system with analytics database and reporting
 - [Knowledge Base](./docs/knowledge-base.md) - Document knowledge base query feature
 - [Monitoring](./docs/monitoring.md) - Monitoring and logging capabilities
@@ -198,6 +208,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 
 ### Planning & Operations
 
+- [Capacity Planning](./docs/capacity-planning.md) - Comprehensive capacity planning, performance optimization, and resource scaling guidance
 - [Well-Architected Framework Assessment](./docs/well-architected.md) - Analysis based on AWS Well-Architected Framework
 - [AWS Services & IAM Roles](./docs/aws-services-and-roles.md) - AWS services used and IAM role requirements
 - [Cost Calculator](./docs/cost-calculator.md) - Framework for estimating solution costs

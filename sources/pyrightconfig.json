@@ -23,7 +23,7 @@
   
   "typeCheckingMode": "basic",
   
-  "reportMissingImports": "warning",
+  "reportMissingImports": "none",
   "reportMissingTypeStubs": "none",
   "reportImportCycles": "warning",
   "reportUnusedImport": "none",
@@ -39,6 +39,9 @@
   "reportUnknownArgumentType": "none",
   "reportUnknownVariableType": "none",
   "reportArgumentType": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportReturnType": "warning",
+  "reportCallIssue": "warning",
   
   "venvPath": ".",
   "venv": ".venv"

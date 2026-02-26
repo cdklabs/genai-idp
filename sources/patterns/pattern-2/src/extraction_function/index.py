@@ -31,14 +31,21 @@ def handler(event, context):
     start_time = time.time()  # Capture start time for Lambda metering
     logger.info(f"Event: {json.dumps(event)}")
 
-    # Load configuration
-    config = get_config(as_model=True)
-    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
-    
     # For Map state, we get just one section from the document
     # Extract the document and section from the event - handle both compressed and uncompressed
     working_bucket = os.environ.get('WORKING_BUCKET')
     full_document = Document.load_document(event.get("document", {}), working_bucket, logger)
+    
+    # Load configuration - use document's version if specified, otherwise use active version
+    config_version = getattr(full_document, 'config_version', None)
+    config = get_config(as_model=True, version=config_version)
+    
+    if config_version:
+        logger.info(f"Using configuration version {config_version} for document {full_document.id}")
+    else:
+        logger.info(f"Using active configuration for document {full_document.id}")
+    
+    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
     
     # Log loaded document for troubleshooting
     logger.info(f"Loaded document - ID: {full_document.id}, input_key: {full_document.input_key}")
@@ -70,6 +77,11 @@ def handler(event, context):
     
     logger.info(f"Processing section {section_id} with {len(section.page_ids)} pages")
     
+    # Capture section index BEFORE modifying full_document.sections
+    # This is needed for atomic section updates to DynamoDB
+    section_index = next(i for i, s in enumerate(full_document.sections) if s.section_id == section_id)
+    logger.info(f"Section {section_id} is at index {section_index} in the Sections array")
+    
     # Intelligent Extraction detection: Skip if section already has extraction data
     if section.extraction_result_uri and section.extraction_result_uri.strip():
         logger.info(f"Skipping extraction for section {section_id} - already has extraction data: {section.extraction_result_uri}")
@@ -93,11 +105,20 @@ def handler(event, context):
         logger.info(f"Processing section {section_id} - no extraction data found, proceeding with extraction")
     
     # Normal extraction processing or selective processing for modified sections
-    # Update document status to EXTRACTING
-    full_document.status = Status.EXTRACTING
+    # Update document status to EXTRACTING using lightweight status-only update
+    # This reduces DynamoDB WCU consumption by ~94% (~500 bytes vs ~100KB)
     document_service = create_document_service()
-    logger.info(f"Updating document status to {full_document.status}")
-    document_service.update_document(full_document)
+    logger.info(f"Updating document status to EXTRACTING (lightweight update) for document {full_document.input_key}")
+    try:
+        status_result = document_service.update_document_status(
+            document_id=full_document.input_key,
+            status=Status.EXTRACTING,
+            workflow_execution_arn=full_document.workflow_execution_arn,
+        )
+        logger.info(f"Status update result: {json.dumps(status_result, default=str)[:500]}")
+    except Exception as e:
+        logger.error(f"Failed to update document status: {str(e)}", exc_info=True)
+    full_document.status = Status.EXTRACTING
        
     # Create a section-specific document by modifying the original document
     section_document = full_document
@@ -139,6 +160,23 @@ def handler(event, context):
         section_document.metering = merge_metering_data(section_document.metering, lambda_metering)
     except Exception as e:
         logger.warning(f"Failed to add Lambda metering for extraction: {str(e)}")
+    
+    # Update the section in DynamoDB for immediate UI visibility
+    # This allows the UI to show extraction results as they complete (not wait for collate)
+    try:
+        # Use section_index captured at start (before full_document was modified)
+        updated_section = section_document.sections[0]
+        # Get the original document input_key (stored before any modifications)
+        original_input_key = section_document.input_key
+        logger.info(f"Persisting extraction results for section {section_id} (index {section_index}) to DynamoDB for document {original_input_key}")
+        result = document_service.update_document_section(
+            document_id=original_input_key,
+            section_index=section_index,
+            section=updated_section,
+        )
+        logger.info(f"Section update result: {json.dumps(result, default=str)[:500]}")
+    except Exception as e:
+        logger.error(f"Failed to update section in DynamoDB: {str(e)}", exc_info=True)
     
     # Prepare output with automatic compression if needed
     response = {

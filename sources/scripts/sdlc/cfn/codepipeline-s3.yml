@@ -10,10 +10,10 @@ Parameters:
     Description: 'Name of the CodePipeline'
     Default: genaiic-sdlc-deploy-pipeline
 
-  BucketName:
+  BucketNamePrefix:
     Type: String
-    Description: 'Name of the S3 bucket containing the deployment assets'
-    Default: genaiic-sdlc-sourcecode-YOUR_AWS_ACCOUNT-YOUR_REGION
+    Description: 'Prefix for the S3 bucket name'
+    Default: genaiic-sdlc-sourcecode
   
   FileKey:
     Type: String
@@ -40,6 +40,7 @@ Resources:
     Condition: CreateKMSKey
     Properties:
       Description: 'KMS key for CodePipeline artifact encryption'
+      EnableKeyRotation: true
       KeyPolicy:
         Version: '2012-10-17'
         Statement:
@@ -96,9 +97,9 @@ Resources:
                     - 's3:ListBucket'
                     - 's3:PutObject'
                   Resource:
-                    - !Sub 'arn:aws:s3:::${BucketName}/*'
+                    - !Sub 'arn:aws:s3:::${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}/*'
                     - !Sub 'arn:aws:s3:::${ArtifactBucket}/*'
-                    - !Sub 'arn:aws:s3:::${BucketName}'
+                    - !Sub 'arn:aws:s3:::${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
                     - !Sub 'arn:aws:s3:::${ArtifactBucket}'
                 - Effect: Allow
                   Action:
@@ -129,22 +130,41 @@ Resources:
             Principal:
               Service: codebuild.amazonaws.com
             Action: 'sts:AssumeRole'
-      # TODO: Adjust these rights as appropriate >>>
+      # PowerUserAccess + Limited IAM permissions for SDLC operations
       ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
-      # <<< TODO: Adjust these rights as appropriate
+        - 'arn:aws:iam::aws:policy/PowerUserAccess'
       Policies:
-        - PolicyName: CodeBuildPolicy
+        - PolicyName: LimitedIAMAccess
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
-                  - 'ec2:DescribeAvailabilityZones'
-                  - 'ec2:DescribeVpcs'
-                  - 'ec2:DescribeSubnets'
-                  - 'ec2:DescribeSecurityGroups'
-                  - 'sts:AssumeRole'
+                  - iam:CreateInstanceProfile
+                  - iam:List*
+                  - iam:Untag*
+                  - iam:Tag*
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:DeletePolicy
+                  - iam:CreateRole
+                  - iam:AttachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:AddRoleToInstanceProfile
+                  - iam:PassRole
+                  - iam:Get*
+                  - iam:DetachRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:CreatePolicyVersion
+                  - iam:DeleteInstanceProfile
+                  - iam:DeleteRole
+                  - iam:UpdateRoleDescription
+                  - iam:CreatePolicy
+                  - iam:CreateServiceLinkedRole
+                  - iam:UpdateRole
+                  - iam:DeleteServiceLinkedRole
+                  - iam:DeletePolicyVersion
+                  - iam:SetDefaultPolicyVersion
+                  - iam:UpdateAssumeRolePolicy
                 Resource: '*'
 
   ArtifactBucket:
@@ -163,6 +183,14 @@ Resources:
         rules_to_suppress:
           - id: S3-001
             reason: "This is a temporary deployment artifact bucket; access logging not required"
+      cdk_nag:
+        rules_to_suppress:
+          - id: AwsSolutions-S2
+            reason: "Internal SDLC artifact bucket with public access already blocked"
+          - id: AwsSolutions-S5
+            reason: "Internal SDLC artifact bucket not used with CloudFront"
+          - id: AwsSolutions-S10
+            reason: "Internal SDLC artifact bucket - SSL enforced at CodePipeline level"
     Properties:
       VersioningConfiguration:
         Status: Enabled
@@ -188,6 +216,9 @@ Resources:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_LARGE
         Image: aws/codebuild/standard:7.0
+        EnvironmentVariables:
+          - Name: SOURCE_BUCKET
+            Value: !Sub '${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -199,12 +230,12 @@ Resources:
               commands:
                 - n 22 && node --version || { echo "Node setup failed"; exit 1; }
                 - npm install -g npm@11 || { echo "npm upgrade failed"; exit 1; }
-                - export IDP_ADMIN_EMAIL=$(aws s3api head-object --bucket genaiic-sdlc-sourcecode-${AWS_ACCOUNT_ID:-020432867916}-${AWS_DEFAULT_REGION:-us-east-1} --key deploy/code.zip --query 'Metadata."gitlab-user-email"' --output text 2>/dev/null || echo "")
-                - cd idp_cli && pip install -e . && cd .. || { echo "IDP CLI installation failed"; exit 1; }
+                - export IDP_ADMIN_EMAIL=$(aws s3api head-object --bucket ${SOURCE_BUCKET} --key deploy/code.zip --query 'Metadata."gitlab-user-email"' --output text 2>/dev/null || echo "")
+                - make setup || { echo "IDP Common and IDP CLI installation failed"; exit 1; }
                 - pip install rich || echo "Rich installation failed, using fallback formatting"
             build:
               commands:
-                - python3 scripts/codebuild_deployment.py
+                - python3 scripts/sdlc/codebuild_deployment.py
               finally:
                 - echo "Cleanup handled by codebuild deployment script"
 
@@ -231,7 +262,7 @@ Resources:
                 Provider: S3
                 Version: '1'
               Configuration:
-                S3Bucket: !Ref BucketName
+                S3Bucket: !Sub '${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
                 S3ObjectKey: !Ref FileKey
                 PollForSourceChanges: false
               OutputArtifacts:
@@ -269,13 +300,13 @@ Resources:
               - 's3:GetObjectVersion'
               - 's3:PutObject'
             Resource: 
-              - !Sub 'arn:aws:s3:::${BucketName}/*'
+              - !Sub 'arn:aws:s3:::${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}/*'
               - !Sub 'arn:aws:s3:::${ArtifactBucket}/*'
           - Effect: Allow
             Action:
               - 's3:ListBucket'
             Resource: 
-              - !Sub 'arn:aws:s3:::${BucketName}'
+              - !Sub 'arn:aws:s3:::${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
               - !Sub 'arn:aws:s3:::${ArtifactBucket}'
 
   CodeBuildLogsPolicy:
@@ -317,6 +348,22 @@ Resources:
             Resource: 
               - !Sub 'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0'
 
+  CodeBuildKMSPolicy:
+    Type: 'AWS::IAM::Policy'
+    Condition: CreateCodeBuildRole
+    Properties:
+      PolicyName: CodeBuildKMSAccess
+      Roles: 
+        - !Ref CodeBuildRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: !If [CreateKMSKey, !GetAtt PipelineKMSKey.Arn, !Ref KMSKeyArn]
+
   # CloudWatch Events Rule to trigger pipeline on S3 changes
   PipelineTriggerRule:
     Type: AWS::Events::Rule
@@ -331,7 +378,7 @@ Resources:
         detail:
           bucket:
             name:
-              - !Ref BucketName
+              - !Sub '${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
           object:
             key:
               - !Ref FileKey

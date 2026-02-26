@@ -9,6 +9,23 @@ The GenAIIDP solution includes a built-in evaluation framework to assess the acc
 - Generate detailed evaluation reports using configurable methods and thresholds
 - Track and improve processing accuracy over time
 
+## Enhanced Reporting (sticker-eval v0.1.4+)
+
+**NEW in v0.4.9+**: The evaluation module now includes enhanced reporting with fine-grain field comparison details. See [evaluation-enhanced-reporting.md](./evaluation-enhanced-reporting.md) for:
+
+- 📊 **Nested field comparison details** - See individual field matches within complex objects and arrays
+- 🔍 **Interactive report controls** - Filter to show only unmatched rows for focused debugging
+- 📋 **Expandable details** - Drill down into nested comparisons with expand/collapse controls
+- 🎯 **Aggregate score annotations** - Clearly distinguish aggregate scores from simple field scores
+
+**Key Benefits:**
+- Quickly identify which specific nested fields cause mismatches
+- Compact problem view focusing on failed matches
+- Both high-level overview and granular diagnostics in one report
+- Full backward compatibility with existing configurations
+
+For complete documentation and examples, see [evaluation-enhanced-reporting.md](./evaluation-enhanced-reporting.md).
+
 
 https://github.com/user-attachments/assets/0ff17f3e-1eb5-4883-9d6f-3d4e4e84cbea
 
@@ -16,6 +33,7 @@ https://github.com/user-attachments/assets/0ff17f3e-1eb5-4883-9d6f-3d4e4e84cbea
 ## Table of Contents
 
 - [Evaluation Framework](#evaluation-framework)
+  - [Enhanced Reporting (sticker-eval v0.1.4+)](#enhanced-reporting-sticker-eval-v014)
   - [Stickler Evaluation Engine](#stickler-evaluation-engine)
     - [Architecture](#architecture)
   - [How It Works](#how-it-works)

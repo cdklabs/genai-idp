@@ -11,6 +11,9 @@ The GenAI IDP Accelerator includes a comprehensive reporting database that captu
   - [Document Evaluations](#document-evaluations)
   - [Section Evaluations](#section-evaluations)
   - [Attribute Evaluations](#attribute-evaluations)
+- [Rule Validation Tables](#rule-validation-tables)
+  - [Rule Validation Summary](#rule-validation-summary)
+  - [Rule Validation Details](#rule-validation-details)
 - [Metering Table](#metering-table)
 - [Document Sections Tables](#document-sections-tables)
   - [Dynamic Section Tables](#dynamic-section-tables)
@@ -80,6 +83,45 @@ The `attribute_evaluations` table contains attribute-level evaluation metrics:
 | confidence | string | Confidence score from extraction |
 | confidence_threshold | string | Confidence threshold used |
 | evaluation_date | timestamp | When the evaluation was performed |
+
+This table is partitioned by date (YYYY-MM-DD format).
+
+
+## Rule Validation Tables
+
+The rule validation tables store business rule validation results showing compliance and policy adherence for processed documents.
+
+### Rule Validation Summary
+
+The `rule_validation_summary` table contains document-level rule validation results:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| document_id | string | Unique identifier for the document |
+| input_key | string | S3 key of the input document |
+| validation_date | timestamp | When the validation was performed |
+| overall_status | string | Overall validation status (COMPLETE, FAILED, etc.) |
+| total_rule_types | int | Number of rule types evaluated |
+| total_rules | int | Total number of rules evaluated |
+| pass_count | int | Number of rules that passed |
+| fail_count | int | Number of rules that failed |
+| information_not_found_count | int | Number of rules where information was not found |
+
+This table is partitioned by date (YYYY-MM-DD format).
+
+### Rule Validation Details
+
+The `rule_validation_details` table contains individual rule validation results:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| document_id | string | Unique identifier for the document |
+| rule_type | string | Category/type of the rule |
+| rule | string | Description of the specific rule being validated |
+| recommendation | string | Validation result (Pass, Fail, Information Not Found) |
+| reasoning | string | Explanation for the recommendation |
+| supporting_pages | string | JSON array of page numbers supporting the validation |
+| validation_date | timestamp | When the validation was performed |
 
 This table is partitioned by date (YYYY-MM-DD format).
 
