@@ -29,6 +29,8 @@ export class Jsii extends pj.Component {
       this.publisher = project.release?.publisher;
     }
 
+    const githubEnvironment =  options.releaseEnvironment ?? 'release';
+
     const srcdir = project.srcdir;
     const libdir = project.libdir;
     project.addFields({ types: `${libdir}/index.d.ts` });
@@ -77,11 +79,14 @@ export class Jsii extends pj.Component {
 
     // NPM
     const task = this.addPackagingTask('js');
+    const npmTrustedPublishing = options.npmTrustedPublishing ?? true;
     this.publisher?.publishToNpm({
       ...this.pacmakForLanguage('js', task),
       registry: this.project.package.npmRegistry,
-      npmTokenSecret: this.project.package.npmTokenSecret,
+      npmTokenSecret: npmTrustedPublishing ? undefined : this.project.package.npmTokenSecret,
       npmProvenance: this.project.package.npmProvenance,
+      trustedPublishing: npmTrustedPublishing,
+      githubEnvironment,
     });
     this.addPackagingTarget('js', task, extraJobOptions);
 
@@ -98,6 +103,7 @@ export class Jsii extends pj.Component {
 
       this.publisher?.publishToMaven({
         ...this.pacmakForLanguage('java', task),
+        githubEnvironment,
         ...options.publishToMaven,
       });
 
@@ -114,6 +120,8 @@ export class Jsii extends pj.Component {
       const task = this.addPackagingTask('python');
       this.publisher?.publishToPyPi({
         ...this.pacmakForLanguage('python', task),
+        trustedPublishing: options.publishToPypi?.trustedPublishing ?? true,
+        githubEnvironment,
         ...pypi,
       });
 
@@ -131,6 +139,8 @@ export class Jsii extends pj.Component {
       const task = this.addPackagingTask('dotnet');
       this.publisher?.publishToNuget({
         ...this.pacmakForLanguage('dotnet', task),
+        trustedPublishing: options.publishToNuget?.trustedPublishing ?? true,
+        githubEnvironment,
         ...nuget,
       });
 
@@ -147,6 +157,7 @@ export class Jsii extends pj.Component {
       const task = this.addPackagingTask('go');
       this.publisher?.publishToGo({
         ...this.pacmakForLanguage('go', task),
+        githubEnvironment,
         ...golang,
       });
 
