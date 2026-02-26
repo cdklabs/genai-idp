@@ -74,6 +74,10 @@ git add ${targetDir}
       },
       runsOn: ['ubuntu-latest'],
       steps: [
+        {
+          name: 'Checkout',
+          uses: 'actions/checkout@v4',
+        },
         ...project.renderWorkflowSetup(),
         {
           name: 'Update upstream sources',
