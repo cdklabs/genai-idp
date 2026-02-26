@@ -133,6 +133,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -151,7 +152,7 @@ jobs:
           NPM_DIST_TAG: latest
           NPM_REGISTRY: registry.npmjs.org
           NPM_CONFIG_PROVENANCE: "true"
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TRUSTED_PUBLISHER: "true"
         run: npx -p publib@latest publib-npm
   cdklabs-genai-idp_release_pypi:
     name: "@cdklabs/genai-idp: Publish to PyPI"
@@ -159,6 +160,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -177,8 +180,7 @@ jobs:
         continue-on-error: true
       - name: Release
         env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+          PYPI_TRUSTED_PUBLISHER: "true"
         run: npx -p publib@latest publib-pypi
   cdklabs-genai-idp_release_nuget:
     name: "@cdklabs/genai-idp: Publish to NuGet Gallery"
@@ -186,6 +188,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -204,7 +208,8 @@ jobs:
         continue-on-error: true
       - name: Release
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_TRUSTED_PUBLISHER: "true"
+          NUGET_USERNAME: ${{ secrets.NUGET_USERNAME }}
         run: npx -p publib@latest publib-nuget
   cdklabs-genai-idp-bda-processor_release_github:
     name: "@cdklabs/genai-idp-bda-processor: Publish to GitHub Releases"
@@ -240,6 +245,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -258,7 +264,7 @@ jobs:
           NPM_DIST_TAG: latest
           NPM_REGISTRY: registry.npmjs.org
           NPM_CONFIG_PROVENANCE: "true"
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TRUSTED_PUBLISHER: "true"
         run: npx -p publib@latest publib-npm
   cdklabs-genai-idp-bda-processor_release_pypi:
     name: "@cdklabs/genai-idp-bda-processor: Publish to PyPI"
@@ -266,6 +272,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -284,8 +292,7 @@ jobs:
         continue-on-error: true
       - name: Release
         env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+          PYPI_TRUSTED_PUBLISHER: "true"
         run: npx -p publib@latest publib-pypi
   cdklabs-genai-idp-bda-processor_release_nuget:
     name: "@cdklabs/genai-idp-bda-processor: Publish to NuGet Gallery"
@@ -293,6 +300,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -311,7 +320,8 @@ jobs:
         continue-on-error: true
       - name: Release
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_TRUSTED_PUBLISHER: "true"
+          NUGET_USERNAME: ${{ secrets.NUGET_USERNAME }}
         run: npx -p publib@latest publib-nuget
   cdklabs-genai-idp-bedrock-llm-processor_release_github:
     name: "@cdklabs/genai-idp-bedrock-llm-processor: Publish to GitHub Releases"
@@ -347,6 +357,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -365,7 +376,7 @@ jobs:
           NPM_DIST_TAG: latest
           NPM_REGISTRY: registry.npmjs.org
           NPM_CONFIG_PROVENANCE: "true"
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TRUSTED_PUBLISHER: "true"
         run: npx -p publib@latest publib-npm
   cdklabs-genai-idp-bedrock-llm-processor_release_pypi:
     name: "@cdklabs/genai-idp-bedrock-llm-processor: Publish to PyPI"
@@ -373,6 +384,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -391,8 +404,7 @@ jobs:
         continue-on-error: true
       - name: Release
         env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+          PYPI_TRUSTED_PUBLISHER: "true"
         run: npx -p publib@latest publib-pypi
   cdklabs-genai-idp-bedrock-llm-processor_release_nuget:
     name: "@cdklabs/genai-idp-bedrock-llm-processor: Publish to NuGet Gallery"
@@ -400,6 +412,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -418,7 +432,8 @@ jobs:
         continue-on-error: true
       - name: Release
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_TRUSTED_PUBLISHER: "true"
+          NUGET_USERNAME: ${{ secrets.NUGET_USERNAME }}
         run: npx -p publib@latest publib-nuget
   cdklabs-genai-idp-sagemaker-udop-processor_release_github:
     name: "@cdklabs/genai-idp-sagemaker-udop-processor: Publish to GitHub Releases"
@@ -454,6 +469,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -472,7 +488,7 @@ jobs:
           NPM_DIST_TAG: latest
           NPM_REGISTRY: registry.npmjs.org
           NPM_CONFIG_PROVENANCE: "true"
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TRUSTED_PUBLISHER: "true"
         run: npx -p publib@latest publib-npm
   cdklabs-genai-idp-sagemaker-udop-processor_release_pypi:
     name: "@cdklabs/genai-idp-sagemaker-udop-processor: Publish to PyPI"
@@ -480,6 +496,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -498,8 +516,7 @@ jobs:
         continue-on-error: true
       - name: Release
         env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+          PYPI_TRUSTED_PUBLISHER: "true"
         run: npx -p publib@latest publib-pypi
   cdklabs-genai-idp-sagemaker-udop-processor_release_nuget:
     name: "@cdklabs/genai-idp-sagemaker-udop-processor: Publish to NuGet Gallery"
@@ -507,6 +524,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
+    environment: release
     if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
     steps:
       - uses: actions/setup-node@v5
@@ -525,5 +544,6 @@ jobs:
         continue-on-error: true
       - name: Release
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_TRUSTED_PUBLISHER: "true"
+          NUGET_USERNAME: ${{ secrets.NUGET_USERNAME }}
         run: npx -p publib@latest publib-nuget
