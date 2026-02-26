@@ -4,7 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 import * as fs from "fs";
 import * as path from "path";
-import { AutoDiscover, AwsCdkDeps, AwsCdkDepsCommonOptions, AwsCdkDepsJs, CdkConfig, CdkConfigCommonOptions, CdkTasks, LambdaFunctionCommonOptions } from "projen/lib/awscdk";
+import { AutoDiscover, AwsCdkDeps, AwsCdkDepsCommonOptions, AwsCdkDepsJs, CdkConfig, CdkConfigCommonOptions, CdkFeatureFlags, CdkTasks, LambdaFunctionCommonOptions } from "projen/lib/awscdk";
 import { TypeScriptWorkspaceAppProject } from "./workspace-app-ts";
 import { TypeScriptWorkspaceOptions } from "cdklabs-projen-project-types/lib/yarn";
 import { RunBundleTask } from "projen/lib/javascript";
@@ -239,8 +239,8 @@ export class AwsCdkTypeScriptWorkspaceApp extends TypeScriptWorkspaceAppProject 
             app: `npx ts-node -P ${tsConfigFile} --prefer-ts-exts ${path.posix.join(
                 this.srcdir,
                 this.appEntrypoint
-            )}`,
-            featureFlags: this.cdkDeps.cdkMajorVersion < 2,
+            )}`, 
+            featureFlags: this.cdkDeps.cdkMajorVersion < 2 ? CdkFeatureFlags.V1.ALL : CdkFeatureFlags.V2.NONE,
             buildCommand: this.runTaskCommand(this.bundler.bundleTask),
             watchIncludes: [`${this.srcdir}/**/*.ts`, `${this.testdir}/**/*.ts`],
             watchExcludes: [
