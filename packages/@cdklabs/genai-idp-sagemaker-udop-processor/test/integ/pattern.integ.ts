@@ -3,6 +3,7 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import path from "path";
 import {
   BedrockFoundationModel,
   CrossRegionInferenceProfile,
@@ -71,12 +72,15 @@ const classifier = new BasicSagemakerClassifier(stack, "Classifier", {
 new SagemakerUdopProcessor(stack, "Processor", {
   environment,
   classifierEndpoint: classifier.endpoint, // Pass the endpoint directly
-  configuration: SagemakerUdopProcessorConfiguration.rvlCdipPackageSample({
-    extractionModel: CrossRegionInferenceProfile.fromConfig({
-      geoRegion: CrossRegionInferenceProfileRegion.US,
-      model: BedrockFoundationModel.AMAZON_NOVA_PRO_V1,
-    }),
-  }),
+  configuration: SagemakerUdopProcessorConfiguration.fromFile(
+    path.join(__dirname, "sagemaker-config.yaml"),
+    {
+      extractionModel: CrossRegionInferenceProfile.fromConfig({
+        geoRegion: CrossRegionInferenceProfileRegion.US,
+        model: BedrockFoundationModel.AMAZON_NOVA_PRO_V1,
+      }),
+    },
+  ),
 });
 
 // INFO: clean up all the resources after deletion
