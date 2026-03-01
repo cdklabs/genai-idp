@@ -18,6 +18,7 @@ import * as ssm from "aws-cdk-lib/aws-ssm";
 import { md5hash } from "aws-cdk-lib/core/lib/helpers-internal";
 import { Construct } from "constructs";
 import { IProcessingEnvironment } from "./processing-environment";
+import { IDocumentDiscovery } from "./processing-environment-api/document-discovery/document-discovery";
 import { IUserIdentity } from "./user-identity";
 
 /**
@@ -107,7 +108,7 @@ export interface WebApplicationProps {
    *
    * @default - Document discovery features are disabled in the UI
    */
-  readonly documentDiscovery?: import("./document-discovery").IDocumentDiscovery;
+  readonly documentDiscovery?: IDocumentDiscovery;
 
   /**
    * Whether to automatically configure CORS rules on S3 buckets for CloudFront access.

@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 import * as cdk from "aws-cdk-lib";
 import { AttributeType, ITable, Table } from "aws-cdk-lib/aws-dynamodb";
 import { Construct } from "constructs";
-import { FixedKeyTableProps } from "../fixed-key-table-props";
+import { FixedKeyTableProps } from "../../fixed-key-table-props";
 
 /**
  * Interface for the discovery tracking table.

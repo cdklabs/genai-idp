@@ -5,19 +5,26 @@ SPDX-License-Identifier: Apache-2.0
 
 import * as path from "path";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
+import * as cdk from "aws-cdk-lib";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
-import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
-import { LogLevel } from "../../log-level";
+import { IConfigurationTable } from "../../../configuration-table";
+import { IdpPythonFunctionOptions } from "../../../functions/idp-python-function-options";
+import { IdpPythonLayerVersion } from "../../../idp-python-layer-version";
+import { LogLevel } from "../../../log-level";
+import { IProcessingEnvironmentApi } from "../../processing-environment-api";
 import { IDiscoveryTable } from "../discovery-table";
 
 /**
- * Properties for configuring the DiscoveryUploadResolverFunction.
+ * Properties for configuring the DiscoveryProcessorFunction.
  */
-export interface DiscoveryUploadResolverFunctionProps extends IdpPythonFunctionOptions {
+export interface DiscoveryProcessorFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The S3 bucket for discovery document uploads.
    */
@@ -34,6 +41,17 @@ export interface DiscoveryUploadResolverFunctionProps extends IdpPythonFunctionO
   readonly discoveryQueue: sqs.IQueue;
 
   /**
+   * The configuration table for storing discovery results.
+   */
+  readonly configurationTable: IConfigurationTable;
+
+  /**
+   * Optional ProcessingEnvironmentApi for progress notifications.
+   * When provided, the function will use GraphQL mutations to update document status.
+   */
+  readonly api?: IProcessingEnvironmentApi;
+
+  /**
    * Optional KMS key for encrypting function resources.
    */
   readonly encryptionKey?: kms.IKey;
@@ -45,27 +63,26 @@ export interface DiscoveryUploadResolverFunctionProps extends IdpPythonFunctionO
 }
 
 /**
- * A Lambda function that handles discovery document uploads via GraphQL API.
+ * A Lambda function that processes discovery jobs from SQS queue.
  *
- * This function generates presigned URLs for document uploads and creates
- * discovery job entries in the tracking table.
+ * This function analyzes documents to identify structure, field types,
+ * and organizational patterns for automated configuration generation.
  */
-export class DiscoveryUploadResolverFunction
-  extends lambda_python.PythonFunction
-{
+export class DiscoveryProcessorFunction extends lambda_python.PythonFunction {
   constructor(
     scope: Construct,
     id: string,
-    props: DiscoveryUploadResolverFunctionProps,
+    props: DiscoveryProcessorFunctionProps,
   ) {
     super(scope, id, {
       ...props,
       entry: path.join(
         __dirname,
-        "../../../assets/lambdas/discovery_upload_resolver",
+        "../../../../assets/lambdas/discovery_processor",
       ),
       runtime: lambda.Runtime.PYTHON_3_12,
-      memorySize: 512,
+      memorySize: 1024,
+      timeout: cdk.Duration.minutes(2),
       bundling: {
         command: [
           "bash",
@@ -94,22 +111,46 @@ export class DiscoveryUploadResolverFunction
           ].join(" && "),
         ],
       },
+      layers: [IdpPythonLayerVersion.getOrCreate(scope, "image")],
       environment: {
         LOG_LEVEL: props.logLevel?.toString() || "INFO",
         DISCOVERY_BUCKET: props.discoveryBucket.bucketName,
         DISCOVERY_TRACKING_TABLE: props.discoveryTable.tableName,
-        DISCOVERY_QUEUE_URL: props.discoveryQueue.queueUrl,
+        CONFIGURATION_TABLE_NAME: props.configurationTable.tableName,
+        APPSYNC_API_URL: props.api?.graphqlUrl || "",
       },
     });
 
     // Grant permissions
-    props.discoveryBucket.grantReadWrite(this);
+    props.discoveryBucket.grantRead(this);
     props.discoveryTable.grantReadWriteData(this);
-    props.discoveryQueue.grantSendMessages(this);
+    props.configurationTable.grantReadWriteData(this);
+    props.api?.grantMutation(this);
+
+    cloudwatch.Metric.grantPutMetricData(this);
+
+    // Grant Bedrock permissions
+    this.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["bedrock:InvokeModel"],
+        resources: [
+          `arn:${cdk.Stack.of(this).partition}:bedrock:*::foundation-model/*`,
+          `arn:${cdk.Stack.of(this).partition}:bedrock:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:inference-profile/*`,
+        ],
+      }),
+    );
 
     // Grant KMS permissions if encryption key is provided
     if (props.encryptionKey) {
       props.encryptionKey.grantEncryptDecrypt(this);
     }
+
+    // Add SQS event source
+    this.addEventSource(
+      new SqsEventSource(props.discoveryQueue, {
+        batchSize: 1,
+      }),
+    );
   }
 }

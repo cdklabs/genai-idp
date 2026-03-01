@@ -14,23 +14,16 @@ import { IKnowledgeBase } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-li
 import * as cdk from "aws-cdk-lib";
 import * as appsync from "aws-cdk-lib/aws-appsync";
 import * as kms from "aws-cdk-lib/aws-kms";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { IBucket } from "aws-cdk-lib/aws-s3";
-import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { IQueue } from "aws-cdk-lib/aws-sqs";
 import * as stepfunctions from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
-import { AgentAnalytics, IAgentAnalytics } from "./agent-analytics";
-import { IDocumentDiscovery } from "../document-discovery";
+import { IDocumentDiscovery } from "./document-discovery";
 import { LogLevel } from "../log-level";
-import { IAgentCompanionChat } from "./agent-companion-chat";
-import * as agentCompanionChatFunctions from "./agent-companion-chat/functions";
 import { ProcessingEnvironmentApiBaseProps } from "./processing-environment-api-base-props";
 import { IConfigurationTable } from "../configuration-table";
-import { IErrorAnalyzer } from "./error-analyzer";
-import { IMCPIntegration } from "./mcp-integration";
-import { ITestStudio } from "./test-studio";
-import { IReportingEnvironment } from "../reporting/reporting-environment";
 import { ITrackingTable } from "../tracking-table";
 import { VpcConfiguration } from "../vpc-configuration";
 import * as functions from "./functions";
@@ -40,6 +33,40 @@ import * as functions from "./functions";
  * IInvokable is now IBedrockInvokable from the alpha module.
  */
 type IInvokable = IBedrockInvokable;
+
+/**
+ * Interface for features that can attach themselves to the ProcessingEnvironmentApi.
+ *
+ * This interface enables a plugin architecture where features encapsulate their own
+ * integration logic rather than having the API manage all feature integrations.
+ * Features implementing this interface can create their own data sources and resolvers
+ * by calling helper methods on the API.
+ *
+ * Example:
+ * class MyFeature extends Construct implements IProcessingEnvironmentApiFeature {
+ *   public attachTo(api: IProcessingEnvironmentApi): void {
+ *     const dataSource = api.addLambdaDataSource('MyFeatureDataSource', this.myFunction);
+ *     dataSource.createResolver('MyFeatureResolver', {
+ *       typeName: 'Query',
+ *       fieldName: 'myFeature',
+ *     });
+ *   }
+ * }
+ *
+ * @since v0.4.16
+ */
+export interface IProcessingEnvironmentApiFeature {
+  /**
+   * Attach this feature to the ProcessingEnvironmentApi.
+   *
+   * This method is called by the feature to integrate itself with the API.
+   * It should create any necessary data sources and resolvers using the
+   * helper methods provided by the API.
+   *
+   * @param api The ProcessingEnvironmentApi to attach to
+   */
+  attachTo(api: IProcessingEnvironmentApi): void;
+}
 
 /**
  * Interface for the document processing environment API.
@@ -53,40 +80,20 @@ export interface IProcessingEnvironmentApi extends appsync.IGraphqlApi {
   readonly graphqlUrl: string;
 
   /**
-   * Adds Test Studio capabilities to the GraphQL API.
-   * Enables test set management, execution, and results analysis.
+   * Add a feature to the ProcessingEnvironmentApi.
    *
-   * @param trackingTable The tracking table for test execution data
-   * @param testSetBucket The S3 bucket for test set storage
-   * @param inputBucket The input bucket for document processing
-   * @param testSetCopyQueue The SQS queue for test set copy operations
-   * @param reportingBucket Optional S3 bucket for reporting data
-   * @param testResultCacheUpdateQueue Optional SQS queue for test result cache updates
-   */
-  addTestStudio(
-    trackingTable: ITrackingTable,
-    testSetBucket: IBucket,
-    inputBucket: IBucket,
-    testSetCopyQueue: IQueue,
-    reportingBucket?: IBucket,
-    testResultCacheUpdateQueue?: IQueue,
-  ): void;
-
-  /**
-   * Adds Agent Companion Chat capabilities to the GraphQL API.
-   * Enables interactive AI assistant with multi-agent orchestration.
+   * This is the recommended way to integrate features with the API.
+   * Features implementing IProcessingEnvironmentApiFeature will attach themselves
+   * to the API by creating data sources and resolvers.
    *
-   * @param agentCompanionChat The Agent Companion Chat construct with orchestrator and session management
-   */
-  addAgentCompanionChat(agentCompanionChat: IAgentCompanionChat): void;
-
-  /**
-   * Adds Error Analyzer capabilities to the GraphQL API.
-   * Enables AI-powered failure diagnosis and troubleshooting.
+   * @example
+   * const agentAnalytics = new AgentAnalytics(this, 'AgentAnalytics', { ... });
+   * api.addFeature(agentAnalytics);
    *
-   * @param errorAnalyzer The Error Analyzer construct with AI-powered analysis capabilities
+   * @param feature The feature to add to the API
+   * @since v0.4.16
    */
-  addErrorAnalyzer(errorAnalyzer: IErrorAnalyzer): void;
+  addFeature(feature: IProcessingEnvironmentApiFeature): void;
 }
 
 /**
@@ -203,39 +210,6 @@ export interface ProcessingEnvironmentApiProps extends ProcessingEnvironmentApiB
    * Controls how long document data is kept in the system.
    */
   readonly dataRetentionInDays?: number;
-
-  /**
-   * Optional Test Studio construct for test management capabilities.
-   * When provided, enables test set creation, execution, and analysis through the GraphQL API.
-   *
-   * @since v0.4.8
-   */
-  readonly testStudio?: ITestStudio;
-
-  /**
-   * Optional Agent Companion Chat construct for AI assistant capabilities.
-   * When provided, enables interactive chat with multi-agent orchestration through the GraphQL API.
-   *
-   * @since v0.4.8
-   */
-  readonly agentCompanionChat?: IAgentCompanionChat;
-
-  /**
-   * Optional MCP Integration construct for external application access.
-   * When provided, enables MCP server deployment with OAuth 2.0 authentication.
-   *
-   * @since v0.4.8
-   */
-  readonly mcpIntegration?: IMCPIntegration;
-
-  /**
-   * Optional Error Analyzer construct for AI-powered failure diagnosis.
-   * When provided, enables intelligent troubleshooting capabilities with
-   * CloudWatch log analysis and X-Ray trace correlation through the GraphQL API.
-   *
-   * @since v0.4.8
-   */
-  readonly errorAnalyzer?: IErrorAnalyzer;
 }
 
 /**
@@ -278,7 +252,6 @@ export class ProcessingEnvironmentApi
   private readonly _vpcConfiguration?: VpcConfiguration;
   private readonly _configurationTable: IConfigurationTable;
   private readonly outputBucket: IBucket;
-  private _agentAnalytics?: IAgentAnalytics;
 
   /**
    * Creates a new ProcessingEnvironmentApi.
@@ -382,10 +355,6 @@ export class ProcessingEnvironmentApi
       );
     }
 
-    if (props.stateMachine) {
-      this.addStateMachine(props.stateMachine);
-    }
-
     // Add core functionality
     this.addTrackingTable(
       props.trackingTable,
@@ -399,56 +368,66 @@ export class ProcessingEnvironmentApi
       this.addDocumentDiscovery(props.documentDiscovery);
     }
 
-    // Automatically integrate auxiliary features (v0.4.8)
-    if (props.testStudio) {
-      this.addTestStudio(
-        props.trackingTable,
-        props.testStudio.testBucket!,
-        props.inputBucket,
-        props.testStudio.testSetCopyQueue,
-        undefined, // No reporting bucket by default
-        props.testStudio.testResultCacheUpdateQueue,
-      );
-    }
-
-    if (props.agentCompanionChat) {
-      this.addAgentCompanionChat(props.agentCompanionChat);
-    }
-
-    if (props.errorAnalyzer) {
-      this.addErrorAnalyzer(props.errorAnalyzer);
-    }
-
     // Note: MCPIntegration doesn't have an add method yet as it's primarily
     // a standalone construct that provides OAuth endpoints
   }
 
   /**
-   * Add Step Functions resolvers and monitoring for the GraphQL API.
+   * Add a Lambda data source to the GraphQL API.
    *
-   * This method adds Step Functions execution monitoring capabilities to the API,
-   * including query resolvers, mutation resolvers, and automatic subscription publishing.
-   * It can be called after the API has been created to add Step Functions functionality
-   * for the specified state machine.
+   * This helper method allows features to register their Lambda functions as data sources
+   * for GraphQL resolvers. Features implementing IApiAttachable can use this method
+   * during their attachTo() implementation to create data sources.
+   *
+   * @param id The unique identifier for the data source
+   * @param fn The Lambda function to use as the data source
+   * @param options Optional configuration for the data source
+   * @returns The created Lambda data source
+   * @since v0.4.16
+   */
+  public addLambdaDataSource(
+    id: string,
+    fn: lambda.IFunction,
+    options?: appsync.DataSourceOptions,
+  ): appsync.LambdaDataSource {
+    return super.addLambdaDataSource(id, fn, options);
+  }
+
+  /**
+   * Add a None data source to the GraphQL API.
+   *
+   * This helper method allows features to create None data sources for resolvers
+   * that don't require a backend (e.g., for local resolvers or pass-through operations).
+   * Features implementing IProcessingEnvironmentApiFeature can use this method during their attachTo()
+   * implementation.
+   *
+   * @param id The unique identifier for the data source
+   * @param options Optional configuration for the data source
+   * @returns The created None data source
+   * @since v0.4.16
+   */
+  public addNoneDataSource(
+    id: string,
+    options?: appsync.DataSourceOptions,
+  ): appsync.NoneDataSource {
+    return super.addNoneDataSource(id, options);
+  }
+
+  /**
+   * Add a feature to the ProcessingEnvironmentApi.
+   *
+   * This is the recommended way to integrate features with the API.
+   * The feature will attach itself to the API by creating data sources and resolvers.
    *
    * @example
-   * // Add state machine monitoring after API creation
-   * api.addStateMachine(myStateMachine);
+   * const agentAnalytics = new AgentAnalytics(this, 'AgentAnalytics', { ... });
+   * api.addFeature(agentAnalytics);
    *
-   * @param stateMachine The Step Functions state machine to monitor
+   * @param feature The feature to add to the API
+   * @since v0.4.16
    */
-  public addStateMachine(stateMachine: stepfunctions.IStateMachine): void {
-    // Add Step Function execution query resolver
-    const getStepFunctionExecutionDataSource =
-      this.addGetStepFunctionExecutionDataSource(
-        stateMachine,
-        this._encryptionKey,
-        this._logRetention,
-        this._vpcConfiguration,
-      );
-    this.createGetStepFunctionExecutionQueryResolver(
-      getStepFunctionExecutionDataSource,
-    );
+  public addFeature(feature: IProcessingEnvironmentApiFeature): void {
+    feature.attachTo(this);
   }
 
   /**
@@ -571,54 +550,6 @@ export class ProcessingEnvironmentApi
       this._logRetention,
       this._vpcConfiguration,
     );
-  }
-
-  /**
-   * Add Agent Analytics capabilities to the GraphQL API.
-   *
-   * This method adds AI-powered analytics functionality that enables natural language
-   * querying of processed document data. It creates the necessary resolvers and data sources
-   * for agent analytics workflows including database discovery, SQL query generation,
-   * and interactive visualizations.
-   *
-   * @example
-   * // Add agent analytics after API creation
-   * api.addAgentAnalytics(
-   *   trackingTable,
-   *   myAnalyticsModel,
-   *   reportingDatabase,
-   *   athenaBucket
-   * );
-   *
-   * @param trackingTable The DynamoDB table that tracks document processing status
-   * @param model The foundation model or inference profile for analytics queries
-   * @param reportingEnvironment The reporting environment that the analytics will be run for
-   * @param externalMcpAgentsSecret Optional Secrets Manager secret for external MCP agents
-   * @param guardrail Optional Bedrock guardrail for content filtering
-   */
-  public addAgentAnalytics(
-    trackingTable: ITrackingTable,
-    model: bedrock.IBedrockInvokable,
-    reportingEnvironment: IReportingEnvironment,
-    externalMcpAgentsSecret?: secretsmanager.ISecret,
-    guardrail?: bedrock.IGuardrail,
-  ): void {
-    this._agentAnalytics = new AgentAnalytics(this, "AgentAnalytics", {
-      trackingTable,
-      configurationTable: this._configurationTable,
-      model,
-      metricNamespace: "GenAI-IDP",
-      appSyncApiUrl: this.graphqlUrl,
-      reportingEnvironment,
-      encryptionKey: this._encryptionKey,
-      logLevel: this._logLevel,
-      logRetention: this._logRetention,
-      externalMcpAgentsSecret,
-      guardrail,
-    });
-
-    // Add data sources and resolvers for agent analytics
-    this.addAgentAnalyticsDataSources();
   }
 
   /**
@@ -965,73 +896,6 @@ export class ProcessingEnvironmentApi
       dataSource: dataSource,
       typeName: "Query",
       fieldName: "getFileContents",
-    });
-  }
-
-  /**
-   * Add Get Step Function Execution Data Source to the GraphQL API.
-   *
-   * This method creates a Lambda data source for retrieving Step Functions execution details.
-   * The data source can be used to create resolvers that allow clients to fetch
-   * detailed execution information including step history, status, and error details.
-   *
-   * @param stateMachine The Step Functions state machine to query
-   * @param encryptionKey The KMS key for encryption
-   * @param logRetention The log retention period
-   * @param vpcConfiguration The VPC configuration
-   * @returns The created Lambda data source
-   */
-  private addGetStepFunctionExecutionDataSource(
-    stateMachine: stepfunctions.IStateMachine,
-    encryptionKey?: kms.IKey,
-    logRetention?: logs.RetentionDays,
-    vpcConfiguration?: VpcConfiguration,
-  ): appsync.LambdaDataSource {
-    const getStepFunctionExecutionResolverFunction =
-      new functions.GetStepFunctionExecutionResolverFunction(
-        this,
-        "GetStepFunctionExecutionResolverFunction",
-        {
-          stateMachine: stateMachine,
-          encryptionKey: encryptionKey,
-          logGroup: new logs.LogGroup(
-            this,
-            "GetStepFunctionExecutionResolverLogGroup",
-            {
-              encryptionKey: encryptionKey,
-              retention: logRetention || logs.RetentionDays.ONE_WEEK,
-            },
-          ),
-          ...vpcConfiguration,
-        },
-      );
-
-    return this.addLambdaDataSource(
-      "GetStepFunctionExecutionDataSource",
-      getStepFunctionExecutionResolverFunction,
-      {
-        name: "GetStepFunctionExecutionResolver",
-        description: "Get Step Functions execution details with step history",
-      },
-    );
-  }
-
-  /**
-   * Create Get Step Function Execution Query Resolver using the provided data source.
-   *
-   * This method creates a resolver that handles Step Functions execution detail queries
-   * using the specified Lambda data source.
-   *
-   * @param dataSource The Lambda data source for Step Functions execution retrieval
-   * @returns The created resolver
-   */
-  private createGetStepFunctionExecutionQueryResolver(
-    dataSource: appsync.LambdaDataSource,
-  ): appsync.Resolver {
-    return this.createResolver("GetStepFunctionExecutionResolver", {
-      dataSource: dataSource,
-      typeName: "Query",
-      fieldName: "getStepFunctionExecution",
     });
   }
 
@@ -1543,232 +1407,6 @@ export class ProcessingEnvironmentApi
   }
 
   /**
-   * Add data sources and resolvers for Agent Analytics functionality.
-   *
-   * This method creates all the necessary AppSync data sources and resolvers
-   * for agent analytics including agent request handling, job processing,
-   * and listing available agents.
-   */
-  private addAgentAnalyticsDataSources(): void {
-    if (!this._agentAnalytics) {
-      throw new Error(
-        "Agent Analytics must be initialized before adding data sources",
-      );
-    }
-
-    // Add Agent Request Handler data source
-    const agentRequestHandlerDataSource = this.addLambdaDataSource(
-      "AgentRequestHandlerDataSource",
-      this._agentAnalytics.agentRequestHandler,
-      {
-        name: "AgentRequestHandler",
-        description: "Lambda function to handle agent query requests",
-      },
-    );
-
-    // Add List Available Agents data source
-    const listAvailableAgentsDataSource = this.addLambdaDataSource(
-      "ListAvailableAgentsDataSource",
-      this._agentAnalytics.listAvailableAgents,
-      {
-        name: "ListAvailableAgents",
-        description: "Lambda function to list available analytics agents",
-      },
-    );
-
-    // Add Agent Table data source for job status queries
-    const agentTableDataSource = this.addDynamoDbDataSource(
-      "AgentTableDataSource",
-      this._agentAnalytics.agentTable,
-    );
-
-    // Create resolvers
-    this.createResolver("SubmitAgentQueryResolver", {
-      dataSource: agentRequestHandlerDataSource,
-      typeName: "Query",
-      fieldName: "submitAgentQuery",
-    });
-
-    this.createResolver("ListAvailableAgentsResolver", {
-      dataSource: listAvailableAgentsDataSource,
-      typeName: "Query",
-      fieldName: "listAvailableAgents",
-    });
-
-    // Create getAgentJobStatus resolver using DynamoDB data source
-    agentTableDataSource.createResolver("GetAgentJobStatusResolver", {
-      typeName: "Query",
-      fieldName: "getAgentJobStatus",
-      requestMappingTemplate: appsync.MappingTemplate.fromString(`
-        #set($userId = $context.identity.username)
-        #if(!$userId)
-          #set($userId = $context.identity.sub)
-        #end
-        #if(!$userId)
-          #set($userId = "anonymous")
-        #end
-        {
-          "version": "2018-05-29",
-          "operation": "GetItem",
-          "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("agent#\${userId}"),
-            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          }
-        }
-      `),
-      responseMappingTemplate: appsync.MappingTemplate.fromString(`
-        #if(!$ctx.result)
-          null
-        #else
-          {
-            "jobId": $util.toJson($ctx.result.SK),
-            "status": $util.toJson($ctx.result.status),
-            "query": $util.toJson($ctx.result.query),
-            "agentIds": $util.toJson($ctx.result.agentIds),
-            "createdAt": $util.toJson($ctx.result.createdAt),
-            "completedAt": $util.toJson($ctx.result.completedAt),
-            "result": $util.toJson($ctx.result.result),
-            "error": $util.toJson($ctx.result.error),
-            "agent_messages": $util.toJson($ctx.result.agent_messages)
-          }
-        #end
-      `),
-    });
-
-    // Create updateAgentJobStatus resolver using DynamoDB data source
-    agentTableDataSource.createResolver("UpdateAgentJobStatusResolver", {
-      typeName: "Mutation",
-      fieldName: "updateAgentJobStatus",
-      requestMappingTemplate: appsync.MappingTemplate.fromString(`
-        #set($userId = $ctx.args.userId)
-        #set($expNames = {})
-        #set($expValues = {})
-        
-        ## Set status (required)
-        $util.qr($expNames.put("#status", "status"))
-        $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
-        
-        ## Set result if provided
-        #if($ctx.args.result)
-          $util.qr($expNames.put("#result", "result"))
-          $util.qr($expValues.put(":result", $util.dynamodb.toDynamoDB($ctx.args.result)))
-        #end
-        
-        ## Set completedAt timestamp
-        $util.qr($expNames.put("#completedAt", "completedAt"))
-        $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
-        
-        {
-          "version": "2018-05-29",
-          "operation": "UpdateItem",
-          "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("agent#\${userId}"),
-            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          },
-          "update": {
-            "expression": "SET #status = :status, #completedAt = :completedAt#if($ctx.args.result), #result = :result#end",
-            "expressionNames": $util.toJson($expNames),
-            "expressionValues": $util.toJson($expValues)
-          }
-        }
-      `),
-      responseMappingTemplate: appsync.MappingTemplate.fromString(`
-        #if($ctx.error)
-          $util.error($ctx.error.message, $ctx.error.type)
-        #end
-        
-        ## Return false if no item was updated (item not found)
-        #if(!$ctx.result)
-          false
-        #else
-          true
-        #end
-      `),
-    });
-
-    // Create listAgentJobs resolver using DynamoDB data source
-    agentTableDataSource.createResolver("ListAgentJobsResolver", {
-      typeName: "Query",
-      fieldName: "listAgentJobs",
-      requestMappingTemplate: appsync.MappingTemplate.fromString(`
-        #set($userId = $context.identity.username)
-        #if(!$userId)
-          #set($userId = $context.identity.sub)
-        #end
-        #if(!$userId)
-          #set($userId = "anonymous")
-        #end
-        {
-          "version": "2018-05-29",
-          "operation": "Query",
-          "query": {
-            "expression": "PK = :pk",
-            "expressionValues": {
-              ":pk": $util.dynamodb.toDynamoDBJson("agent#\${userId}")
-            }
-          },
-          #if($ctx.args.limit)
-            "limit": $ctx.args.limit,
-          #end
-          #if($ctx.args.nextToken)
-            "nextToken": "$ctx.args.nextToken",
-          #end
-          "scanIndexForward": false
-        }
-      `),
-      responseMappingTemplate: appsync.MappingTemplate.fromString(`
-        {
-          "items": [
-            #foreach($item in $ctx.result.items)
-              {
-                "jobId": $util.toJson($item.SK),
-                "status": $util.toJson($item.status),
-                "query": $util.toJson($item.query),
-                "agentIds": $util.toJson($item.agentIds),
-                "createdAt": $util.toJson($item.createdAt),
-                "completedAt": $util.toJson($item.completedAt),
-                "result": $util.toJson($item.result),
-                "error": $util.toJson($item.error)
-              }#if($foreach.hasNext),#end
-            #end
-          ],
-          "nextToken": $util.toJson($ctx.result.nextToken)
-        }
-      `),
-    });
-
-    // Create deleteAgentJob resolver using DynamoDB data source
-    agentTableDataSource.createResolver("DeleteAgentJobResolver", {
-      typeName: "Mutation",
-      fieldName: "deleteAgentJob",
-      requestMappingTemplate: appsync.MappingTemplate.fromString(`
-        #set($userId = $context.identity.username)
-        #if(!$userId)
-          #set($userId = $context.identity.sub)
-        #end
-        #if(!$userId)
-          #set($userId = "anonymous")
-        #end
-        {
-          "version": "2018-05-29",
-          "operation": "DeleteItem",
-          "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("agent#\${userId}"),
-            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          }
-        }
-      `),
-      responseMappingTemplate: appsync.MappingTemplate.fromString(`
-        #if($ctx.error)
-          $util.error($ctx.error.message, $ctx.error.type)
-        #else
-          true
-        #end
-      `),
-    });
-  }
-
-  /**
    * Add Chat with Document data source.
    *
    * This method creates a Lambda data source for chat with document functionality
@@ -1962,326 +1600,5 @@ export class ProcessingEnvironmentApi
         `),
       },
     );
-  }
-
-  /**
-   * Add Test Studio capabilities to the GraphQL API.
-   *
-   * This method adds test management functionality including:
-   * - Test set creation and management
-   * - Test execution and tracking
-   * - Test results retrieval and comparison
-   * - Test performance analysis
-   *
-   * @example
-   * // Add test studio after API creation
-   * api.addTestStudio(
-   *   trackingTable,
-   *   testSetBucket,
-   *   inputBucket,
-   *   testSetCopyQueue,
-   *   reportingBucket,
-   *   testResultCacheUpdateQueue
-   * );
-   *
-   * @param trackingTable The DynamoDB table for tracking test execution
-   * @param testSetBucket The S3 bucket for storing test documents and baselines
-   * @param inputBucket The S3 bucket for input documents (for pattern-based test sets)
-   * @param testSetCopyQueue The SQS queue for test set file copying operations
-   * @param reportingBucket Optional S3 bucket for detailed reporting data
-   * @param testResultCacheUpdateQueue Optional SQS queue for test result cache updates
-   */
-  public addTestStudio(
-    trackingTable: ITrackingTable,
-    testSetBucket: IBucket,
-    inputBucket: IBucket,
-    testSetCopyQueue: IQueue,
-    reportingBucket?: IBucket,
-    testResultCacheUpdateQueue?: IQueue,
-  ): void {
-    // Import the resolver functions
-    const { TestSetResolverFunction, TestResultsResolverFunction } = functions;
-
-    // Create test set resolver function
-    const testSetResolverFunction = new TestSetResolverFunction(
-      this,
-      "TestSetResolverFunction",
-      {
-        trackingTable,
-        testSetBucket,
-        inputBucket,
-        testSetCopyQueue,
-        encryptionKey: this._encryptionKey,
-        logLevel: this._logLevel,
-        logRetention: this._logRetention,
-        ...this._vpcConfiguration,
-      },
-    );
-
-    // Create test results resolver function
-    const testResultsResolverFunction = new TestResultsResolverFunction(
-      this,
-      "TestResultsResolverFunction",
-      {
-        trackingTable,
-        reportingBucket,
-        testResultCacheUpdateQueue,
-        encryptionKey: this._encryptionKey,
-        logLevel: this._logLevel,
-        logRetention: this._logRetention,
-        ...this._vpcConfiguration,
-      },
-    );
-
-    // Create data sources
-    const testSetDataSource = this.addLambdaDataSource(
-      "TestSetDataSource",
-      testSetResolverFunction,
-    );
-
-    const testResultsDataSource = this.addLambdaDataSource(
-      "TestResultsDataSource",
-      testResultsResolverFunction,
-    );
-
-    // Create test set resolvers
-    testSetDataSource.createResolver("GetTestSetsResolver", {
-      typeName: "Query",
-      fieldName: "getTestSets",
-    });
-
-    testSetDataSource.createResolver("AddTestSetResolver", {
-      typeName: "Mutation",
-      fieldName: "addTestSet",
-    });
-
-    testSetDataSource.createResolver("AddTestSetFromUploadResolver", {
-      typeName: "Mutation",
-      fieldName: "addTestSetFromUpload",
-    });
-
-    testSetDataSource.createResolver("DeleteTestSetsResolver", {
-      typeName: "Mutation",
-      fieldName: "deleteTestSets",
-    });
-
-    testSetDataSource.createResolver("ListBucketFilesResolver", {
-      typeName: "Query",
-      fieldName: "listBucketFiles",
-    });
-
-    testSetDataSource.createResolver("ValidateTestFileNameResolver", {
-      typeName: "Query",
-      fieldName: "validateTestFileName",
-    });
-
-    // Create test results resolvers
-    testResultsDataSource.createResolver("GetTestRunResolver", {
-      typeName: "Query",
-      fieldName: "getTestRun",
-    });
-
-    testResultsDataSource.createResolver("GetTestRunsResolver", {
-      typeName: "Query",
-      fieldName: "getTestRuns",
-    });
-
-    testResultsDataSource.createResolver("GetTestRunStatusResolver", {
-      typeName: "Query",
-      fieldName: "getTestRunStatus",
-    });
-
-    testResultsDataSource.createResolver("CompareTestRunsResolver", {
-      typeName: "Query",
-      fieldName: "compareTestRuns",
-    });
-
-    // Create test runner resolver (uses the same test results function)
-    testResultsDataSource.createResolver("StartTestRunResolver", {
-      typeName: "Mutation",
-      fieldName: "startTestRun",
-    });
-
-    testResultsDataSource.createResolver("DeleteTestsResolver", {
-      typeName: "Mutation",
-      fieldName: "deleteTests",
-    });
-  }
-
-  /**
-   * Add Agent Companion Chat capabilities to the GraphQL API.
-   *
-   * This method adds AI assistant functionality including:
-   * - Multi-agent orchestration (Analytics, Error Analyzer, General)
-   * - Session-based conversation management
-   * - Real-time streaming through AppSync subscriptions
-   * - Conversation history with sliding window (last 20 turns)
-   * - Optional Code Intelligence agent
-   *
-   * @example
-   * // Add agent companion chat after API creation
-   * api.addAgentCompanionChat(agentCompanionChat);
-   *
-   * @param agentCompanionChat The Agent Companion Chat construct with orchestrator and session management
-   */
-  public addAgentCompanionChat(agentCompanionChat: IAgentCompanionChat): void {
-    // Import the resolver functions
-    const { AgentChatResolverFunction } = functions;
-    const {
-      ListAgentChatSessionsFunction,
-      GetAgentChatMessagesFunction,
-      DeleteAgentChatSessionFunction,
-    } = agentCompanionChatFunctions;
-
-    // Create agent chat resolver function (handles sendAgentChatMessage)
-    const agentChatResolverFunction = new AgentChatResolverFunction(
-      this,
-      "AgentChatResolverFunction",
-      {
-        sessionTable: agentCompanionChat.sessionTable!,
-        messagesTable: agentCompanionChat.messagesTable!,
-        orchestratorFunction: agentCompanionChat.orchestratorFunction,
-        enableCodeIntelligence: true, // Default to enabled
-        encryptionKey: this._encryptionKey,
-        logLevel: this._logLevel,
-        logRetention: this._logRetention,
-        ...this._vpcConfiguration,
-      },
-    );
-
-    // Create list sessions function
-    const listAgentChatSessionsFunction = new ListAgentChatSessionsFunction(
-      this,
-      "ListAgentChatSessionsFunction",
-      {
-        sessionTable: agentCompanionChat.sessionTable!,
-        encryptionKey: this._encryptionKey,
-        logRetention: this._logRetention,
-        ...this._vpcConfiguration,
-      },
-    );
-
-    // Create get messages function
-    const getAgentChatMessagesFunction = new GetAgentChatMessagesFunction(
-      this,
-      "GetAgentChatMessagesFunction",
-      {
-        messagesTable: agentCompanionChat.messagesTable!,
-        encryptionKey: this._encryptionKey,
-        logRetention: this._logRetention,
-        ...this._vpcConfiguration,
-      },
-    );
-
-    // Create delete session function
-    const deleteAgentChatSessionFunction = new DeleteAgentChatSessionFunction(
-      this,
-      "DeleteAgentChatSessionFunction",
-      {
-        sessionTable: agentCompanionChat.sessionTable!,
-        messagesTable: agentCompanionChat.messagesTable!,
-        encryptionKey: this._encryptionKey,
-        logRetention: this._logRetention,
-        ...this._vpcConfiguration,
-      },
-    );
-
-    // Create data sources
-    const agentChatDataSource = this.addLambdaDataSource(
-      "AgentChatDataSource",
-      agentChatResolverFunction,
-    );
-
-    const listSessionsDataSource = this.addLambdaDataSource(
-      "ListAgentChatSessionsDataSource",
-      listAgentChatSessionsFunction,
-    );
-
-    const getMessagesDataSource = this.addLambdaDataSource(
-      "GetAgentChatMessagesDataSource",
-      getAgentChatMessagesFunction,
-    );
-
-    const deleteSessionDataSource = this.addLambdaDataSource(
-      "DeleteAgentChatSessionDataSource",
-      deleteAgentChatSessionFunction,
-    );
-
-    // Create agent chat message resolver (mutation)
-    agentChatDataSource.createResolver("SendAgentChatMessageResolver", {
-      typeName: "Mutation",
-      fieldName: "sendAgentChatMessage",
-    });
-
-    // Create list sessions resolver (query)
-    listSessionsDataSource.createResolver("ListChatSessionsResolver", {
-      typeName: "Query",
-      fieldName: "listChatSessions",
-    });
-
-    // Create get messages resolver (query)
-    getMessagesDataSource.createResolver("GetChatMessagesResolver", {
-      typeName: "Query",
-      fieldName: "getChatMessages",
-    });
-
-    // Create delete session resolver (mutation)
-    deleteSessionDataSource.createResolver("DeleteChatSessionResolver", {
-      typeName: "Mutation",
-      fieldName: "deleteChatSession",
-    });
-  }
-
-  /**
-   * Add Error Analyzer capabilities to the API.
-   *
-   * This method integrates an Error Analyzer construct with the ProcessingEnvironmentApi
-   * to provide GraphQL operations for AI-powered failure diagnosis and troubleshooting.
-   *
-   * @example
-   * // Add error analyzer after API creation
-   * api.addErrorAnalyzer(errorAnalyzer);
-   *
-   * @param errorAnalyzer The Error Analyzer construct with AI-powered analysis capabilities
-   */
-  public addErrorAnalyzer(errorAnalyzer: IErrorAnalyzer): void {
-    // Import the resolver functions
-    const { ErrorAnalyzerResolverFunction } = functions;
-
-    // Create error analyzer resolver function
-    const errorAnalyzerResolverFunction = new ErrorAnalyzerResolverFunction(
-      this,
-      "ErrorAnalyzerResolverFunction",
-      {
-        analyzerFunction: errorAnalyzer.analyzerFunction,
-        traceTable: errorAnalyzer.traceTable!,
-        encryptionKey: this._encryptionKey,
-        logLevel: this._logLevel,
-        logRetention: this._logRetention,
-        vpcConfiguration: this._vpcConfiguration,
-      },
-    );
-
-    // Create data source
-    const errorAnalyzerDataSource = this.addLambdaDataSource(
-      "ErrorAnalyzerDataSource",
-      errorAnalyzerResolverFunction,
-    );
-
-    // Create error analysis resolvers
-    errorAnalyzerDataSource.createResolver("AnalyzeErrorResolver", {
-      typeName: "Mutation",
-      fieldName: "analyzeError",
-    });
-
-    errorAnalyzerDataSource.createResolver("GetErrorAnalysisResolver", {
-      typeName: "Query",
-      fieldName: "getErrorAnalysis",
-    });
-
-    errorAnalyzerDataSource.createResolver("ListErrorAnalysesResolver", {
-      typeName: "Query",
-      fieldName: "listErrorAnalyses",
-    });
   }
 }

@@ -7,16 +7,16 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
-import { IConfigurationTable } from "../configuration-table";
-import { LogLevel } from "../log-level";
-import { IProcessingEnvironmentApi } from "../processing-environment-api";
-import { VpcConfiguration } from "../vpc-configuration";
 import { DiscoveryQueue, IDiscoveryQueue } from "./discovery-queue";
 import { DiscoveryTable, IDiscoveryTable } from "./discovery-table";
 import {
   DiscoveryProcessorFunction,
   DiscoveryUploadResolverFunction,
 } from "./functions";
+import { IConfigurationTable } from "../../configuration-table";
+import { LogLevel } from "../../log-level";
+import { VpcConfiguration } from "../../vpc-configuration";
+import { IProcessingEnvironmentApi } from "../processing-environment-api";
 
 /**
  * Result of initializing DocumentDiscovery functions.
