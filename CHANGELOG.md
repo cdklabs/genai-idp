@@ -4,6 +4,59 @@ All notable changes to the GenAI IDP Accelerator for AWS CDK will be documented 
 
 This project tracks functional parity with the [GenAI IDP Accelerator Core](https://github.com/aws-samples/generative-ai-cdk-constructs) releases.
 
+## 2026-03-01
+
+### Core Version Alignment
+This release aligns the CDK constructs with GenAI IDP Accelerator Core v0.4.16.
+
+### Added
+
+#### Pattern 2 (Bedrock LLM Processor)
+- Rule validation Lambda functions (`RuleValidationFunction` and `RuleValidationOrchestrationFunction`) for business rule validation in extraction workflow
+- Custom prompt generator support via `customPromptGeneratorFunction` in configuration options
+  - Accepts `lambda.IFunction` in configuration definition options
+  - Automatically injects function ARN into configuration at `extraction.custom_prompt_lambda_arn`
+  - Grants invoke permissions to extraction function
+  - Supports both user-provided functions and ARN-based imports from configuration files
+
+#### Pattern 3 (SageMaker UDOP Processor)
+- Custom prompt generator support via `customPromptGeneratorFunction` in configuration options (same implementation as Pattern 2)
+
+#### Configuration System
+- System defaults merging at CDK synthesis time for all processor patterns
+- `mergeConfigWithDefaults()` utility function in `config-merge-utils.ts` for merging user configurations with pattern-specific system defaults
+- Automatic null value removal from merged configurations (CloudFormation compatibility)
+- Static factory methods for all BDA processor configurations:
+  - `BdaProcessorConfiguration.lendingPackageSample()`
+  - `BdaProcessorConfiguration.lendingPackageSampleGovcloud()`
+  - `BdaProcessorConfiguration.docsplit()`
+  - `BdaProcessorConfiguration.ocrBenchmark()`
+  - `BdaProcessorConfiguration.realkieFccVerified()`
+  - `BdaProcessorConfiguration.rvlCdip()`
+
+### Fixed
+- CloudFormation deployment error caused by null values in merged configurations (Pattern 3)
+- Evaluation function now always created in Pattern 2 (required by state machine definition)
+- Lambda entry paths updated for relocated document-discovery functions (moved one level deeper)
+
+### Changed
+
+#### Architecture
+- Relocated `DocumentDiscovery` from `src/document-discovery/` to `src/processing-environment-api/document-discovery/` to properly categorize as API feature
+  - Maintains backward compatibility through top-level exports
+  - Updated Lambda entry paths to reflect new directory structure
+
+#### Documentation
+- Updated all version references from v0.4.8 to v0.4.16 across README files, documentation, and JSDoc comments
+- Removed "What's New" sections from README and documentation (CDK wrapper focuses on usage, not upstream features)
+- Updated HITL JSDoc comments to reference v0.4.16 instead of v0.4.12
+
+#### Configuration
+- Pattern 3 integration test now uses custom configuration file with `max_tokens: 4096` override (compatible with Nova Pro's 5000 token limit)
+
+### Deprecated
+- Pattern 3 (SageMaker UDOP Processor) marked as deprecated, will be removed in v0.5.0
+
 ## 2026-02-25
 
 ### Core Version Alignment
