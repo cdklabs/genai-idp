@@ -108,24 +108,6 @@ export interface ProcessResultsFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
-
-  /**
-   * Enable Human In The Loop (HITL) review for documents with low confidence scores.
-   * When enabled, documents that fall below the confidence threshold will be
-   * sent for human review before proceeding with the workflow.
-   *
-   * @default false
-   */
-  readonly enableHITL?: boolean;
-
-  /**
-   * URL for the SageMaker A2I review portal used for HITL tasks.
-   * This URL is provided to human reviewers to access documents that require
-   * manual review and correction.
-   *
-   * @default - No review portal URL is provided
-   */
-  readonly sageMakerA2IReviewPortalURL?: string;
 }
 
 export class ProcessResultsFunction extends PythonFunction {
@@ -187,9 +169,6 @@ export class ProcessResultsFunction extends PythonFunction {
         DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
         WORKING_BUCKET: props.workingBucket.bucketName,
         BDA_PROJECT_ARN: props.dataAutomationProject.arn,
-        ENABLE_HITL: props.enableHITL === true ? "true" : "false",
-        SAGEMAKER_A2I_REVIEW_PORTAL_URL:
-          props.sageMakerA2IReviewPortalURL || "",
         ...(props.api && { APPSYNC_API_URL: props.api.graphqlUrl }),
       },
     });

@@ -16,7 +16,6 @@ import * as cdk from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as events from "aws-cdk-lib/aws-events";
 import * as eventtargets from "aws-cdk-lib/aws-events-targets";
-import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
@@ -27,9 +26,6 @@ import { BdaProcessorConfigurationSchema } from "./configuration/schema";
 import { IDataAutomationProject } from "./data-automation-project";
 import { BdaCompletionFunction } from "./internal/bda-completion-function";
 import { BdaInvokeFunction } from "./internal/bda-invoke-function";
-import { HitlProcessFunction } from "./internal/hitl-process-function";
-import { HitlStatusUpdateFunction } from "./internal/hitl-status-update-function";
-import { HitlWaitFunction } from "./internal/hitl-wait-function";
 import { ProcessResultsFunction } from "./internal/process-results-function";
 import { SummarizationFunction } from "./internal/summarization-function";
 
@@ -93,24 +89,6 @@ export interface BdaProcessorProps extends DocumentProcessorProps {
   readonly evaluationBaselineBucket?: s3.IBucket;
 
   /**
-   * Enable Human In The Loop (HITL) review for documents with low confidence scores.
-   * When enabled, documents that fall below the confidence threshold will be
-   * sent for human review before proceeding with the workflow.
-   *
-   * @default false
-   */
-  readonly enableHITL?: boolean;
-
-  /**
-   * URL for the SageMaker A2I review portal used for HITL tasks.
-   * This URL is provided to human reviewers to access documents that require
-   * manual review and correction.
-   *
-   * @default - No review portal URL is provided
-   */
-  readonly sageMakerA2IReviewPortalURL?: string;
-
-  /**
    * Section splitting strategy configuration.
    *
    * Controls how multi-page documents are divided into sections during classification.
@@ -160,8 +138,6 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
       },
     });
 
-    const { evaluationBaselineBucket } = props;
-
     const renderedDefinition = props.configuration.bind(this);
 
     const invokeBDAFunction = new BdaInvokeFunction(this, "InvokeBDAFunction", {
@@ -194,8 +170,6 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
         metricNamespace: this.environment.metricNamespace,
         logLevel: this.environment.logLevel,
         api: this.environment.api,
-        enableHITL: props.enableHITL,
-        sageMakerA2IReviewPortalURL: props.sageMakerA2IReviewPortalURL,
         logGroup: new logs.LogGroup(this, "ProcessResultsFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
           retention: this.environment.logRetention,
@@ -227,42 +201,29 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
       },
     );
 
-    const hitlWaitFunction = new HitlWaitFunction(this, "HITLWaitFunction", {
-      metricNamespace: this.environment.metricNamespace,
-      logLevel: this.environment.logLevel,
-      trackingTable: this.environment.trackingTable,
-      bdaMetadataTable: bdaMetadataTable,
-      workingBucket: this.environment.workingBucket,
-      encryptionKey: this.environment.encryptionKey,
-      sagemakerA2IReviewPortalUrl: props.sageMakerA2IReviewPortalURL,
-      logGroup: new logs.LogGroup(this, "HITLWaitFunctionLogGroup", {
-        encryptionKey: this.environment.encryptionKey,
-        retention: this.environment.logRetention,
-      }),
-      ...this.environment.vpcConfiguration,
-    });
-
-    const hitlStatusUpdateFunction = new HitlStatusUpdateFunction(
-      this,
-      "HITLStatusUpdateFunction",
-      {
-        metricNamespace: this.environment.metricNamespace,
-        logLevel: this.environment.logLevel,
-        trackingTable: this.environment.trackingTable,
-        outputBucket: this.environment.outputBucket,
-        encryptionKey: this.environment.encryptionKey,
-        logGroup: new logs.LogGroup(this, "HITLStatusUpdateFunctionLogGroup", {
-          encryptionKey: this.environment.encryptionKey,
-          retention: this.environment.logRetention,
+    // Workaround: Explicitly grant invoke permissions for cross-region inference profiles
+    // The grantInvoke() method on CrossRegionInferenceProfile.fromConfig() doesn't add IAM permissions
+    if (renderedDefinition.summarizationModel) {
+      summarizationFunction.addToRolePolicy(
+        new cdk.aws_iam.PolicyStatement({
+          actions: ["bedrock:InvokeModel", "bedrock:GetInferenceProfile"],
+          resources: [
+            cdk.Stack.of(this).formatArn({
+              service: "bedrock",
+              resource: "inference-profile",
+              resourceName: "*",
+              arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
+            }),
+          ],
         }),
-        ...this.environment.vpcConfiguration,
-      },
-    );
+      );
+    }
 
-    // Create evaluation function if baseline bucket and model are provided
-    let evaluationFunction: lambda.IFunction | undefined;
-    if (evaluationBaselineBucket && renderedDefinition.evaluationModel) {
-      evaluationFunction = new EvaluationFunction(this, "EvaluationFunction", {
+    // Always create evaluation function
+    const evaluationFunction = new EvaluationFunction(
+      this,
+      "EvaluationFunction",
+      {
         entry: path.join(
           __dirname,
           "..",
@@ -276,7 +237,7 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
         workingBucket: this.environment.workingBucket,
         trackingTable: this.environment.trackingTable,
         configurationTable: this.environment.configurationTable,
-        baselineBucket: evaluationBaselineBucket,
+        baselineBucket: props.evaluationBaselineBucket,
         reportingEnvironment: this.environment.reportingEnvironment,
         saveReportingDataFunction: this.environment.saveReportingDataFunction,
         api: this.environment.api,
@@ -285,9 +246,13 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
           retention: this.environment.logRetention,
         }),
         ...this.environment.vpcConfiguration,
-      });
+      },
+    );
 
-      this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
+    this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
+
+    // Only grant model invoke permissions if evaluation model is provided
+    if (renderedDefinition.evaluationModel) {
       renderedDefinition.evaluationModel.grantInvoke(evaluationFunction);
     }
 
@@ -302,11 +267,7 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
           InvokeBDALambdaArn: invokeBDAFunction.functionArn,
           ProcessResultsLambdaArn: processResultsFunction.functionArn,
           SummarizationLambdaArn: summarizationFunction.functionArn,
-          HITLWaitFunctionArn: hitlWaitFunction.functionArn,
-          HITLStatusUpdateFunctionArn: hitlStatusUpdateFunction.functionArn,
-          EvaluationLambdaArn: evaluationFunction?.functionArn || "",
-          EnableHITL: props.enableHITL === true ? "true" : "false",
-          SageMakerA2IReviewPortalURL: props.sageMakerA2IReviewPortalURL || "",
+          EvaluationLambdaArn: evaluationFunction.functionArn,
           OutputBucket: this.environment.outputBucket.bucketName,
           WorkingBucket: this.environment.workingBucket.bucketName,
           BDAProjectArn: props.dataAutomationProject.arn,
@@ -325,13 +286,7 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
     invokeBDAFunction.grantInvoke(this.stateMachine);
     processResultsFunction.grantInvoke(this.stateMachine);
     summarizationFunction.grantInvoke(this.stateMachine);
-    hitlWaitFunction.grantInvoke(this.stateMachine);
-    hitlStatusUpdateFunction.grantInvoke(this.stateMachine);
-
-    // Grant permission to invoke evaluation function if it exists
-    if (evaluationFunction) {
-      evaluationFunction.grantInvoke(this.stateMachine);
-    }
+    evaluationFunction.grantInvoke(this.stateMachine);
 
     const bdaCompletionFunction = new BdaCompletionFunction(
       this,
@@ -351,30 +306,6 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
     );
 
     this.addEvent(bdaCompletionFunction);
-
-    // Create HITL Process Function for handling A2I completion events
-    const hitlProcessFunction = new HitlProcessFunction(
-      this,
-      "HITLProcessFunction",
-      {
-        metricNamespace: this.environment.metricNamespace,
-        logLevel: this.environment.logLevel,
-        trackingTable: this.environment.trackingTable,
-        bdaMetadataTable: bdaMetadataTable,
-        inputBucket: this.environment.inputBucket,
-        workingBucket: this.environment.workingBucket,
-        outputBucket: this.environment.outputBucket,
-        stateMachine: this.stateMachine,
-        encryptionKey: this.environment.encryptionKey,
-        logGroup: new logs.LogGroup(this, "HITLProcessFunctionLogGroup", {
-          encryptionKey: this.environment.encryptionKey,
-          retention: this.environment.logRetention,
-        }),
-        ...this.environment.vpcConfiguration,
-      },
-    );
-
-    this.addHitlEvent(hitlProcessFunction);
 
     // Attach processor to environment (creates queue processor and event rules)
     this.environment.attach(this);
@@ -396,27 +327,6 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
     // Add Lambda function as a target for the EventBridge rule
     bdaEventRule.addTarget(
       new eventtargets.LambdaFunction(bdaCompletionFunction, {
-        maxEventAge: cdk.Duration.hours(2),
-        retryAttempts: 3,
-      }),
-    );
-  }
-
-  private addHitlEvent(hitlProcessFunction: HitlProcessFunction) {
-    // Create EventBridge rule for HITL (SageMaker A2I) events
-    const hitlEventRule = new events.Rule(this, "HITLEventRule", {
-      eventPattern: {
-        source: ["aws.sagemaker"],
-        detailType: ["SageMaker A2I HumanLoop Status Change"],
-        detail: {
-          humanLoopStatus: ["Completed"],
-        },
-      },
-    });
-
-    // Add Lambda function as a target for the EventBridge rule
-    hitlEventRule.addTarget(
-      new eventtargets.LambdaFunction(hitlProcessFunction, {
         maxEventAge: cdk.Duration.hours(2),
         retryAttempts: 3,
       }),
