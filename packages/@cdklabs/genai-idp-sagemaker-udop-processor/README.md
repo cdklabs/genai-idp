@@ -1,6 +1,8 @@
 # GenAI IDP SagemakerUdopProcessor
 
-[![Compatible with GenAI IDP version: 0.4.8](https://img.shields.io/badge/Compatible%20with%20GenAI%20IDP-0.4.8-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.4.8)
+> **⚠️ DEPRECATION NOTICE**: This processor pattern (Pattern 3) is deprecated and will be removed in v0.5.0 of the GenAI IDP Core package. Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+[![Compatible with GenAI IDP version: 0.4.16](https://img.shields.io/badge/Compatible%20with%20GenAI%20IDP-0.4.16-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.4.16)
 ![Stability: Experimental](https://img.shields.io/badge/Stability-Experimental-important.svg)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
