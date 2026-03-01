@@ -9,16 +9,12 @@ import {
   DocumentProcessorProps,
   IProcessingEnvironment,
   IDocumentProcessor,
-  ICustomPromptGenerator,
   SectionSplittingStrategy,
   MaxPagesForClassification,
 } from "@cdklabs/genai-idp";
 import { EvaluationFunction } from "@cdklabs/genai-idp/lib/internal/functions/evaluation-function";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
-import * as events from "aws-cdk-lib/aws-events";
-import * as eventtargets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
@@ -30,11 +26,11 @@ import {
 import { AssessmentFunction } from "./internal/assessment-function";
 import { ClassificationFunction } from "./internal/classification-function";
 import { ExtractionFunction } from "./internal/extraction-function";
-import { HitlProcessFunction } from "./internal/hitl-process-function";
-import { HitlStatusUpdateFunction } from "./internal/hitl-status-update-function";
-import { HitlWaitFunction } from "./internal/hitl-wait-function";
+
 import { OcrFunction } from "./internal/ocr-function";
 import { ProcessResultsFunction } from "./internal/process-results-function";
+import { RuleValidationFunction } from "./internal/rule-validation-function";
+import { RuleValidationOrchestrationFunction } from "./internal/rule-validation-orchestration-function";
 import { SummarizationFunction } from "./internal/summarization-function";
 
 /**
@@ -145,31 +141,6 @@ export interface BedrockLlmProcessorProps extends DocumentProcessorProps {
    * @default - No evaluation baseline bucket is configured
    */
   readonly evaluationBaselineBucket?: s3.IBucket;
-
-  /**
-   * Optional custom prompt generator for injecting business logic into extraction processing.
-   * When provided, this Lambda function will be called to customize prompts based on
-   * document content, business rules, or external system integrations.
-   *
-   * @default - No custom prompt generator is used
-   */
-  readonly customPromptGenerator?: ICustomPromptGenerator;
-
-  /**
-   * Optional SageMaker A2I Review Portal URL for HITL workflows.
-   * Used to provide human reviewers with access to the A2I review interface
-   * for document validation and correction workflows.
-   *
-   * @default - No A2I review portal URL is configured
-   */
-  readonly sageMakerA2IReviewPortalUrl?: string;
-
-  /**
-   * Enable Human In The Loop (A2I) for document review.
-   *
-   * @default false
-   */
-  readonly enableHitl?: boolean;
 
   /**
    * Enable agentic extraction with Strands framework.
@@ -328,6 +299,7 @@ export class BedrockLlmProcessor
         encryptionKey: this.environment.encryptionKey,
         extractionModel: renderedConfiguration.extractionModel,
         extractionGuardrail: props.extractionGuardrail,
+        customPromptGenerator: renderedConfiguration.customPromptGenerator,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "ExtractionFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
@@ -373,8 +345,6 @@ export class BedrockLlmProcessor
         outputBucket: this.environment.outputBucket,
         workingBucket: this.environment.workingBucket,
         encryptionKey: this.environment.encryptionKey,
-        enableHitl: props.enableHitl,
-        sageMakerA2IReviewPortalUrl: props.sageMakerA2IReviewPortalUrl,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "ProcessResultsFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
@@ -408,34 +378,94 @@ export class BedrockLlmProcessor
       },
     );
 
-    // HITL Wait Function
-    const hitlWaitFunction = new HitlWaitFunction(this, "HITLWaitFunction", {
-      logLevel: this.environment.logLevel,
-      trackingTable: this.environment.trackingTable,
-      workingBucket: this.environment.workingBucket,
-      api: this.environment.api,
-      sageMakerA2IReviewPortalUrl: props.sageMakerA2IReviewPortalUrl,
-      logGroup: new logs.LogGroup(this, "HITLWaitFunctionLogGroup", {
-        encryptionKey: this.environment.encryptionKey,
-        retention: this.environment.logRetention,
-      }),
-      ...this.environment.vpcConfiguration,
-    });
-
-    // HITL Status Update Function
-    const hitlStatusUpdateFunction = new HitlStatusUpdateFunction(
+    // Rule Validation Function - for validating extraction results against business rules
+    const ruleValidationFunction = new RuleValidationFunction(
       this,
-      "HITLStatusUpdateFunction",
+      "RuleValidationFunction",
       {
+        metricNamespace: this.environment.metricNamespace,
+        logLevel: this.environment.logLevel,
+        configurationTable: this.environment.configurationTable,
+        trackingTable: this.environment.trackingTable,
+        inputBucket: this.environment.inputBucket,
+        outputBucket: this.environment.outputBucket,
         workingBucket: this.environment.workingBucket,
-        encryptionKey: this.environment.encryptionKey,
-        logGroup: new logs.LogGroup(this, "HITLStatusUpdateFunctionLogGroup", {
+        ruleValidationGuardrail: props.extractionGuardrail, // Reuse extraction guardrail
+        api: this.environment.api,
+        logGroup: new logs.LogGroup(this, "RuleValidationFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
           retention: this.environment.logRetention,
         }),
         ...this.environment.vpcConfiguration,
       },
     );
+
+    // Rule Validation Orchestration Function - orchestrates rule validation across sections
+    const ruleValidationOrchestrationFunction =
+      new RuleValidationOrchestrationFunction(
+        this,
+        "RuleValidationOrchestrationFunction",
+        {
+          metricNamespace: this.environment.metricNamespace,
+          logLevel: this.environment.logLevel,
+          configurationTable: this.environment.configurationTable,
+          trackingTable: this.environment.trackingTable,
+          inputBucket: this.environment.inputBucket,
+          outputBucket: this.environment.outputBucket,
+          workingBucket: this.environment.workingBucket,
+          reportingEnvironment: this.environment.reportingEnvironment,
+          saveReportingDataFunction: this.environment.saveReportingDataFunction,
+          ruleValidationGuardrail: props.extractionGuardrail, // Reuse extraction guardrail
+          api: this.environment.api,
+          logGroup: new logs.LogGroup(
+            this,
+            "RuleValidationOrchestrationFunctionLogGroup",
+            {
+              encryptionKey: this.environment.encryptionKey,
+              retention: this.environment.logRetention,
+            },
+          ),
+          ...this.environment.vpcConfiguration,
+        },
+      );
+
+    // Always create evaluation function - it's required by the state machine definition
+    // The function will only perform evaluation if both baseline bucket and model are configured
+    const evaluationFunction = new EvaluationFunction(
+      this,
+      "EvaluationFunction",
+      {
+        entry: path.join(
+          __dirname,
+          "..",
+          "assets",
+          "lambdas",
+          "evaluation_function",
+        ),
+        metricNamespace: this.environment.metricNamespace,
+        logLevel: this.environment.logLevel,
+        outputBucket: this.environment.outputBucket,
+        workingBucket: this.environment.workingBucket,
+        trackingTable: this.environment.trackingTable,
+        configurationTable: this.environment.configurationTable,
+        baselineBucket: props.evaluationBaselineBucket,
+        reportingEnvironment: this.environment.reportingEnvironment,
+        saveReportingDataFunction: this.environment.saveReportingDataFunction,
+        api: this.environment.api,
+        logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
+          encryptionKey: this.environment.encryptionKey,
+          retention: this.environment.logRetention,
+        }),
+        ...this.environment.vpcConfiguration,
+      },
+    );
+
+    this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
+
+    // Only grant model invoke permissions if evaluation model is provided
+    if (renderedConfiguration.evaluationModel) {
+      renderedConfiguration.evaluationModel.grantInvoke(evaluationFunction);
+    }
 
     // Create State Machine IAM Role
     const stateMachineRole = new iam.Role(this, "StateMachineRole", {
@@ -450,8 +480,9 @@ export class BedrockLlmProcessor
       assessmentFunction,
       processResultsFunction,
       summarizationFunction,
-      hitlWaitFunction,
-      hitlStatusUpdateFunction,
+      ruleValidationFunction,
+      ruleValidationOrchestrationFunction,
+      evaluationFunction,
     ];
 
     // Grant invoke permissions to all functions
@@ -484,41 +515,6 @@ export class BedrockLlmProcessor
       },
     );
 
-    // Create evaluation function if baseline bucket and model are provided
-    let evaluationFunction: lambda.IFunction | undefined;
-    if (
-      props.evaluationBaselineBucket &&
-      renderedConfiguration.evaluationModel
-    ) {
-      evaluationFunction = new EvaluationFunction(this, "EvaluationFunction", {
-        entry: path.join(
-          __dirname,
-          "..",
-          "assets",
-          "lambdas",
-          "evaluation_function",
-        ),
-        metricNamespace: this.environment.metricNamespace,
-        logLevel: this.environment.logLevel,
-        outputBucket: this.environment.outputBucket,
-        workingBucket: this.environment.workingBucket,
-        trackingTable: this.environment.trackingTable,
-        configurationTable: this.environment.configurationTable,
-        baselineBucket: props.evaluationBaselineBucket,
-        reportingEnvironment: this.environment.reportingEnvironment,
-        saveReportingDataFunction: this.environment.saveReportingDataFunction,
-        api: this.environment.api,
-        logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
-          encryptionKey: this.environment.encryptionKey,
-          retention: this.environment.logRetention,
-        }),
-        ...this.environment.vpcConfiguration,
-      });
-
-      this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
-      renderedConfiguration.evaluationModel.grantInvoke(evaluationFunction);
-    }
-
     // Create State Machine
     this.stateMachine = new sfn.StateMachine(
       this,
@@ -534,9 +530,10 @@ export class BedrockLlmProcessor
           AssessmentFunctionArn: assessmentFunction.functionArn,
           ProcessResultsLambdaArn: processResultsFunction.functionArn,
           SummarizationLambdaArn: summarizationFunction.functionArn,
-          HITLWaitFunctionArn: hitlWaitFunction.functionArn,
-          HITLStatusUpdateFunctionArn: hitlStatusUpdateFunction.functionArn,
-          EvaluationLambdaArn: evaluationFunction?.functionArn || "",
+          RuleValidationLambdaArn: ruleValidationFunction.functionArn,
+          RuleValidationOrchestrationLambdaArn:
+            ruleValidationOrchestrationFunction.functionArn,
+          EvaluationLambdaArn: evaluationFunction.functionArn,
           OutputBucket: this.environment.outputBucket.bucketName,
         },
         role: stateMachineRole,
@@ -546,45 +543,6 @@ export class BedrockLlmProcessor
           includeExecutionData: true,
         },
       },
-    );
-
-    // Grant invoke permission to evaluation function if it exists
-    if (evaluationFunction) {
-      evaluationFunction.grantInvoke(stateMachineRole);
-    }
-
-    // Create HITL Process Function for handling A2I completion events
-    const hitlProcessFunction = new HitlProcessFunction(
-      this,
-      "HITLProcessFunction",
-      {
-        logLevel: this.environment.logLevel,
-        trackingTable: this.environment.trackingTable,
-        inputBucket: this.environment.inputBucket,
-        outputBucket: this.environment.outputBucket,
-        stateMachine: this.stateMachine,
-        logGroup: new logs.LogGroup(this, "HITLProcessFunctionLogGroup", {
-          encryptionKey: this.environment.encryptionKey,
-          retention: this.environment.logRetention,
-        }),
-        ...this.environment.vpcConfiguration,
-      },
-    );
-
-    // Create EventBridge rule for HITL (SageMaker A2I) events
-    const hitlEventRule = new events.Rule(this, "HITLEventRule", {
-      eventPattern: {
-        source: ["aws.sagemaker"],
-        detailType: ["SageMaker A2I HumanLoop Status Change"],
-        detail: {
-          humanLoopStatus: ["Completed", "Failed", "Stopped"],
-        },
-      },
-    });
-
-    // Add Lambda function as a target for the EventBridge rule
-    hitlEventRule.addTarget(
-      new eventtargets.LambdaFunction(hitlProcessFunction),
     );
 
     // Attach processor to environment for event handling and permissions

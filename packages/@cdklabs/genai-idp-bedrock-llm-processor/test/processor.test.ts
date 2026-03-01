@@ -502,8 +502,8 @@ describe("BedrockLlmProcessor Tests", () => {
 
       const template = Template.fromStack(stack);
 
-      // Should create multiple log groups
-      template.resourceCountIs("AWS::Logs::LogGroup", 10); // Updated: Added 3 HITL function log groups
+      // Should create multiple log groups (OCR, Classification, Extraction, Assessment, ProcessResults, Summarization, RuleValidation, RuleValidationOrchestration, StateMachine)
+      template.resourceCountIs("AWS::Logs::LogGroup", 10);
     });
   });
 
@@ -520,7 +520,8 @@ describe("BedrockLlmProcessor Tests", () => {
       const template = Template.fromStack(stack);
 
       // Should create assessment function (check by counting functions)
-      template.resourceCountIs("AWS::Lambda::Function", 11); // Updated: Added 3 HITL functions + lookupFunction in mock
+      // Functions: OCR, Classification, Extraction, Assessment, ProcessResults, Summarization, RuleValidation, RuleValidationOrchestration, Evaluation, lookupFunction (mock)
+      template.resourceCountIs("AWS::Lambda::Function", 11);
     });
 
     test("creates summarization function when summarization model is provided", () => {
@@ -535,7 +536,8 @@ describe("BedrockLlmProcessor Tests", () => {
       const template = Template.fromStack(stack);
 
       // Should create summarization function (check by counting functions)
-      template.resourceCountIs("AWS::Lambda::Function", 11); // Updated: Added 3 HITL functions + lookupFunction in mock
+      // Functions: OCR, Classification, Extraction, Assessment, ProcessResults, Summarization, RuleValidation, RuleValidationOrchestration, Evaluation, lookupFunction (mock)
+      template.resourceCountIs("AWS::Lambda::Function", 11);
     });
   });
 });
