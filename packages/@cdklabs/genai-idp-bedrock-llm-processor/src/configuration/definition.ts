@@ -9,9 +9,11 @@ import {
   ConfigurationDefinition,
   ConfigurationDefinitionLoader,
   IConfigurationDefinition,
+  mergeConfigWithDefaults,
   modelNameToInvokable,
 } from "@cdklabs/genai-idp";
 import { Arn, ArnFormat } from "aws-cdk-lib";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import { ClassificationMethod } from "../classification-method";
 
 /**
@@ -54,6 +56,13 @@ export interface BedrockLlmProcessorConfigurationDefinitionOptions {
    * Only used when the OCR backend is set to 'bedrock' in the configuration.
    */
   readonly ocrModel?: IInvokable;
+
+  /**
+   * Optional custom prompt generator Lambda function.
+   * When provided, the function ARN will be injected into the configuration
+   * at `extraction.custom_prompt_lambda_arn`.
+   */
+  readonly customPromptGeneratorFunction?: lambda.IFunction;
 }
 
 export interface IBedrockLlmProcessorConfigurationDefinition extends IConfigurationDefinition {
@@ -133,6 +142,16 @@ export interface IBedrockLlmProcessorConfigurationDefinition extends IConfigurat
    * @default "textract"
    */
   readonly ocrBackend: "textract" | "bedrock";
+
+  /**
+   * Optional custom prompt generator Lambda function.
+   * When provided, this function will be invoked during extraction to customize prompts.
+   * This is either the function provided via configuration options, or imported from
+   * the ARN specified in the configuration file.
+   *
+   * @default - undefined
+   */
+  readonly customPromptGenerator?: lambda.IFunction;
 }
 
 /**
@@ -316,7 +335,7 @@ export class BedrockLlmProcessorConfigurationDefinition {
   }
 
   /**
-   * Creates a configuration definition optimized for medical records summarization.
+   * Creates a configuration definition for medical records summarization.
    * This configuration includes specialized prompts and settings for extracting
    * and summarizing key information from medical documents.
    *
@@ -334,6 +353,232 @@ export class BedrockLlmProcessorConfigurationDefinition {
         "assets",
         "configs",
         "medical_records_summarization",
+        "config.yaml",
+      ),
+      options,
+    );
+  }
+
+  /**
+   * Creates a configuration definition for document splitting.
+   * This configuration focuses on splitting multi-document files into
+   * individual documents for processing.
+   *
+   * @param options Optional customization for processing stages
+   * @returns A configuration definition for document splitting
+   */
+  static docSplit(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): IBedrockLlmProcessorConfigurationDefinition {
+    return this._fromFile(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "assets",
+        "configs",
+        "docsplit",
+        "config.yaml",
+      ),
+      options,
+    );
+  }
+
+  /**
+   * Creates a configuration definition for healthcare multisection package processing.
+   * This configuration includes settings optimized for processing complex healthcare
+   * documents with multiple sections.
+   *
+   * @param options Optional customization for processing stages
+   * @returns A configuration definition for healthcare multisection processing
+   */
+  static healthcareMultisectionPackage(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): IBedrockLlmProcessorConfigurationDefinition {
+    return this._fromFile(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "assets",
+        "configs",
+        "healthcare-multisection-package",
+        "config.yaml",
+      ),
+      options,
+    );
+  }
+
+  /**
+   * Creates a minimal configuration definition for GovCloud deployments.
+   * This configuration demonstrates the "minimal override" pattern where only
+   * GovCloud-compatible model IDs are specified, and all other settings
+   * are inherited from system defaults at runtime.
+   *
+   * @param options Optional customization for processing stages
+   * @returns A minimal configuration definition for GovCloud deployment
+   */
+  static lendingPackageSampleGovCloud(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): IBedrockLlmProcessorConfigurationDefinition {
+    return this._fromFile(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "assets",
+        "configs",
+        "lending-package-sample-govcloud",
+        "config.yaml",
+      ),
+      options,
+    );
+  }
+
+  /**
+   * Creates a configuration definition for OCR benchmarking.
+   * This configuration is designed for evaluating OCR performance
+   * across different document types and quality levels.
+   *
+   * @param options Optional customization for processing stages
+   * @returns A configuration definition for OCR benchmarking
+   */
+  static ocrBenchmark(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): IBedrockLlmProcessorConfigurationDefinition {
+    return this._fromFile(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "assets",
+        "configs",
+        "ocr-benchmark",
+        "config.yaml",
+      ),
+      options,
+    );
+  }
+
+  /**
+   * Creates a configuration definition for RealKIE FCC verified documents.
+   * This configuration is optimized for processing FCC-verified documents
+   * from the RealKIE dataset.
+   *
+   * @param options Optional customization for processing stages
+   * @returns A configuration definition for RealKIE FCC documents
+   */
+  static realkieFccVerified(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): IBedrockLlmProcessorConfigurationDefinition {
+    return this._fromFile(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "assets",
+        "configs",
+        "realkie-fcc-verified",
+        "config.yaml",
+      ),
+      options,
+    );
+  }
+
+  /**
+   * Creates a configuration definition for rule extraction.
+   * This configuration includes settings for extracting business rules
+   * and validation criteria from documents.
+   *
+   * @param options Optional customization for processing stages
+   * @returns A configuration definition for rule extraction
+   */
+  static ruleExtraction(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): IBedrockLlmProcessorConfigurationDefinition {
+    return this._fromFile(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "assets",
+        "configs",
+        "rule-extraction",
+        "config.yaml",
+      ),
+      options,
+    );
+  }
+
+  /**
+   * Creates a configuration definition for rule validation.
+   * This configuration includes settings for validating documents
+   * against extracted business rules and criteria.
+   *
+   * @param options Optional customization for processing stages
+   * @returns A configuration definition for rule validation
+   */
+  static ruleValidation(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): IBedrockLlmProcessorConfigurationDefinition {
+    return this._fromFile(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "assets",
+        "configs",
+        "rule-validation",
+        "config.yaml",
+      ),
+      options,
+    );
+  }
+
+  /**
+   * Creates a configuration definition for RVL-CDIP document classification.
+   * This configuration is designed for the RVL-CDIP dataset, which contains
+   * 16 classes of document images for classification tasks.
+   *
+   * @param options Optional customization for processing stages
+   * @returns A configuration definition for RVL-CDIP processing
+   */
+  static rvlCdip(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): IBedrockLlmProcessorConfigurationDefinition {
+    return this._fromFile(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "assets",
+        "configs",
+        "rvl-cdip",
+        "config.yaml",
+      ),
+      options,
+    );
+  }
+
+  /**
+   * Creates a configuration definition for RVL-CDIP with few-shot examples.
+   * This configuration includes few-shot examples to improve classification
+   * accuracy for RVL-CDIP documents.
+   *
+   * @param options Optional customization for processing stages
+   * @returns A configuration definition for RVL-CDIP with few-shot examples
+   */
+  static rvlCdipWithFewShotExamples(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): IBedrockLlmProcessorConfigurationDefinition {
+    return this._fromFile(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "assets",
+        "configs",
+        "rvl-cdip-with-few-shot-examples",
         "config.yaml",
       ),
       options,
@@ -375,9 +620,18 @@ export class BedrockLlmProcessorConfigurationDefinition {
     let _evaluationInvokable: IInvokable | undefined;
     let _ocrInvokable: IInvokable | undefined;
     let _ocrBackend: "textract" | "bedrock";
+    let _customPromptGenerator: lambda.IFunction | undefined;
+    let _customPromptLambdaArn: string | undefined;
+
+    // Load user config from file
+    const userConfig = ConfigurationDefinitionLoader.fromFile(filePath);
+
+    // Merge with system defaults for pattern-2 (Bedrock LLM processor)
+    // This ensures we have all required fields (like model info) at synthesis time
+    const mergedConfig = mergeConfigWithDefaults(userConfig, "pattern-2");
 
     const def = new ConfigurationDefinition({
-      configurationObject: ConfigurationDefinitionLoader.fromFile(filePath),
+      configurationObject: mergedConfig,
       transforms: [
         {
           flatPath: "assessment.model",
@@ -502,6 +756,21 @@ export class BedrockLlmProcessorConfigurationDefinition {
             }
           },
         },
+        {
+          flatPath: "extraction.custom_prompt_lambda_arn",
+          transform: (configValue?: string) => {
+            // If user provided a Lambda function via options, use it and store its ARN
+            if (options?.customPromptGeneratorFunction) {
+              _customPromptGenerator = options.customPromptGeneratorFunction;
+              _customPromptLambdaArn =
+                options.customPromptGeneratorFunction.functionArn;
+              return _customPromptLambdaArn;
+            }
+            // Otherwise, store the ARN from config file (will be imported by processor)
+            _customPromptLambdaArn = configValue;
+            return configValue;
+          },
+        },
       ],
     });
 
@@ -514,6 +783,7 @@ export class BedrockLlmProcessorConfigurationDefinition {
       public readonly assessmentModel = _assessmentInvokable;
       public readonly ocrModel = _ocrInvokable;
       public readonly ocrBackend = _ocrBackend;
+      public readonly customPromptGenerator = _customPromptGenerator;
 
       raw(): { [key: string]: any } {
         return def.raw();

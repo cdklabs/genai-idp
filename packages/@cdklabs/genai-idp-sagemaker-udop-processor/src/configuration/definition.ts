@@ -10,8 +10,10 @@ import {
   ConfigurationDefinitionLoader,
   IConfigurationDefinition,
   modelNameToInvokable,
+  mergeConfigWithDefaults,
 } from "@cdklabs/genai-idp";
 import { Arn, ArnFormat } from "aws-cdk-lib";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 
 /**
  * Options for configuring the SageMaker UDOP processor configuration definition.
@@ -45,11 +47,21 @@ export interface SagemakerUdopProcessorConfigurationDefinitionOptions {
    * @default - as defined in the definition file
    */
   readonly assessmentModel?: IInvokable;
+
+  /**
+   * Optional custom prompt generator Lambda function.
+   * When provided, the function ARN will be injected into the configuration
+   * at `extraction.custom_prompt_lambda_arn`.
+   */
+  readonly customPromptGeneratorFunction?: lambda.IFunction;
 }
 
 /**
  * Interface for SageMaker UDOP processor configuration definition.
  * Defines the structure and capabilities of configuration for SageMaker UDOP processing.
+ *
+ * @deprecated This processor pattern is deprecated and will be removed in v0.5.0.
+ * Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
  */
 export interface ISagemakerUdopProcessorConfigurationDefinition extends IConfigurationDefinition {
   /**
@@ -81,11 +93,24 @@ export interface ISagemakerUdopProcessorConfigurationDefinition extends IConfigu
    * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
    */
   readonly assessmentModel?: IInvokable;
+
+  /**
+   * Optional custom prompt generator Lambda function.
+   * When provided, this function will be invoked during extraction to customize prompts.
+   * This is either the function provided via configuration options, or imported from
+   * the ARN specified in the configuration file.
+   *
+   * @default - undefined
+   */
+  readonly customPromptGenerator?: lambda.IFunction;
 }
 
 /**
  * Configuration definition for SageMaker UDOP document processing.
  * Provides methods to create and customize configuration for SageMaker UDOP processing.
+ *
+ * @deprecated This processor pattern is deprecated and will be removed in v0.5.0.
+ * Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
  */
 export class SagemakerUdopProcessorConfigurationDefinition {
   /**
@@ -141,12 +166,20 @@ export class SagemakerUdopProcessorConfigurationDefinition {
     options?: SagemakerUdopProcessorConfigurationDefinitionOptions,
   ): ISagemakerUdopProcessorConfigurationDefinition {
     let _extractionInvokable: IInvokable;
-    let _evaluationInvokable: IInvokable;
+    let _evaluationInvokable: IInvokable | undefined;
     let _assessmentInvokable: IInvokable | undefined;
-    let _summarizationInvokable: IInvokable;
+    let _summarizationInvokable: IInvokable | undefined;
+    let _customPromptGenerator: lambda.IFunction | undefined;
+    let _customPromptLambdaArn: string | undefined;
+
+    // Load user config from file
+    const userConfig = ConfigurationDefinitionLoader.fromFile(filePath);
+
+    // Merge with system defaults for pattern-3
+    const mergedConfig = mergeConfigWithDefaults(userConfig, "pattern-3");
 
     const def = new ConfigurationDefinition({
-      configurationObject: ConfigurationDefinitionLoader.fromFile(filePath),
+      configurationObject: mergedConfig,
       transforms: [
         {
           flatPath: "assessment.model",
@@ -177,6 +210,10 @@ export class SagemakerUdopProcessorConfigurationDefinition {
             } else {
               if (modelName) {
                 _extractionInvokable = modelNameToInvokable(modelName);
+              } else {
+                throw new Error(
+                  "extraction.model is required in configuration",
+                );
               }
               return modelName;
             }
@@ -216,6 +253,21 @@ export class SagemakerUdopProcessorConfigurationDefinition {
             }
           },
         },
+        {
+          flatPath: "extraction.custom_prompt_lambda_arn",
+          transform: (configValue?: string) => {
+            // If user provided a Lambda function via options, use it and store its ARN
+            if (options?.customPromptGeneratorFunction) {
+              _customPromptGenerator = options.customPromptGeneratorFunction;
+              _customPromptLambdaArn =
+                options.customPromptGeneratorFunction.functionArn;
+              return _customPromptLambdaArn;
+            }
+            // Otherwise, store the ARN from config file (will be imported by processor)
+            _customPromptLambdaArn = configValue;
+            return configValue;
+          },
+        },
       ],
     });
 
@@ -224,6 +276,7 @@ export class SagemakerUdopProcessorConfigurationDefinition {
       public readonly summarizationModel = _summarizationInvokable;
       public readonly evaluationModel = _evaluationInvokable;
       public readonly assessmentModel = _assessmentInvokable;
+      public readonly customPromptGenerator = _customPromptGenerator;
       raw(): { [key: string]: any } {
         return def.raw();
       }

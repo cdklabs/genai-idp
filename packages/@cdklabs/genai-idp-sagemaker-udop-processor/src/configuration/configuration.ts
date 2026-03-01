@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import { CustomResource } from "aws-cdk-lib";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import { ISagemakerUdopProcessor } from "../processor";
 import {
   ISagemakerUdopProcessorConfigurationDefinition,
@@ -90,6 +91,25 @@ export class SagemakerUdopProcessorConfiguration implements ISagemakerUdopProces
         ConfigurationTable: processor.environment.configurationTable.tableName,
       },
     });
+
+    // If custom prompt Lambda ARN is in config but no function reference exists,
+    // import the function so it can be used for permissions
+    const rawConfig = this.definition.raw();
+    const customPromptArn = rawConfig?.extraction?.custom_prompt_lambda_arn;
+
+    if (customPromptArn && !this.definition.customPromptGenerator) {
+      const importedFunction = lambda.Function.fromFunctionArn(
+        processor,
+        "CustomPromptGenerator",
+        customPromptArn,
+      );
+
+      // Return a wrapped definition with the imported function
+      return {
+        ...this.definition,
+        customPromptGenerator: importedFunction,
+      };
+    }
 
     return this.definition;
   }
