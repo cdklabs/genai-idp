@@ -5,6 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import * as cdk from "aws-cdk-lib";
+import * as appsync from "aws-cdk-lib/aws-appsync";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
@@ -20,6 +21,10 @@ import { FixedKeyTableProps } from "../../fixed-key-table-props";
 import { LogLevel } from "../../log-level";
 import { IReportingEnvironment } from "../../reporting/reporting-environment";
 import { ITrackingTable } from "../../tracking-table";
+import {
+  IProcessingEnvironmentApiFeature,
+  IProcessingEnvironmentApi,
+} from "../processing-environment-api";
 
 /**
  * Interface for Agent Table implementations.
@@ -70,6 +75,13 @@ export interface IAgentAnalytics extends IConstruct {
    * Lambda function that lists available analytics agents.
    */
   readonly listAvailableAgents: lambda.IFunction;
+
+  /**
+   * Attach this Agent Analytics feature to a ProcessingEnvironmentApi.
+   *
+   * @param api The ProcessingEnvironmentApi to attach to
+   */
+  attachTo(api: IProcessingEnvironmentApi): void;
 }
 
 /**
@@ -117,11 +129,6 @@ export interface AgentAnalyticsProps {
   readonly logRetention?: logs.RetentionDays;
 
   /**
-   * AppSync GraphQL API URL for publishing updates.
-   */
-  readonly appSyncApiUrl: string;
-
-  /**
    * Athena database for analytics queries.
    */
   readonly reportingEnvironment: IReportingEnvironment;
@@ -162,12 +169,22 @@ export interface AgentAnalyticsProps {
  * - Athena query tool for SQL execution
  * - Secure code sandbox for data transfer
  * - Python visualization tool for charts and tables
+ *
+ * @since v0.4.8
  */
-export class AgentAnalytics extends Construct implements IAgentAnalytics {
+export class AgentAnalytics
+  extends Construct
+  implements IAgentAnalytics, IProcessingEnvironmentApiFeature
+{
   public readonly agentTable: IAgentTable;
   public readonly agentRequestHandler: lambda.IFunction;
   public readonly agentProcessor: lambda.IFunction;
   public readonly listAvailableAgents: lambda.IFunction;
+
+  /**
+   * Private storage for AppSync API URL, set during attachTo().
+   */
+  private _appSyncApiUrl?: string;
 
   constructor(scope: Construct, id: string, props: AgentAnalyticsProps) {
     super(scope, id);
@@ -186,12 +203,15 @@ export class AgentAnalytics extends Construct implements IAgentAnalytics {
     });
 
     // Create agent processor function first (required by agent request handler)
+    // Use Lazy.string() to defer API URL resolution until attachTo() is called
     this.agentProcessor = new AgentProcessorFunction(this, "AgentProcessor", {
       metricNamespace: props.metricNamespace,
       logLevel: props.logLevel ?? LogLevel.INFO,
       agentTable: this.agentTable,
       configurationTable: props.configurationTable,
-      appSyncApiUrl: props.appSyncApiUrl,
+      appSyncApiUrl: cdk.Lazy.string({
+        produce: () => this._appSyncApiUrl || "",
+      }),
       athenaDatabase: props.reportingEnvironment.reportingDatabase,
       athenaBucket: props.reportingEnvironment.reportingBucket,
       model: props.model,
@@ -240,5 +260,232 @@ export class AgentAnalytics extends Construct implements IAgentAnalytics {
 
     // Grant agent request handler permission to invoke agent processor
     this.agentProcessor.grantInvoke(this.agentRequestHandler);
+  }
+
+  /**
+   * Attach this Agent Analytics feature to a ProcessingEnvironmentApi.
+   *
+   * This method integrates the agent analytics functionality with the GraphQL API by:
+   * - Creating Lambda data sources for agent request handling and listing agents
+   * - Creating DynamoDB data source for agent job tracking
+   * - Wiring GraphQL resolvers for agent operations
+   *
+   * @param api The ProcessingEnvironmentApi to attach to
+   */
+  public attachTo(api: IProcessingEnvironmentApi): void {
+    // Store the API URL for lazy resolution in the agent processor function
+    this._appSyncApiUrl = api.graphqlUrl;
+
+    // Add Agent Request Handler data source
+    const agentRequestHandlerDataSource = api.addLambdaDataSource(
+      "AgentRequestHandlerDataSource",
+      this.agentRequestHandler,
+      {
+        name: "AgentRequestHandler",
+        description: "Lambda function to handle agent query requests",
+      },
+    );
+
+    // Add List Available Agents data source
+    const listAvailableAgentsDataSource = api.addLambdaDataSource(
+      "ListAvailableAgentsDataSource",
+      this.listAvailableAgents,
+      {
+        name: "ListAvailableAgents",
+        description: "Lambda function to list available analytics agents",
+      },
+    );
+
+    // Add Agent Table data source for job status queries
+    const agentTableDataSource = api.addDynamoDbDataSource(
+      "AgentTableDataSource",
+      this.agentTable,
+    );
+
+    // Create resolvers
+    agentRequestHandlerDataSource.createResolver("SubmitAgentQueryResolver", {
+      typeName: "Query",
+      fieldName: "submitAgentQuery",
+    });
+
+    listAvailableAgentsDataSource.createResolver(
+      "ListAvailableAgentsResolver",
+      {
+        typeName: "Query",
+        fieldName: "listAvailableAgents",
+      },
+    );
+
+    // Create getAgentJobStatus resolver using DynamoDB data source
+    agentTableDataSource.createResolver("GetAgentJobStatusResolver", {
+      typeName: "Query",
+      fieldName: "getAgentJobStatus",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "GetItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("agent#\${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          }
+        }
+      `),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        #if(!$ctx.result)
+          null
+        #else
+          {
+            "jobId": $util.toJson($ctx.result.SK),
+            "status": $util.toJson($ctx.result.status),
+            "query": $util.toJson($ctx.result.query),
+            "agentIds": $util.toJson($ctx.result.agentIds),
+            "createdAt": $util.toJson($ctx.result.createdAt),
+            "completedAt": $util.toJson($ctx.result.completedAt),
+            "result": $util.toJson($ctx.result.result),
+            "error": $util.toJson($ctx.result.error),
+            "agent_messages": $util.toJson($ctx.result.agent_messages)
+          }
+        #end
+      `),
+    });
+
+    // Create updateAgentJobStatus resolver using DynamoDB data source
+    agentTableDataSource.createResolver("UpdateAgentJobStatusResolver", {
+      typeName: "Mutation",
+      fieldName: "updateAgentJobStatus",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        #set($userId = $ctx.args.userId)
+        #set($expNames = {})
+        #set($expValues = {})
+        
+        ## Set status (required)
+        $util.qr($expNames.put("#status", "status"))
+        $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
+        
+        ## Set result if provided
+        #if($ctx.args.result)
+          $util.qr($expNames.put("#result", "result"))
+          $util.qr($expValues.put(":result", $util.dynamodb.toDynamoDB($ctx.args.result)))
+        #end
+        
+        ## Set completedAt timestamp
+        $util.qr($expNames.put("#completedAt", "completedAt"))
+        $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
+        
+        {
+          "version": "2018-05-29",
+          "operation": "UpdateItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("agent#\${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          },
+          "update": {
+            "expression": "SET #status = :status, #completedAt = :completedAt#if($ctx.args.result), #result = :result#end",
+            "expressionNames": $util.toJson($expNames),
+            "expressionValues": $util.toJson($expValues)
+          }
+        }
+      `),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #end
+        
+        ## Return false if no item was updated (item not found)
+        #if(!$ctx.result)
+          false
+        #else
+          true
+        #end
+      `),
+    });
+
+    // Create listAgentJobs resolver using DynamoDB data source
+    agentTableDataSource.createResolver("ListAgentJobsResolver", {
+      typeName: "Query",
+      fieldName: "listAgentJobs",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "Query",
+          "query": {
+            "expression": "PK = :pk",
+            "expressionValues": {
+              ":pk": $util.dynamodb.toDynamoDBJson("agent#\${userId}")
+            }
+          },
+          #if($ctx.args.limit)
+            "limit": $ctx.args.limit,
+          #end
+          #if($ctx.args.nextToken)
+            "nextToken": "$ctx.args.nextToken",
+          #end
+          "scanIndexForward": false
+        }
+      `),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "items": [
+            #foreach($item in $ctx.result.items)
+              {
+                "jobId": $util.toJson($item.SK),
+                "status": $util.toJson($item.status),
+                "query": $util.toJson($item.query),
+                "agentIds": $util.toJson($item.agentIds),
+                "createdAt": $util.toJson($item.createdAt),
+                "completedAt": $util.toJson($item.completedAt),
+                "result": $util.toJson($item.result),
+                "error": $util.toJson($item.error)
+              }#if($foreach.hasNext),#end
+            #end
+          ],
+          "nextToken": $util.toJson($ctx.result.nextToken)
+        }
+      `),
+    });
+
+    // Create deleteAgentJob resolver using DynamoDB data source
+    agentTableDataSource.createResolver("DeleteAgentJobResolver", {
+      typeName: "Mutation",
+      fieldName: "deleteAgentJob",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "DeleteItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("agent#\${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          }
+        }
+      `),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #else
+          true
+        #end
+      `),
+    });
   }
 }

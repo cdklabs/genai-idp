@@ -19,6 +19,7 @@ import {
   ConfigurationTable,
   TrackingTable,
   VpcConfiguration,
+  ProcessingProgressMonitor,
 } from "../../src";
 
 describe("ProcessingEnvironmentApi - Optional Features", () => {
@@ -175,7 +176,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
       expect(api).toBeDefined();
     });
 
-    test("integrates with Step Functions state machine", () => {
+    test("integrates with Step Functions state machine via feature", () => {
       const stateMachine = new StateMachine(stack, "TestStateMachine", {
         definitionBody: DefinitionBody.fromChainable(
           new Pass(stack, "PassState"),
@@ -187,14 +188,23 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
         outputBucket,
         trackingTable,
         configurationTable,
-        stateMachine,
       });
+
+      // Use the new feature pattern
+      const progressMonitor = new ProcessingProgressMonitor(
+        stack,
+        "ProgressMonitor",
+        {
+          stateMachine,
+        },
+      );
+      api.addFeature(progressMonitor);
 
       expect(api).toBeDefined();
 
       const template = Template.fromStack(stack);
 
-      // Verify Step Functions permissions
+      // Verify Step Functions permissions are granted to the resolver function
       template.hasResourceProperties("AWS::IAM::Policy", {
         PolicyDocument: {
           Statement: Match.arrayWith([
@@ -207,7 +217,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
       });
     });
 
-    test("addStateMachine method works independently", () => {
+    test("addProcessingProgressMonitor feature works independently", () => {
       const api = new ProcessingEnvironmentApi(stack, "TestApi", {
         inputBucket,
         outputBucket,
@@ -221,9 +231,16 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
         ),
       });
 
-      // Test the public method
+      // Test the new feature pattern
       expect(() => {
-        api.addStateMachine(stateMachine);
+        const progressMonitor = new ProcessingProgressMonitor(
+          stack,
+          "ProgressMonitor",
+          {
+            stateMachine,
+          },
+        );
+        api.addFeature(progressMonitor);
       }).not.toThrow();
     });
   });
@@ -278,9 +295,19 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
         configurationTable,
         encryptionKey,
         evaluationBaselineBucket,
-        stateMachine,
         logRetention: RetentionDays.ONE_MONTH,
       });
+
+      // Add progress monitor feature
+      const progressMonitor = new ProcessingProgressMonitor(
+        stack,
+        "ProgressMonitor",
+        {
+          stateMachine,
+          encryptionKey,
+        },
+      );
+      api.addFeature(progressMonitor);
 
       expect(api).toBeDefined();
 
@@ -292,6 +319,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
       });
 
       // Verify Lambda functions are created for all features
+      // Base API has 5 functions + 1 for evaluation + 1 for progress monitor = 7
       template.resourceCountIs("AWS::Lambda::Function", 7);
     });
 
@@ -316,7 +344,14 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
       // Test that public methods work after construction
       expect(() => {
         api.addEvaluation(evaluationBaselineBucket);
-        api.addStateMachine(stateMachine);
+        const progressMonitor = new ProcessingProgressMonitor(
+          stack,
+          "ProgressMonitor",
+          {
+            stateMachine,
+          },
+        );
+        api.addFeature(progressMonitor);
       }).not.toThrow();
     });
   });
