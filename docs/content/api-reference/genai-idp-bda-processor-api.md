@@ -2073,9 +2073,7 @@ const bdaProcessorProps: BdaProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.configuration">configuration</a></code> | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfiguration">IBdaProcessorConfiguration</a></code> | Configuration for the BDA document processor. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.dataAutomationProject">dataAutomationProject</a></code> | <code><a href="#@cdklabs/genai-idp-bda-processor.IDataAutomationProject">IDataAutomationProject</a></code> | The Bedrock Data Automation Project used for document processing. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableDiscovery">enableDiscovery</a></code> | <code>boolean</code> | Enable discovery integration for BDA blueprint generation. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableHITL">enableHITL</a></code> | <code>boolean</code> | Enable Human In The Loop (HITL) review for documents with low confidence scores. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline evaluation data for model performance assessment. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sageMakerA2IReviewPortalURL">sageMakerA2IReviewPortalURL</a></code> | <code>string</code> | URL for the SageMaker A2I review portal used for HITL tasks. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sectionSplittingStrategy">sectionSplittingStrategy</a></code> | <code>@cdklabs/genai-idp.SectionSplittingStrategy</code> | Section splitting strategy configuration. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
 
@@ -2157,22 +2155,6 @@ BDA blueprints from document samples, streamlining the configuration process.
 
 ---
 
-##### `enableHITL`<sup>Optional</sup> <a name="enableHITL" id="@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.enableHITL"></a>
-
-```typescript
-public readonly enableHITL: boolean;
-```
-
-- *Type:* boolean
-- *Default:* false
-
-Enable Human In The Loop (HITL) review for documents with low confidence scores.
-
-When enabled, documents that fall below the confidence threshold will be
-sent for human review before proceeding with the workflow.
-
----
-
 ##### `evaluationBaselineBucket`<sup>Optional</sup> <a name="evaluationBaselineBucket" id="@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.evaluationBaselineBucket"></a>
 
 ```typescript
@@ -2186,22 +2168,6 @@ Optional S3 bucket containing baseline evaluation data for model performance ass
 
 Used to store reference documents and expected outputs for evaluating
 the accuracy and quality of document processing results.
-
----
-
-##### `sageMakerA2IReviewPortalURL`<sup>Optional</sup> <a name="sageMakerA2IReviewPortalURL" id="@cdklabs/genai-idp-bda-processor.BdaProcessorProps.property.sageMakerA2IReviewPortalURL"></a>
-
-```typescript
-public readonly sageMakerA2IReviewPortalURL: string;
-```
-
-- *Type:* string
-- *Default:* No review portal URL is provided
-
-URL for the SageMaker A2I review portal used for HITL tasks.
-
-This URL is provided to human reviewers to access documents that require
-manual review and correction.
 
 ---
 
@@ -2304,8 +2270,34 @@ This method applies the configuration to the processor.
 
 | **Name** | **Description** |
 | --- | --- |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.docSplit">docSplit</a></code> | Creates a configuration for document splitting. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.fromFile">fromFile</a></code> | Creates a configuration from a YAML file. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.lendingPackageSample">lendingPackageSample</a></code> | Creates a configuration for lending package processing. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.lendingPackageSampleGovCloud">lendingPackageSampleGovCloud</a></code> | Creates a minimal configuration for GovCloud deployments. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.ocrBenchmark">ocrBenchmark</a></code> | Creates a configuration for OCR benchmarking. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.realkieFccVerified">realkieFccVerified</a></code> | Creates a configuration for RealKIE FCC verified documents. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.rvlCdip">rvlCdip</a></code> | Creates a configuration for RVL-CDIP document classification. |
+
+---
+
+##### `docSplit` <a name="docSplit" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.docSplit"></a>
+
+```typescript
+import { BdaProcessorConfiguration } from '@cdklabs/genai-idp-bda-processor'
+
+BdaProcessorConfiguration.docSplit(options?: BdaProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for document splitting.
+
+This configuration focuses on splitting multi-document files into
+individual documents for processing.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.docSplit.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
 
 ---
 
@@ -2345,7 +2337,99 @@ BdaProcessorConfiguration.lendingPackageSample(options?: BdaProcessorConfigurati
 
 Creates a configuration for lending package processing.
 
+This configuration includes full class definitions and extraction schemas.
+
 ###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.lendingPackageSample.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
+##### `lendingPackageSampleGovCloud` <a name="lendingPackageSampleGovCloud" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.lendingPackageSampleGovCloud"></a>
+
+```typescript
+import { BdaProcessorConfiguration } from '@cdklabs/genai-idp-bda-processor'
+
+BdaProcessorConfiguration.lendingPackageSampleGovCloud(options?: BdaProcessorConfigurationDefinitionOptions)
+```
+
+Creates a minimal configuration for GovCloud deployments.
+
+This configuration demonstrates the "minimal override" pattern where only
+GovCloud-compatible model IDs are specified, and all other settings
+(classes, prompts, etc.) are inherited from system defaults at runtime.
+
+This approach is useful when you want to:
+- Use system default class definitions
+- Only override region-specific settings (like model IDs)
+- Keep your config file minimal and maintainable
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.lendingPackageSampleGovCloud.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
+##### `ocrBenchmark` <a name="ocrBenchmark" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.ocrBenchmark"></a>
+
+```typescript
+import { BdaProcessorConfiguration } from '@cdklabs/genai-idp-bda-processor'
+
+BdaProcessorConfiguration.ocrBenchmark(options?: BdaProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for OCR benchmarking.
+
+This configuration is designed for evaluating OCR performance
+across different document types and quality levels.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.ocrBenchmark.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
+##### `realkieFccVerified` <a name="realkieFccVerified" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.realkieFccVerified"></a>
+
+```typescript
+import { BdaProcessorConfiguration } from '@cdklabs/genai-idp-bda-processor'
+
+BdaProcessorConfiguration.realkieFccVerified(options?: BdaProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for RealKIE FCC verified documents.
+
+This configuration is optimized for processing FCC-verified documents
+from the RealKIE dataset.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.realkieFccVerified.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
+##### `rvlCdip` <a name="rvlCdip" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.rvlCdip"></a>
+
+```typescript
+import { BdaProcessorConfiguration } from '@cdklabs/genai-idp-bda-processor'
+
+BdaProcessorConfiguration.rvlCdip(options?: BdaProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for RVL-CDIP document classification.
+
+This configuration is designed for the RVL-CDIP dataset, which contains
+16 classes of document images for classification tasks.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.rvlCdip.parameter.options"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
 
@@ -2379,8 +2463,34 @@ new BdaProcessorConfigurationDefinition()
 
 | **Name** | **Description** |
 | --- | --- |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.docSplit">docSplit</a></code> | Creates a configuration definition for document splitting. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.fromFile">fromFile</a></code> | Creates a configuration definition from a YAML file. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.lendingPackageSample">lendingPackageSample</a></code> | Creates a default configuration definition for BDA processing. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.lendingPackageSampleGovCloud">lendingPackageSampleGovCloud</a></code> | Creates a minimal configuration definition for GovCloud deployments. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.ocrBenchmark">ocrBenchmark</a></code> | Creates a configuration definition for OCR benchmarking. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.realkieFccVerified">realkieFccVerified</a></code> | Creates a configuration definition for RealKIE FCC verified documents. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.rvlCdip">rvlCdip</a></code> | Creates a configuration definition for RVL-CDIP document classification. |
+
+---
+
+##### `docSplit` <a name="docSplit" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.docSplit"></a>
+
+```typescript
+import { BdaProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bda-processor'
+
+BdaProcessorConfigurationDefinition.docSplit(options?: BdaProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for document splitting.
+
+This configuration focuses on splitting multi-document files into
+individual documents for processing.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.docSplit.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for evaluation and summarization settings.
 
 ---
 
@@ -2422,10 +2532,99 @@ BdaProcessorConfigurationDefinition.lendingPackageSample(options?: BdaProcessorC
 
 Creates a default configuration definition for BDA processing.
 
-This configuration includes basic settings for evaluation and summarization
-when using Bedrock Data Automation projects.
+This configuration includes full class definitions and extraction schemas.
 
 ###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.lendingPackageSample.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for evaluation and summarization settings.
+
+---
+
+##### `lendingPackageSampleGovCloud` <a name="lendingPackageSampleGovCloud" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.lendingPackageSampleGovCloud"></a>
+
+```typescript
+import { BdaProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bda-processor'
+
+BdaProcessorConfigurationDefinition.lendingPackageSampleGovCloud(options?: BdaProcessorConfigurationDefinitionOptions)
+```
+
+Creates a minimal configuration definition for GovCloud deployments.
+
+This configuration demonstrates the "minimal override" pattern where only
+GovCloud-compatible model IDs are specified, and all other settings
+(classes, prompts, etc.) are inherited from system defaults at runtime.
+
+This approach is useful when you want to:
+- Use system default class definitions
+- Only override region-specific settings (like model IDs)
+- Keep your config file minimal and maintainable
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.lendingPackageSampleGovCloud.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for evaluation and summarization settings.
+
+---
+
+##### `ocrBenchmark` <a name="ocrBenchmark" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.ocrBenchmark"></a>
+
+```typescript
+import { BdaProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bda-processor'
+
+BdaProcessorConfigurationDefinition.ocrBenchmark(options?: BdaProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for OCR benchmarking.
+
+This configuration is designed for evaluating OCR performance
+across different document types and quality levels.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.ocrBenchmark.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for evaluation and summarization settings.
+
+---
+
+##### `realkieFccVerified` <a name="realkieFccVerified" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.realkieFccVerified"></a>
+
+```typescript
+import { BdaProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bda-processor'
+
+BdaProcessorConfigurationDefinition.realkieFccVerified(options?: BdaProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for RealKIE FCC verified documents.
+
+This configuration is optimized for processing FCC-verified documents
+from the RealKIE dataset.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.realkieFccVerified.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for evaluation and summarization settings.
+
+---
+
+##### `rvlCdip` <a name="rvlCdip" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.rvlCdip"></a>
+
+```typescript
+import { BdaProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bda-processor'
+
+BdaProcessorConfigurationDefinition.rvlCdip(options?: BdaProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for RVL-CDIP document classification.
+
+This configuration is designed for the RVL-CDIP dataset, which contains
+16 classes of document images for classification tasks.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinition.rvlCdip.parameter.options"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp-bda-processor.BdaProcessorConfigurationDefinitionOptions">BdaProcessorConfigurationDefinitionOptions</a>
 
@@ -2773,12 +2972,12 @@ Defines the structure and capabilities of configuration for Bedrock Data Automat
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model used for evaluating extraction results. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating extraction results. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for document summarization. |
 
 ---
 
-##### `evaluationModel`<sup>Required</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.evaluationModel"></a>
+##### `evaluationModel`<sup>Optional</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-bda-processor.IBdaProcessorConfigurationDefinition.property.evaluationModel"></a>
 
 ```typescript
 public readonly evaluationModel: IBedrockInvokable;
@@ -2786,9 +2985,9 @@ public readonly evaluationModel: IBedrockInvokable;
 
 - *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
-The invokable model used for evaluating extraction results.
+Optional invokable model used for evaluating extraction results.
 
-Used to assess the quality and accuracy of extracted information by
+When provided, enables assessment of extraction quality and accuracy by
 comparing extraction results against expected values.
 
 ---

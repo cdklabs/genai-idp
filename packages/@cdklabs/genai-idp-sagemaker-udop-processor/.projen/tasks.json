@@ -86,7 +86,7 @@
           "exec": "mkdir -p assets/configs/rvl-cdip-package-sample"
         },
         {
-          "exec": "rsync -rLct ../../../sources/config_library/pattern-3/rvl-cdip-package-sample/config.yaml assets/configs/rvl-cdip-package-sample/."
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-3/rvl-cdip/config.yaml assets/configs/rvl-cdip-package-sample/."
         }
       ]
     },
