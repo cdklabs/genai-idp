@@ -13,6 +13,9 @@ import {
 import { FoundationModelIdentifier } from "aws-cdk-lib/aws-bedrock";
 import yaml from "yaml";
 
+// Export config merge utilities
+export * from "./config-merge-utils";
+
 /**
  * Type alias for backward compatibility.
  * IInvokable is now IBedrockInvokable from the alpha module.

@@ -63,8 +63,10 @@ export interface EvaluationFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The S3 bucket where baseline documents are stored.
    * These documents contain known correct values used as ground truth for evaluation.
+   *
+   * @default - No baseline bucket configured. Evaluation will skip baseline comparison.
    */
-  readonly baselineBucket: IBucket;
+  readonly baselineBucket?: IBucket;
 
   /**
    * The S3 bucket used for temporary storage during document processing.
@@ -150,10 +152,12 @@ export class EvaluationFunction extends PythonFunction {
         TRACKING_TABLE: props.trackingTable.tableName,
         PROCESSING_OUTPUT_BUCKET: props.outputBucket.bucketName,
         EVALUATION_OUTPUT_BUCKET: props.outputBucket.bucketName,
-        BASELINE_BUCKET: props.baselineBucket.bucketName,
         CONFIGURATION_TABLE_NAME: props.configurationTable.tableName,
         DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
         WORKING_BUCKET: props.workingBucket.bucketName,
+        ...(props.baselineBucket && {
+          BASELINE_BUCKET: props.baselineBucket.bucketName,
+        }),
         ...(props.reportingEnvironment && {
           REPORTING_BUCKET:
             props.reportingEnvironment.reportingBucket.bucketName,
@@ -168,7 +172,7 @@ export class EvaluationFunction extends PythonFunction {
 
     props.trackingTable.grantReadWriteData(this);
     props.configurationTable.grantReadData(this);
-    props.baselineBucket.grantRead(this);
+    props.baselineBucket?.grantRead(this);
     props.outputBucket.grantReadWrite(this);
     props.workingBucket.grantReadWrite(this);
 
