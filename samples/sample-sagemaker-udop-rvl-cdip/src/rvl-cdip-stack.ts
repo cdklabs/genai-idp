@@ -2,6 +2,7 @@ import { InstanceType } from "@aws-cdk/aws-sagemaker-alpha";
 import {
   ProcessingEnvironment,
   ProcessingEnvironmentApi,
+  ProcessingProgressMonitor,
   UserIdentity,
   WebApplication,
 } from "@cdklabs/genai-idp";
@@ -98,7 +99,16 @@ export class RvlCdipStack extends Stack {
       },
     });
 
-    api.addStateMachine(processor.stateMachine);
+    // Add processing progress monitoring using the new feature pattern
+    const progressMonitor = new ProcessingProgressMonitor(
+      this,
+      "ProgressMonitor",
+      {
+        stateMachine: processor.stateMachine,
+        encryptionKey: key,
+      },
+    );
+    api.addFeature(progressMonitor);
 
     api.grantQuery(userIdentity.identityPool.authenticatedRole);
     api.grantSubscription(userIdentity.identityPool.authenticatedRole);

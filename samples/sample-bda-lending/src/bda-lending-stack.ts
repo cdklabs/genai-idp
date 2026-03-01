@@ -7,11 +7,13 @@ import {
 } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { Database } from "@aws-cdk/aws-glue-alpha";
 import {
+  AgentAnalytics,
   AgentCompanionChat,
   ConfigurationTable,
   DocumentDiscovery,
   ProcessingEnvironment,
   ProcessingEnvironmentApi,
+  ProcessingProgressMonitor,
   ReportingEnvironment,
   TrackingTable,
   UserIdentity,
@@ -179,7 +181,6 @@ export class BdaLendingStack extends Stack {
         configurationTable,
         trackingTable,
         lookupFunction: environment.lookupFunction,
-        appsyncApiUrl: api.graphqlUrl,
         cloudWatchLogGroupPrefix: `/aws/lambda/${this.stackName}`,
         athenaDatabase: reportingEnvironment.reportingDatabase,
         athenaOutputLocation: `s3://${reportingEnvironment.reportingBucket.bucketName}/athena-results/`,
@@ -188,8 +189,8 @@ export class BdaLendingStack extends Stack {
       },
     );
 
-    // Integrate agent companion chat with API
-    api.addAgentCompanionChat(agentCompanionChat);
+    // Integrate agent companion chat with API using the new feature pattern
+    api.addFeature(agentCompanionChat);
 
     const bda = new BedrockDataAutomation(this, "LendingBda");
 
@@ -200,7 +201,16 @@ export class BdaLendingStack extends Stack {
       configuration: BdaProcessorConfiguration.lendingPackageSample(),
     });
 
-    api.addStateMachine(processor.stateMachine);
+    // Add processing progress monitoring using the new feature pattern
+    const progressMonitor = new ProcessingProgressMonitor(
+      this,
+      "ProgressMonitor",
+      {
+        stateMachine: processor.stateMachine,
+        encryptionKey: key,
+      },
+    );
+    api.addFeature(progressMonitor);
 
     api.grantQuery(userIdentity.identityPool.authenticatedRole);
     api.grantSubscription(userIdentity.identityPool.authenticatedRole);
@@ -260,14 +270,19 @@ export class BdaLendingStack extends Stack {
       }),
     );
 
-    api.addAgentAnalytics(
+    // Create and add Agent Analytics using the new feature pattern
+    const agentAnalytics = new AgentAnalytics(this, "AgentAnalytics", {
       trackingTable,
-      CrossRegionInferenceProfile.fromConfig({
+      configurationTable,
+      model: CrossRegionInferenceProfile.fromConfig({
         model: BedrockFoundationModel.AMAZON_NOVA_PRO_V1,
         geoRegion: CrossRegionInferenceProfileRegion.US,
       }),
+      metricNamespace,
       reportingEnvironment,
-    );
+      encryptionKey: key,
+    });
+    api.addFeature(agentAnalytics);
 
     api.addDocumentDiscovery(documentDiscovery);
 

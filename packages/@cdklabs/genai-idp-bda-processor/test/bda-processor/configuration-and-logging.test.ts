@@ -207,8 +207,6 @@ describe("BdaProcessor - Configuration and Logging", () => {
         environment,
         configuration,
         dataAutomationProject,
-        enableHITL: true,
-        sageMakerA2IReviewPortalURL: "https://example.com/review",
       });
 
       expect(processor.stateMachine).toBeDefined();
@@ -223,44 +221,9 @@ describe("BdaProcessor - Configuration and Logging", () => {
         Object.values(stateMachineResources).forEach((resource: any) => {
           if (resource.Properties?.DefinitionSubstitutions) {
             const substitutions = resource.Properties.DefinitionSubstitutions;
-            expect(substitutions.EnableHITL).toBe("true");
-            expect(substitutions.SageMakerA2IReviewPortalURL).toBe(
-              "https://example.com/review",
-            );
             expect(substitutions.BDAProjectArn).toBe(
               "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
             );
-          }
-        });
-      }
-    });
-
-    test("configures state machine without HITL when disabled", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const processor = new BdaProcessor(stack, "Processor", {
-        environment,
-        configuration,
-        dataAutomationProject,
-        enableHITL: false,
-      });
-
-      expect(processor.stateMachine).toBeDefined();
-
-      const template = Template.fromStack(stack);
-
-      // Check if state machine has HITL disabled
-      const stateMachineResources = template.findResources(
-        "AWS::StepFunctions::StateMachine",
-      );
-      if (Object.keys(stateMachineResources).length > 0) {
-        Object.values(stateMachineResources).forEach((resource: any) => {
-          if (resource.Properties?.DefinitionSubstitutions) {
-            const substitutions = resource.Properties.DefinitionSubstitutions;
-            expect(substitutions.EnableHITL).toBe("false");
           }
         });
       }

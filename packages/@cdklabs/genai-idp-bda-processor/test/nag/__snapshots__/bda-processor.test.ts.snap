@@ -377,21 +377,13 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "Key": "6f400e16576a4834266053847361c68a1f16c1a722379d2576c6d2ba258f17c4.json",
+          "Key": "0e17a9908e6374f5fedf691702db3d6a1e9314b6c967c8f56c80430711d4af6a.json",
         },
         "DefinitionSubstitutions": {
           "BDAProjectArn": "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-          "EnableHITL": "false",
-          "EvaluationLambdaArn": "",
-          "HITLStatusUpdateFunctionArn": {
+          "EvaluationLambdaArn": {
             "Fn::GetAtt": [
-              "BdaProcessorHITLStatusUpdateFunctionF9483151",
-              "Arn",
-            ],
-          },
-          "HITLWaitFunctionArn": {
-            "Fn::GetAtt": [
-              "BdaProcessorHITLWaitFunctionD3181EC6",
+              "BdaProcessorEvaluationFunctionB446DF4B",
               "Arn",
             ],
           },
@@ -410,7 +402,6 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
               "Arn",
             ],
           },
-          "SageMakerA2IReviewPortalURL": "",
           "SummarizationLambdaArn": {
             "Fn::GetAtt": [
               "BdaProcessorSummarizationFunctionCCB37C38",
@@ -566,7 +557,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
               "Resource": [
                 {
                   "Fn::GetAtt": [
-                    "BdaProcessorHITLWaitFunctionD3181EC6",
+                    "BdaProcessorEvaluationFunctionB446DF4B",
                     "Arn",
                   ],
                 },
@@ -576,33 +567,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                     [
                       {
                         "Fn::GetAtt": [
-                          "BdaProcessorHITLWaitFunctionD3181EC6",
-                          "Arn",
-                        ],
-                      },
-                      ":*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": "lambda:InvokeFunction",
-              "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "BdaProcessorHITLStatusUpdateFunctionF9483151",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "BdaProcessorHITLStatusUpdateFunctionF9483151",
+                          "BdaProcessorEvaluationFunctionB446DF4B",
                           "Arn",
                         ],
                       },
@@ -624,508 +589,32 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
       },
       "Type": "AWS::IAM::Policy",
     },
-    "BdaProcessorHITLEventRuleAllowEventRuleTestStackBdaProcessorHITLProcessFunction96F597024CF30244": {
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "BdaProcessorHITLProcessFunctionF2F3BA46",
-            "Arn",
-          ],
-        },
-        "Principal": "events.amazonaws.com",
-        "SourceArn": {
-          "Fn::GetAtt": [
-            "BdaProcessorHITLEventRuleCD8D6503",
-            "Arn",
-          ],
-        },
-      },
-      "Type": "AWS::Lambda::Permission",
-    },
-    "BdaProcessorHITLEventRuleCD8D6503": {
-      "Properties": {
-        "EventPattern": {
-          "detail": {
-            "humanLoopStatus": [
-              "Completed",
-            ],
-          },
-          "detail-type": [
-            "SageMaker A2I HumanLoop Status Change",
-          ],
-          "source": [
-            "aws.sagemaker",
-          ],
-        },
-        "State": "ENABLED",
-        "Targets": [
-          {
-            "Arn": {
-              "Fn::GetAtt": [
-                "BdaProcessorHITLProcessFunctionF2F3BA46",
-                "Arn",
-              ],
-            },
-            "Id": "Target0",
-            "RetryPolicy": {
-              "MaximumEventAgeInSeconds": 7200,
-              "MaximumRetryAttempts": 3,
-            },
-          },
-        ],
-      },
-      "Type": "AWS::Events::Rule",
-    },
-    "BdaProcessorHITLProcessFunctionF2F3BA46": {
+    "BdaProcessorEvaluationFunctionB446DF4B": {
       "DependsOn": [
-        "BdaProcessorHITLProcessFunctionServiceRoleDefaultPolicy676159B7",
-        "BdaProcessorHITLProcessFunctionServiceRoleFA099804",
+        "BdaProcessorEvaluationFunctionServiceRoleDefaultPolicy5246E66D",
+        "BdaProcessorEvaluationFunctionServiceRole83B27D29",
       ],
       "Properties": {
         "Code": {
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "3a3f83b3f6f60f140d871390dce8020fe4652b98fdbdd5cc05459d94fda50960.zip",
+          "S3Key": "5047c97f0e6bf43b54cff4ac772c23eef84d5564cb527f895a72b382443f5c95.zip",
         },
         "Environment": {
           "Variables": {
-            "DYNAMODB_TABLE": {
-              "Ref": "BdaProcessorBDAMetadataTableAC922B53",
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "EnvironmentConfigurationTableFFC21CA7",
+            },
+            "DOCUMENT_TRACKING_MODE": "dynamodb",
+            "EVALUATION_OUTPUT_BUCKET": {
+              "Ref": "OutputBucket7114EB27",
             },
             "LOG_LEVEL": "INFO",
             "METRIC_NAMESPACE": "TestNamespace",
-            "TRACKING_TABLE": {
-              "Ref": "EnvironmentTrackingTable97AE1FE4",
+            "PROCESSING_OUTPUT_BUCKET": {
+              "Ref": "OutputBucket7114EB27",
             },
-          },
-        },
-        "Handler": "index.handler",
-        "Layers": [
-          {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerd7517139DE3E71C4",
-          },
-        ],
-        "LoggingConfig": {
-          "LogGroup": {
-            "Ref": "BdaProcessorHITLProcessFunctionLogGroup58218A7C",
-          },
-        },
-        "MemorySize": 512,
-        "Role": {
-          "Fn::GetAtt": [
-            "BdaProcessorHITLProcessFunctionServiceRoleFA099804",
-            "Arn",
-          ],
-        },
-        "Runtime": "python3.12",
-        "Timeout": 300,
-      },
-      "Type": "AWS::Lambda::Function",
-    },
-    "BdaProcessorHITLProcessFunctionLogGroup58218A7C": {
-      "DeletionPolicy": "Retain",
-      "Properties": {
-        "RetentionInDays": 7,
-      },
-      "Type": "AWS::Logs::LogGroup",
-      "UpdateReplacePolicy": "Retain",
-    },
-    "BdaProcessorHITLProcessFunctionServiceRoleDefaultPolicy676159B7": {
-      "Properties": {
-        "PolicyDocument": {
-          "Statement": [
-            {
-              "Action": [
-                "dynamodb:BatchGetItem",
-                "dynamodb:Query",
-                "dynamodb:GetItem",
-                "dynamodb:Scan",
-                "dynamodb:ConditionCheckItem",
-                "dynamodb:BatchWriteItem",
-                "dynamodb:PutItem",
-                "dynamodb:UpdateItem",
-                "dynamodb:DeleteItem",
-                "dynamodb:DescribeTable",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "EnvironmentTrackingTable97AE1FE4",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": [
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "EnvironmentTrackingTable97AE1FE4",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": [
-                "dynamodb:BatchGetItem",
-                "dynamodb:Query",
-                "dynamodb:GetItem",
-                "dynamodb:Scan",
-                "dynamodb:ConditionCheckItem",
-                "dynamodb:BatchWriteItem",
-                "dynamodb:PutItem",
-                "dynamodb:UpdateItem",
-                "dynamodb:DeleteItem",
-                "dynamodb:DescribeTable",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "BdaProcessorBDAMetadataTableAC922B53",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": [
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "BdaProcessorBDAMetadataTableAC922B53",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-              ],
-              "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "InputBucket3BF8630A",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "InputBucket3BF8630A",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-              ],
-              "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "WorkingBucketAF106285",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "WorkingBucketAF106285",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-                "s3:DeleteObject*",
-                "s3:PutObject",
-                "s3:PutObjectLegalHold",
-                "s3:PutObjectRetention",
-                "s3:PutObjectTagging",
-                "s3:PutObjectVersionTagging",
-                "s3:Abort*",
-              ],
-              "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "OutputBucket7114EB27",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "OutputBucket7114EB27",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": [
-                "states:SendTaskSuccess",
-                "states:SendTaskFailure",
-                "states:SendTaskHeartbeat",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Ref": "BdaProcessorDocumentProcessingStateMachine8ACF3653",
-              },
-            },
-            {
-              "Action": "cloudwatch:PutMetricData",
-              "Effect": "Allow",
-              "Resource": "*",
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "PolicyName": "BdaProcessorHITLProcessFunctionServiceRoleDefaultPolicy676159B7",
-        "Roles": [
-          {
-            "Ref": "BdaProcessorHITLProcessFunctionServiceRoleFA099804",
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Policy",
-    },
-    "BdaProcessorHITLProcessFunctionServiceRoleFA099804": {
-      "Properties": {
-        "AssumeRolePolicyDocument": {
-          "Statement": [
-            {
-              "Action": "sts:AssumeRole",
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "lambda.amazonaws.com",
-              },
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "ManagedPolicyArns": [
-          {
-            "Fn::Join": [
-              "",
-              [
-                "arn:",
-                {
-                  "Ref": "AWS::Partition",
-                },
-                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-              ],
-            ],
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Role",
-    },
-    "BdaProcessorHITLStatusUpdateFunctionF9483151": {
-      "DependsOn": [
-        "BdaProcessorHITLStatusUpdateFunctionServiceRoleDefaultPolicyAD976189",
-        "BdaProcessorHITLStatusUpdateFunctionServiceRole2EF6D280",
-      ],
-      "Properties": {
-        "Code": {
-          "S3Bucket": {
-            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
-          },
-          "S3Key": "0a04ca935f3685559b4ac0bfa3f8167e9d6d0e5b9afec54e7a3b23a2122aae39.zip",
-        },
-        "Environment": {
-          "Variables": {
-            "LOG_LEVEL": "INFO",
-            "METRIC_NAMESPACE": "TestNamespace",
-            "TRACKING_TABLE": {
-              "Ref": "EnvironmentTrackingTable97AE1FE4",
-            },
-          },
-        },
-        "Handler": "index.handler",
-        "LoggingConfig": {
-          "LogGroup": {
-            "Ref": "BdaProcessorHITLStatusUpdateFunctionLogGroup05E6FBA8",
-          },
-        },
-        "MemorySize": 256,
-        "Role": {
-          "Fn::GetAtt": [
-            "BdaProcessorHITLStatusUpdateFunctionServiceRole2EF6D280",
-            "Arn",
-          ],
-        },
-        "Runtime": "python3.12",
-        "Timeout": 300,
-      },
-      "Type": "AWS::Lambda::Function",
-    },
-    "BdaProcessorHITLStatusUpdateFunctionLogGroup05E6FBA8": {
-      "DeletionPolicy": "Retain",
-      "Properties": {
-        "RetentionInDays": 7,
-      },
-      "Type": "AWS::Logs::LogGroup",
-      "UpdateReplacePolicy": "Retain",
-    },
-    "BdaProcessorHITLStatusUpdateFunctionServiceRole2EF6D280": {
-      "Properties": {
-        "AssumeRolePolicyDocument": {
-          "Statement": [
-            {
-              "Action": "sts:AssumeRole",
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "lambda.amazonaws.com",
-              },
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "ManagedPolicyArns": [
-          {
-            "Fn::Join": [
-              "",
-              [
-                "arn:",
-                {
-                  "Ref": "AWS::Partition",
-                },
-                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-              ],
-            ],
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Role",
-    },
-    "BdaProcessorHITLStatusUpdateFunctionServiceRoleDefaultPolicyAD976189": {
-      "Properties": {
-        "PolicyDocument": {
-          "Statement": [
-            {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-                "s3:DeleteObject*",
-                "s3:PutObject",
-                "s3:PutObjectLegalHold",
-                "s3:PutObjectRetention",
-                "s3:PutObjectTagging",
-                "s3:PutObjectVersionTagging",
-                "s3:Abort*",
-              ],
-              "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "OutputBucket7114EB27",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "OutputBucket7114EB27",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": "dynamodb:*",
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "EnvironmentTrackingTable97AE1FE4",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": "cloudwatch:PutMetricData",
-              "Effect": "Allow",
-              "Resource": "*",
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "PolicyName": "BdaProcessorHITLStatusUpdateFunctionServiceRoleDefaultPolicyAD976189",
-        "Roles": [
-          {
-            "Ref": "BdaProcessorHITLStatusUpdateFunctionServiceRole2EF6D280",
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Policy",
-    },
-    "BdaProcessorHITLWaitFunctionD3181EC6": {
-      "DependsOn": [
-        "BdaProcessorHITLWaitFunctionServiceRoleDefaultPolicyE4BEA09A",
-        "BdaProcessorHITLWaitFunctionServiceRole1AA8E239",
-      ],
-      "Properties": {
-        "Code": {
-          "S3Bucket": {
-            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
-          },
-          "S3Key": "513c6c8bbea66f46156f0bfa0580c36d86d090afaa08ac80439ede4f430ed405.zip",
-        },
-        "Environment": {
-          "Variables": {
-            "DYNAMODB_TABLE": {
-              "Ref": "BdaProcessorBDAMetadataTableAC922B53",
-            },
-            "LOG_LEVEL": "INFO",
-            "METRIC_NAMESPACE": "TestNamespace",
-            "SAGEMAKER_A2I_REVIEW_PORTAL_URL": "",
             "TRACKING_TABLE": {
               "Ref": "EnvironmentTrackingTable97AE1FE4",
             },
@@ -1137,27 +626,26 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerd7517139DE3E71C4",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerf0ed018eA0B6BF52",
           },
         ],
         "LoggingConfig": {
           "LogGroup": {
-            "Ref": "BdaProcessorHITLWaitFunctionLogGroupB2E28C5F",
+            "Ref": "BdaProcessorEvaluationFunctionLogGroupC3840A0E",
           },
         },
-        "MemorySize": 256,
         "Role": {
           "Fn::GetAtt": [
-            "BdaProcessorHITLWaitFunctionServiceRole1AA8E239",
+            "BdaProcessorEvaluationFunctionServiceRole83B27D29",
             "Arn",
           ],
         },
         "Runtime": "python3.12",
-        "Timeout": 900,
+        "Timeout": 30,
       },
       "Type": "AWS::Lambda::Function",
     },
-    "BdaProcessorHITLWaitFunctionLogGroupB2E28C5F": {
+    "BdaProcessorEvaluationFunctionLogGroupC3840A0E": {
       "DeletionPolicy": "Retain",
       "Properties": {
         "RetentionInDays": 7,
@@ -1165,7 +653,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
       "Type": "AWS::Logs::LogGroup",
       "UpdateReplacePolicy": "Retain",
     },
-    "BdaProcessorHITLWaitFunctionServiceRole1AA8E239": {
+    "BdaProcessorEvaluationFunctionServiceRole83B27D29": {
       "Properties": {
         "AssumeRolePolicyDocument": {
           "Statement": [
@@ -1196,15 +684,123 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
       },
       "Type": "AWS::IAM::Role",
     },
-    "BdaProcessorHITLWaitFunctionServiceRoleDefaultPolicyE4BEA09A": {
+    "BdaProcessorEvaluationFunctionServiceRoleDefaultPolicy5246E66D": {
       "Properties": {
         "PolicyDocument": {
           "Statement": [
             {
               "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentTrackingTable97AE1FE4",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConfigurationTableFFC21CA7",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "EnvironmentConfigurationTableFFC21CA7",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
                 "s3:GetObject*",
                 "s3:GetBucket*",
                 "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "OutputBucket7114EB27",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "OutputBucket7114EB27",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
               ],
               "Effect": "Allow",
               "Resource": [
@@ -1231,61 +827,58 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
               ],
             },
             {
-              "Action": "dynamodb:*",
+              "Action": [
+                "bedrock:InvokeModel*",
+                "bedrock:GetFoundationModel",
+              ],
               "Effect": "Allow",
               "Resource": {
-                "Fn::GetAtt": [
-                  "EnvironmentTrackingTable97AE1FE4",
-                  "Arn",
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition",
+                    },
+                    ":bedrock:*::foundation-model/amazon.nova-2-lite-v1:0",
+                  ],
                 ],
               },
             },
             {
               "Action": [
-                "dynamodb:BatchGetItem",
-                "dynamodb:Query",
-                "dynamodb:GetItem",
-                "dynamodb:Scan",
-                "dynamodb:ConditionCheckItem",
-                "dynamodb:BatchWriteItem",
-                "dynamodb:PutItem",
-                "dynamodb:UpdateItem",
-                "dynamodb:DeleteItem",
-                "dynamodb:DescribeTable",
+                "bedrock:GetInferenceProfile",
+                "bedrock:InvokeModel*",
               ],
               "Effect": "Allow",
               "Resource": {
-                "Fn::GetAtt": [
-                  "BdaProcessorBDAMetadataTableAC922B53",
-                  "Arn",
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition",
+                    },
+                    ":bedrock:",
+                    {
+                      "Ref": "AWS::Region",
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId",
+                    },
+                    ":inference-profile/us.amazon.nova-2-lite-v1:0",
+                  ],
                 ],
               },
-            },
-            {
-              "Action": [
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "BdaProcessorBDAMetadataTableAC922B53",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": "cloudwatch:PutMetricData",
-              "Effect": "Allow",
-              "Resource": "*",
             },
           ],
           "Version": "2012-10-17",
         },
-        "PolicyName": "BdaProcessorHITLWaitFunctionServiceRoleDefaultPolicyE4BEA09A",
+        "PolicyName": "BdaProcessorEvaluationFunctionServiceRoleDefaultPolicy5246E66D",
         "Roles": [
           {
-            "Ref": "BdaProcessorHITLWaitFunctionServiceRole1AA8E239",
+            "Ref": "BdaProcessorEvaluationFunctionServiceRole83B27D29",
           },
         ],
       },
@@ -1301,7 +894,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "dd355df955973c055fb64918b3db6d7feac1c29e4c241f1e30edc0e3a9283a12.zip",
+          "S3Key": "f02b73c0275095f93cba5b97916a208a1727d2aaf2e3041d5b1e5ee14856d170.zip",
         },
         "Environment": {
           "Variables": {
@@ -1654,7 +1247,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "13ff25d88952ba812d26bcf109ee52031bc71b5eb0c76363c4333236f71b0e09.zip",
+          "S3Key": "6fa15cf56e2ab3b52ef5d95ad3885f494f7605c61b3e1c49f57bfe39be2c80da.zip",
         },
         "Environment": {
           "Variables": {
@@ -1666,10 +1259,8 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
               "Ref": "BdaProcessorBDAMetadataTableAC922B53",
             },
             "DOCUMENT_TRACKING_MODE": "dynamodb",
-            "ENABLE_HITL": "false",
             "LOG_LEVEL": "INFO",
             "METRIC_NAMESPACE": "TestNamespace",
-            "SAGEMAKER_A2I_REVIEW_PORTAL_URL": "",
             "TRACKING_TABLE": {
               "Ref": "EnvironmentTrackingTable97AE1FE4",
             },
@@ -2001,7 +1592,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "a3ba378aa1ded4f3d6a4af5437cf2792f56909ad4c8453421d0c7201125c61af.zip",
+          "S3Key": "fe7ec619d41edbb7236da0f5b370463b61c9d6b1d5c3c0e9f04fd9e84dce7d6b.zip",
         },
         "Environment": {
           "Variables": {
@@ -2269,7 +1860,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "5709e1479282c74b8183bf620a0e76589c459888d33e74378b94f7caf8869f47.zip",
+          "S3Key": "371546d2f9ebf6d21b98c9c6668a768f8e9b0ec3f31662688ffdacf216789c2f.zip",
         },
         "Environment": {
           "Variables": {
@@ -2545,7 +2136,7 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                     {
                       "Ref": "AWS::Partition",
                     },
-                    ":bedrock:*::foundation-model/amazon.nova-premier-v1:0",
+                    ":bedrock:*::foundation-model/amazon.nova-pro-v1:0",
                   ],
                 ],
               },
@@ -2572,7 +2163,34 @@ exports[`BdaProcessor CDK Nag Compliance BdaProcessor with suppressions satisfie
                     {
                       "Ref": "AWS::AccountId",
                     },
-                    ":inference-profile/us.amazon.nova-premier-v1:0",
+                    ":inference-profile/us.amazon.nova-pro-v1:0",
+                  ],
+                ],
+              },
+            },
+            {
+              "Action": [
+                "bedrock:InvokeModel",
+                "bedrock:GetInferenceProfile",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition",
+                    },
+                    ":bedrock:",
+                    {
+                      "Ref": "AWS::Region",
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId",
+                    },
+                    ":inference-profile/*",
                   ],
                 ],
               },
@@ -2694,7 +2312,980 @@ IMPORTANT: Do not include any search quality reflections, search quality scores,
           },
           "assessment": {
             "default_confidence_threshold": "0.8",
+            "enabled": true,
+            "granular": {
+              "enabled": true,
+              "list_batch_size": "1",
+              "max_workers": "20",
+              "simple_batch_size": "3",
+            },
+            "hitl_enabled": false,
+            "image": {
+              "target_height": "",
+              "target_width": "",
+            },
+            "max_tokens": "10000",
+            "model": "us.amazon.nova-lite-v1:0",
+            "system_prompt": "You are a document analysis assessment expert. Your role is to evaluate the confidence and accuracy of data extraction results by analyzing them against source documents. Provide accurate confidence scores for each assessment. When bounding boxes are requested, provide precise coordinate locations where information appears in the document.",
+            "task_prompt": "<background> You are an expert document analysis assessment system. Your task is to evaluate the confidence of extraction results for a document of class {DOCUMENT_CLASS} and provide precise spatial localization for each field. </background>
+<task> Analyze the extraction results against the source document and provide confidence assessments AND bounding box coordinates for each extracted attribute. Consider factors such as: 1. Text clarity and OCR quality in the source regions  2. Alignment between extracted values and document content  3. Presence of clear evidence supporting the extraction  4. Potential ambiguity or uncertainty in the source material  5. Completeness and accuracy of the extracted information 6. Precise spatial location of each field in the document </task>
+<assessment-guidelines> For each attribute, provide:  - A confidence score between 0.0 and 1.0 where:
+   - 1.0 = Very high confidence, clear and unambiguous evidence
+   - 0.8-0.9 = High confidence, strong evidence with minor uncertainty
+   - 0.6-0.7 = Medium confidence, reasonable evidence but some ambiguity
+   - 0.4-0.5 = Low confidence, weak or unclear evidence
+   - 0.0-0.3 = Very low confidence, little to no supporting evidence
+- A clear explanation of the confidence reasoning - Precise spatial coordinates where the field appears in the document
+Guidelines:  - Base assessments on actual document content and OCR quality  - Consider both text-based evidence and visual/layout clues  - Account for OCR confidence scores when provided  - Be objective and specific in reasoning  - If an extraction appears incorrect, score accordingly with explanation - Provide tight, accurate bounding boxes around the actual text </assessment-guidelines>
+<spatial-localization-guidelines> For each field, provide bounding box coordinates: - bbox: [x1, y1, x2, y2] coordinates in normalized 0-1000 scale - page: Page number where the field appears (starting from 1)
+Coordinate system: - Use normalized scale 0-1000 for both x and y axes - x1, y1 = top-left corner of bounding box   - x2, y2 = bottom-right corner of bounding box - Ensure x2 > x1 and y2 > y1 - Make bounding boxes tight around the actual text content - If a field spans multiple lines, create a bounding box that encompasses all relevant text </spatial-localization-guidelines>
+<final-instructions> Analyze the extraction results against the source document and provide confidence assessments with spatial localization. Return a JSON object with the following structure based on the attribute type:
+For SIMPLE attributes:  {
+  "simple_attribute_name": {
+    "confidence": 0.85,
+    "bbox": [100, 200, 300, 250],
+    "page": 1
+  }
+}
+For GROUP attributes (nested object structure):  {
+  "group_attribute_name": {
+    "sub_attribute_1": {
+      "confidence": 0.90,
+      "bbox": [150, 300, 250, 320],
+      "page": 1
+    },
+    "sub_attribute_2": {
+      "confidence": 0.75,
+      "bbox": [150, 325, 280, 345],
+      "page": 1
+    }
+  }
+}
+For LIST attributes (array of assessed items):  {
+  "list_attribute_name": [
+    {
+      "item_attribute_1": {
+        "confidence": 0.95,
+        "bbox": [100, 400, 200, 420],
+        "page": 1
+      },
+      "item_attribute_2": {
+        "confidence": 0.88,
+        "bbox": [250, 400, 350, 420],
+        "page": 1
+      }
+    },
+    {
+      "item_attribute_1": {
+        "confidence": 0.92,
+        "bbox": [100, 425, 200, 445],
+        "page": 1
+      },
+      "item_attribute_2": {
+        "confidence": 0.70,
+        "bbox": [250, 425, 350, 445],
+        "page": 1
+      }
+    }
+  ]
+}
+IMPORTANT:   - For LIST attributes like "Transactions", assess EACH individual item in the list separately with individual bounding boxes - Each transaction should be assessed as a separate object in the array with its own spatial coordinates - Do NOT provide aggregate assessments for list items - assess each one individually with precise locations - Include assessments AND bounding boxes for ALL attributes present in the extraction results - Match the exact structure of the extracted data - Provide page numbers for all bounding boxes (starting from 1) </final-instructions>
+<<CACHEPOINT>>
+<document-image> {DOCUMENT_IMAGE} </document-image>
+<ocr-text-confidence-results> {OCR_TEXT_CONFIDENCE} </ocr-text-confidence-results>
+<<CACHEPOINT>>
+<attributes-definitions> {ATTRIBUTE_NAMES_AND_DESCRIPTIONS} </attributes-definitions>
+<extraction-results> {EXTRACTION_RESULTS} </extraction-results>",
+            "temperature": "0.0",
+            "top_k": "5",
+            "top_p": "0.0",
+            "validation_enabled": false,
           },
+          "classes": [
+            {
+              "$defs": {
+                "AUTO_CLAIMS_ACCIDENTS_VIOLATIONS": {
+                  "properties": {
+                    "At-Fault": {
+                      "description": "The number of at-fault auto accidents for all applicants",
+                      "type": "string",
+                    },
+                    "Major": {
+                      "description": "The number of major violations for all applicants",
+                      "type": "string",
+                    },
+                    "Minor": {
+                      "description": "The number of minor violations for all applicants",
+                      "type": "string",
+                    },
+                    "Not-at-Fault": {
+                      "description": "The number of not-at-fault auto accidents for all applicants",
+                      "type": "string",
+                    },
+                    "Number of Auto Accidents": {
+                      "description": "The number of auto accidents for all applicants",
+                      "type": "string",
+                    },
+                    "Number of Comp Claims": {
+                      "description": "The number of comprehensive claims for all applicants",
+                      "type": "string",
+                    },
+                    "Number of Violations": {
+                      "description": "The number of violations for all applicants",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+                "CO_APPLICANT": {
+                  "properties": {
+                    "Currently Insured- Auto": {
+                      "description": "The current auto insurance company of the co-applicant",
+                      "type": "string",
+                    },
+                    "DL State": {
+                      "description": "The state that issued the drivers license of the co-applicant",
+                      "type": "string",
+                    },
+                    "Date of Birth": {
+                      "description": "The date of birth of the co-applicant",
+                      "type": "string",
+                    },
+                    "Drivers License Number": {
+                      "description": "The drivers license number of the co-applicant",
+                      "type": "string",
+                    },
+                    "Education Level": {
+                      "description": "The education level of the co-applicant",
+                      "type": "string",
+                    },
+                    "Gender": {
+                      "description": "The gender of the co-applicant",
+                      "type": "string",
+                    },
+                    "Length of Time with Current Auto Carrier": {
+                      "description": "The length of time the co-applicant has been with their current auto insurance carrier",
+                      "type": "string",
+                    },
+                    "Length of Time with Prior Auto Carrier": {
+                      "description": "The length of time the co-applicant was with their prior auto insurance carrier",
+                      "type": "string",
+                    },
+                    "Marital Status": {
+                      "description": "The marital status of the co-applicant",
+                      "type": "string",
+                    },
+                    "Name": {
+                      "description": "The name of the co-applicant",
+                      "type": "string",
+                    },
+                    "Relationship to Primary Applicant": {
+                      "description": "The relationship of the co-applicant to the primary applicant",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+                "PRIMARY_APPLICANT": {
+                  "properties": {
+                    "Currently Insured Auto": {
+                      "description": "The current auto insurance company of the primary applicant",
+                      "type": "string",
+                    },
+                    "DL State": {
+                      "description": "The state that issued the drivers license of the primary applicant",
+                      "type": "string",
+                    },
+                    "Date of Birth": {
+                      "description": "The date of birth of the primary applicant",
+                      "type": "string",
+                    },
+                    "Drivers License Number": {
+                      "description": "The drivers license number of the primary applicant",
+                      "type": "string",
+                    },
+                    "Education Level": {
+                      "description": "The education level of the primary applicant",
+                      "type": "string",
+                    },
+                    "Existing Esurance Policy": {
+                      "description": "The existing Esurance policy number of the primary applicant",
+                      "type": "string",
+                    },
+                    "Gender": {
+                      "description": "The gender of the primary applicant",
+                      "type": "string",
+                    },
+                    "Length of Time with Current Auto Carrier": {
+                      "description": "The length of time the primary applicant has been with their current auto insurance carrier",
+                      "type": "string",
+                    },
+                    "Length of Time with Prior Auto Carrier": {
+                      "description": "The length of time the primary applicant was with their prior auto insurance carrier",
+                      "type": "string",
+                    },
+                    "Marital Status": {
+                      "description": "The marital status of the primary applicant",
+                      "type": "string",
+                    },
+                    "Name": {
+                      "description": "The name of the primary applicant",
+                      "type": "string",
+                    },
+                    "Type of Current Property Policy": {
+                      "description": "The type of current property insurance policy the primary applicant has",
+                      "type": "string",
+                    },
+                    "Years with Prior Property Company": {
+                      "description": "The number of years the primary applicant was with their prior property insurance company",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+              },
+              "$id": "Homeowners-Insurance-Application",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "This is a Homeowners Insurance Application form.",
+              "properties": {
+                "Alternate Phone #": {
+                  "description": "The alternate phone number of the insured",
+                  "type": "string",
+                },
+                "Auto Claims, Accidents, and Violations": {
+                  "$ref": "#/$defs/AUTO_CLAIMS_ACCIDENTS_VIOLATIONS",
+                  "instruction": "-",
+                },
+                "Co-Applicant Information": {
+                  "$ref": "#/$defs/CO_APPLICANT",
+                  "instruction": "-",
+                },
+                "Effective Date": {
+                  "description": "The effective date of the policy",
+                  "type": "string",
+                },
+                "Expiration Date": {
+                  "description": "The expiration date of the policy",
+                  "type": "string",
+                },
+                "Insurance Company": {
+                  "description": "The name and address of the insurance company",
+                  "type": "string",
+                },
+                "Insured Property": {
+                  "description": "The address of the insured property",
+                  "type": "string",
+                },
+                "Named Insured(s) and Mailing Address": {
+                  "description": "The name and mailing address of the named insured(s)",
+                  "type": "string",
+                },
+                "Policy Number": {
+                  "description": "The policy number",
+                  "type": "string",
+                },
+                "Primary Applicant Information": {
+                  "$ref": "#/$defs/PRIMARY_APPLICANT",
+                  "instruction": "-",
+                },
+                "Primary Email": {
+                  "description": "The primary email address of the insured",
+                  "type": "string",
+                },
+                "Primary Phone #": {
+                  "description": "The primary phone number of the insured",
+                  "type": "string",
+                },
+                "Purchase Date and Time": {
+                  "description": "The date and time the policy was purchased",
+                  "type": "string",
+                },
+              },
+              "type": "object",
+              "x-aws-idp-document-type": "Homeowners-Insurance-Application",
+            },
+            {
+              "$defs": {
+                "SummaryItem": {
+                  "properties": {
+                    "summary_amount": {
+                      "description": "Dollar amount for the corresponding summary item",
+                      "type": "number",
+                    },
+                    "summary_desc": {
+                      "description": "Description of the line item for the account summary table",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+                "TransactionItem": {
+                  "properties": {
+                    "balance": {
+                      "description": "Balance amount in the account including this transaction",
+                      "type": "number",
+                    },
+                    "date": {
+                      "description": "Date of the transaction in MM/DD/YYYY format",
+                      "type": "string",
+                    },
+                    "deposits": {
+                      "description": "Dollar amount of deposits for this transaction",
+                      "type": "number",
+                    },
+                    "description": {
+                      "description": "Description of the transaction item",
+                      "type": "string",
+                    },
+                    "withdrawals": {
+                      "description": "dollar amount of withdrawal for this transaction",
+                      "type": "number",
+                    },
+                  },
+                  "type": "object",
+                },
+              },
+              "$id": "Bank-Statement",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "A financial statement for a bank account listing transaction summaries for a specific duration",
+              "properties": {
+                "account_holder_address": {
+                  "description": "Full address of the account holder including street, city, state and zip code",
+                  "type": "string",
+                },
+                "account_holder_name": {
+                  "description": "Name of the bank account holder",
+                  "type": "string",
+                },
+                "account_number": {
+                  "description": "The account number for which the statement is prepared",
+                  "type": "string",
+                },
+                "account_summary": {
+                  "description": "-",
+                  "items": {
+                    "type": "string",
+                  },
+                  "type": "array",
+                },
+                "account_type": {
+                  "description": "Type of the bank account, such as 'Checking', 'Savings', etc.",
+                  "type": "string",
+                },
+                "bank_name": {
+                  "description": "Name of the finanical institution ",
+                  "type": "string",
+                },
+                "branch_transit_number": {
+                  "description": "The branch transit number",
+                  "type": "string",
+                },
+                "statement_end_date": {
+                  "description": "End date for the statement in MM/DD/YYYY format",
+                  "type": "string",
+                },
+                "statement_start_date": {
+                  "description": "Statement start date in MM/DD/YYYY format",
+                  "type": "string",
+                },
+                "transaction_details": {
+                  "description": "-",
+                  "items": {
+                    "type": "string",
+                  },
+                  "type": "array",
+                },
+              },
+              "type": "object",
+              "x-aws-idp-document-type": "Bank-Statement",
+            },
+            {
+              "$defs": {
+                "Address": {
+                  "properties": {
+                    "City": {
+                      "description": "What is the city?",
+                      "type": "string",
+                    },
+                    "Line1": {
+                      "description": "What is the address line 1?",
+                      "type": "string",
+                    },
+                    "Line2": {
+                      "description": "What is the address line 2?",
+                      "type": "string",
+                    },
+                    "State": {
+                      "description": "What is the state? Use the two letter code",
+                      "type": "string",
+                    },
+                    "ZipCode": {
+                      "description": "What is the address zip code?",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+                "Item": {
+                  "properties": {
+                    "ItemDescription": {
+                      "description": "The tax item description text",
+                      "type": "string",
+                    },
+                    "Period": {
+                      "description": "The value for this period",
+                      "type": "number",
+                    },
+                    "YTD": {
+                      "description": "The YTD value",
+                      "type": "number",
+                    },
+                  },
+                  "type": "object",
+                },
+                "Name": {
+                  "properties": {
+                    "FirstName": {
+                      "type": "string",
+                    },
+                    "LastName": {
+                      "type": "string",
+                    },
+                    "MiddleName": {
+                      "description": "if available",
+                      "type": "string",
+                    },
+                    "SuffixName": {
+                      "description": "Such as PhD, Msc., etc",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+              },
+              "$id": "Payslip",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "This document issued by an employer to an employee contains wages received by an employee for a given period. It usually contains the breakdown of each of the income and tax deductions items.",
+              "properties": {
+                "CityTaxes": {
+                  "description": "-",
+                  "items": {
+                    "type": "string",
+                  },
+                  "type": "array",
+                },
+                "CompanyAddress": {
+                  "$ref": "#/$defs/Address",
+                  "instruction": "-",
+                },
+                "CurrentGrossPay": {
+                  "description": "What is the Current Gross Pay?",
+                  "type": "number",
+                },
+                "CurrentNetPay": {
+                  "description": "What is the Current Net Pay?",
+                  "type": "number",
+                },
+                "CurrentTotalDeductions": {
+                  "description": "What are the current total deductions?",
+                  "type": "number",
+                },
+                "EmployeeAddress": {
+                  "$ref": "#/$defs/Address",
+                  "instruction": "-",
+                },
+                "EmployeeName": {
+                  "$ref": "#/$defs/Name",
+                  "instruction": "-",
+                },
+                "EmployeeNumber": {
+                  "description": "What is the employee number?",
+                  "type": "string",
+                },
+                "FederalFilingStatus": {
+                  "description": "What is the Federal Filing Status? If available",
+                  "type": "string",
+                },
+                "FederalTaxes": {
+                  "description": "-",
+                  "items": {
+                    "type": "string",
+                  },
+                  "type": "array",
+                },
+                "HolidayHourlyRate": {
+                  "description": "What is the Holiday Hourly Rate? (if available)",
+                  "type": "number",
+                },
+                "PayDate": {
+                  "description": "What is the Pay Date? YYYY-MM-DD Format",
+                  "type": "string",
+                },
+                "PayPeriodEndDate": {
+                  "description": "What is the Pay Period End Date? YYYY-MM-DD Format",
+                  "type": "string",
+                },
+                "PayPeriodStartDate": {
+                  "description": "What is the Pay Period Start Date? YYYY-MM-DD Format",
+                  "type": "string",
+                },
+                "PayrollNumber": {
+                  "description": "What is the payroll number?",
+                  "type": "string",
+                },
+                "RegularHourlyRate": {
+                  "description": "What is the Regular Hourly Rate? (if available)",
+                  "type": "number",
+                },
+                "StateFilingStatus": {
+                  "description": "What is the State Filing Status? (If available)",
+                  "type": "string",
+                },
+                "StateTaxes": {
+                  "description": "-",
+                  "items": {
+                    "type": "string",
+                  },
+                  "type": "array",
+                },
+                "YTDCityTax": {
+                  "description": "What are the YTD City Taxes?",
+                  "type": "number",
+                },
+                "YTDFederalTax": {
+                  "description": "What is the YTD Federal Taxes amount?",
+                  "type": "number",
+                },
+                "YTDGrossPay": {
+                  "description": "What is the YTD Gross Pay?",
+                  "type": "number",
+                },
+                "YTDNetPay": {
+                  "description": "What is the YTD Net Pay?",
+                  "type": "number",
+                },
+                "YTDStateTax": {
+                  "description": "What are the YTD State Taxes?",
+                  "type": "number",
+                },
+                "YTDTotalDeductions": {
+                  "description": "What are the YTD total deductions?",
+                  "type": "number",
+                },
+                "are_field_names_sufficient": {
+                  "description": "Are field names / key values sufficient for any validation?",
+                  "type": "boolean",
+                },
+                "currency": {
+                  "description": "What currency is used in this document? CAD, USD, EUR, etc.",
+                  "type": "string",
+                },
+                "is_gross_pay_valid": {
+                  "description": "Is the YTD gross pay the largest dollar amount value on the paystub?",
+                  "type": "boolean",
+                },
+                "is_ytd_gross_pay_highest": {
+                  "description": "Is the YTD Gross Pay the largest amount in the entire paystub?",
+                  "type": "boolean",
+                },
+              },
+              "type": "object",
+              "x-aws-idp-document-type": "Payslip",
+            },
+            {
+              "$id": "Bank-checks",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "This is a bank check, used to pay money to people or business",
+              "properties": {
+                "account_holder_name": {
+                  "description": "The account holder's name",
+                  "type": "string",
+                },
+                "amount_in_words": {
+                  "description": "The amount in words, as written",
+                  "type": "string",
+                },
+                "bank_name": {
+                  "description": "The bank name",
+                  "type": "string",
+                },
+                "bank_routing_number": {
+                  "description": "The routing number is typically the first of the MICR numbers.",
+                  "type": "string",
+                },
+                "check_number": {
+                  "description": "This is the check number in the checkbook. It is typically the last of the block of MICR numbers",
+                  "type": "number",
+                },
+                "date": {
+                  "description": "The date the check has been signed. Reformat to YYYY-MM-DD",
+                  "type": "string",
+                },
+                "dollar_amount": {
+                  "description": "The dollar amount in numbers, as written",
+                  "type": "number",
+                },
+                "is_signed": {
+                  "description": "Whether the check is signed",
+                  "type": "boolean",
+                },
+                "memo": {
+                  "description": "The memo that describe what the check was for",
+                  "type": "string",
+                },
+                "payee_name": {
+                  "description": "To whom the check is addressed",
+                  "type": "string",
+                },
+                "routing_number_valid": {
+                  "description": "True if the bank routing number has 9 digits",
+                  "type": "boolean",
+                },
+              },
+              "type": "object",
+              "x-aws-idp-document-type": "Bank-checks",
+            },
+            {
+              "$defs": {
+                "Address": {
+                  "properties": {
+                    "CITY": {
+                      "description": "The city name",
+                      "type": "string",
+                    },
+                    "STATE": {
+                      "description": "The two letter code of the state",
+                      "type": "string",
+                    },
+                    "STREET_ADDRESS": {
+                      "description": "The street address",
+                      "type": "string",
+                    },
+                    "ZIP_CODE": {
+                      "description": "The zip code",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+                "NameDetails": {
+                  "properties": {
+                    "FIRST_NAME": {
+                      "description": "The first name",
+                      "type": "string",
+                    },
+                    "LAST_NAME": {
+                      "description": "The last name of the driver",
+                      "type": "string",
+                    },
+                    "MIDDLE_NAME": {
+                      "description": "The middle name or initial",
+                      "type": "string",
+                    },
+                    "SUFFIX": {
+                      "description": "The suffix, such as PhD, MSc. etc",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+                "PersonalDetails": {
+                  "properties": {
+                    "EYE_COLOR": {
+                      "description": "Eye colour, unabbreviated",
+                      "type": "string",
+                    },
+                    "HAIR_COLOR": {
+                      "description": "Hair colour, unabbreviated",
+                      "type": "string",
+                    },
+                    "HEIGHT": {
+                      "description": "The height in ft and inches",
+                      "type": "string",
+                    },
+                    "SEX": {
+                      "description": "One of ["M", "F"]",
+                      "type": "string",
+                    },
+                    "WEIGHT": {
+                      "description": "The weight in pounds",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+              },
+              "$id": "US-drivers-licenses",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "This document is for US driving license from any US state",
+              "properties": {
+                "ADDRESS_DETAILS": {
+                  "$ref": "#/$defs/Address",
+                  "instruction": "-",
+                },
+                "CLASS": {
+                  "description": "The single letter class code, one of "A", "B" or "C"",
+                  "type": "string",
+                },
+                "COUNTY": {
+                  "description": "The county (if available, else empty string)",
+                  "type": "string",
+                },
+                "DATE_OF_BIRTH": {
+                  "description": "The date of birth of the driver in YYYY-MM-DD format",
+                  "type": "string",
+                },
+                "DATE_OF_ISSUE": {
+                  "description": "The date of issue in YYYY-MM-DD format",
+                  "type": "string",
+                },
+                "ENDORSEMENTS": {
+                  "description": "The endorsement codes if any",
+                  "items": {
+                    "type": "string",
+                  },
+                  "type": "array",
+                },
+                "EXPIRATION_DATE": {
+                  "description": "The date of expiry in YYYY-MM-DD format",
+                  "type": "string",
+                },
+                "ID_NUMBER": {
+                  "description": "The unique identification number of the driving license",
+                  "type": "string",
+                },
+                "NAME_DETAILS": {
+                  "$ref": "#/$defs/NameDetails",
+                  "instruction": "-",
+                },
+                "PERSONAL_DETAILS": {
+                  "$ref": "#/$defs/PersonalDetails",
+                  "instruction": "-",
+                },
+                "RESTRICTIONS": {
+                  "description": "The restrictions listed, e.g prescriptive lens or special letter codes",
+                  "items": {
+                    "type": "string",
+                  },
+                  "type": "array",
+                },
+                "STATE_NAME": {
+                  "description": "The state name ",
+                  "type": "string",
+                },
+              },
+              "type": "object",
+              "x-aws-idp-document-type": "US-drivers-licenses",
+            },
+            {
+              "$defs": {
+                "CodeAmount": {
+                  "properties": {
+                    "amount": {
+                      "description": "The corresponding amount",
+                      "type": "number",
+                    },
+                    "code": {
+                      "description": "The code",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+                "EmployeeInfo": {
+                  "properties": {
+                    "employee_address": {
+                      "description": "The employee street address and city",
+                      "type": "string",
+                    },
+                    "employee_last_name": {
+                      "description": "The employee last name",
+                      "type": "string",
+                    },
+                    "employee_name_suffix": {
+                      "description": "The employee suffix, such as PhD, MSc. etc. Empty string if non-applicable.",
+                      "type": "string",
+                    },
+                    "employee_zip_code": {
+                      "description": "The employee zip code",
+                      "type": "number",
+                    },
+                    "first_name": {
+                      "description": "The employee first name ",
+                      "type": "string",
+                    },
+                    "ssn": {
+                      "description": "The SSN, formatted as XXX-XX-XXX",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+                "EmployerInfo": {
+                  "properties": {
+                    "control_number": {
+                      "description": "The control number. It is the value in box d.",
+                      "type": "string",
+                    },
+                    "ein": {
+                      "description": "The employer identification number",
+                      "type": "string",
+                    },
+                    "employer_address": {
+                      "description": "The employer street address and city",
+                      "type": "string",
+                    },
+                    "employer_name": {
+                      "description": "The employer name",
+                      "type": "string",
+                    },
+                    "employer_zip_code": {
+                      "description": "The employer zip code",
+                      "type": "number",
+                    },
+                  },
+                  "type": "object",
+                },
+                "FederalTaxInfo": {
+                  "properties": {
+                    "allocated_tips": {
+                      "description": "box 8",
+                      "type": "number",
+                    },
+                    "federal_income_tax": {
+                      "description": "box 2",
+                      "type": "number",
+                    },
+                    "medicare_tax": {
+                      "description": "box 6",
+                      "type": "number",
+                    },
+                    "social_security_tax": {
+                      "description": "box 4",
+                      "type": "number",
+                    },
+                  },
+                  "type": "object",
+                },
+                "FederalWageInfo": {
+                  "properties": {
+                    "medicare_wages_tips": {
+                      "description": "box 5",
+                      "type": "number",
+                    },
+                    "social_security_tips": {
+                      "description": "box 7",
+                      "type": "number",
+                    },
+                    "social_security_wages": {
+                      "description": "box 3",
+                      "type": "number",
+                    },
+                    "wages_tips_other_compensation": {
+                      "description": "box 1",
+                      "type": "number",
+                    },
+                  },
+                  "type": "object",
+                },
+                "FilingInfo": {
+                  "properties": {
+                    "omb_number": {
+                      "description": "The OMB number",
+                      "type": "string",
+                    },
+                    "verification_code": {
+                      "description": "The value in box 9. Empty string if not applicable.",
+                      "type": "string",
+                    },
+                  },
+                  "type": "object",
+                },
+                "StateTaxInfo": {
+                  "properties": {
+                    "employer_state_id_number": {
+                      "description": "second part of column 15",
+                      "type": "number",
+                    },
+                    "local_income_tax": {
+                      "description": "column 19",
+                      "type": "number",
+                    },
+                    "local_wages_tips": {
+                      "description": "column 18",
+                      "type": "number",
+                    },
+                    "locality_name": {
+                      "description": "column 20",
+                      "type": "string",
+                    },
+                    "state_income_tax": {
+                      "description": "column 17",
+                      "type": "number",
+                    },
+                    "state_name": {
+                      "description": "The two letter state code, column 15",
+                      "type": "string",
+                    },
+                    "state_wages_and_tips": {
+                      "description": "column 16",
+                      "type": "number",
+                    },
+                  },
+                  "type": "object",
+                },
+              },
+              "$id": "W2",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "description": "This is a tax form to file personal income received from an employer in a fiscal year",
+              "properties": {
+                "codes": {
+                  "description": "This is table for the info present in field 12 a,b,c,d",
+                  "items": {
+                    "type": "string",
+                  },
+                  "type": "array",
+                },
+                "employee_general_info": {
+                  "$ref": "#/$defs/EmployeeInfo",
+                  "instruction": "This contains info with respect to the employee details",
+                },
+                "employer_info": {
+                  "$ref": "#/$defs/EmployerInfo",
+                  "instruction": "This contains info with respect to the employer business",
+                },
+                "federal_tax_info": {
+                  "$ref": "#/$defs/FederalTaxInfo",
+                  "instruction": "This contains data with respect to federal level declaration of taxes",
+                },
+                "federal_wage_info": {
+                  "$ref": "#/$defs/FederalWageInfo",
+                  "instruction": "This contains data with respect to federal level declaration of income",
+                },
+                "filing_info": {
+                  "$ref": "#/$defs/FilingInfo",
+                  "instruction": "This contains the information that pertains to filing",
+                },
+                "nonqualified_plans_incom": {
+                  "description": "The value in field 11. 0 if N/A.",
+                  "type": "number",
+                },
+                "other": {
+                  "description": "The value or text contained in the field 14.",
+                  "type": "string",
+                },
+                "state_taxes_table": {
+                  "description": "This is a table that contains each state income / tax information",
+                  "items": {
+                    "type": "string",
+                  },
+                  "type": "array",
+                },
+              },
+              "type": "object",
+              "x-aws-idp-document-type": "W2",
+            },
+          ],
           "discovery": {
             "output_format": {
               "sample_json": "{
@@ -2754,30 +3345,16 @@ IMPORTANT: Do not include any search quality reflections, search quality scores,
               "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Analyze forms line by line to identify field names, data types, and organizational structure. Focus on creating comprehensive blueprints for document processing without extracting actual values.",
               "temperature": "0.0",
               "top_p": "0.0",
-              "user_prompt": "This image contains forms data. Analyze the form line by line. Image may contains multiple pages, process all the pages.  Form may contain multiple name value pair in one line.  Extract all the names in the form including the name value pair which doesn't have value.  Organize them into groups, extract field_name, data_type and field description Field_name should be less than 60 characters, should not have space use '-' instead of space. field_description is a brief description of the field and the location of the field like box number or line number in the form and section of the form. Field_name should be unique within the group. Add two fields document_class and document_description.  For document_class generate a short name based on the document content like W4, I-9, Paystub.  For document_description generate a description about the document in less than 50 words. 
-Group the fields based on the section they are grouped in the form. Group should have attributeType as "group". If the group repeats and follows table format, update the attributeType as "list". Do not extract the values. Return the extracted data in JSON format. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:",
+              "user_prompt": "This image contains forms data. Analyze the form line by line. Image may contains multiple pages, process all the pages.  Form may contain multiple name value pair in one line.  Extract all the names in the form including the name value pair which doesn't have value.  Organize them into groups, extract field_name, data_type and field description Field_name should be less than 60 characters, should not have space use '-' instead of space. field_description is a brief description of the field and the location of the field like box number or line number in the form and section of the form. Field_name should be unique within the group. Add two fields document_class and document_description.  For document_class generate a short name based on the document content like W4, I-9, Paystub.  For document_description generate a description about the document in less than 50 words.  Group the fields based on the section they are grouped in the form. Group should have attributeType as "group". If the group repeats and follows table format, update the attributeType as "list". Do not extract the values. Return the extracted data in JSON format. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:",
             },
           },
           "evaluation": {
             "enabled": true,
             "llm_method": {
               "max_tokens": "4096",
-              "model": "us.anthropic.claude-3-haiku-20240307-v1:0",
+              "model": "us.amazon.nova-2-lite-v1:0",
               "system_prompt": "You are an evaluator that helps determine if the predicted and expected values match for document attribute extraction. You will consider the context and meaning rather than just exact string matching.",
-              "task_prompt": "I need to evaluate attribute extraction for a document of class: {DOCUMENT_CLASS}.
-
-For the attribute named "{ATTRIBUTE_NAME}" described as "{ATTRIBUTE_DESCRIPTION}":
-- Expected value: {EXPECTED_VALUE}
-- Actual value: {ACTUAL_VALUE}
-
-Do these values match in meaning, taking into account formatting differences, word order, abbreviations, and semantic equivalence?
-Provide your assessment as a JSON with three fields:
-- "match": boolean (true if they match, false if not)
-- "score": number between 0 and 1 representing the confidence/similarity score
-- "reason": brief explanation of your decision
-
-Respond ONLY with the JSON and nothing else. Here's the exact format:
-{
+              "task_prompt": "I need to evaluate attribute extraction for a document of class: {DOCUMENT_CLASS}. For the attribute named "{ATTRIBUTE_NAME}" described as "{ATTRIBUTE_DESCRIPTION}": - Expected value: {EXPECTED_VALUE} - Actual value: {ACTUAL_VALUE} Do these values match in meaning, taking into account formatting differences, word order, abbreviations, and semantic equivalence? Provide your assessment as a JSON with three fields: - "match": boolean (true if they match, false if not) - "score": number between 0 and 1 representing the confidence/similarity score - "reason": brief explanation of your decision Respond ONLY with the JSON and nothing else. Here's the exact format: {
   "match": true or false,
   "score": 0.0 to 1.0,
   "reason": "Your explanation here"
@@ -2787,628 +3364,42 @@ Respond ONLY with the JSON and nothing else. Here's the exact format:
               "top_p": "0.0",
             },
           },
-          "notes": "Processing configuration in BDA project.",
-          "pricing": [
-            {
-              "name": "bda/documents-custom",
-              "units": [
-                {
-                  "name": "pages",
-                  "price": "0.04",
-                },
-              ],
-            },
-            {
-              "name": "bda/documents-standard",
-              "units": [
-                {
-                  "name": "pages",
-                  "price": "0.01",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.amazon.nova-lite-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "6.0E-8",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "2.4E-7",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "1.5E-8",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "6.0E-8",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.amazon.nova-pro-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "8.0E-7",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "3.2E-6",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "2.0E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "8.0E-7",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.amazon.nova-premier-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "2.5E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.25E-5",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.amazon.nova-2-lite-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "3.0E-7",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "2.5E-6",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "7.5E-8",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "3.0E-7",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-3-haiku-20240307-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "2.5E-7",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.25E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "8.0E-7",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "4.0E-6",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "8.0E-8",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "1.0E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "1.1E-06",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "5.5E-06",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "1.1E-07",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "1.4E-06",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "3.0E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.5E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "3.0E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "3.75E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "3.0E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.5E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "3.0E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "3.75E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "3.0E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.5E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "3.0E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "3.75E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "6.0E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "2.25E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "6.0E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "7.5E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "3.3E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.65E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "3.3E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "4.125E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "6.6E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "2.475E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "6.6E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "8.25E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-opus-4-20250514-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "1.5E-5",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "7.5E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "1.5E-6",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "1.875E-5",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-opus-4-1-20250805-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "1.5E-5",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "7.5E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "1.5E-6",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "1.875E-5",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "5.0E-06",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "2.5E-05",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "5.0E-07",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "6.25E-06",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.amazon.nova-lite-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "7.8E-8",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "3.1E-7",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "1.9E-8",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "7.8E-8",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.amazon.nova-pro-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "1.0E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "4.2E-6",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "2.6E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "1.0E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.amazon.nova-2-lite-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "3.9E-7",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "3.27E-6",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "9.75E-8",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "3.9E-7",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.anthropic.claude-3-haiku-20240307-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "2.5E-7",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.25E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "1.1E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "5.5E-6",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "1.1E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "1.4E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "3.0E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.5E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "3.0E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "3.75E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "3.0E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.5E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "3.0E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "3.75E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.anthropic.claude-sonnet-4-20250514-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "3.0E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.5E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "3.0E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "3.75E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "3.3E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "1.65E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "3.3E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "4.125E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "6.6E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "2.475E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "6.6E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "8.25E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/eu.anthropic.claude-opus-4-5-20251101-v1:0",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "5.0E-6",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "2.5E-5",
-                },
-                {
-                  "name": "cacheReadInputTokens",
-                  "price": "5.0E-7",
-                },
-                {
-                  "name": "cacheWriteInputTokens",
-                  "price": "6.25E-6",
-                },
-              ],
-            },
-            {
-              "name": "bedrock/qwen.qwen3-vl-235b-a22b",
-              "units": [
-                {
-                  "name": "inputTokens",
-                  "price": "5.3E-7",
-                },
-                {
-                  "name": "outputTokens",
-                  "price": "2.66E-6",
-                },
-              ],
-            },
-            {
-              "name": "lambda/requests",
-              "units": [
-                {
-                  "name": "invocations",
-                  "price": "2.0E-7",
-                },
-              ],
-            },
-            {
-              "name": "lambda/duration",
-              "units": [
-                {
-                  "name": "gb_seconds",
-                  "price": "1.66667E-5",
-                },
-              ],
-            },
-          ],
+          "notes": "Default settings for Pattern1 (BDA)",
           "summarization": {
             "enabled": true,
             "max_tokens": "4096",
-            "model": "us.amazon.nova-premier-v1:0",
+            "model": "us.amazon.nova-pro-v1:0",
             "system_prompt": "You are a document summarization expert who can analyze and summarize documents from various domains including medical, financial, legal, and general business documents. Your task is to create a summary that captures the key information, main points, and important details from the document. Your output must be in valid JSON format. \\nSummarization Style: Balanced\\\\nCreate a balanced summary that provides a moderate level of detail. Include the main points and key supporting information, while maintaining the document's overall structure. Aim for a comprehensive yet concise summary.\\n Your output MUST be in valid JSON format with markdown content. You MUST strictly adhere to the output format specified in the instructions.",
-            "task_prompt": "<document_ocr_data>
-{DOCUMENT_TEXT}
-</document_ocr_data>
-Analyze the provided document (<document_ocr_data>) and create a comprehensive summary.
+            "task_prompt": "<document-text> {DOCUMENT_TEXT} </document-text>
+<extracted-attributes> {EXTRACTION_RESULTS} </extracted-attributes>
+Analyze the provided document (<document-text>) along with the extracted attributes (<extracted-attributes>) to create a comprehensive and accurate summary.
 CRITICAL INSTRUCTION: You MUST return your response as valid JSON with the EXACT structure shown at the end of these instructions. Do not include any explanations, notes, or text outside of the JSON structure.
 Create a summary that captures the essential information from the document. Your summary should:
-1. Extract key information, main points, and important details
-2. Maintain the original document's organizational structure where appropriate
-3. Preserve important facts, figures, dates, and entities
-4. Reduce the length while retaining all critical information
-5. Use markdown formatting for better readability (headings, lists, emphasis, etc.)
-6. Cite all relevant facts from the source document using inline citations in the format [Cite-X, Page-Y] where X is a sequential citation number and Y is the page number
-7. Format citations as markdown links that reference the full citation list at the bottom of the summary
-  Example: [[Cite-1, Page-3]](#cite-1-page-3)
+1. **Integrate Extracted Attributes**: Begin with a "Key Information" section that highlights the most important extracted attributes in a structured format (use tables or lists as appropriate)
+2. **Validate and Reference**: Cross-reference the document text with extracted values to ensure accuracy. When mentioning specific values, prefer the extracted attributes when they are available
+3. **Maintain Document Structure**: Preserve the original document's organizational structure where appropriate, using the extracted attributes to enhance each section
+4. **Highlight Critical Data**: Emphasize important extracted values such as:
+   - Names, addresses, and identification numbers
+   - Dates and time periods
+   - Monetary amounts and financial figures
+   - Status indicators and classifications
+   - Any calculated or derived values
 
-8. At the end of the summary, include a "References" section that lists all citations with their exact text from the source document in the format:
-  [Cite-X, Page-Y]: Exact text from the document
+5. **Use Markdown Formatting**: Apply markdown for better readability:
+   - Use headers (##, ###) for sections
+   - Create tables for structured data from extracted attributes
+   - Use **bold** for important values and *italics* for emphasis
+   - Create lists (bullet or numbered) for multiple items
 
+6. **Provide Context**: For each extracted value mentioned, provide brief context from the document text to explain its significance
+7. **Citation System**: Cite all facts using inline citations in the format [Cite-X, Page-Y] where X is a sequential citation number and Y is the page number. Format citations as markdown links: [[Cite-1, Page-3]](#cite-1-page-3)
+8. **Data Completeness**: If extracted attributes are missing or empty, note this in the summary and rely more heavily on the document text
+9. **References Section**: At the end, include a "References" section listing all citations with their exact text from the source document
+Structure your summary as follows: - **Key Information** (from extracted attributes) - **Document Overview** - **Detailed Sections** (based on document structure) - **Summary and Conclusions** - **References**
 Output Format:
 You MUST return ONLY valid JSON with the following structure and nothing else:
 \`\`\`json {
-  "summary": "A comprehensive summary in markdown format with inline citations linked to a references section at the bottom"
+  "summary": "A comprehensive summary in markdown format that integrates extracted attributes with document text, includes inline citations linked to a references section at the bottom"
 } \`\`\`
 Do not include any text, explanations, or notes outside of this JSON structure. The JSON must be properly formatted and parseable.",
             "temperature": "0.0",
@@ -4365,7 +4356,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "6fae8cfc606dd44f5c0b5a44de673a6a018e1121df9782156bfbcb658bf4b5f9.zip",
+          "S3Key": "4eef5f6a90858506e46d3bd9278deffe55bc91f36356836f4707acbcbc12d2b5.zip",
         },
         "DeadLetterConfig": {
           "TargetArn": {
@@ -4580,7 +4571,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "5fb6889555b71a4cfe88010eeba67a026732b3d4c2e02a0a79dc96a2f839a0f4.zip",
+          "S3Key": "9dc599d5fb32d256ea4362b33ed73ad2c4c05c93938b710003a7b84cff58278a.zip",
         },
         "Environment": {
           "Variables": {
@@ -4705,7 +4696,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "06e8a65360b073ff6d1e2e7729cba5c308c1d3965cfdbade00e447e8042abc81.zip",
+          "S3Key": "ed5141a9149fbae0b5e250d8535f8c4a488313d712e75ca25f337a55d524acf6.zip",
         },
         "DeadLetterConfig": {
           "TargetArn": {
@@ -4954,7 +4945,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service",
       },
@@ -4969,7 +4960,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: appsync, summarization",
       },
@@ -4984,9 +4975,24 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only)",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayerf0ed018eA0B6BF52": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, evaluation",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },

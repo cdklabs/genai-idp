@@ -113,29 +113,6 @@ describe("BdaProcessor - Infrastructure Components", () => {
       }
     });
 
-    test("creates HITL functions", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      new BdaProcessor(stack, "Processor", {
-        environment,
-        configuration,
-        dataAutomationProject,
-        enableHITL: true,
-      });
-
-      const template = Template.fromStack(stack);
-
-      // Check for HITL-related functions
-      const lambdaResources = template.findResources("AWS::Lambda::Function");
-      if (Object.keys(lambdaResources).length > 0) {
-        // Should include HITL wait and status update functions
-        expect(Object.keys(lambdaResources).length).toBeGreaterThan(0);
-      }
-    });
-
     test("creates BDA completion function", () => {
       const configuration = BdaProcessorConfiguration.lendingPackageSample();
       const dataAutomationProject = new MockDataAutomationProject(
@@ -314,7 +291,6 @@ describe("BdaProcessor - Infrastructure Components", () => {
         environment,
         configuration,
         dataAutomationProject,
-        enableHITL: true,
       });
 
       const template = Template.fromStack(stack);
@@ -329,7 +305,6 @@ describe("BdaProcessor - Infrastructure Components", () => {
             const substitutions = resource.Properties.DefinitionSubstitutions;
             expect(substitutions.InvokeBDALambdaArn).toBeDefined();
             expect(substitutions.ProcessResultsLambdaArn).toBeDefined();
-            expect(substitutions.EnableHITL).toBe("true");
           }
         });
       }
@@ -373,51 +348,6 @@ describe("BdaProcessor - Infrastructure Components", () => {
                 // Sometimes it's "detail-type" instead of "detailType"
                 expect(eventPattern["detail-type"]).toContain(
                   "Bedrock Data Automation Job Succeeded",
-                );
-              }
-            }
-          }
-        });
-      }
-    });
-
-    test("creates EventBridge rule for HITL events when enabled", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      new BdaProcessor(stack, "Processor", {
-        environment,
-        configuration,
-        dataAutomationProject,
-        enableHITL: true,
-      });
-
-      const template = Template.fromStack(stack);
-
-      // Check if EventBridge rule for HITL exists
-      const eventRuleResources = template.findResources("AWS::Events::Rule");
-      if (Object.keys(eventRuleResources).length > 0) {
-        // Should have rules for both BDA and HITL events
-        expect(Object.keys(eventRuleResources).length).toBeGreaterThanOrEqual(
-          1,
-        );
-
-        // Look for HITL-specific rule
-        Object.values(eventRuleResources).forEach((resource: any) => {
-          if (resource.Properties?.EventPattern) {
-            const eventPattern = resource.Properties.EventPattern;
-            if (eventPattern.source?.includes("aws.sagemaker")) {
-              // Check if detailType exists and contains the expected value
-              if (eventPattern.detailType) {
-                expect(eventPattern.detailType).toContain(
-                  "SageMaker A2I HumanLoop Status Change",
-                );
-              } else if (eventPattern["detail-type"]) {
-                // Sometimes it's "detail-type" instead of "detailType"
-                expect(eventPattern["detail-type"]).toContain(
-                  "SageMaker A2I HumanLoop Status Change",
                 );
               }
             }
