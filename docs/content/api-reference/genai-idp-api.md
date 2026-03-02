@@ -41940,6 +41940,7 @@ Any object.
 | <code><a href="#@cdklabs/genai-idp.UserManagement.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.UserManagement.property.managementFunction">managementFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function that handles user administration operations. |
 | <code><a href="#@cdklabs/genai-idp.UserManagement.property.syncFunction">syncFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function that handles user synchronization operations. |
+| <code><a href="#@cdklabs/genai-idp.UserManagement.property.usersTable">usersTable</a></code> | <code><a href="#@cdklabs/genai-idp.IUsersTable">IUsersTable</a></code> | DynamoDB table that stores user metadata and profile information. |
 
 ---
 
@@ -41976,6 +41977,18 @@ public readonly syncFunction: IFunction;
 - *Type:* aws-cdk-lib.aws_lambda.IFunction
 
 Lambda function that handles user synchronization operations.
+
+---
+
+##### `usersTable`<sup>Required</sup> <a name="usersTable" id="@cdklabs/genai-idp.UserManagement.property.usersTable"></a>
+
+```typescript
+public readonly usersTable: IUsersTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IUsersTable">IUsersTable</a>
+
+DynamoDB table that stores user metadata and profile information.
 
 ---
 
@@ -43179,6 +43192,1091 @@ The timeout configured for this lambda.
 ---
 
 ##### `PROPERTY_INJECTION_ID`<sup>Required</sup> <a name="PROPERTY_INJECTION_ID" id="@cdklabs/genai-idp.UserManagementFunction.property.PROPERTY_INJECTION_ID"></a>
+
+```typescript
+public readonly PROPERTY_INJECTION_ID: string;
+```
+
+- *Type:* string
+
+Uniquely identifies this class.
+
+---
+
+### UsersTable <a name="UsersTable" id="@cdklabs/genai-idp.UsersTable"></a>
+
+- *Implements:* <a href="#@cdklabs/genai-idp.IUsersTable">IUsersTable</a>
+
+A DynamoDB table for storing user metadata and profile information.
+
+This table uses a single-table design pattern with:
+- PK: USER#{userId} - Partition key for user records
+- SK: USER#{userId} - Sort key (same as PK for user records)
+- EmailIndex: GSI on email attribute for email-based lookups
+
+The table stores user information including:
+- User ID and email
+- Persona (Admin, Reviewer)
+- Status and timestamps
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.UsersTable.Initializer"></a>
+
+```typescript
+import { UsersTable } from '@cdklabs/genai-idp'
+
+new UsersTable(scope: Construct, id: string, props?: FixedKeyTableProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.FixedKeyTableProps">FixedKeyTableProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.UsersTable.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.UsersTable.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.FixedKeyTableProps">FixedKeyTableProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.with">with</a></code> | Applies one or more mixins to this construct. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.applyRemovalPolicy">applyRemovalPolicy</a></code> | Apply the given removal policy to this resource. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.addToResourcePolicy">addToResourcePolicy</a></code> | Adds a statement to the resource policy associated with this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.grant">grant</a></code> | Adds an IAM policy statement associated with this table to an IAM principal's policy. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.grantFullAccess">grantFullAccess</a></code> | Permits all DynamoDB operations ("dynamodb:*") to an IAM principal. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.grantOnKey">grantOnKey</a></code> | Gives permissions to a grantable entity to perform actions on the encryption key. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.grantReadData">grantReadData</a></code> | Permits an IAM principal all data read operations from this table: BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan, DescribeTable. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.grantReadWriteData">grantReadWriteData</a></code> | Permits an IAM principal to all data read/write operations to this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.grantStream">grantStream</a></code> | Adds an IAM policy statement associated with this table's stream to an IAM principal's policy. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.grantStreamRead">grantStreamRead</a></code> | Permits an IAM principal all stream data read operations for this table's stream: DescribeStream, GetRecords, GetShardIterator, ListStreams. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.grantTableListStreams">grantTableListStreams</a></code> | Permits an IAM Principal to list streams attached to current dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.grantWriteData">grantWriteData</a></code> | Permits an IAM principal all data write operations to this table: BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metric">metric</a></code> | Return the given named metric for this Table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metricConditionalCheckFailedRequests">metricConditionalCheckFailedRequests</a></code> | Metric for the conditional check failed requests this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metricConsumedReadCapacityUnits">metricConsumedReadCapacityUnits</a></code> | Metric for the consumed read capacity units this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metricConsumedWriteCapacityUnits">metricConsumedWriteCapacityUnits</a></code> | Metric for the consumed write capacity units this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metricSuccessfulRequestLatency">metricSuccessfulRequestLatency</a></code> | Metric for the successful request latency this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metricSystemErrors">metricSystemErrors</a></code> | Metric for the system errors this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metricSystemErrorsForOperations">metricSystemErrorsForOperations</a></code> | Metric for the system errors this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metricThrottledRequests">metricThrottledRequests</a></code> | How many requests are throttled on this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metricThrottledRequestsForOperation">metricThrottledRequestsForOperation</a></code> | How many requests are throttled on this table, for the given operation. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metricThrottledRequestsForOperations">metricThrottledRequestsForOperations</a></code> | How many requests are throttled on this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.metricUserErrors">metricUserErrors</a></code> | Metric for the user errors. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.addGlobalSecondaryIndex">addGlobalSecondaryIndex</a></code> | Add a global secondary index of table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.addLocalSecondaryIndex">addLocalSecondaryIndex</a></code> | Add a local secondary index of table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.autoScaleGlobalSecondaryIndexReadCapacity">autoScaleGlobalSecondaryIndexReadCapacity</a></code> | Enable read capacity scaling for the given GSI. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.autoScaleGlobalSecondaryIndexWriteCapacity">autoScaleGlobalSecondaryIndexWriteCapacity</a></code> | Enable write capacity scaling for the given GSI. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.autoScaleReadCapacity">autoScaleReadCapacity</a></code> | Enable read capacity scaling for this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.autoScaleWriteCapacity">autoScaleWriteCapacity</a></code> | Enable write capacity scaling for this table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.schema">schema</a></code> | Get schema attributes of table or index. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.schemaV2">schemaV2</a></code> | Get schema attributes of table or index. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.UsersTable.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.UsersTable.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.UsersTable.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
+
+##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.UsersTable.applyRemovalPolicy"></a>
+
+```typescript
+public applyRemovalPolicy(policy: RemovalPolicy): void
+```
+
+Apply the given removal policy to this resource.
+
+The Removal Policy controls what happens to this resource when it stops
+being managed by CloudFormation, either because you've removed it from the
+CDK application or because you've made a change that requires the resource
+to be replaced.
+
+The resource can be deleted (`RemovalPolicy.DESTROY`), or left in your AWS
+account for data recovery and cleanup later (`RemovalPolicy.RETAIN`).
+
+###### `policy`<sup>Required</sup> <a name="policy" id="@cdklabs/genai-idp.UsersTable.applyRemovalPolicy.parameter.policy"></a>
+
+- *Type:* aws-cdk-lib.RemovalPolicy
+
+---
+
+##### `addToResourcePolicy` <a name="addToResourcePolicy" id="@cdklabs/genai-idp.UsersTable.addToResourcePolicy"></a>
+
+```typescript
+public addToResourcePolicy(statement: PolicyStatement): AddToResourcePolicyResult
+```
+
+Adds a statement to the resource policy associated with this table.
+
+A resource policy will be automatically created upon the first call to `addToResourcePolicy`.
+
+Note that this does not work with imported tables.
+
+###### `statement`<sup>Required</sup> <a name="statement" id="@cdklabs/genai-idp.UsersTable.addToResourcePolicy.parameter.statement"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyStatement
+
+The policy statement to add.
+
+---
+
+##### `grant` <a name="grant" id="@cdklabs/genai-idp.UsersTable.grant"></a>
+
+```typescript
+public grant(grantee: IGrantable, actions: ...string[]): Grant
+```
+
+Adds an IAM policy statement associated with this table to an IAM principal's policy.
+
+If `encryptionKey` is present, appropriate grants to the key needs to be added
+separately using the `table.encryptionKey.grant*` methods.
+[disable-awslint:no-grants]
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.UsersTable.grant.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal (no-op if undefined).
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.UsersTable.grant.parameter.actions"></a>
+
+- *Type:* ...string[]
+
+The set of actions to allow (i.e. "dynamodb:PutItem", "dynamodb:GetItem", ...).
+
+---
+
+##### `grantFullAccess` <a name="grantFullAccess" id="@cdklabs/genai-idp.UsersTable.grantFullAccess"></a>
+
+```typescript
+public grantFullAccess(grantee: IGrantable): Grant
+```
+
+Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
+
+Appropriate grants will also be added to the customer-managed KMS key
+if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.fullAccess()` instead.
+
+[disable-awslint:no-grants]
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.UsersTable.grantFullAccess.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant access to.
+
+---
+
+##### `grantOnKey` <a name="grantOnKey" id="@cdklabs/genai-idp.UsersTable.grantOnKey"></a>
+
+```typescript
+public grantOnKey(grantee: IGrantable, actions: ...string[]): GrantOnKeyResult
+```
+
+Gives permissions to a grantable entity to perform actions on the encryption key.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.UsersTable.grantOnKey.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.UsersTable.grantOnKey.parameter.actions"></a>
+
+- *Type:* ...string[]
+
+---
+
+##### `grantReadData` <a name="grantReadData" id="@cdklabs/genai-idp.UsersTable.grantReadData"></a>
+
+```typescript
+public grantReadData(grantee: IGrantable): Grant
+```
+
+Permits an IAM principal all data read operations from this table: BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan, DescribeTable.
+
+Appropriate grants will also be added to the customer-managed KMS key
+if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.readData()` instead.
+
+[disable-awslint:no-grants]
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.UsersTable.grantReadData.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant access to.
+
+---
+
+##### `grantReadWriteData` <a name="grantReadWriteData" id="@cdklabs/genai-idp.UsersTable.grantReadWriteData"></a>
+
+```typescript
+public grantReadWriteData(grantee: IGrantable): Grant
+```
+
+Permits an IAM principal to all data read/write operations to this table.
+
+BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan,
+BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable
+
+Appropriate grants will also be added to the customer-managed KMS key
+if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.readWriteData()` instead.
+
+[disable-awslint:no-grants]
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.UsersTable.grantReadWriteData.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant access to.
+
+---
+
+##### `grantStream` <a name="grantStream" id="@cdklabs/genai-idp.UsersTable.grantStream"></a>
+
+```typescript
+public grantStream(grantee: IGrantable, actions: ...string[]): Grant
+```
+
+Adds an IAM policy statement associated with this table's stream to an IAM principal's policy.
+
+If `encryptionKey` is present, appropriate grants to the key needs to be added
+separately using the `table.encryptionKey.grant*` methods.
+
+
+The use of this method is discouraged. Please use `streamGrants.stream()` instead.
+
+[disable-awslint:no-grants]
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.UsersTable.grantStream.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal (no-op if undefined).
+
+---
+
+###### `actions`<sup>Required</sup> <a name="actions" id="@cdklabs/genai-idp.UsersTable.grantStream.parameter.actions"></a>
+
+- *Type:* ...string[]
+
+The set of actions to allow (i.e. "dynamodb:DescribeStream", "dynamodb:GetRecords", ...).
+
+---
+
+##### `grantStreamRead` <a name="grantStreamRead" id="@cdklabs/genai-idp.UsersTable.grantStreamRead"></a>
+
+```typescript
+public grantStreamRead(grantee: IGrantable): Grant
+```
+
+Permits an IAM principal all stream data read operations for this table's stream: DescribeStream, GetRecords, GetShardIterator, ListStreams.
+
+Appropriate grants will also be added to the customer-managed KMS key
+if one was configured.
+
+
+The use of this method is discouraged. Please use `streamGrants.streamRead()` instead.
+
+[disable-awslint:no-grants]
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.UsersTable.grantStreamRead.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant access to.
+
+---
+
+##### `grantTableListStreams` <a name="grantTableListStreams" id="@cdklabs/genai-idp.UsersTable.grantTableListStreams"></a>
+
+```typescript
+public grantTableListStreams(grantee: IGrantable): Grant
+```
+
+Permits an IAM Principal to list streams attached to current dynamodb table.
+
+The use of this method is discouraged. Please use `streamGrants.tableListStreams()` instead.
+
+[disable-awslint:no-grants]
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.UsersTable.grantTableListStreams.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal (no-op if undefined).
+
+---
+
+##### `grantWriteData` <a name="grantWriteData" id="@cdklabs/genai-idp.UsersTable.grantWriteData"></a>
+
+```typescript
+public grantWriteData(grantee: IGrantable): Grant
+```
+
+Permits an IAM principal all data write operations to this table: BatchWriteItem, PutItem, UpdateItem, DeleteItem, DescribeTable.
+
+Appropriate grants will also be added to the customer-managed KMS key
+if one was configured.
+
+
+The use of this method is discouraged. Please use `grants.writeData()` instead.
+
+[disable-awslint:no-grants]
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp.UsersTable.grantWriteData.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant access to.
+
+---
+
+##### `metric` <a name="metric" id="@cdklabs/genai-idp.UsersTable.metric"></a>
+
+```typescript
+public metric(metricName: string, props?: MetricOptions): Metric
+```
+
+Return the given named metric for this Table.
+
+By default, the metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `metricName`<sup>Required</sup> <a name="metricName" id="@cdklabs/genai-idp.UsersTable.metric.parameter.metricName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metric.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricConditionalCheckFailedRequests` <a name="metricConditionalCheckFailedRequests" id="@cdklabs/genai-idp.UsersTable.metricConditionalCheckFailedRequests"></a>
+
+```typescript
+public metricConditionalCheckFailedRequests(props?: MetricOptions): Metric
+```
+
+Metric for the conditional check failed requests this table.
+
+By default, the metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metricConditionalCheckFailedRequests.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricConsumedReadCapacityUnits` <a name="metricConsumedReadCapacityUnits" id="@cdklabs/genai-idp.UsersTable.metricConsumedReadCapacityUnits"></a>
+
+```typescript
+public metricConsumedReadCapacityUnits(props?: MetricOptions): Metric
+```
+
+Metric for the consumed read capacity units this table.
+
+By default, the metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metricConsumedReadCapacityUnits.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricConsumedWriteCapacityUnits` <a name="metricConsumedWriteCapacityUnits" id="@cdklabs/genai-idp.UsersTable.metricConsumedWriteCapacityUnits"></a>
+
+```typescript
+public metricConsumedWriteCapacityUnits(props?: MetricOptions): Metric
+```
+
+Metric for the consumed write capacity units this table.
+
+By default, the metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metricConsumedWriteCapacityUnits.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricSuccessfulRequestLatency` <a name="metricSuccessfulRequestLatency" id="@cdklabs/genai-idp.UsersTable.metricSuccessfulRequestLatency"></a>
+
+```typescript
+public metricSuccessfulRequestLatency(props?: MetricOptions): Metric
+```
+
+Metric for the successful request latency this table.
+
+By default, the metric will be calculated as an average over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metricSuccessfulRequestLatency.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### ~~`metricSystemErrors`~~ <a name="metricSystemErrors" id="@cdklabs/genai-idp.UsersTable.metricSystemErrors"></a>
+
+```typescript
+public metricSystemErrors(props?: MetricOptions): Metric
+```
+
+Metric for the system errors this table.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metricSystemErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricSystemErrorsForOperations` <a name="metricSystemErrorsForOperations" id="@cdklabs/genai-idp.UsersTable.metricSystemErrorsForOperations"></a>
+
+```typescript
+public metricSystemErrorsForOperations(props?: SystemErrorsForOperationsMetricOptions): IMetric
+```
+
+Metric for the system errors this table.
+
+This will sum errors across all possible operations.
+Note that by default, each individual metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metricSystemErrorsForOperations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.SystemErrorsForOperationsMetricOptions
+
+---
+
+##### ~~`metricThrottledRequests`~~ <a name="metricThrottledRequests" id="@cdklabs/genai-idp.UsersTable.metricThrottledRequests"></a>
+
+```typescript
+public metricThrottledRequests(props?: MetricOptions): Metric
+```
+
+How many requests are throttled on this table.
+
+Default: sum over 5 minutes
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metricThrottledRequests.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricThrottledRequestsForOperation` <a name="metricThrottledRequestsForOperation" id="@cdklabs/genai-idp.UsersTable.metricThrottledRequestsForOperation"></a>
+
+```typescript
+public metricThrottledRequestsForOperation(operation: string, props?: MetricOptions): Metric
+```
+
+How many requests are throttled on this table, for the given operation.
+
+Default: sum over 5 minutes
+
+###### `operation`<sup>Required</sup> <a name="operation" id="@cdklabs/genai-idp.UsersTable.metricThrottledRequestsForOperation.parameter.operation"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metricThrottledRequestsForOperation.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricThrottledRequestsForOperations` <a name="metricThrottledRequestsForOperations" id="@cdklabs/genai-idp.UsersTable.metricThrottledRequestsForOperations"></a>
+
+```typescript
+public metricThrottledRequestsForOperations(props?: OperationsMetricOptions): IMetric
+```
+
+How many requests are throttled on this table.
+
+This will sum errors across all possible operations.
+Note that by default, each individual metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metricThrottledRequestsForOperations.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.OperationsMetricOptions
+
+---
+
+##### `metricUserErrors` <a name="metricUserErrors" id="@cdklabs/genai-idp.UsersTable.metricUserErrors"></a>
+
+```typescript
+public metricUserErrors(props?: MetricOptions): Metric
+```
+
+Metric for the user errors.
+
+Note that this metric reports user errors across all
+the tables in the account and region the table resides in.
+
+By default, the metric will be calculated as a sum over a period of 5 minutes.
+You can customize this by using the `statistic` and `period` properties.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.metricUserErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `addGlobalSecondaryIndex` <a name="addGlobalSecondaryIndex" id="@cdklabs/genai-idp.UsersTable.addGlobalSecondaryIndex"></a>
+
+```typescript
+public addGlobalSecondaryIndex(props: GlobalSecondaryIndexProps): void
+```
+
+Add a global secondary index of table.
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.addGlobalSecondaryIndex.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.GlobalSecondaryIndexProps
+
+the property of global secondary index.
+
+---
+
+##### `addLocalSecondaryIndex` <a name="addLocalSecondaryIndex" id="@cdklabs/genai-idp.UsersTable.addLocalSecondaryIndex"></a>
+
+```typescript
+public addLocalSecondaryIndex(props: LocalSecondaryIndexProps): void
+```
+
+Add a local secondary index of table.
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.addLocalSecondaryIndex.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.LocalSecondaryIndexProps
+
+the property of local secondary index.
+
+---
+
+##### `autoScaleGlobalSecondaryIndexReadCapacity` <a name="autoScaleGlobalSecondaryIndexReadCapacity" id="@cdklabs/genai-idp.UsersTable.autoScaleGlobalSecondaryIndexReadCapacity"></a>
+
+```typescript
+public autoScaleGlobalSecondaryIndexReadCapacity(indexName: string, props: EnableScalingProps): IScalableTableAttribute
+```
+
+Enable read capacity scaling for the given GSI.
+
+###### `indexName`<sup>Required</sup> <a name="indexName" id="@cdklabs/genai-idp.UsersTable.autoScaleGlobalSecondaryIndexReadCapacity.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.autoScaleGlobalSecondaryIndexReadCapacity.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.EnableScalingProps
+
+---
+
+##### `autoScaleGlobalSecondaryIndexWriteCapacity` <a name="autoScaleGlobalSecondaryIndexWriteCapacity" id="@cdklabs/genai-idp.UsersTable.autoScaleGlobalSecondaryIndexWriteCapacity"></a>
+
+```typescript
+public autoScaleGlobalSecondaryIndexWriteCapacity(indexName: string, props: EnableScalingProps): IScalableTableAttribute
+```
+
+Enable write capacity scaling for the given GSI.
+
+###### `indexName`<sup>Required</sup> <a name="indexName" id="@cdklabs/genai-idp.UsersTable.autoScaleGlobalSecondaryIndexWriteCapacity.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.autoScaleGlobalSecondaryIndexWriteCapacity.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.EnableScalingProps
+
+---
+
+##### `autoScaleReadCapacity` <a name="autoScaleReadCapacity" id="@cdklabs/genai-idp.UsersTable.autoScaleReadCapacity"></a>
+
+```typescript
+public autoScaleReadCapacity(props: EnableScalingProps): IScalableTableAttribute
+```
+
+Enable read capacity scaling for this table.
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.autoScaleReadCapacity.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.EnableScalingProps
+
+---
+
+##### `autoScaleWriteCapacity` <a name="autoScaleWriteCapacity" id="@cdklabs/genai-idp.UsersTable.autoScaleWriteCapacity"></a>
+
+```typescript
+public autoScaleWriteCapacity(props: EnableScalingProps): IScalableTableAttribute
+```
+
+Enable write capacity scaling for this table.
+
+###### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.UsersTable.autoScaleWriteCapacity.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.EnableScalingProps
+
+---
+
+##### ~~`schema`~~ <a name="schema" id="@cdklabs/genai-idp.UsersTable.schema"></a>
+
+```typescript
+public schema(indexName?: string): SchemaOptions
+```
+
+Get schema attributes of table or index.
+
+###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.UsersTable.schema.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+##### `schemaV2` <a name="schemaV2" id="@cdklabs/genai-idp.UsersTable.schemaV2"></a>
+
+```typescript
+public schemaV2(indexName?: string): KeySchema
+```
+
+Get schema attributes of table or index.
+
+###### `indexName`<sup>Optional</sup> <a name="indexName" id="@cdklabs/genai-idp.UsersTable.schemaV2.parameter.indexName"></a>
+
+- *Type:* string
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.isOwnedResource">isOwnedResource</a></code> | Returns true if the construct was created by CDK, and false otherwise. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.isResource">isResource</a></code> | Check whether the given construct is a Resource. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.fromTableArn">fromTableArn</a></code> | Creates a Table construct that represents an external table via table arn. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.fromTableAttributes">fromTableAttributes</a></code> | Creates a Table construct that represents an external table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.fromTableName">fromTableName</a></code> | Creates a Table construct that represents an external table via table name. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.UsersTable.isConstruct"></a>
+
+```typescript
+import { UsersTable } from '@cdklabs/genai-idp'
+
+UsersTable.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.UsersTable.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+##### `isOwnedResource` <a name="isOwnedResource" id="@cdklabs/genai-idp.UsersTable.isOwnedResource"></a>
+
+```typescript
+import { UsersTable } from '@cdklabs/genai-idp'
+
+UsersTable.isOwnedResource(construct: IConstruct)
+```
+
+Returns true if the construct was created by CDK, and false otherwise.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.UsersTable.isOwnedResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `isResource` <a name="isResource" id="@cdklabs/genai-idp.UsersTable.isResource"></a>
+
+```typescript
+import { UsersTable } from '@cdklabs/genai-idp'
+
+UsersTable.isResource(construct: IConstruct)
+```
+
+Check whether the given construct is a Resource.
+
+###### `construct`<sup>Required</sup> <a name="construct" id="@cdklabs/genai-idp.UsersTable.isResource.parameter.construct"></a>
+
+- *Type:* constructs.IConstruct
+
+---
+
+##### `fromTableArn` <a name="fromTableArn" id="@cdklabs/genai-idp.UsersTable.fromTableArn"></a>
+
+```typescript
+import { UsersTable } from '@cdklabs/genai-idp'
+
+UsersTable.fromTableArn(scope: Construct, id: string, tableArn: string)
+```
+
+Creates a Table construct that represents an external table via table arn.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.UsersTable.fromTableArn.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+The parent creating construct (usually `this`).
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.UsersTable.fromTableArn.parameter.id"></a>
+
+- *Type:* string
+
+The construct's name.
+
+---
+
+###### `tableArn`<sup>Required</sup> <a name="tableArn" id="@cdklabs/genai-idp.UsersTable.fromTableArn.parameter.tableArn"></a>
+
+- *Type:* string
+
+The table's ARN.
+
+---
+
+##### `fromTableAttributes` <a name="fromTableAttributes" id="@cdklabs/genai-idp.UsersTable.fromTableAttributes"></a>
+
+```typescript
+import { UsersTable } from '@cdklabs/genai-idp'
+
+UsersTable.fromTableAttributes(scope: Construct, id: string, attrs: TableAttributes)
+```
+
+Creates a Table construct that represents an external table.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.UsersTable.fromTableAttributes.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+The parent creating construct (usually `this`).
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.UsersTable.fromTableAttributes.parameter.id"></a>
+
+- *Type:* string
+
+The construct's name.
+
+---
+
+###### `attrs`<sup>Required</sup> <a name="attrs" id="@cdklabs/genai-idp.UsersTable.fromTableAttributes.parameter.attrs"></a>
+
+- *Type:* aws-cdk-lib.aws_dynamodb.TableAttributes
+
+A `TableAttributes` object.
+
+---
+
+##### `fromTableName` <a name="fromTableName" id="@cdklabs/genai-idp.UsersTable.fromTableName"></a>
+
+```typescript
+import { UsersTable } from '@cdklabs/genai-idp'
+
+UsersTable.fromTableName(scope: Construct, id: string, tableName: string)
+```
+
+Creates a Table construct that represents an external table via table name.
+
+###### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.UsersTable.fromTableName.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+The parent creating construct (usually `this`).
+
+---
+
+###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.UsersTable.fromTableName.parameter.id"></a>
+
+- *Type:* string
+
+The construct's name.
+
+---
+
+###### `tableName`<sup>Required</sup> <a name="tableName" id="@cdklabs/genai-idp.UsersTable.fromTableName.parameter.tableName"></a>
+
+- *Type:* string
+
+The table's name.
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.grants">grants</a></code> | <code>aws-cdk-lib.aws_dynamodb.TableGrants</code> | Grant a predefined set of permissions on this Table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.streamGrants">streamGrants</a></code> | <code>aws-cdk-lib.aws_dynamodb.StreamGrants</code> | Grant a predefined set of permissions on this Table's Stream, if present. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | KMS encryption key, if this table uses a customer-managed encryption key. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.regions">regions</a></code> | <code>string[]</code> | Additional regions other than the main one that this table is replicated to. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.tableStreamArn">tableStreamArn</a></code> | <code>string</code> | ARN of the table's stream, if there is one. |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.resourcePolicy">resourcePolicy</a></code> | <code>aws-cdk-lib.aws_iam.PolicyDocument</code> | Resource policy to assign to DynamoDB Table. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.UsersTable.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `env`<sup>Required</sup> <a name="env" id="@cdklabs/genai-idp.UsersTable.property.env"></a>
+
+```typescript
+public readonly env: ResourceEnvironment;
+```
+
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
+
+The environment this resource belongs to.
+
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
+
+---
+
+##### `stack`<sup>Required</sup> <a name="stack" id="@cdklabs/genai-idp.UsersTable.property.stack"></a>
+
+```typescript
+public readonly stack: Stack;
+```
+
+- *Type:* aws-cdk-lib.Stack
+
+The stack in which this resource is defined.
+
+---
+
+##### `grants`<sup>Required</sup> <a name="grants" id="@cdklabs/genai-idp.UsersTable.property.grants"></a>
+
+```typescript
+public readonly grants: TableGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.TableGrants
+
+Grant a predefined set of permissions on this Table.
+
+---
+
+##### `streamGrants`<sup>Required</sup> <a name="streamGrants" id="@cdklabs/genai-idp.UsersTable.property.streamGrants"></a>
+
+```typescript
+public readonly streamGrants: StreamGrants;
+```
+
+- *Type:* aws-cdk-lib.aws_dynamodb.StreamGrants
+
+Grant a predefined set of permissions on this Table's Stream, if present.
+
+Will throw if the Table has not been configured for streaming.
+
+---
+
+##### `tableArn`<sup>Required</sup> <a name="tableArn" id="@cdklabs/genai-idp.UsersTable.property.tableArn"></a>
+
+```typescript
+public readonly tableArn: string;
+```
+
+- *Type:* string
+
+Arn of the dynamodb table.
+
+---
+
+##### `tableName`<sup>Required</sup> <a name="tableName" id="@cdklabs/genai-idp.UsersTable.property.tableName"></a>
+
+```typescript
+public readonly tableName: string;
+```
+
+- *Type:* string
+
+Table name of the dynamodb table.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.UsersTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.UsersTable.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+KMS encryption key, if this table uses a customer-managed encryption key.
+
+---
+
+##### `regions`<sup>Optional</sup> <a name="regions" id="@cdklabs/genai-idp.UsersTable.property.regions"></a>
+
+```typescript
+public readonly regions: string[];
+```
+
+- *Type:* string[]
+
+Additional regions other than the main one that this table is replicated to.
+
+---
+
+##### `tableStreamArn`<sup>Optional</sup> <a name="tableStreamArn" id="@cdklabs/genai-idp.UsersTable.property.tableStreamArn"></a>
+
+```typescript
+public readonly tableStreamArn: string;
+```
+
+- *Type:* string
+
+ARN of the table's stream, if there is one.
+
+---
+
+##### `resourcePolicy`<sup>Optional</sup> <a name="resourcePolicy" id="@cdklabs/genai-idp.UsersTable.property.resourcePolicy"></a>
+
+```typescript
+public readonly resourcePolicy: PolicyDocument;
+```
+
+- *Type:* aws-cdk-lib.aws_iam.PolicyDocument
+- *Default:* No resource policy statements are added to the created table.
+
+Resource policy to assign to DynamoDB Table.
+
+> [https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-dynamodb-table-resourcepolicy.html](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-dynamodb-table-resourcepolicy.html)
+
+---
+
+#### Constants <a name="Constants" id="Constants"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.UsersTable.property.PROPERTY_INJECTION_ID">PROPERTY_INJECTION_ID</a></code> | <code>string</code> | Uniquely identifies this class. |
+
+---
+
+##### `PROPERTY_INJECTION_ID`<sup>Required</sup> <a name="PROPERTY_INJECTION_ID" id="@cdklabs/genai-idp.UsersTable.property.PROPERTY_INJECTION_ID"></a>
 
 ```typescript
 public readonly PROPERTY_INJECTION_ID: string;
@@ -67740,7 +68838,10 @@ const userManagementFunctionProps: UserManagementFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
 | <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.userIdentity">userIdentity</a></code> | <code><a href="#@cdklabs/genai-idp.IUserIdentity">IUserIdentity</a></code> | The UserIdentity construct that provides Cognito UserPool and IdentityPool. |
+| <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.usersTable">usersTable</a></code> | <code>any</code> | The DynamoDB table for storing user metadata. |
+| <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.adminGroup">adminGroup</a></code> | <code>string</code> | Optional name of the admin group in Cognito UserPool. |
 | <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional encryption key for the function. |
+| <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.reviewerGroup">reviewerGroup</a></code> | <code>string</code> | Optional name of the reviewer group in Cognito UserPool. |
 
 ---
 
@@ -68447,6 +69548,35 @@ The function uses these resources to manage user accounts and permissions.
 
 ---
 
+##### `usersTable`<sup>Required</sup> <a name="usersTable" id="@cdklabs/genai-idp.UserManagementFunctionProps.property.usersTable"></a>
+
+```typescript
+public readonly usersTable: any;
+```
+
+- *Type:* any
+
+The DynamoDB table for storing user metadata.
+
+This table stores additional user information beyond what's in Cognito.
+
+---
+
+##### `adminGroup`<sup>Optional</sup> <a name="adminGroup" id="@cdklabs/genai-idp.UserManagementFunctionProps.property.adminGroup"></a>
+
+```typescript
+public readonly adminGroup: string;
+```
+
+- *Type:* string
+- *Default:* "Admin"
+
+Optional name of the admin group in Cognito UserPool.
+
+Users in this group have administrative privileges.
+
+---
+
 ##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.UserManagementFunctionProps.property.encryptionKey"></a>
 
 ```typescript
@@ -68458,6 +69588,21 @@ public readonly encryptionKey: IKey;
 Optional encryption key for the function.
 
 Used to encrypt/decrypt data processed by the function.
+
+---
+
+##### `reviewerGroup`<sup>Optional</sup> <a name="reviewerGroup" id="@cdklabs/genai-idp.UserManagementFunctionProps.property.reviewerGroup"></a>
+
+```typescript
+public readonly reviewerGroup: string;
+```
+
+- *Type:* string
+- *Default:* "Reviewer"
+
+Optional name of the reviewer group in Cognito UserPool.
+
+Users in this group have review privileges.
 
 ---
 
@@ -68478,7 +69623,10 @@ const userManagementProps: UserManagementProps = { ... }
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.UserManagementProps.property.userIdentity">userIdentity</a></code> | <code><a href="#@cdklabs/genai-idp.IUserIdentity">IUserIdentity</a></code> | The UserIdentity construct that provides Cognito UserPool and IdentityPool. |
+| <code><a href="#@cdklabs/genai-idp.UserManagementProps.property.adminGroup">adminGroup</a></code> | <code>string</code> | Optional name of the admin group in Cognito UserPool. Users in this group have administrative privileges. |
 | <code><a href="#@cdklabs/genai-idp.UserManagementProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional encryption key for encrypting user management data. |
+| <code><a href="#@cdklabs/genai-idp.UserManagementProps.property.reviewerGroup">reviewerGroup</a></code> | <code>string</code> | Optional name of the reviewer group in Cognito UserPool. Users in this group have review privileges. |
+| <code><a href="#@cdklabs/genai-idp.UserManagementProps.property.usersTable">usersTable</a></code> | <code><a href="#@cdklabs/genai-idp.IUsersTable">IUsersTable</a></code> | Optional DynamoDB table for storing user metadata. |
 | <code><a href="#@cdklabs/genai-idp.UserManagementProps.property.vpcConfiguration">vpcConfiguration</a></code> | <code><a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a></code> | Optional VPC configuration for Lambda functions. |
 
 ---
@@ -68501,6 +69649,21 @@ user management functionality.
 
 ---
 
+##### `adminGroup`<sup>Optional</sup> <a name="adminGroup" id="@cdklabs/genai-idp.UserManagementProps.property.adminGroup"></a>
+
+```typescript
+public readonly adminGroup: string;
+```
+
+- *Type:* string
+- *Default:* "Admin"
+
+Optional name of the admin group in Cognito UserPool. Users in this group have administrative privileges.
+
+Note: The group must already exist in the UserPool.
+
+---
+
 ##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.UserManagementProps.property.encryptionKey"></a>
 
 ```typescript
@@ -68513,6 +69676,36 @@ public readonly encryptionKey: IKey;
 Optional encryption key for encrypting user management data.
 
 When provided, ensures that user data processed by management functions is encrypted.
+
+---
+
+##### `reviewerGroup`<sup>Optional</sup> <a name="reviewerGroup" id="@cdklabs/genai-idp.UserManagementProps.property.reviewerGroup"></a>
+
+```typescript
+public readonly reviewerGroup: string;
+```
+
+- *Type:* string
+- *Default:* "Reviewer"
+
+Optional name of the reviewer group in Cognito UserPool. Users in this group have review privileges.
+
+Note: The group must already exist in the UserPool.
+
+---
+
+##### `usersTable`<sup>Optional</sup> <a name="usersTable" id="@cdklabs/genai-idp.UserManagementProps.property.usersTable"></a>
+
+```typescript
+public readonly usersTable: IUsersTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IUsersTable">IUsersTable</a>
+- *Default:* A new UsersTable is created
+
+Optional DynamoDB table for storing user metadata.
+
+If not provided, a new table will be created automatically.
 
 ---
 
@@ -72727,6 +73920,7 @@ roles, and permissions through the GraphQL API.
 | <code><a href="#@cdklabs/genai-idp.IUserManagement.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp.IUserManagement.property.managementFunction">managementFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function that handles user administration operations. |
 | <code><a href="#@cdklabs/genai-idp.IUserManagement.property.syncFunction">syncFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function that handles user synchronization operations. |
+| <code><a href="#@cdklabs/genai-idp.IUserManagement.property.usersTable">usersTable</a></code> | <code><a href="#@cdklabs/genai-idp.IUsersTable">IUsersTable</a></code> | DynamoDB table that stores user metadata and profile information. |
 
 ---
 
@@ -72767,6 +73961,148 @@ public readonly syncFunction: IFunction;
 Lambda function that handles user synchronization operations.
 
 Ensures consistency between UserPool and IdentityPool.
+
+---
+
+##### `usersTable`<sup>Required</sup> <a name="usersTable" id="@cdklabs/genai-idp.IUserManagement.property.usersTable"></a>
+
+```typescript
+public readonly usersTable: IUsersTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IUsersTable">IUsersTable</a>
+
+DynamoDB table that stores user metadata and profile information.
+
+---
+
+### IUsersTable <a name="IUsersTable" id="@cdklabs/genai-idp.IUsersTable"></a>
+
+- *Extends:* aws-cdk-lib.aws_dynamodb.ITable
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp.UsersTable">UsersTable</a>, <a href="#@cdklabs/genai-idp.IUsersTable">IUsersTable</a>
+
+Interface for the Users table.
+
+This table stores user metadata and profile information for the application.
+
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IUsersTable.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.IUsersTable.property.env">env</a></code> | <code>aws-cdk-lib.interfaces.ResourceEnvironment</code> | The environment this resource belongs to. |
+| <code><a href="#@cdklabs/genai-idp.IUsersTable.property.stack">stack</a></code> | <code>aws-cdk-lib.Stack</code> | The stack in which this resource is defined. |
+| <code><a href="#@cdklabs/genai-idp.IUsersTable.property.tableRef">tableRef</a></code> | <code>aws-cdk-lib.interfaces.aws_dynamodb.TableReference</code> | A reference to a Table resource. |
+| <code><a href="#@cdklabs/genai-idp.IUsersTable.property.tableArn">tableArn</a></code> | <code>string</code> | Arn of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.IUsersTable.property.tableName">tableName</a></code> | <code>string</code> | Table name of the dynamodb table. |
+| <code><a href="#@cdklabs/genai-idp.IUsersTable.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key associated with this table. |
+| <code><a href="#@cdklabs/genai-idp.IUsersTable.property.tableStreamArn">tableStreamArn</a></code> | <code>string</code> | ARN of the table's stream, if there is one. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.IUsersTable.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `env`<sup>Required</sup> <a name="env" id="@cdklabs/genai-idp.IUsersTable.property.env"></a>
+
+```typescript
+public readonly env: ResourceEnvironment;
+```
+
+- *Type:* aws-cdk-lib.interfaces.ResourceEnvironment
+
+The environment this resource belongs to.
+
+For resources that are created and managed in a Stack (those created by
+creating new class instances like `new Role()`, `new Bucket()`, etc.), this
+is always the same as the environment of the stack they belong to.
+
+For referenced resources (those obtained from referencing methods like
+`Role.fromRoleArn()`, `Bucket.fromBucketName()`, etc.), they might be
+different than the stack they were imported into.
+
+---
+
+##### `stack`<sup>Required</sup> <a name="stack" id="@cdklabs/genai-idp.IUsersTable.property.stack"></a>
+
+```typescript
+public readonly stack: Stack;
+```
+
+- *Type:* aws-cdk-lib.Stack
+
+The stack in which this resource is defined.
+
+---
+
+##### `tableRef`<sup>Required</sup> <a name="tableRef" id="@cdklabs/genai-idp.IUsersTable.property.tableRef"></a>
+
+```typescript
+public readonly tableRef: TableReference;
+```
+
+- *Type:* aws-cdk-lib.interfaces.aws_dynamodb.TableReference
+
+A reference to a Table resource.
+
+---
+
+##### `tableArn`<sup>Required</sup> <a name="tableArn" id="@cdklabs/genai-idp.IUsersTable.property.tableArn"></a>
+
+```typescript
+public readonly tableArn: string;
+```
+
+- *Type:* string
+
+Arn of the dynamodb table.
+
+---
+
+##### `tableName`<sup>Required</sup> <a name="tableName" id="@cdklabs/genai-idp.IUsersTable.property.tableName"></a>
+
+```typescript
+public readonly tableName: string;
+```
+
+- *Type:* string
+
+Table name of the dynamodb table.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.IUsersTable.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+
+Optional KMS encryption key associated with this table.
+
+---
+
+##### `tableStreamArn`<sup>Optional</sup> <a name="tableStreamArn" id="@cdklabs/genai-idp.IUsersTable.property.tableStreamArn"></a>
+
+```typescript
+public readonly tableStreamArn: string;
+```
+
+- *Type:* string
+
+ARN of the table's stream, if there is one.
 
 ---
 

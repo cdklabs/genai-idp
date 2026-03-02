@@ -17,6 +17,7 @@ import {
   ReportingEnvironment,
   TrackingTable,
   UserIdentity,
+  UserManagement,
   WebApplication,
 } from "@cdklabs/genai-idp";
 import {
@@ -191,6 +192,9 @@ export class BdaLendingStack extends Stack {
 
     // Integrate agent companion chat with API using the new feature pattern
     api.addFeature(agentCompanionChat);
+    api.addFeature(new UserManagement(this, 'UserManagement', {
+      userIdentity
+    }));
 
     const bda = new BedrockDataAutomation(this, "LendingBda");
 
