@@ -12,6 +12,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../../functions/idp-python-function-options";
 import { IUserIdentity } from "../../../user-identity";
+import { IUsersTable } from "../users-table";
 
 /**
  * Properties for the User Management function.
@@ -25,6 +26,28 @@ export interface UserManagementFunctionProps extends IdpPythonFunctionOptions {
    * The function uses these resources to manage user accounts and permissions.
    */
   readonly userIdentity: IUserIdentity;
+
+  /**
+   * The DynamoDB table for storing user metadata.
+   * This table stores additional user information beyond what's in Cognito.
+   */
+  readonly usersTable: IUsersTable;
+
+  /**
+   * Optional name of the admin group in Cognito UserPool.
+   * Users in this group have administrative privileges.
+   *
+   * @default "Admin"
+   */
+  readonly adminGroup?: string;
+
+  /**
+   * Optional name of the reviewer group in Cognito UserPool.
+   * Users in this group have review privileges.
+   *
+   * @default "Reviewer"
+   */
+  readonly reviewerGroup?: string;
 
   /**
    * Optional encryption key for the function.
@@ -88,6 +111,9 @@ export class UserManagementFunction extends lambda_python.PythonFunction {
       environment: {
         USER_POOL_ID: props.userIdentity.userPool.userPoolId,
         IDENTITY_POOL_ID: props.userIdentity.identityPool.identityPoolId,
+        USERS_TABLE_NAME: props.usersTable.tableName,
+        ADMIN_GROUP: props.adminGroup || "Admin",
+        REVIEWER_GROUP: props.reviewerGroup || "Reviewer",
       },
     });
 

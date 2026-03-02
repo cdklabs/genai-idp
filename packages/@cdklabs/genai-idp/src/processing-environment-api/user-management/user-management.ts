@@ -3,10 +3,12 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import { TableEncryption } from "aws-cdk-lib/aws-dynamodb";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Construct, IConstruct } from "constructs";
 import { UserManagementFunction, UserSyncFunction } from "./functions";
+import { IUsersTable, UsersTable } from "./users-table";
 import { IUserIdentity } from "../../user-identity";
 import { VpcConfiguration } from "../../vpc-configuration";
 import {
@@ -35,6 +37,11 @@ export interface IUserManagement extends IConstruct {
    * Ensures consistency between UserPool and IdentityPool.
    */
   readonly syncFunction: lambda.IFunction;
+
+  /**
+   * DynamoDB table that stores user metadata and profile information.
+   */
+  readonly usersTable: IUsersTable;
 }
 
 /**
@@ -52,6 +59,34 @@ export interface UserManagementProps {
    * user management functionality.
    */
   readonly userIdentity: IUserIdentity;
+
+  /**
+   * Optional DynamoDB table for storing user metadata.
+   * If not provided, a new table will be created automatically.
+   *
+   * @default - A new UsersTable is created
+   */
+  readonly usersTable?: IUsersTable;
+
+  /**
+   * Optional name of the admin group in Cognito UserPool.
+   * Users in this group have administrative privileges.
+   *
+   * Note: The group must already exist in the UserPool.
+   *
+   * @default "Admin"
+   */
+  readonly adminGroup?: string;
+
+  /**
+   * Optional name of the reviewer group in Cognito UserPool.
+   * Users in this group have review privileges.
+   *
+   * Note: The group must already exist in the UserPool.
+   *
+   * @default "Reviewer"
+   */
+  readonly reviewerGroup?: string;
 
   /**
    * Optional encryption key for encrypting user management data.
@@ -106,6 +141,11 @@ export class UserManagement
    */
   public readonly syncFunction: lambda.IFunction;
 
+  /**
+   * DynamoDB table that stores user metadata and profile information.
+   */
+  public readonly usersTable: IUsersTable;
+
   constructor(scope: Construct, id: string, props: UserManagementProps) {
     super(scope, id);
 
@@ -118,16 +158,32 @@ export class UserManagement
       );
     }
 
+    // Create or use provided users table
+    this.usersTable =
+      props.usersTable ??
+      new UsersTable(this, "UsersTable", {
+        encryption: props.encryptionKey
+          ? TableEncryption.CUSTOMER_MANAGED
+          : TableEncryption.AWS_MANAGED,
+        encryptionKey: props.encryptionKey,
+      });
+
     // Create user management function
     this.managementFunction = new UserManagementFunction(
       this,
       "ManagementFunction",
       {
         userIdentity: props.userIdentity,
+        usersTable: this.usersTable,
+        adminGroup: props.adminGroup,
+        reviewerGroup: props.reviewerGroup,
         encryptionKey: props.encryptionKey,
         ...props.vpcConfiguration,
       },
     );
+
+    // Grant table permissions
+    this.usersTable.grantReadWriteData(this.managementFunction);
 
     // Create user sync function
     this.syncFunction = new UserSyncFunction(this, "SyncFunction", {
@@ -163,26 +219,22 @@ export class UserManagement
       },
     );
 
-    // Create data source for user sync function
-    const userSyncDataSource = api.addLambdaDataSource(
-      "UserSyncDataSource",
-      this.syncFunction,
-      {
-        name: "UserSyncResolver",
-        description: "Lambda function for user synchronization operations",
-      },
-    );
+    // Note: UserSyncDataSource is not currently used as there's no syncUser mutation in the schema
+    // If syncUser functionality is needed in the future, add it to the GraphQL schema first
+    // const userSyncDataSource = api.addLambdaDataSource(
+    //   "UserSyncDataSource",
+    //   this.syncFunction,
+    //   {
+    //     name: "UserSyncResolver",
+    //     description: "Lambda function for user synchronization operations",
+    //   },
+    // );
 
     // Create resolvers for user management operations
-    // Note: The exact GraphQL operations depend on the schema in sources/nested/appsync/src/api/schema.graphql
+    // Schema only supports: createUser, deleteUser (mutations) and listUsers (query)
     userManagementDataSource.createResolver("CreateUserResolver", {
       typeName: "Mutation",
       fieldName: "createUser",
-    });
-
-    userManagementDataSource.createResolver("UpdateUserResolver", {
-      typeName: "Mutation",
-      fieldName: "updateUser",
     });
 
     userManagementDataSource.createResolver("DeleteUserResolver", {
@@ -193,12 +245,6 @@ export class UserManagement
     userManagementDataSource.createResolver("ListUsersResolver", {
       typeName: "Query",
       fieldName: "listUsers",
-    });
-
-    // Create resolver for user sync operations
-    userSyncDataSource.createResolver("SyncUserResolver", {
-      typeName: "Mutation",
-      fieldName: "syncUser",
     });
   }
 }

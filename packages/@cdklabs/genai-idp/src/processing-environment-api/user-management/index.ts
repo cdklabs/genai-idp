@@ -4,4 +4,5 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 export * from "./user-management";
+export * from "./users-table";
 export * from "./functions";
