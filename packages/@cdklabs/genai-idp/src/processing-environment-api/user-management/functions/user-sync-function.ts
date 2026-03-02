@@ -65,19 +65,31 @@ export class UserSyncFunction extends lambda_python.PythonFunction {
         "user_sync",
       ),
       bundling: {
-        commandHooks: {
-          beforeBundling: (_i: string, _o: string): string[] => {
-            return [];
-          },
-          afterBundling: (_i: string, outputDir: string): string[] => {
-            return [
-              `find ${outputDir} -type d -name "*.egg-info" -exec rm -rf {} +`,
-              `find ${outputDir} -type d -name "__pycache__" -exec rm -rf {} +`,
-              `find ${outputDir} -type d -name "build" -exec rm -rf {} +`,
-              `find ${outputDir} -type d -name "tests" -exec rm -rf {} +`,
-            ];
-          },
-        },
+        command: [
+          "bash",
+          "-c",
+          [
+            // Create temporary directory for dependencies
+            `mkdir -p /tmp/builddir`,
+            // Copy source files directly to output
+            `mkdir -p /asset-output`,
+            `rsync -rL /asset-input/ /tmp/builddir`,
+            // Install dependencies to temporary directory
+            `cd /tmp/builddir`,
+            `sed -i '/\\.\\/lib/d' requirements.txt || true`,
+            `python -m pip install -r requirements.txt -t /tmp/builddir || true`,
+            // Clean up unnecessary files in the temp directory
+            `find /tmp/builddir -type d -name "*.egg-info" -exec rm -rf {} +`,
+            `find /tmp/builddir -type d -name "__pycache__" -exec rm -rf {} +`,
+            `find /tmp/builddir -type d -name "build" -exec rm -rf {} +`,
+            `find /tmp/builddir -type d -name "tests" -exec rm -rf {} +`,
+            // Copy only necessary dependencies to the output
+            `rsync -rL /tmp/builddir/ /asset-output`,
+            // Clean up temporary directory
+            `rm -rf /tmp/builddir`,
+            `cd /asset-output`,
+          ].join(" && "),
+        ],
       },
       timeout: cdk.Duration.minutes(15),
       memorySize: 512,
