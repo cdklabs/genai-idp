@@ -68838,7 +68838,7 @@ const userManagementFunctionProps: UserManagementFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.vpc">vpc</a></code> | <code>aws-cdk-lib.aws_ec2.IVpc</code> | VPC network to place Lambda network interfaces. |
 | <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.vpcSubnets">vpcSubnets</a></code> | <code>aws-cdk-lib.aws_ec2.SubnetSelection</code> | Where to place the network interfaces within the VPC. |
 | <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.userIdentity">userIdentity</a></code> | <code><a href="#@cdklabs/genai-idp.IUserIdentity">IUserIdentity</a></code> | The UserIdentity construct that provides Cognito UserPool and IdentityPool. |
-| <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.usersTable">usersTable</a></code> | <code>any</code> | The DynamoDB table for storing user metadata. |
+| <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.usersTable">usersTable</a></code> | <code><a href="#@cdklabs/genai-idp.IUsersTable">IUsersTable</a></code> | The DynamoDB table for storing user metadata. |
 | <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.adminGroup">adminGroup</a></code> | <code>string</code> | Optional name of the admin group in Cognito UserPool. |
 | <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional encryption key for the function. |
 | <code><a href="#@cdklabs/genai-idp.UserManagementFunctionProps.property.reviewerGroup">reviewerGroup</a></code> | <code>string</code> | Optional name of the reviewer group in Cognito UserPool. |
@@ -69551,10 +69551,10 @@ The function uses these resources to manage user accounts and permissions.
 ##### `usersTable`<sup>Required</sup> <a name="usersTable" id="@cdklabs/genai-idp.UserManagementFunctionProps.property.usersTable"></a>
 
 ```typescript
-public readonly usersTable: any;
+public readonly usersTable: IUsersTable;
 ```
 
-- *Type:* any
+- *Type:* <a href="#@cdklabs/genai-idp.IUsersTable">IUsersTable</a>
 
 The DynamoDB table for storing user metadata.
 
