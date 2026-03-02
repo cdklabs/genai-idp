@@ -192,9 +192,11 @@ export class BdaLendingStack extends Stack {
 
     // Integrate agent companion chat with API using the new feature pattern
     api.addFeature(agentCompanionChat);
-    api.addFeature(new UserManagement(this, 'UserManagement', {
-      userIdentity
-    }));
+    api.addFeature(
+      new UserManagement(this, "UserManagement", {
+        userIdentity,
+      }),
+    );
 
     const bda = new BedrockDataAutomation(this, "LendingBda");
 
