@@ -50,7 +50,7 @@ export class CalculateCapacityResolverFunction
     super(scope, id, {
       ...props,
       runtime: lambda.Runtime.PYTHON_3_12,
-      architecture: lambda.Architecture.ARM_64,
+      architecture: lambda.Architecture.X86_64,
       entry: path.join(
         __dirname,
         "..",
