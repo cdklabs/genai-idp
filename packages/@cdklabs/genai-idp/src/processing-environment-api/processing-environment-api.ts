@@ -251,6 +251,7 @@ export class ProcessingEnvironmentApi
   private readonly _logRetention?: logs.RetentionDays;
   private readonly _vpcConfiguration?: VpcConfiguration;
   private readonly _configurationTable: IConfigurationTable;
+  private readonly _trackingTable: ITrackingTable;
   private readonly outputBucket: IBucket;
 
   /**
@@ -291,6 +292,7 @@ export class ProcessingEnvironmentApi
     this._logRetention = props.logRetention;
     this._vpcConfiguration = props.vpcConfiguration;
     this._configurationTable = props.configurationTable;
+    this._trackingTable = props.trackingTable;
     this.outputBucket = props.outputBucket;
 
     // Add file contents resolver
@@ -579,6 +581,9 @@ export class ProcessingEnvironmentApi
     const chatWithDocumentDataSource = this.addChatWithDocumentDataSource(
       knowledgeBase,
       chatModel,
+      this._trackingTable,
+      this._configurationTable,
+      this.outputBucket,
       guardrail,
       this._logLevel,
       this._encryptionKey,
@@ -945,17 +950,66 @@ export class ProcessingEnvironmentApi
       },
     );
 
-    // Create resolvers
-    this.createResolver("GetConfigurationResolver", {
+    // Create resolvers for configuration queries
+    this.createResolver("GetConfigVersionsResolver", {
       dataSource: configurationDataSource,
       typeName: "Query",
-      fieldName: "getConfiguration",
+      fieldName: "getConfigVersions",
     });
 
+    this.createResolver("GetConfigVersionResolver", {
+      dataSource: configurationDataSource,
+      typeName: "Query",
+      fieldName: "getConfigVersion",
+    });
+
+    this.createResolver("GetPricingResolver", {
+      dataSource: configurationDataSource,
+      typeName: "Query",
+      fieldName: "getPricing",
+    });
+
+    this.createResolver("ListConfigurationLibraryResolver", {
+      dataSource: configurationDataSource,
+      typeName: "Query",
+      fieldName: "listConfigurationLibrary",
+    });
+
+    this.createResolver("GetConfigurationLibraryFileResolver", {
+      dataSource: configurationDataSource,
+      typeName: "Query",
+      fieldName: "getConfigurationLibraryFile",
+    });
+
+    // Create resolvers for configuration mutations
     this.createResolver("UpdateConfigurationResolver", {
       dataSource: configurationDataSource,
       typeName: "Mutation",
       fieldName: "updateConfiguration",
+    });
+
+    this.createResolver("SetActiveVersionResolver", {
+      dataSource: configurationDataSource,
+      typeName: "Mutation",
+      fieldName: "setActiveVersion",
+    });
+
+    this.createResolver("DeleteConfigVersionResolver", {
+      dataSource: configurationDataSource,
+      typeName: "Mutation",
+      fieldName: "deleteConfigVersion",
+    });
+
+    this.createResolver("UpdatePricingResolver", {
+      dataSource: configurationDataSource,
+      typeName: "Mutation",
+      fieldName: "updatePricing",
+    });
+
+    this.createResolver("RestoreDefaultPricingResolver", {
+      dataSource: configurationDataSource,
+      typeName: "Mutation",
+      fieldName: "restoreDefaultPricing",
     });
   }
 
@@ -1424,6 +1478,9 @@ export class ProcessingEnvironmentApi
   private addChatWithDocumentDataSource(
     knowledgeBase: IKnowledgeBase,
     chatModel: IInvokable,
+    trackingTable: ITrackingTable,
+    configurationTable: IConfigurationTable,
+    outputBucket: IBucket,
     guardrail?: IGuardrail,
     logLevel?: LogLevel,
     key?: kms.IKey,
@@ -1437,6 +1494,9 @@ export class ProcessingEnvironmentApi
         {
           knowledgeBase: knowledgeBase,
           chatModel: chatModel,
+          trackingTable: trackingTable,
+          configurationTable: configurationTable,
+          outputBucket: outputBucket,
           guardrail: guardrail,
           logLevel: logLevel ?? LogLevel.INFO,
           encryptionKey: key,
