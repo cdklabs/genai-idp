@@ -327,8 +327,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentChatProcessorFunction.applyRemovalPolicy"></a>
@@ -1759,8 +1757,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentCoreAnalyticsProcessorFunction.applyRemovalPolicy"></a>
@@ -3183,8 +3179,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentCoreGatewayManagerFunction.applyRemovalPolicy"></a>
@@ -4387,8 +4381,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentProcessorFunction.applyRemovalPolicy"></a>
@@ -5589,8 +5581,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.AgentRequestHandlerFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -6802,8 +6792,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.AgentTable.applyRemovalPolicy"></a>
@@ -7869,8 +7857,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.CalculateCapacityFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -9072,8 +9058,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.CalculateCapacityResolverFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -10484,8 +10468,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ChatSessionResolverFunction.applyRemovalPolicy"></a>
@@ -11693,8 +11675,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.CompleteSectionReviewFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -12914,8 +12894,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ConcurrencyTable.applyRemovalPolicy"></a>
@@ -14007,8 +13985,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ConfigurationTable.applyRemovalPolicy"></a>
@@ -15075,8 +15051,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DeleteAgentChatSessionFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -16278,8 +16252,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DiscoveryProcessorFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -17485,8 +17457,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.DiscoveryQueue.applyRemovalPolicy"></a>
@@ -18280,8 +18250,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DiscoveryTable.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -19348,8 +19316,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DiscoveryUploadResolverFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -20556,8 +20522,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DocSplitTestSetDeployerFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -22191,8 +22155,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ErrorAnalyzerFunction.applyRemovalPolicy"></a>
@@ -23604,8 +23566,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.FccDatasetDeployerFunction.applyRemovalPolicy"></a>
@@ -24806,8 +24766,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.GetAgentChatMessagesFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -26204,8 +26162,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ListAgentChatSessionsFunction.applyRemovalPolicy"></a>
@@ -27406,8 +27362,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ListAvailableAgentsFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -28834,8 +28788,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.MessagesTable.applyRemovalPolicy"></a>
@@ -29906,8 +29858,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.OcrBenchmarkDeployerFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -31604,8 +31554,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.applyRemovalPolicy"></a>
@@ -33244,8 +33192,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.SaveReportingDataFunction.applyRemovalPolicy"></a>
@@ -34470,8 +34416,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.SessionTable.applyRemovalPolicy"></a>
@@ -35539,8 +35483,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.TestResultsResolverFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -36742,8 +36684,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.TestRunnerFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -37947,8 +37887,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.TestSetResolverFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -39527,8 +39465,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.TestTable.applyRemovalPolicy"></a>
@@ -40613,8 +40549,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.TrackingTable.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 
@@ -42097,8 +42031,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.UserManagementFunction.applyRemovalPolicy"></a>
@@ -43317,8 +43249,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp.UsersTable.applyRemovalPolicy"></a>
@@ -44391,8 +44321,6 @@ constructs.
 ###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.UserSyncFunction.with.parameter.mixins"></a>
 
 - *Type:* ...constructs.IMixin[]
-
-The mixins to apply.
 
 ---
 

@@ -124,8 +124,6 @@ constructs.
 
 - *Type:* ...constructs.IMixin[]
 
-The mixins to apply.
-
 ---
 
 ##### `applyRemovalPolicy` <a name="applyRemovalPolicy" id="@cdklabs/genai-idp-bda-processor.BdaMetadataTable.applyRemovalPolicy"></a>

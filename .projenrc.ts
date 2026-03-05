@@ -14,7 +14,7 @@ import path from "path";
 import fs from 'fs';
 
 const stability = Stability.EXPERIMENTAL;
-const CDK_VERSION = '2.240.0';
+const CDK_VERSION = '2.241.0';
 const CONSTRUCTS_VERSION = '10.5.1';
 const GENAI_CONSTRUCTS_VERSION = '0.1.314';
 const JSII_VERSION = '~5.9';
