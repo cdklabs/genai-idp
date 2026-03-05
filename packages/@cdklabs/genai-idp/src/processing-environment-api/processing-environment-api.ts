@@ -1114,8 +1114,7 @@ export class ProcessingEnvironmentApi
         {
           outputBucket: outputBucket,
           evaluationBaselineBucket: evaluationBaselineBucket,
-          graphqlApiUrl: this.graphqlUrl,
-          graphqlApiArn: this.arn,
+          api: this,
           encryptionKey: encryptionKey,
           logGroup: new logs.LogGroup(
             this,
