@@ -142,9 +142,6 @@ export class ChatWithDocumentResolverFunction
       securityGroups: props.securityGroups,
     });
 
-    // Grant permissions to query the knowledge base
-    props.knowledgeBase.grantQuery(this);
-
     // Grant permissions to read from tracking and configuration tables
     props.trackingTable.grantReadData(this);
     props.configurationTable.grantReadData(this);
@@ -153,27 +150,10 @@ export class ChatWithDocumentResolverFunction
     props.outputBucket.grantReadWrite(this);
 
     // Grant permissions to invoke the chat model
-    this.addToRolePolicy(
-      new cdk.aws_iam.PolicyStatement({
-        effect: cdk.aws_iam.Effect.ALLOW,
-        actions: [
-          "bedrock:InvokeModel",
-          "bedrock:InvokeModelWithResponseStream",
-        ],
-        resources: [props.chatModel.invokableArn],
-      }),
-    );
-
-    // Grant guardrail permissions if provided
-    if (props.guardrail) {
-      this.addToRolePolicy(
-        new cdk.aws_iam.PolicyStatement({
-          effect: cdk.aws_iam.Effect.ALLOW,
-          actions: ["bedrock:ApplyGuardrail"],
-          resources: [props.guardrail.guardrailArn],
-        }),
-      );
-    }
+    props.chatModel.grantInvoke(this);
+    props.guardrail?.grantApply(this);
+    // Grant permissions to query the knowledge base
+    props.knowledgeBase.grantQuery(this);
 
     // Grant KMS permissions if encryption key is provided
     props.encryptionKey?.grantEncryptDecrypt(this);

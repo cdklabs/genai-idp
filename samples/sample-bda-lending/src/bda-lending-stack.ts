@@ -268,13 +268,15 @@ export class BdaLendingStack extends Stack {
       }),
     );
 
-    api.addKnowledgeBase(
-      knowledgeBase,
-      CrossRegionInferenceProfile.fromConfig({
-        model: BedrockFoundationModel.AMAZON_NOVA_PRO_V1,
-        geoRegion: CrossRegionInferenceProfileRegion.US,
-      }),
-    );
+    const chatModel = CrossRegionInferenceProfile.fromConfig({
+      model: BedrockFoundationModel.AMAZON_NOVA_PRO_V1,
+      geoRegion: CrossRegionInferenceProfileRegion.US,
+    });
+
+    api.addKnowledgeBase(knowledgeBase, chatModel);
+
+    // Add chat with document functionality
+    api.addChatWithDocument(knowledgeBase, chatModel);
 
     // Create and add Agent Analytics using the new feature pattern
     const agentAnalytics = new AgentAnalytics(this, "AgentAnalytics", {
