@@ -111,8 +111,19 @@ export class DocumentDiscovery
   extends Construct
   implements IDocumentDiscovery, IApiFeature, IWebAppFeature
 {
+  /**
+   * The S3 bucket for document discovery uploads.
+   */
   readonly discoveryBucket: IBucket;
+
+  /**
+   * The DynamoDB table that tracks discovery job status and metadata.
+   */
   readonly discoveryTable: IDiscoveryTable;
+
+  /**
+   * The SQS queue for processing discovery jobs asynchronously.
+   */
   readonly discoveryQueue: IDiscoveryQueue;
 
   private readonly props: DocumentDiscoveryProps;

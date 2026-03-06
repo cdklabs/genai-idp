@@ -176,9 +176,24 @@ export class AgentAnalytics
   extends Construct
   implements IAgentAnalytics, IApiFeature
 {
+  /**
+   * The DynamoDB table for tracking agent jobs and analytics queries.
+   */
   public readonly agentTable: IAgentTable;
+
+  /**
+   * Lambda function that handles agent query requests from the UI.
+   */
   public readonly agentRequestHandler: lambda.IFunction;
+
+  /**
+   * Lambda function that processes agent queries using Bedrock AgentCore.
+   */
   public readonly agentProcessor: lambda.IFunction;
+
+  /**
+   * Lambda function that lists available analytics agents.
+   */
   public readonly listAvailableAgents: lambda.IFunction;
 
   /**

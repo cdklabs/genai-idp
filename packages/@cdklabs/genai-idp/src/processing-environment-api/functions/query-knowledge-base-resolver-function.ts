@@ -33,6 +33,10 @@ export interface QueryKnowledgeBaseResolverFunctionProps extends IdpPythonFuncti
    */
   readonly knowledgeBaseModel: bedrock.IInvokable;
 
+  /**
+   * Optional Bedrock guardrail for content filtering on knowledge base queries.
+   * When provided, applies content safety policies to query inputs and outputs.
+   */
   readonly guardrail?: IGuardrail;
   /**
    * The log level for the function.

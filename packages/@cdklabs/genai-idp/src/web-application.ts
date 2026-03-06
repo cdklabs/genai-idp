@@ -93,6 +93,12 @@ export interface IWebApplication {
   addCorsBucket(bucket: s3.IBucket): void;
 }
 
+/**
+ * Properties for configuring the WebApplication construct.
+ *
+ * Defines the infrastructure and integrations needed to build and deploy
+ * the web UI for the document processing solution.
+ */
 export interface WebApplicationProps {
   /**
    * Optional pre-existing S3 bucket to use for the web application.
@@ -168,8 +174,24 @@ export interface WebApplicationProps {
   readonly autoConfigure?: boolean;
 }
 
+/**
+ * A construct that deploys and manages the web application for the document processing solution.
+ *
+ * Creates an S3-hosted React application served through CloudFront, with CodeBuild
+ * for automated builds and SSM parameters for runtime configuration. Features can
+ * contribute settings and CORS rules via the `enable()` method.
+ *
+ * @since v0.4.8
+ */
 export class WebApplication extends Construct implements IWebApplication {
+  /**
+   * The S3 bucket where the web application assets are deployed.
+   */
   public readonly bucket: s3.IBucket;
+
+  /**
+   * The CloudFront distribution that serves the web application.
+   */
   public readonly distribution: cloudfront.IDistribution;
 
   private readonly _settings: Record<string, string> = {};

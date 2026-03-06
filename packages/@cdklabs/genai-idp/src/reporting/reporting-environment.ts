@@ -154,11 +154,34 @@ export class ReportingEnvironment
   extends Construct
   implements IReportingEnvironment
 {
+  /**
+   * The S3 bucket where evaluation metrics and reporting data are stored in Parquet format.
+   */
   public readonly reportingBucket: s3.IBucket;
+
+  /**
+   * The AWS Glue database containing tables for evaluation metrics.
+   */
   public readonly reportingDatabase: glue.Database;
+
+  /**
+   * The Glue table for document-level evaluation metrics.
+   */
   public readonly documentEvaluationsTable: glue.S3Table;
+
+  /**
+   * The Glue table for section-level evaluation metrics.
+   */
   public readonly sectionEvaluationsTable: glue.S3Table;
+
+  /**
+   * The Glue table for attribute-level evaluation metrics.
+   */
   public readonly attributeEvaluationsTable: glue.S3Table;
+
+  /**
+   * The Glue table for metering data.
+   */
   public readonly meteringTable: glue.S3Table;
 
   constructor(scope: Construct, id: string, props: ReportingEnvironmentProps) {

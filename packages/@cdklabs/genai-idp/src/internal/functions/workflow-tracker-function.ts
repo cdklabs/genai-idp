@@ -36,7 +36,11 @@ export interface WorkflowTrackerFunctionProps extends IdpPythonFunctionOptions {
    */
   readonly metricNamespace: string;
 
-  readonly trackintTable: ITrackingTable;
+  /**
+   * The DynamoDB table that tracks document processing status and metadata.
+   * Used to update document status when workflows complete or fail.
+   */
+  readonly trackingTable: ITrackingTable;
   /**
    * The S3 bucket where processed documents and extraction results are stored.
    * The function reads extraction results from this bucket when workflows complete.
@@ -141,7 +145,7 @@ export class WorkflowTrackerFunction extends PythonFunction {
       environment: {
         CONCURRENCY_TABLE: props.concurrencyTable.tableName,
         METRIC_NAMESPACE: props.metricNamespace,
-        TRACKING_TABLE: props.trackintTable.tableName,
+        TRACKING_TABLE: props.trackingTable.tableName,
         OUTPUT_BUCKET: props.outputBucket.bucketName,
         WORKING_BUCKET: props.workingBucket.bucketName,
         DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
@@ -158,7 +162,7 @@ export class WorkflowTrackerFunction extends PythonFunction {
     });
 
     cloudwatch.Metric.grantPutMetricData(this);
-    props.trackintTable.grantReadWriteData(this);
+    props.trackingTable.grantReadWriteData(this);
     props.concurrencyTable.grantReadWriteData(this);
     props.workingBucket.grantReadWrite(this);
 

@@ -11,6 +11,11 @@ import yaml from "yaml";
  * Valid pattern names for IDP configurations.
  */
 const VALID_PATTERNS = ["pattern-1", "pattern-2", "pattern-3"] as const;
+
+/**
+ * A valid IDP configuration pattern identifier.
+ * Each pattern defines a different document processing strategy with its own defaults.
+ */
 export type Pattern = (typeof VALID_PATTERNS)[number];
 
 /**

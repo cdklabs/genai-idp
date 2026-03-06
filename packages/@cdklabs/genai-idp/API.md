@@ -33642,8 +33642,6 @@ public readonly attributeEvaluationsTable: S3Table;
 
 The Glue table for attribute-level evaluation metrics.
 
-Contains detailed evaluation metrics for individual extracted attributes.
-
 ---
 
 ##### `documentEvaluationsTable`<sup>Required</sup> <a name="documentEvaluationsTable" id="@cdklabs/genai-idp.ReportingEnvironment.property.documentEvaluationsTable"></a>
@@ -33655,8 +33653,6 @@ public readonly documentEvaluationsTable: S3Table;
 - *Type:* @aws-cdk/aws-glue-alpha.S3Table
 
 The Glue table for document-level evaluation metrics.
-
-Contains accuracy, precision, recall, F1 score, and other document-level metrics.
 
 ---
 
@@ -33670,8 +33666,6 @@ public readonly meteringTable: S3Table;
 
 The Glue table for metering data.
 
-Contains cost and usage metrics for document processing operations.
-
 ---
 
 ##### `reportingBucket`<sup>Required</sup> <a name="reportingBucket" id="@cdklabs/genai-idp.ReportingEnvironment.property.reportingBucket"></a>
@@ -33683,8 +33677,6 @@ public readonly reportingBucket: IBucket;
 - *Type:* aws-cdk-lib.aws_s3.IBucket
 
 The S3 bucket where evaluation metrics and reporting data are stored in Parquet format.
-
-Contains document-level, section-level, and attribute-level evaluation metrics.
 
 ---
 
@@ -33698,8 +33690,6 @@ public readonly reportingDatabase: Database;
 
 The AWS Glue database containing tables for evaluation metrics.
 
-Provides a structured catalog for querying evaluation data with Amazon Athena.
-
 ---
 
 ##### `sectionEvaluationsTable`<sup>Required</sup> <a name="sectionEvaluationsTable" id="@cdklabs/genai-idp.ReportingEnvironment.property.sectionEvaluationsTable"></a>
@@ -33711,8 +33701,6 @@ public readonly sectionEvaluationsTable: S3Table;
 - *Type:* @aws-cdk/aws-glue-alpha.S3Table
 
 The Glue table for section-level evaluation metrics.
-
-Contains evaluation metrics for individual sections within documents.
 
 ---
 
@@ -46038,6 +46026,12 @@ Uniquely identifies this class.
 
 - *Implements:* <a href="#@cdklabs/genai-idp.IWebApplication">IWebApplication</a>
 
+A construct that deploys and manages the web application for the document processing solution.
+
+Creates an S3-hosted React application served through CloudFront, with CodeBuild
+for automated builds and SSM parameters for runtime configuration. Features can
+contribute settings and CORS rules via the `enable()` method.
+
 #### Initializers <a name="Initializers" id="@cdklabs/genai-idp.WebApplication.Initializer"></a>
 
 ```typescript
@@ -46241,8 +46235,6 @@ public readonly bucket: IBucket;
 
 The S3 bucket where the web application assets are deployed.
 
-Contains the static files for the web UI including HTML, CSS, and JavaScript.
-
 ---
 
 ##### `distribution`<sup>Required</sup> <a name="distribution" id="@cdklabs/genai-idp.WebApplication.property.distribution"></a>
@@ -46254,8 +46246,6 @@ public readonly distribution: IDistribution;
 - *Type:* aws-cdk-lib.aws_cloudfront.IDistribution
 
 The CloudFront distribution that serves the web application.
-
-Provides global content delivery with low latency and high performance.
 
 ---
 
@@ -58585,6 +58575,8 @@ Optional VPC configuration for Lambda functions.
 
 ### DocumentProcessorAttachmentOptions <a name="DocumentProcessorAttachmentOptions" id="@cdklabs/genai-idp.DocumentProcessorAttachmentOptions"></a>
 
+Options for attaching a document processor to a processing environment.
+
 #### Initializer <a name="Initializer" id="@cdklabs/genai-idp.DocumentProcessorAttachmentOptions.Initializer"></a>
 
 ```typescript
@@ -58597,7 +58589,7 @@ const documentProcessorAttachmentOptions: DocumentProcessorAttachmentOptions = {
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp.DocumentProcessorAttachmentOptions.property.prefix">prefix</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.DocumentProcessorAttachmentOptions.property.prefix">prefix</a></code> | <code>string</code> | Optional S3 key prefix to filter which uploaded documents trigger this processor. |
 
 ---
 
@@ -58609,9 +58601,15 @@ public readonly prefix: string;
 
 - *Type:* string
 
+Optional S3 key prefix to filter which uploaded documents trigger this processor.
+
+When specified, only objects with keys matching this prefix will be processed.
+
 ---
 
 ### DocumentProcessorAttachmentResult <a name="DocumentProcessorAttachmentResult" id="@cdklabs/genai-idp.DocumentProcessorAttachmentResult"></a>
+
+Result returned after attaching a document processor to a processing environment.
 
 #### Initializer <a name="Initializer" id="@cdklabs/genai-idp.DocumentProcessorAttachmentResult.Initializer"></a>
 
@@ -71635,6 +71633,11 @@ Determines which subnets within the VPC will host document processing components
 
 ### WebApplicationProps <a name="WebApplicationProps" id="@cdklabs/genai-idp.WebApplicationProps"></a>
 
+Properties for configuring the WebApplication construct.
+
+Defines the infrastructure and integrations needed to build and deploy
+the web UI for the document processing solution.
+
 #### Initializer <a name="Initializer" id="@cdklabs/genai-idp.WebApplicationProps.Initializer"></a>
 
 ```typescript
@@ -73694,6 +73697,10 @@ ARN of the table's stream, if there is one.
 ### IProcessingEnvironment <a name="IProcessingEnvironment" id="@cdklabs/genai-idp.IProcessingEnvironment"></a>
 
 - *Implemented By:* <a href="#@cdklabs/genai-idp.ProcessingEnvironment">ProcessingEnvironment</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironment">IProcessingEnvironment</a>
+
+Interface for the core document processing environment.
+
+Provides shared infrastructure for document ingestion, processing, and result tracking.
 
 #### Methods <a name="Methods" id="Methods"></a>
 
