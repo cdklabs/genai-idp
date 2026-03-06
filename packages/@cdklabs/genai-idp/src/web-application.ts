@@ -18,8 +18,27 @@ import * as ssm from "aws-cdk-lib/aws-ssm";
 import { md5hash } from "aws-cdk-lib/core/lib/helpers-internal";
 import { Construct } from "constructs";
 import { IProcessingEnvironment } from "./processing-environment";
-import { IDocumentDiscovery } from "./processing-environment-api/document-discovery/document-discovery";
 import { IUserIdentity } from "./user-identity";
+
+/**
+ * Interface for features that can be enabled in the WebApplication.
+ *
+ * Features implementing this interface contribute UI settings (e.g., bucket names,
+ * feature flags) and optionally configure CORS rules for CloudFront access.
+ *
+ * @since v0.4.16
+ */
+export interface IWebAppFeature {
+  /**
+   * Enable this feature in the WebApplication.
+   *
+   * Typically contributes settings to the SSM parameter and configures
+   * bucket CORS rules for CloudFront access.
+   *
+   * @param webApp The WebApplication to enable in
+   */
+  enableInWebApp(webApp: IWebApplication): void;
+}
 
 /**
  * Interface for the web application that provides a user interface for the document processing solution.
@@ -37,6 +56,41 @@ export interface IWebApplication {
    * Provides global content delivery with low latency and high performance.
    */
   readonly distribution: cloudfront.IDistribution;
+
+  /**
+   * Enable a feature in the WebApplication.
+   *
+   * Features implementing IWebAppFeature will enable themselves
+   * in the web app by contributing settings and configuring CORS.
+   *
+   * @param feature The feature to enable
+   * @since v0.4.16
+   */
+  enable(feature: IWebAppFeature): void;
+
+  /**
+   * Add a setting to the web application's SSM parameter.
+   *
+   * Settings are lazily resolved at synth time and included in the
+   * JSON settings parameter that the UI reads at runtime.
+   *
+   * @param key The setting key
+   * @param value The setting value
+   * @since v0.4.16
+   */
+  addSetting(key: string, value: string): void;
+
+  /**
+   * Add a CORS rule to an S3 bucket for CloudFront access.
+   *
+   * Configures the bucket to allow PUT/POST requests from the
+   * CloudFront distribution domain. Only applies when the bucket
+   * is a concrete s3.Bucket (not an imported IBucket).
+   *
+   * @param bucket The S3 bucket to configure CORS on
+   * @since v0.4.16
+   */
+  addCorsBucket(bucket: s3.IBucket): void;
 }
 
 export interface WebApplicationProps {
@@ -102,15 +156,6 @@ export interface WebApplicationProps {
   readonly userIdentity: IUserIdentity;
 
   /**
-   * Optional document discovery integration for the web application.
-   * When provided, enables document discovery features in the UI including
-   * sample document uploads and automatic configuration generation.
-   *
-   * @default - Document discovery features are disabled in the UI
-   */
-  readonly documentDiscovery?: IDocumentDiscovery;
-
-  /**
    * Whether to automatically configure CORS rules on S3 buckets for CloudFront access.
    * When true, the library will configure CORS rules on the input, output, and discovery buckets
    * to allow access from the CloudFront distribution domain.
@@ -121,41 +166,35 @@ export interface WebApplicationProps {
    * @default true
    */
   readonly autoConfigure?: boolean;
-
-  /**
-   * Whether a Document Knowledge Base is configured for this deployment.
-   * When true, enables knowledge base features in the UI for querying processed documents.
-   *
-   * @default false
-   */
-  readonly enableDocumentKnowledgeBase?: boolean;
 }
 
 export class WebApplication extends Construct implements IWebApplication {
   public readonly bucket: s3.IBucket;
   public readonly distribution: cloudfront.IDistribution;
 
+  private readonly _settings: Record<string, string> = {};
+  private readonly _autoConfigure: boolean;
+
   constructor(scope: Construct, id: string, props: WebApplicationProps) {
     super(scope, id);
 
-    // SSM Parameter with settings directly set via stringValue
+    this._autoConfigure = props.autoConfigure !== false;
+
+    // Initialize core settings (features contribute additional settings via enable())
+    this._settings.StackName = cdk.Stack.of(this).stackName;
+    this._settings.Version = "0.4.8";
+    this._settings.InputBucket = props.environment.inputBucket.bucketName;
+    this._settings.OutputBucket = props.environment.outputBucket.bucketName;
+    this._settings.ReportingBucket =
+      props.environment.reportingEnvironment?.reportingBucket.bucketName || "";
+
+    // SSM Parameter with lazy settings — resolved at synth time
     const settingsParameter = new ssm.StringParameter(
       this,
       "SettingsParameter",
       {
-        stringValue: JSON.stringify({
-          StackName: cdk.Stack.of(this).stackName,
-          Version: "0.4.8",
-          InputBucket: props.environment.inputBucket.bucketName,
-          DiscoveryBucket:
-            props.documentDiscovery?.discoveryBucket.bucketName || "",
-          OutputBucket: props.environment.outputBucket.bucketName,
-          ReportingBucket:
-            props.environment.reportingEnvironment?.reportingBucket
-              .bucketName || "",
-          ShouldUseDocumentKnowledgeBase: props.enableDocumentKnowledgeBase
-            ? "true"
-            : "false",
+        stringValue: cdk.Lazy.string({
+          produce: () => JSON.stringify(this._settings),
         }),
       },
     );
@@ -343,6 +382,52 @@ export class WebApplication extends Construct implements IWebApplication {
   }
 
   /**
+   * Enable a feature in the WebApplication.
+   *
+   * @param feature The feature to enable
+   * @since v0.4.16
+   */
+  public enable(feature: IWebAppFeature): void {
+    feature.enableInWebApp(this);
+  }
+
+  /**
+   * Add a setting to the web application's SSM parameter.
+   *
+   * @param key The setting key
+   * @param value The setting value
+   * @since v0.4.16
+   */
+  public addSetting(key: string, value: string): void {
+    this._settings[key] = value;
+  }
+
+  /**
+   * Add a CORS rule to an S3 bucket for CloudFront access.
+   *
+   * @param bucket The S3 bucket to configure CORS on
+   * @since v0.4.16
+   */
+  public addCorsBucket(bucket: s3.IBucket): void {
+    if (!this._autoConfigure) return;
+    if (bucket instanceof s3.Bucket) {
+      bucket.addCorsRule({
+        allowedHeaders: [
+          "Content-Type",
+          "x-amz-content-sha256",
+          "x-amz-date",
+          "Authorization",
+          "x-amz-security-token",
+        ],
+        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.POST],
+        allowedOrigins: [`https://${this.distribution.distributionDomainName}`],
+        exposedHeaders: ["ETag", "x-amz-server-side-encryption"],
+        maxAge: 3000,
+      });
+    }
+  }
+
+  /**
    * Creates a default S3 bucket for the web application with sensible defaults.
    * This is our "best guess" configuration that works well for most use cases.
    */
@@ -489,58 +574,9 @@ export class WebApplication extends Construct implements IWebApplication {
    * When autoConfigure is false, users are responsible for setting up CORS rules on input/output/discovery buckets.
    */
   private configureIntegrations(props: WebApplicationProps): void {
-    // Get the distribution domain (works for both user-provided and default)
-    const distributionDomain = this.distribution.distributionDomainName;
-
     // Configure CORS on input/output buckets
-    if (props.environment.inputBucket instanceof s3.Bucket) {
-      props.environment.inputBucket.addCorsRule({
-        allowedHeaders: [
-          "Content-Type",
-          "x-amz-content-sha256",
-          "x-amz-date",
-          "Authorization",
-          "x-amz-security-token",
-        ],
-        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.POST],
-        allowedOrigins: [`https://${distributionDomain}`],
-        exposedHeaders: ["ETag", "x-amz-server-side-encryption"],
-        maxAge: 3000,
-      });
-    }
-
-    if (props.environment.outputBucket instanceof s3.Bucket) {
-      props.environment.outputBucket.addCorsRule({
-        allowedHeaders: [
-          "Content-Type",
-          "x-amz-content-sha256",
-          "x-amz-date",
-          "Authorization",
-          "x-amz-security-token",
-        ],
-        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.POST],
-        allowedOrigins: [`https://${distributionDomain}`],
-        exposedHeaders: ["ETag", "x-amz-server-side-encryption"],
-        maxAge: 3000,
-      });
-    }
-
-    // Configure CORS on discovery bucket
-    if (props.documentDiscovery?.discoveryBucket instanceof s3.Bucket) {
-      props.documentDiscovery.discoveryBucket.addCorsRule({
-        allowedHeaders: [
-          "Content-Type",
-          "x-amz-content-sha256",
-          "x-amz-date",
-          "Authorization",
-          "x-amz-security-token",
-        ],
-        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.POST],
-        allowedOrigins: [`https://${distributionDomain}`],
-        exposedHeaders: ["ETag", "x-amz-server-side-encryption"],
-        maxAge: 3000,
-      });
-    }
+    this.addCorsBucket(props.environment.inputBucket);
+    this.addCorsBucket(props.environment.outputBucket);
   }
 
   /**

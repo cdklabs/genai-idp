@@ -19,7 +19,7 @@ import { ITrackingTable } from "../../tracking-table";
 import * as functions from "../functions";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -193,7 +193,7 @@ export interface AgentCompanionChatProps {
  */
 export class AgentCompanionChat
   extends Construct
-  implements IAgentCompanionChat, IProcessingEnvironmentApiFeature
+  implements IAgentCompanionChat, IApiFeature
 {
   /**
    * DynamoDB table for chat session storage.
@@ -452,7 +452,7 @@ export class AgentCompanionChat
   }
 
   /**
-   * Attach this Agent Companion Chat feature to the ProcessingEnvironmentApi.
+   * Enable this Agent Companion Chat feature in the ProcessingEnvironmentApi.
    *
    * This method integrates the AI assistant functionality with the GraphQL API
    * by creating the necessary data sources and resolvers. It should be called after
@@ -461,12 +461,12 @@ export class AgentCompanionChat
    * Example:
    * const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
    * const agentCompanionChat = new AgentCompanionChat(this, 'AgentCompanionChat', { ... });
-   * agentCompanionChat.attachTo(api);
+   * api.enable(agentCompanionChat);
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     // Store the API URL for lazy resolution in the orchestrator function
     this._appsyncApiUrl = api.graphqlUrl;
 

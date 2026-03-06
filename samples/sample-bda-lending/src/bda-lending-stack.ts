@@ -91,16 +91,6 @@ export class BdaLendingStack extends Stack {
       autoDeleteObjects: true,
     });
 
-    const evaluationBaselineBucket = new Bucket(
-      this,
-      "EvaluationBaselineBucket",
-      {
-        encryptionKey: key,
-        removalPolicy: RemovalPolicy.DESTROY,
-        autoDeleteObjects: true,
-      },
-    );
-
     const configurationTable = new ConfigurationTable(
       this,
       "ConfigurationTable",
@@ -139,6 +129,9 @@ export class BdaLendingStack extends Stack {
       // },
     });
 
+    api.grantQuery(userIdentity.identityPool.authenticatedRole);
+    api.grantSubscription(userIdentity.identityPool.authenticatedRole);
+
     const reportingEnvironment = new ReportingEnvironment(
       this,
       "ReportingEnvironment",
@@ -150,14 +143,6 @@ export class BdaLendingStack extends Stack {
         }),
       },
     );
-
-    const discoveryBucket = new Bucket(this, "DiscoveryBucket", {
-      removalPolicy: RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-    });
-    const documentDiscovery = new DocumentDiscovery(this, "Discovery", {
-      discoveryBucket,
-    });
 
     const environment = new ProcessingEnvironment(this, "Environment", {
       key,
@@ -175,32 +160,17 @@ export class BdaLendingStack extends Stack {
       // },
     });
 
-    // Create Agent Companion Chat after environment is created
-    // so we have access to lookupFunction and other resources
-    const agentCompanionChat = new AgentCompanionChat(
+    const bda = new BedrockDataAutomation(this, "LendingBda");
+
+    const evaluationBaselineBucket = new Bucket(
       this,
-      "AgentCompanionChat",
+      "EvaluationBaselineBucket",
       {
-        configurationTable,
-        trackingTable,
-        lookupFunction: environment.lookupFunction,
-        cloudWatchLogGroupPrefix: `/aws/lambda/${this.stackName}`,
-        athenaDatabase: reportingEnvironment.reportingDatabase,
-        athenaOutputLocation: `s3://${reportingEnvironment.reportingBucket.bucketName}/athena-results/`,
         encryptionKey: key,
-        tracing: environment.tracing,
+        removalPolicy: RemovalPolicy.DESTROY,
+        autoDeleteObjects: true,
       },
     );
-
-    // Integrate agent companion chat with API using the new feature pattern
-    api.addFeature(agentCompanionChat);
-    api.addFeature(
-      new UserManagement(this, "UserManagement", {
-        userIdentity,
-      }),
-    );
-
-    const bda = new BedrockDataAutomation(this, "LendingBda");
 
     const processor = new BdaProcessor(this, "Pattern1", {
       environment,
@@ -208,27 +178,6 @@ export class BdaLendingStack extends Stack {
       evaluationBaselineBucket,
       configuration: BdaProcessorConfiguration.lendingPackageSample(),
     });
-
-    // Add processing progress monitoring using the new feature pattern
-    const progressMonitor = new ProcessingProgressMonitor(
-      this,
-      "ProgressMonitor",
-      {
-        stateMachine: processor.stateMachine,
-        encryptionKey: key,
-      },
-    );
-    api.addFeature(progressMonitor);
-
-    // Add evaluation feature
-    api.addFeature(new Evaluation(this, "Evaluation", {
-      evaluationBaselineBucket,
-      outputBucket,
-      encryptionKey: key,
-    }));
-
-    api.grantQuery(userIdentity.identityPool.authenticatedRole);
-    api.grantSubscription(userIdentity.identityPool.authenticatedRole);
 
     const webApplication = new WebApplication(this, "WebApp", {
       webAppBucket: new Bucket(this, "webAppBucket", {
@@ -240,8 +189,6 @@ export class BdaLendingStack extends Stack {
       userIdentity,
       environment,
       apiUrl: api.graphqlUrl,
-      documentDiscovery,
-      enableDocumentKnowledgeBase: true,
     });
 
     const knowledgeBase = new VectorKnowledgeBase(this, "GenAIIDPKB", {
@@ -282,21 +229,93 @@ export class BdaLendingStack extends Stack {
       geoRegion: CrossRegionInferenceProfileRegion.US,
     });
 
-    api.addFeature(new KnowledgeBaseQuery(this, "KnowledgeBaseQuery", {
-      knowledgeBase,
-      knowledgeBaseModel: chatModel,
-    }));
+    // Enable user management for role-based access control
+    api.enable(
+      new UserManagement(this, "UserManagement", {
+        userIdentity,
+      }),
+    );
 
-    // Add chat with document functionality
-    api.addFeature(new ChatWithDocument(this, "ChatWithDocument", {
+    // Enable AI companion chat for operational assistance and analytics queries
+    const agentCompanionChat = new AgentCompanionChat(
+      this,
+      "AgentCompanionChat",
+      {
+        configurationTable,
+        trackingTable,
+        lookupFunction: environment.lookupFunction,
+        cloudWatchLogGroupPrefix: `/aws/lambda/${this.stackName}`,
+        athenaDatabase: reportingEnvironment.reportingDatabase,
+        athenaOutputLocation: `s3://${reportingEnvironment.reportingBucket.bucketName}/athena-results/`,
+        encryptionKey: key,
+        tracing: environment.tracing,
+      },
+    );
+
+    api.enable(agentCompanionChat);
+
+    // Enable knowledge base querying of processed documents
+    const knowledgeBaseQuery = new KnowledgeBaseQuery(
+      this,
+      "KnowledgeBaseQuery",
+      {
+        knowledgeBase,
+        knowledgeBaseModel: chatModel,
+        encryptionKey: key,
+      },
+    );
+
+    api.enable(knowledgeBaseQuery);
+    webApplication.enable(knowledgeBaseQuery);
+
+    // Enable real-time processing progress notifications via subscriptions
+    const progressMonitor = new ProcessingProgressMonitor(
+      this,
+      "ProgressMonitor",
+      {
+        stateMachine: processor.stateMachine,
+        encryptionKey: key,
+      },
+    );
+
+    api.enable(progressMonitor);
+
+    // Enable document discovery for automated configuration generation
+    const documentDiscovery = new DocumentDiscovery(this, "Discovery", {
+      discoveryBucket: new Bucket(this, "DiscoveryBucket", {
+        removalPolicy: RemovalPolicy.DESTROY,
+        autoDeleteObjects: true,
+      }),
+      configurationTable,
+      encryptionKey: key,
+    });
+
+    api.enable(documentDiscovery);
+    webApplication.enable(documentDiscovery);
+
+    // Enable evaluation baseline management for accuracy measurement
+    const evaluation = new Evaluation(this, "Evaluation", {
+      evaluationBaselineBucket,
+      outputBucket,
+      encryptionKey: key,
+    });
+
+    api.enable(evaluation);
+    webApplication.enable(evaluation);
+
+    // Enable conversational AI for individual document interaction
+    const chatWithDocument = new ChatWithDocument(this, "ChatWithDocument", {
       knowledgeBase,
       chatModel,
       trackingTable,
       configurationTable,
       outputBucket,
-    }));
+      encryptionKey: key,
+    });
 
-    // Create and add Agent Analytics using the new feature pattern
+    api.enable(chatWithDocument);
+
+    // Enable AI-powered analytics agent for processing insights
     const agentAnalytics = new AgentAnalytics(this, "AgentAnalytics", {
       trackingTable,
       configurationTable,
@@ -308,9 +327,9 @@ export class BdaLendingStack extends Stack {
       reportingEnvironment,
       encryptionKey: key,
     });
-    api.addFeature(agentAnalytics);
 
-    api.addFeature(documentDiscovery);
+    api.enable(agentAnalytics);
+    // webApplication.enable(agentAnalytics);
 
     new CfnOutput(this, "WebSiteUrl", {
       value: `https://${webApplication.distribution.distributionDomainName}`,

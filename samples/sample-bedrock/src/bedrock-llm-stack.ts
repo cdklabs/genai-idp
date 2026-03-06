@@ -188,17 +188,6 @@ export class BedrockLlmStack extends Stack {
       },
     });
 
-    // Add processing progress monitoring using the new feature pattern
-    const progressMonitor = new ProcessingProgressMonitor(
-      this,
-      "ProgressMonitor",
-      {
-        stateMachine: processor.stateMachine,
-        encryptionKey: key,
-      },
-    );
-    api.addFeature(progressMonitor);
-
     api.grantQuery(userIdentity.identityPool.authenticatedRole);
     api.grantSubscription(userIdentity.identityPool.authenticatedRole);
 
@@ -213,6 +202,18 @@ export class BedrockLlmStack extends Stack {
       userIdentity,
       apiUrl: api.graphqlUrl,
     });
+
+    // Enable real-time processing progress notifications via subscriptions
+    const progressMonitor = new ProcessingProgressMonitor(
+      this,
+      "ProgressMonitor",
+      {
+        stateMachine: processor.stateMachine,
+        encryptionKey: key,
+      },
+    );
+
+    api.enable(progressMonitor);
 
     new CfnOutput(this, "WebSiteUrl", {
       value: `https://${webApplication.distribution.distributionDomainName}`,

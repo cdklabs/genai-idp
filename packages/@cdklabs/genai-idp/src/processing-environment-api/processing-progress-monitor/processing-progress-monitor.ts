@@ -11,7 +11,7 @@ import { VpcConfiguration } from "../../vpc-configuration";
 import * as functions from "../functions";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -81,7 +81,7 @@ export interface ProcessingProgressMonitorProps {
  */
 export class ProcessingProgressMonitor
   extends Construct
-  implements IProcessingProgressMonitor, IProcessingEnvironmentApiFeature
+  implements IProcessingProgressMonitor, IApiFeature
 {
   /**
    * The Step Functions state machine being monitored.
@@ -111,7 +111,7 @@ export class ProcessingProgressMonitor
   }
 
   /**
-   * Attach this Processing Progress Monitor feature to the ProcessingEnvironmentApi.
+   * Enable this Processing Progress Monitor feature in the ProcessingEnvironmentApi.
    *
    * This method integrates the execution monitoring functionality with the GraphQL API
    * by creating the necessary data sources and resolvers. It should be called after
@@ -122,12 +122,12 @@ export class ProcessingProgressMonitor
    * const progressMonitor = new ProcessingProgressMonitor(this, 'ProgressMonitor', {
    *   stateMachine: processor.stateMachine,
    * });
-   * api.addFeature(progressMonitor);
+   * api.enable(progressMonitor);
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     // Import the resolver functions
     const { GetStepFunctionExecutionResolverFunction } = functions;
 

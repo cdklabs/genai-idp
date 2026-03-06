@@ -138,7 +138,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
         evaluationBaselineBucket,
         outputBucket,
       });
-      api.addFeature(evaluation);
+      api.enable(evaluation);
 
       expect(api).toBeDefined();
 
@@ -150,7 +150,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
       });
     });
 
-    test("addFeature with Evaluation works independently", () => {
+    test("enable with Evaluation works independently", () => {
       const api = new ProcessingEnvironmentApi(stack, "TestApi", {
         inputBucket,
         outputBucket,
@@ -169,7 +169,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
           evaluationBaselineBucket,
           outputBucket,
         });
-        api.addFeature(evaluation);
+        api.enable(evaluation);
       }).not.toThrow();
     });
   });
@@ -208,7 +208,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
           stateMachine,
         },
       );
-      api.addFeature(progressMonitor);
+      api.enable(progressMonitor);
 
       expect(api).toBeDefined();
 
@@ -250,7 +250,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
             stateMachine,
           },
         );
-        api.addFeature(progressMonitor);
+        api.enable(progressMonitor);
       }).not.toThrow();
     });
   });
@@ -313,7 +313,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
         outputBucket,
         encryptionKey,
       });
-      api.addFeature(evaluation);
+      api.enable(evaluation);
 
       // Add progress monitor feature
       const progressMonitor = new ProcessingProgressMonitor(
@@ -324,7 +324,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
           encryptionKey,
         },
       );
-      api.addFeature(progressMonitor);
+      api.enable(progressMonitor);
 
       expect(api).toBeDefined();
 
@@ -364,7 +364,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
           evaluationBaselineBucket,
           outputBucket,
         });
-        api.addFeature(evaluation);
+        api.enable(evaluation);
         const progressMonitor = new ProcessingProgressMonitor(
           stack,
           "ProgressMonitor",
@@ -372,7 +372,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
             stateMachine,
           },
         );
-        api.addFeature(progressMonitor);
+        api.enable(progressMonitor);
       }).not.toThrow();
     });
   });

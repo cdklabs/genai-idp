@@ -13,7 +13,7 @@ import { IUserIdentity } from "../../user-identity";
 import { VpcConfiguration } from "../../vpc-configuration";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -129,7 +129,7 @@ export interface UserManagementProps {
  */
 export class UserManagement
   extends Construct
-  implements IUserManagement, IProcessingEnvironmentApiFeature
+  implements IUserManagement, IApiFeature
 {
   /**
    * Lambda function that handles user administration operations.
@@ -194,7 +194,7 @@ export class UserManagement
   }
 
   /**
-   * Attach this User Management feature to the ProcessingEnvironmentApi.
+   * Enable this User Management feature in the ProcessingEnvironmentApi.
    *
    * This method integrates the user management functionality with the GraphQL API
    * by creating the necessary data sources and resolvers. It should be called after
@@ -203,12 +203,12 @@ export class UserManagement
    * Example:
    * const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
    * const userManagement = new UserManagement(this, 'UserManagement', { ... });
-   * userManagement.attachTo(api);
+   * api.enable(userManagement);
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     // Create data source for user management function
     const userManagementDataSource = api.addLambdaDataSource(
       "UserManagementDataSource",

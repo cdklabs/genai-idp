@@ -13,7 +13,7 @@ import { VpcConfiguration } from "../../vpc-configuration";
 import * as functions from "../functions";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -90,7 +90,7 @@ export interface DocumentEditingProps {
  * and have those changes reflected in the processing results.
  *
  * Integrates with the ProcessingEnvironmentApi as a feature using the
- * `api.addFeature(documentEditing)` pattern.
+ * `api.enable(documentEditing)` pattern.
  *
  * @example
  * const documentEditing = new DocumentEditing(this, 'DocumentEditing', {
@@ -101,13 +101,13 @@ export interface DocumentEditingProps {
  *   outputBucket,
  *   dataRetentionInDays: 30,
  * });
- * api.addFeature(documentEditing);
+ * api.enable(documentEditing);
  *
  * @since v0.4.16
  */
 export class DocumentEditing
   extends Construct
-  implements IDocumentEditing, IProcessingEnvironmentApiFeature
+  implements IDocumentEditing, IApiFeature
 {
   private readonly trackingTable: ITrackingTable;
   private readonly documentQueue: IQueue;
@@ -134,14 +134,14 @@ export class DocumentEditing
   }
 
   /**
-   * Attach this Document Editing feature to the ProcessingEnvironmentApi.
+   * Enable this Document Editing feature in the ProcessingEnvironmentApi.
    *
    * Creates the process changes data source and resolver.
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     const processChangesResolverFunction =
       new functions.ProcessChangesResolverFunction(
         api as Construct,

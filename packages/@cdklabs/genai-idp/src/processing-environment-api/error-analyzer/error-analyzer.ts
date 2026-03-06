@@ -12,7 +12,7 @@ import { ErrorAnalyzerFunction } from "./functions";
 import * as functions from "../functions";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -109,7 +109,7 @@ export interface ErrorAnalyzerProps {
  */
 export class ErrorAnalyzer
   extends Construct
-  implements IErrorAnalyzer, IProcessingEnvironmentApiFeature
+  implements IErrorAnalyzer, IApiFeature
 {
   /**
    * Lambda function for AI-powered error analysis.
@@ -162,7 +162,7 @@ export class ErrorAnalyzer
   }
 
   /**
-   * Attach this Error Analyzer feature to the ProcessingEnvironmentApi.
+   * Enable this Error Analyzer feature in the ProcessingEnvironmentApi.
    *
    * This method integrates the error analysis functionality with the GraphQL API
    * by creating the necessary data sources and resolvers. It should be called after
@@ -171,12 +171,12 @@ export class ErrorAnalyzer
    * Example:
    * const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
    * const errorAnalyzer = new ErrorAnalyzer(this, 'ErrorAnalyzer', { ... });
-   * errorAnalyzer.attachTo(api);
+   * api.enable(errorAnalyzer);
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     // Import the resolver functions
     const { ErrorAnalyzerResolverFunction } = functions;
 

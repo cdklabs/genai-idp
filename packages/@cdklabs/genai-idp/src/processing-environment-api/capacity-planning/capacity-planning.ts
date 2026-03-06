@@ -14,7 +14,7 @@ import { IProcessingEnvironment } from "../../processing-environment";
 import { VpcConfiguration } from "../../vpc-configuration";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -88,7 +88,7 @@ export interface CapacityPlanningProps {
  */
 export class CapacityPlanning
   extends Construct
-  implements ICapacityPlanning, IProcessingEnvironmentApiFeature
+  implements ICapacityPlanning, IApiFeature
 {
   /**
    * Lambda function that performs capacity planning calculations.
@@ -137,7 +137,7 @@ export class CapacityPlanning
   }
 
   /**
-   * Attach this Capacity Planning feature to the ProcessingEnvironmentApi.
+   * Enable this Capacity Planning feature in the ProcessingEnvironmentApi.
    *
    * This method integrates the capacity planning functionality with the GraphQL API
    * by creating the necessary data sources and resolvers. It should be called after
@@ -146,12 +146,12 @@ export class CapacityPlanning
    * Example:
    * const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
    * const capacityPlanning = new CapacityPlanning(this, 'CapacityPlanning', { ... });
-   * capacityPlanning.attachTo(api);
+   * api.enable(capacityPlanning);
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     // Create data source for capacity planning resolver
     const capacityPlanningDataSource = api.addLambdaDataSource(
       "CapacityPlanningDataSource",

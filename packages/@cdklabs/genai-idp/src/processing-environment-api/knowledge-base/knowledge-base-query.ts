@@ -13,10 +13,12 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import { Construct, IConstruct } from "constructs";
 import { LogLevel } from "../../log-level";
 import { VpcConfiguration } from "../../vpc-configuration";
+import { IWebAppFeature } from "../../web-application";
+import type { IWebApplication } from "../../web-application";
 import * as functions from "../functions";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -93,7 +95,7 @@ export interface KnowledgeBaseQueryProps {
  * retrieve information from the entire processed document dataset.
  *
  * Integrates with the ProcessingEnvironmentApi as a feature using the
- * `api.addFeature(knowledgeBaseQuery)` pattern.
+ * `api.enable(knowledgeBaseQuery)` pattern.
  *
  * @example
  * const knowledgeBaseQuery = new KnowledgeBaseQuery(this, 'KnowledgeBaseQuery', {
@@ -101,13 +103,13 @@ export interface KnowledgeBaseQueryProps {
  *   knowledgeBaseModel: chatModel,
  *   guardrail,
  * });
- * api.addFeature(knowledgeBaseQuery);
+ * api.enable(knowledgeBaseQuery);
  *
  * @since v0.4.16
  */
 export class KnowledgeBaseQuery
   extends Construct
-  implements IKnowledgeBaseQuery, IProcessingEnvironmentApiFeature
+  implements IKnowledgeBaseQuery, IApiFeature, IWebAppFeature
 {
   /**
    * The Amazon Bedrock knowledge base for document querying.
@@ -134,14 +136,26 @@ export class KnowledgeBaseQuery
   }
 
   /**
-   * Attach this Knowledge Base Query feature to the ProcessingEnvironmentApi.
+   * Enable this Knowledge Base Query feature in the WebApplication.
+   *
+   * Contributes the ShouldUseDocumentKnowledgeBase setting to the UI.
+   *
+   * @param webApp The WebApplication to enable in
+   * @since v0.4.16
+   */
+  public enableInWebApp(webApp: IWebApplication): void {
+    webApp.addSetting("ShouldUseDocumentKnowledgeBase", "true");
+  }
+
+  /**
+   * Enable this Knowledge Base Query feature in the ProcessingEnvironmentApi.
    *
    * Creates the query knowledge base data source and resolver.
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     const queryKnowledgeBaseResolverFunction =
       new functions.QueryKnowledgeBaseResolverFunction(
         api as Construct,

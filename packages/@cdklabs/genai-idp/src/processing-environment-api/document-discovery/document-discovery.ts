@@ -17,9 +17,10 @@ import {
 import { IConfigurationTable } from "../../configuration-table";
 import { LogLevel } from "../../log-level";
 import { VpcConfiguration } from "../../vpc-configuration";
+import { IWebApplication, IWebAppFeature } from "../../web-application";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -56,19 +57,6 @@ export interface IDocumentDiscovery {
    * The SQS queue for processing discovery jobs asynchronously.
    */
   readonly discoveryQueue: IDiscoveryQueue;
-
-  /**
-   * Initialize Lambda functions with API dependencies.
-   * Called by ProcessingEnvironmentApi when adding document discovery.
-   */
-  initializeFunctions(
-    api: IProcessingEnvironmentApi,
-    configurationTable: IConfigurationTable,
-    encryptionKey?: kms.IKey,
-    logLevel?: LogLevel,
-    logRetention?: logs.RetentionDays,
-    vpcConfiguration?: VpcConfiguration,
-  ): DocumentDiscoveryFunctions;
 }
 
 /**
@@ -79,6 +67,12 @@ export interface DocumentDiscoveryProps {
    * The S3 bucket for document discovery uploads.
    */
   readonly discoveryBucket: IBucket;
+
+  /**
+   * The configuration table for storing discovery results.
+   * Used by the discovery processor to write generated configurations.
+   */
+  readonly configurationTable: IConfigurationTable;
 
   /**
    * Optional properties for the discovery table.
@@ -115,7 +109,7 @@ export interface DocumentDiscoveryProps {
  */
 export class DocumentDiscovery
   extends Construct
-  implements IDocumentDiscovery, IProcessingEnvironmentApiFeature
+  implements IDocumentDiscovery, IApiFeature, IWebAppFeature
 {
   readonly discoveryBucket: IBucket;
   readonly discoveryTable: IDiscoveryTable;
@@ -134,18 +128,25 @@ export class DocumentDiscovery
   }
 
   /**
-   * Initialize the Lambda functions with API URL.
-   * Called by ProcessingEnvironmentApi when adding document discovery.
+   * Enable this Document Discovery feature in the WebApplication.
    *
-   * @deprecated Use `api.addFeature(documentDiscovery)` instead. Will be removed in v1.0.0.
+   * Contributes the DiscoveryBucket setting and configures CORS
+   * on the discovery bucket for CloudFront access.
+   *
+   * @param webApp The WebApplication to enable in
+   * @since v0.4.16
    */
-  public initializeFunctions(
+  public enableInWebApp(webApp: IWebApplication): void {
+    webApp.addSetting("DiscoveryBucket", this.discoveryBucket.bucketName);
+    webApp.addCorsBucket(this.discoveryBucket);
+  }
+
+  /**
+   * Initialize the Lambda functions with API dependencies.
+   * Called internally by enableInApi().
+   */
+  private initializeFunctions(
     api: IProcessingEnvironmentApi,
-    configurationTable: IConfigurationTable,
-    encryptionKey?: kms.IKey,
-    logLevel?: LogLevel,
-    logRetention?: logs.RetentionDays,
-    vpcConfiguration?: VpcConfiguration,
   ): DocumentDiscoveryFunctions {
     const uploadResolverFunction = new DiscoveryUploadResolverFunction(
       this,
@@ -154,13 +155,11 @@ export class DocumentDiscovery
         discoveryBucket: this.discoveryBucket,
         discoveryTable: this.discoveryTable,
         discoveryQueue: this.discoveryQueue,
-        encryptionKey: encryptionKey ?? this.props.encryptionKey,
-        logLevel: logLevel ?? this.props.logLevel,
-        logRetention: logRetention ?? this.props.logRetention,
-        vpc: vpcConfiguration?.vpc ?? this.props.vpcConfiguration?.vpc,
-        vpcSubnets:
-          vpcConfiguration?.vpcSubnets ??
-          this.props.vpcConfiguration?.vpcSubnets,
+        encryptionKey: this.props.encryptionKey,
+        logLevel: this.props.logLevel,
+        logRetention: this.props.logRetention,
+        vpc: this.props.vpcConfiguration?.vpc,
+        vpcSubnets: this.props.vpcConfiguration?.vpcSubnets,
       },
     );
 
@@ -171,15 +170,13 @@ export class DocumentDiscovery
         discoveryBucket: this.discoveryBucket,
         discoveryTable: this.discoveryTable,
         discoveryQueue: this.discoveryQueue,
-        configurationTable: configurationTable,
+        configurationTable: this.props.configurationTable,
         api: api,
-        encryptionKey: encryptionKey ?? this.props.encryptionKey,
-        logLevel: logLevel ?? this.props.logLevel,
-        logRetention: logRetention ?? this.props.logRetention,
-        vpc: vpcConfiguration?.vpc ?? this.props.vpcConfiguration?.vpc,
-        vpcSubnets:
-          vpcConfiguration?.vpcSubnets ??
-          this.props.vpcConfiguration?.vpcSubnets,
+        encryptionKey: this.props.encryptionKey,
+        logLevel: this.props.logLevel,
+        logRetention: this.props.logRetention,
+        vpc: this.props.vpcConfiguration?.vpc,
+        vpcSubnets: this.props.vpcConfiguration?.vpcSubnets,
       },
     );
 
@@ -187,24 +184,18 @@ export class DocumentDiscovery
   }
 
   /**
-   * Attach this Document Discovery feature to the ProcessingEnvironmentApi.
+   * Enable this Document Discovery feature in the ProcessingEnvironmentApi.
    *
    * Creates the discovery upload resolver, discovery table data source,
    * and all associated resolvers for discovery job management.
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     // Initialize functions with API URL and environment settings
-    const { uploadResolverFunction } = this.initializeFunctions(
-      api,
-      (api as any)._configurationTable,
-      (api as any)._encryptionKey,
-      (api as any)._logLevel,
-      (api as any)._logRetention,
-      (api as any)._vpcConfiguration,
-    );
+    // Optional params (encryptionKey, logLevel, etc.) fall back to this.props values
+    const { uploadResolverFunction } = this.initializeFunctions(api);
 
     // Add upload discovery document resolver
     const discoveryUploadDataSource = api.addLambdaDataSource(

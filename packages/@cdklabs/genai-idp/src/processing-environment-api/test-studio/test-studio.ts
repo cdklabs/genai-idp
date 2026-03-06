@@ -23,7 +23,7 @@ import { ITrackingTable } from "../../tracking-table";
 import * as functions from "../functions";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -71,18 +71,6 @@ export interface ITestStudio extends IConstruct {
    * Lambda function for test results retrieval and analysis.
    */
   readonly testResultsResolverFunction: lambda.IFunction;
-
-  /**
-   * Integrate Test Studio with ProcessingEnvironmentApi.
-   * Adds test management capabilities to the GraphQL API.
-   *
-   * @param api The ProcessingEnvironmentApi to integrate with
-   * @param trackingTable The tracking table for test execution data
-   */
-  integrateWithApi(
-    api: IProcessingEnvironmentApi,
-    trackingTable: ITrackingTable,
-  ): void;
 }
 
 /**
@@ -182,10 +170,7 @@ export interface TestStudioProps {
  *
  * @since v0.4.8
  */
-export class TestStudio
-  extends Construct
-  implements ITestStudio, IProcessingEnvironmentApiFeature
-{
+export class TestStudio extends Construct implements ITestStudio, IApiFeature {
   /**
    * The DynamoDB table that tracks document processing status and metadata.
    * Used for test execution and results tracking.
@@ -247,7 +232,7 @@ export class TestStudio
   constructor(scope: Construct, id: string, props: TestStudioProps) {
     super(scope, id);
 
-    // Store tracking table for use in attachTo()
+    // Store tracking table for use in enableInApi()
     this.trackingTable = props.trackingTable;
 
     // Create or use provided test table
@@ -418,27 +403,7 @@ export class TestStudio
   }
 
   /**
-   * Integrate Test Studio with ProcessingEnvironmentApi.
-   *
-   * This method adds test-related resolvers to an existing ProcessingEnvironmentApi
-   * to enable GraphQL operations for test management and results analysis.
-   *
-   * @deprecated Use the attachTo() pattern instead. Call testStudio.attachTo(api) directly.
-   * The trackingTable parameter is no longer needed as it's now stored in the TestStudio construct.
-   *
-   * @param api The ProcessingEnvironmentApi to integrate with
-   * @param _trackingTable The tracking table for test execution data (ignored, uses stored value)
-   */
-  public integrateWithApi(
-    api: IProcessingEnvironmentApi,
-    _trackingTable: ITrackingTable,
-  ): void {
-    // Call the new attachTo() method which uses the stored trackingTable
-    this.attachTo(api);
-  }
-
-  /**
-   * Attach this Test Studio feature to the ProcessingEnvironmentApi.
+   * Enable this Test Studio feature in the ProcessingEnvironmentApi.
    *
    * This method integrates the test management functionality with the GraphQL API
    * by creating the necessary data sources and resolvers. It should be called after
@@ -451,13 +416,13 @@ export class TestStudio
    *   trackingTable: environment.trackingTable,
    *   ...
    * });
-   * testStudio.attachTo(api);
+   * api.enable(testStudio);
    * ```
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     // Create test set resolver function using stored trackingTable
     const testSetResolverFunction = new functions.TestSetResolverFunction(
       api as any,

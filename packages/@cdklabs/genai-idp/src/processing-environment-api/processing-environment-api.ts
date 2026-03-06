@@ -19,7 +19,7 @@ import { VpcConfiguration } from "../vpc-configuration";
 import * as functions from "./functions";
 
 /**
- * Interface for features that can attach themselves to the ProcessingEnvironmentApi.
+ * Interface for features that can be enabled in the ProcessingEnvironmentApi.
  *
  * This interface enables a plugin architecture where features encapsulate their own
  * integration logic rather than having the API manage all feature integrations.
@@ -27,8 +27,8 @@ import * as functions from "./functions";
  * by calling helper methods on the API.
  *
  * Example:
- * class MyFeature extends Construct implements IProcessingEnvironmentApiFeature {
- *   public attachTo(api: IProcessingEnvironmentApi): void {
+ * class MyFeature extends Construct implements IApiFeature {
+ *   public enableInApi(api: IProcessingEnvironmentApi): void {
  *     const dataSource = api.addLambdaDataSource('MyFeatureDataSource', this.myFunction);
  *     dataSource.createResolver('MyFeatureResolver', {
  *       typeName: 'Query',
@@ -39,17 +39,16 @@ import * as functions from "./functions";
  *
  * @since v0.4.16
  */
-export interface IProcessingEnvironmentApiFeature {
+export interface IApiFeature {
   /**
-   * Attach this feature to the ProcessingEnvironmentApi.
+   * Enable this feature in the ProcessingEnvironmentApi.
    *
+   * Typically adds GraphQL resolvers, data sources, and Lambda functions.
    * This method is called by the feature to integrate itself with the API.
-   * It should create any necessary data sources and resolvers using the
-   * helper methods provided by the API.
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    */
-  attachTo(api: IProcessingEnvironmentApi): void;
+  enableInApi(api: IProcessingEnvironmentApi): void;
 }
 
 /**
@@ -64,20 +63,27 @@ export interface IProcessingEnvironmentApi extends appsync.IGraphqlApi {
   readonly graphqlUrl: string;
 
   /**
-   * Add a feature to the ProcessingEnvironmentApi.
+   * The Lambda function that generates presigned URLs for document uploads.
+   * Features that need to support uploads to additional buckets can grant
+   * this function write access and add environment variables.
+   */
+  readonly uploadResolverFunction: lambda.IFunction;
+
+  /**
+   * Enable a feature in the ProcessingEnvironmentApi.
    *
    * This is the recommended way to integrate features with the API.
-   * Features implementing IProcessingEnvironmentApiFeature will attach themselves
-   * to the API by creating data sources and resolvers.
+   * Features implementing IApiFeature will enable themselves
+   * in the API by creating data sources and resolvers.
    *
    * @example
    * const agentAnalytics = new AgentAnalytics(this, 'AgentAnalytics', { ... });
-   * api.addFeature(agentAnalytics);
+   * api.enable(agentAnalytics);
    *
-   * @param feature The feature to add to the API
+   * @param feature The feature to enable in the API
    * @since v0.4.16
    */
-  addFeature(feature: IProcessingEnvironmentApiFeature): void;
+  enable(feature: IApiFeature): void;
 }
 
 /**
@@ -144,8 +150,8 @@ export interface ProcessingEnvironmentApiProps extends ProcessingEnvironmentApiB
  * - Uploading new documents for processing
  * - Copying documents to baseline for evaluation
  *
- * Additional features can be integrated using the `addFeature()` method, which
- * accepts any construct implementing `IProcessingEnvironmentApiFeature`.
+ * Additional features can be integrated using the `enable()` method, which
+ * accepts any construct implementing `IApiFeature`.
  *
  * @since v0.4.16
  */
@@ -153,6 +159,11 @@ export class ProcessingEnvironmentApi
   extends appsync.GraphqlApi
   implements IProcessingEnvironmentApi
 {
+  /**
+   * The Lambda function that generates presigned URLs for document uploads.
+   */
+  public readonly uploadResolverFunction: lambda.IFunction;
+
   private readonly _encryptionKey?: kms.IKey;
   private readonly _logRetention?: logs.RetentionDays;
   private readonly _vpcConfiguration?: VpcConfiguration;
@@ -211,7 +222,10 @@ export class ProcessingEnvironmentApi
       props.logRetention,
       props.vpcConfiguration,
     );
-    this.createUploadDocumentMutationResolver(uploadDocumentDataSource);
+    this.createUploadDocumentMutationResolver(
+      uploadDocumentDataSource.dataSource,
+    );
+    this.uploadResolverFunction = uploadDocumentDataSource.resolverFunction;
 
     const reprocessDocumentDataSource = this.addReprocessDocumentDataSource(
       props.inputBucket,
@@ -257,7 +271,7 @@ export class ProcessingEnvironmentApi
    *
    * This helper method allows features to create None data sources for resolvers
    * that don't require a backend (e.g., for local resolvers or pass-through operations).
-   * Features implementing IProcessingEnvironmentApiFeature can use this method during their attachTo()
+   * Features implementing IApiFeature can use this method during their enableInApi()
    * implementation.
    *
    * @param id The unique identifier for the data source
@@ -273,20 +287,20 @@ export class ProcessingEnvironmentApi
   }
 
   /**
-   * Add a feature to the ProcessingEnvironmentApi.
+   * Enable a feature in the ProcessingEnvironmentApi.
    *
    * This is the recommended way to integrate features with the API.
-   * The feature will attach itself to the API by creating data sources and resolvers.
+   * The feature will enable itself in the API by creating data sources and resolvers.
    *
    * @example
    * const agentAnalytics = new AgentAnalytics(this, 'AgentAnalytics', { ... });
-   * api.addFeature(agentAnalytics);
+   * api.enable(agentAnalytics);
    *
-   * @param feature The feature to add to the API
+   * @param feature The feature to enable in the API
    * @since v0.4.16
    */
-  public addFeature(feature: IProcessingEnvironmentApiFeature): void {
-    feature.attachTo(this);
+  public enable(feature: IApiFeature): void {
+    feature.enableInApi(this);
   }
 
   /**
@@ -929,7 +943,10 @@ export class ProcessingEnvironmentApi
     encryptionKey?: kms.IKey,
     logRetention?: logs.RetentionDays,
     vpcConfiguration?: VpcConfiguration,
-  ): appsync.LambdaDataSource {
+  ): {
+    dataSource: appsync.LambdaDataSource;
+    resolverFunction: lambda.IFunction;
+  } {
     const uploadResolverFunction = new functions.UploadResolverFunction(
       this,
       "UploadResolverFunction",
@@ -945,7 +962,7 @@ export class ProcessingEnvironmentApi
       },
     );
 
-    return this.addLambdaDataSource(
+    const dataSource = this.addLambdaDataSource(
       "UploadResolverDataSource",
       uploadResolverFunction,
       {
@@ -953,6 +970,8 @@ export class ProcessingEnvironmentApi
         description: "Lambda function for generating presigned URLs",
       },
     );
+
+    return { dataSource, resolverFunction: uploadResolverFunction };
   }
 
   /**

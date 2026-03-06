@@ -22,7 +22,7 @@ import { LogLevel } from "../../log-level";
 import { IReportingEnvironment } from "../../reporting/reporting-environment";
 import { ITrackingTable } from "../../tracking-table";
 import {
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
   IProcessingEnvironmentApi,
 } from "../processing-environment-api";
 
@@ -77,11 +77,11 @@ export interface IAgentAnalytics extends IConstruct {
   readonly listAvailableAgents: lambda.IFunction;
 
   /**
-   * Attach this Agent Analytics feature to a ProcessingEnvironmentApi.
+   * Enable this Agent Analytics feature in a ProcessingEnvironmentApi.
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    */
-  attachTo(api: IProcessingEnvironmentApi): void;
+  enableInApi(api: IProcessingEnvironmentApi): void;
 }
 
 /**
@@ -174,7 +174,7 @@ export interface AgentAnalyticsProps {
  */
 export class AgentAnalytics
   extends Construct
-  implements IAgentAnalytics, IProcessingEnvironmentApiFeature
+  implements IAgentAnalytics, IApiFeature
 {
   public readonly agentTable: IAgentTable;
   public readonly agentRequestHandler: lambda.IFunction;
@@ -263,16 +263,16 @@ export class AgentAnalytics
   }
 
   /**
-   * Attach this Agent Analytics feature to a ProcessingEnvironmentApi.
+   * Enable this Agent Analytics feature in a ProcessingEnvironmentApi.
    *
    * This method integrates the agent analytics functionality with the GraphQL API by:
    * - Creating Lambda data sources for agent request handling and listing agents
    * - Creating DynamoDB data source for agent job tracking
    * - Wiring GraphQL resolvers for agent operations
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     // Store the API URL for lazy resolution in the agent processor function
     this._appSyncApiUrl = api.graphqlUrl;
 

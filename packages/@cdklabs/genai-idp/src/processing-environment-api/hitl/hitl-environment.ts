@@ -12,7 +12,7 @@ import { ITrackingTable } from "../../tracking-table";
 import { VpcConfiguration } from "../../vpc-configuration";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -83,7 +83,7 @@ export interface IHitlEnvironment extends IConstruct {
  */
 export class HitlEnvironment
   extends Construct
-  implements IHitlEnvironment, IProcessingEnvironmentApiFeature
+  implements IHitlEnvironment, IApiFeature
 {
   /**
    * The Lambda function for completing section reviews.
@@ -133,7 +133,7 @@ export class HitlEnvironment
   }
 
   /**
-   * Attach this HITL environment to the ProcessingEnvironmentApi.
+   * Enable this HITL environment in the ProcessingEnvironmentApi.
    *
    * This method integrates the HITL functionality with the GraphQL API
    * by creating the necessary data source and resolver for section review completion.
@@ -144,13 +144,13 @@ export class HitlEnvironment
    * const hitl = new HitlEnvironment(this, 'Hitl', {
    *   trackingTable: environment.trackingTable,
    * });
-   * hitl.attachTo(api);
+   * api.enable(hitl);
    * ```
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     // Create data source for the complete section review function
     const completeSectionReviewDataSource = api.addLambdaDataSource(
       "CompleteSectionReviewDataSource",

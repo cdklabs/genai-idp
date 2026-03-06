@@ -8,10 +8,12 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct, IConstruct } from "constructs";
 import { VpcConfiguration } from "../../vpc-configuration";
+import { IWebAppFeature } from "../../web-application";
+import type { IWebApplication } from "../../web-application";
 import * as functions from "../functions";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -77,7 +79,7 @@ export interface EvaluationProps {
  * known correct values to measure accuracy and evaluate model performance.
  *
  * Integrates with the ProcessingEnvironmentApi as a feature using the
- * `api.addFeature(evaluation)` pattern.
+ * `api.enable(evaluation)` pattern.
  *
  * @example
  * const evaluation = new Evaluation(this, 'Evaluation', {
@@ -85,13 +87,13 @@ export interface EvaluationProps {
  *   outputBucket,
  *   encryptionKey: key,
  * });
- * api.addFeature(evaluation);
+ * api.enable(evaluation);
  *
  * @since v0.4.16
  */
 export class Evaluation
   extends Construct
-  implements IEvaluation, IProcessingEnvironmentApiFeature
+  implements IEvaluation, IApiFeature, IWebAppFeature
 {
   /**
    * The S3 bucket for storing evaluation baseline documents.
@@ -114,14 +116,36 @@ export class Evaluation
   }
 
   /**
-   * Attach this Evaluation feature to the ProcessingEnvironmentApi.
+   * Enable this Evaluation feature in the WebApplication.
+   *
+   * Contributes the EvaluationBaselineBucket setting and configures CORS
+   * on the baseline bucket for CloudFront access.
+   *
+   * @param webApp The WebApplication to enable in
+   * @since v0.4.16
+   */
+  public enableInWebApp(webApp: IWebApplication): void {
+    webApp.addSetting(
+      "EvaluationBaselineBucket",
+      this.evaluationBaselineBucket.bucketName,
+    );
+    webApp.addCorsBucket(this.evaluationBaselineBucket);
+  }
+
+  /**
+   * Enable this Evaluation feature in the ProcessingEnvironmentApi.
    *
    * Creates the copy-to-baseline data source and resolver for evaluation workflows.
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
+    // Grant the upload resolver function write access to the baseline bucket
+    // so the UI can generate presigned URLs for uploading baseline documents
+    this.evaluationBaselineBucket.grantWrite(api.uploadResolverFunction);
+    this.encryptionKey?.grantEncryptDecrypt(api.uploadResolverFunction);
+
     const copyToBaselineResolverFunction =
       new functions.CopyToBaselineResolverFunction(
         api as Construct,

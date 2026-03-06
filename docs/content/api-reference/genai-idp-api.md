@@ -4,7 +4,7 @@
 
 ### AgentAnalytics <a name="AgentAnalytics" id="@cdklabs/genai-idp.AgentAnalytics"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IAgentAnalytics">IAgentAnalytics</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IAgentAnalytics">IAgentAnalytics</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
 Agent Analytics construct for natural language document analytics.
 
@@ -63,7 +63,7 @@ new AgentAnalytics(scope: Construct, id: string, props: AgentAnalyticsProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalytics.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalytics.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.attachTo">attachTo</a></code> | Attach this Agent Analytics feature to a ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalytics.enableInApi">enableInApi</a></code> | Enable this Agent Analytics feature in a ProcessingEnvironmentApi. |
 
 ---
 
@@ -96,24 +96,24 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.AgentAnalytics.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.AgentAnalytics.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Agent Analytics feature to a ProcessingEnvironmentApi.
+Enable this Agent Analytics feature in a ProcessingEnvironmentApi.
 
 This method integrates the agent analytics functionality with the GraphQL API by:
 - Creating Lambda data sources for agent request handling and listing agents
 - Creating DynamoDB data source for agent job tracking
 - Wiring GraphQL resolvers for agent operations
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.AgentAnalytics.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.AgentAnalytics.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -1433,7 +1433,7 @@ Uniquely identifies this class.
 
 ### AgentCompanionChat <a name="AgentCompanionChat" id="@cdklabs/genai-idp.AgentCompanionChat"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IAgentCompanionChat">IAgentCompanionChat</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IAgentCompanionChat">IAgentCompanionChat</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
 Agent Companion Chat construct for AI assistant capabilities.
 
@@ -1488,7 +1488,7 @@ new AgentCompanionChat(scope: Construct, id: string, props: AgentCompanionChatPr
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.attachTo">attachTo</a></code> | Attach this Agent Companion Chat feature to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.enableInApi">enableInApi</a></code> | Enable this Agent Companion Chat feature in the ProcessingEnvironmentApi. |
 
 ---
 
@@ -1521,13 +1521,13 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.AgentCompanionChat.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.AgentCompanionChat.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Agent Companion Chat feature to the ProcessingEnvironmentApi.
+Enable this Agent Companion Chat feature in the ProcessingEnvironmentApi.
 
 This method integrates the AI assistant functionality with the GraphQL API
 by creating the necessary data sources and resolvers. It should be called after
@@ -1536,13 +1536,13 @@ both the API and this construct have been created.
 Example:
 const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
 const agentCompanionChat = new AgentCompanionChat(this, 'AgentCompanionChat', { ... });
-agentCompanionChat.attachTo(api);
+api.enable(agentCompanionChat);
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.AgentCompanionChat.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.AgentCompanionChat.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -10165,7 +10165,7 @@ Uniquely identifies this class.
 
 ### CapacityPlanning <a name="CapacityPlanning" id="@cdklabs/genai-idp.CapacityPlanning"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.ICapacityPlanning">ICapacityPlanning</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.ICapacityPlanning">ICapacityPlanning</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
 Capacity Planning construct for Pattern 2 optimization.
 
@@ -10222,7 +10222,7 @@ new CapacityPlanning(scope: Construct, id: string, props: CapacityPlanningProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.CapacityPlanning.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.CapacityPlanning.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.CapacityPlanning.attachTo">attachTo</a></code> | Attach this Capacity Planning feature to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.CapacityPlanning.enableInApi">enableInApi</a></code> | Enable this Capacity Planning feature in the ProcessingEnvironmentApi. |
 
 ---
 
@@ -10255,13 +10255,13 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.CapacityPlanning.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.CapacityPlanning.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Capacity Planning feature to the ProcessingEnvironmentApi.
+Enable this Capacity Planning feature in the ProcessingEnvironmentApi.
 
 This method integrates the capacity planning functionality with the GraphQL API
 by creating the necessary data sources and resolvers. It should be called after
@@ -10270,13 +10270,13 @@ both the API and this construct have been created.
 Example:
 const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
 const capacityPlanning = new CapacityPlanning(this, 'CapacityPlanning', { ... });
-capacityPlanning.attachTo(api);
+api.enable(capacityPlanning);
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.CapacityPlanning.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.CapacityPlanning.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -11574,7 +11574,7 @@ Uniquely identifies this class.
 
 ### ChatWithDocument <a name="ChatWithDocument" id="@cdklabs/genai-idp.ChatWithDocument"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IChatWithDocument">IChatWithDocument</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IChatWithDocument">IChatWithDocument</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
 Chat with Document feature for conversational document interaction.
 
@@ -11584,7 +11584,7 @@ with conversational AI, maintaining conversation history and providing
 contextual responses about individual documents.
 
 Integrates with the ProcessingEnvironmentApi as a feature using the
-`api.addFeature(chatWithDocument)` pattern.
+`api.enable(chatWithDocument)` pattern.
 
 *Example*
 
@@ -11596,7 +11596,7 @@ const chatWithDocument = new ChatWithDocument(this, 'ChatWithDocument', {
   configurationTable,
   outputBucket,
 });
-api.addFeature(chatWithDocument);@since[object Object]
+api.enable(chatWithDocument);@since[object Object]
 ```
 
 
@@ -11640,7 +11640,7 @@ new ChatWithDocument(scope: Construct, id: string, props: ChatWithDocumentProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ChatWithDocument.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.ChatWithDocument.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.ChatWithDocument.attachTo">attachTo</a></code> | Attach this Chat with Document feature to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocument.enableInApi">enableInApi</a></code> | Enable this Chat with Document feature in the ProcessingEnvironmentApi. |
 
 ---
 
@@ -11673,21 +11673,21 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.ChatWithDocument.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.ChatWithDocument.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Chat with Document feature to the ProcessingEnvironmentApi.
+Enable this Chat with Document feature in the ProcessingEnvironmentApi.
 
 Creates the chat with document data source and resolver.
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.ChatWithDocument.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.ChatWithDocument.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -21809,7 +21809,7 @@ Uniquely identifies this class.
 
 ### DocumentDiscovery <a name="DocumentDiscovery" id="@cdklabs/genai-idp.DocumentDiscovery"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>, <a href="#@cdklabs/genai-idp.IWebAppFeature">IWebAppFeature</a>
 
 A construct that provides document discovery capabilities.
 
@@ -21857,8 +21857,8 @@ new DocumentDiscovery(scope: Construct, id: string, props: DocumentDiscoveryProp
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.attachTo">attachTo</a></code> | Attach this Document Discovery feature to the ProcessingEnvironmentApi. |
-| <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions">initializeFunctions</a></code> | Initialize the Lambda functions with API URL. |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.enableInApi">enableInApi</a></code> | Enable this Document Discovery feature in the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.enableInWebApp">enableInWebApp</a></code> | Enable this Document Discovery feature in the WebApplication. |
 
 ---
 
@@ -21891,68 +21891,41 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.DocumentDiscovery.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.DocumentDiscovery.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Document Discovery feature to the ProcessingEnvironmentApi.
+Enable this Document Discovery feature in the ProcessingEnvironmentApi.
 
 Creates the discovery upload resolver, discovery table data source,
 and all associated resolvers for discovery job management.
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.DocumentDiscovery.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.DocumentDiscovery.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
-##### ~~`initializeFunctions`~~ <a name="initializeFunctions" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions"></a>
+##### `enableInWebApp` <a name="enableInWebApp" id="@cdklabs/genai-idp.DocumentDiscovery.enableInWebApp"></a>
 
 ```typescript
-public initializeFunctions(api: IProcessingEnvironmentApi, configurationTable: IConfigurationTable, encryptionKey?: IKey, logLevel?: LogLevel, logRetention?: RetentionDays, vpcConfiguration?: VpcConfiguration): DocumentDiscoveryFunctions
+public enableInWebApp(webApp: IWebApplication): void
 ```
 
-Initialize the Lambda functions with API URL.
+Enable this Document Discovery feature in the WebApplication.
 
-Called by ProcessingEnvironmentApi when adding document discovery.
+Contributes the DiscoveryBucket setting and configures CORS
+on the discovery bucket for CloudFront access.
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.api"></a>
+###### `webApp`<sup>Required</sup> <a name="webApp" id="@cdklabs/genai-idp.DocumentDiscovery.enableInWebApp.parameter.webApp"></a>
 
-- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
+- *Type:* <a href="#@cdklabs/genai-idp.IWebApplication">IWebApplication</a>
 
----
-
-###### `configurationTable`<sup>Required</sup> <a name="configurationTable" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.configurationTable"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a>
-
----
-
-###### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.encryptionKey"></a>
-
-- *Type:* aws-cdk-lib.aws_kms.IKey
-
----
-
-###### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.logLevel"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
-
----
-
-###### `logRetention`<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.logRetention"></a>
-
-- *Type:* aws-cdk-lib.aws_logs.RetentionDays
-
----
-
-###### `vpcConfiguration`<sup>Optional</sup> <a name="vpcConfiguration" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions.parameter.vpcConfiguration"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a>
+The WebApplication to enable in.
 
 ---
 
@@ -22058,7 +22031,7 @@ The DynamoDB table that tracks discovery job status and metadata.
 
 ### DocumentEditing <a name="DocumentEditing" id="@cdklabs/genai-idp.DocumentEditing"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IDocumentEditing">IDocumentEditing</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IDocumentEditing">IDocumentEditing</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
 Document Editing feature for section-level document modifications.
 
@@ -22067,7 +22040,7 @@ This enables users to make corrections or adjustments to processed documents
 and have those changes reflected in the processing results.
 
 Integrates with the ProcessingEnvironmentApi as a feature using the
-`api.addFeature(documentEditing)` pattern.
+`api.enable(documentEditing)` pattern.
 
 *Example*
 
@@ -22080,7 +22053,7 @@ const documentEditing = new DocumentEditing(this, 'DocumentEditing', {
   outputBucket,
   dataRetentionInDays: 30,
 });
-api.addFeature(documentEditing);@since[object Object]
+api.enable(documentEditing);@since[object Object]
 ```
 
 
@@ -22124,7 +22097,7 @@ new DocumentEditing(scope: Construct, id: string, props: DocumentEditingProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DocumentEditing.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.DocumentEditing.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.DocumentEditing.attachTo">attachTo</a></code> | Attach this Document Editing feature to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditing.enableInApi">enableInApi</a></code> | Enable this Document Editing feature in the ProcessingEnvironmentApi. |
 
 ---
 
@@ -22157,21 +22130,21 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.DocumentEditing.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.DocumentEditing.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Document Editing feature to the ProcessingEnvironmentApi.
+Enable this Document Editing feature in the ProcessingEnvironmentApi.
 
 Creates the process changes data source and resolver.
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.DocumentEditing.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.DocumentEditing.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -22238,7 +22211,7 @@ The tree node.
 
 ### ErrorAnalyzer <a name="ErrorAnalyzer" id="@cdklabs/genai-idp.ErrorAnalyzer"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IErrorAnalyzer">IErrorAnalyzer</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IErrorAnalyzer">IErrorAnalyzer</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
 Error Analyzer construct for AI-powered failure diagnosis.
 
@@ -22293,7 +22266,7 @@ new ErrorAnalyzer(scope: Construct, id: string, props?: ErrorAnalyzerProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzer.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.ErrorAnalyzer.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.ErrorAnalyzer.attachTo">attachTo</a></code> | Attach this Error Analyzer feature to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.ErrorAnalyzer.enableInApi">enableInApi</a></code> | Enable this Error Analyzer feature in the ProcessingEnvironmentApi. |
 
 ---
 
@@ -22326,13 +22299,13 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.ErrorAnalyzer.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.ErrorAnalyzer.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Error Analyzer feature to the ProcessingEnvironmentApi.
+Enable this Error Analyzer feature in the ProcessingEnvironmentApi.
 
 This method integrates the error analysis functionality with the GraphQL API
 by creating the necessary data sources and resolvers. It should be called after
@@ -22341,13 +22314,13 @@ both the API and this construct have been created.
 Example:
 const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
 const errorAnalyzer = new ErrorAnalyzer(this, 'ErrorAnalyzer', { ... });
-errorAnalyzer.attachTo(api);
+api.enable(errorAnalyzer);
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.ErrorAnalyzer.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.ErrorAnalyzer.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -23641,7 +23614,7 @@ Uniquely identifies this class.
 
 ### Evaluation <a name="Evaluation" id="@cdklabs/genai-idp.Evaluation"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IEvaluation">IEvaluation</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IEvaluation">IEvaluation</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>, <a href="#@cdklabs/genai-idp.IWebAppFeature">IWebAppFeature</a>
 
 Evaluation feature for document processing accuracy measurement.
 
@@ -23650,7 +23623,7 @@ for evaluation purposes. This enables comparing extraction results against
 known correct values to measure accuracy and evaluate model performance.
 
 Integrates with the ProcessingEnvironmentApi as a feature using the
-`api.addFeature(evaluation)` pattern.
+`api.enable(evaluation)` pattern.
 
 *Example*
 
@@ -23660,7 +23633,7 @@ const evaluation = new Evaluation(this, 'Evaluation', {
   outputBucket,
   encryptionKey: key,
 });
-api.addFeature(evaluation);@since[object Object]
+api.enable(evaluation);@since[object Object]
 ```
 
 
@@ -23704,7 +23677,8 @@ new Evaluation(scope: Construct, id: string, props: EvaluationProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.Evaluation.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.Evaluation.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.Evaluation.attachTo">attachTo</a></code> | Attach this Evaluation feature to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.enableInApi">enableInApi</a></code> | Enable this Evaluation feature in the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.enableInWebApp">enableInWebApp</a></code> | Enable this Evaluation feature in the WebApplication. |
 
 ---
 
@@ -23737,21 +23711,40 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.Evaluation.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.Evaluation.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Evaluation feature to the ProcessingEnvironmentApi.
+Enable this Evaluation feature in the ProcessingEnvironmentApi.
 
 Creates the copy-to-baseline data source and resolver for evaluation workflows.
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.Evaluation.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.Evaluation.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
+
+---
+
+##### `enableInWebApp` <a name="enableInWebApp" id="@cdklabs/genai-idp.Evaluation.enableInWebApp"></a>
+
+```typescript
+public enableInWebApp(webApp: IWebApplication): void
+```
+
+Enable this Evaluation feature in the WebApplication.
+
+Contributes the EvaluationBaselineBucket setting and configures CORS
+on the baseline bucket for CloudFront access.
+
+###### `webApp`<sup>Required</sup> <a name="webApp" id="@cdklabs/genai-idp.Evaluation.enableInWebApp.parameter.webApp"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IWebApplication">IWebApplication</a>
+
+The WebApplication to enable in.
 
 ---
 
@@ -26443,7 +26436,7 @@ Uniquely identifies this class.
 
 ### HitlEnvironment <a name="HitlEnvironment" id="@cdklabs/genai-idp.HitlEnvironment"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IHitlEnvironment">IHitlEnvironment</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IHitlEnvironment">IHitlEnvironment</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
 A construct that sets up the Human-in-the-Loop (HITL) environment for document processing.
 
@@ -26500,7 +26493,7 @@ Configuration properties for the HITL environment.
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.HitlEnvironment.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.HitlEnvironment.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.HitlEnvironment.attachTo">attachTo</a></code> | Attach this HITL environment to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.HitlEnvironment.enableInApi">enableInApi</a></code> | Enable this HITL environment in the ProcessingEnvironmentApi. |
 
 ---
 
@@ -26533,13 +26526,13 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.HitlEnvironment.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.HitlEnvironment.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this HITL environment to the ProcessingEnvironmentApi.
+Enable this HITL environment in the ProcessingEnvironmentApi.
 
 This method integrates the HITL functionality with the GraphQL API
 by creating the necessary data source and resolver for section review completion.
@@ -26550,14 +26543,14 @@ const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
 const hitl = new HitlEnvironment(this, 'Hitl', {
   trackingTable: environment.trackingTable,
 });
-hitl.attachTo(api);
+api.enable(hitl);
 ```
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.HitlEnvironment.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.HitlEnvironment.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -26637,7 +26630,7 @@ The Lambda function for completing section reviews.
 
 ### KnowledgeBaseQuery <a name="KnowledgeBaseQuery" id="@cdklabs/genai-idp.KnowledgeBaseQuery"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IKnowledgeBaseQuery">IKnowledgeBaseQuery</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IKnowledgeBaseQuery">IKnowledgeBaseQuery</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>, <a href="#@cdklabs/genai-idp.IWebAppFeature">IWebAppFeature</a>
 
 Knowledge Base Query feature for natural language document querying.
 
@@ -26646,7 +26639,7 @@ through Amazon Bedrock knowledge base. This enables users to search and
 retrieve information from the entire processed document dataset.
 
 Integrates with the ProcessingEnvironmentApi as a feature using the
-`api.addFeature(knowledgeBaseQuery)` pattern.
+`api.enable(knowledgeBaseQuery)` pattern.
 
 *Example*
 
@@ -26656,7 +26649,7 @@ const knowledgeBaseQuery = new KnowledgeBaseQuery(this, 'KnowledgeBaseQuery', {
   knowledgeBaseModel: chatModel,
   guardrail,
 });
-api.addFeature(knowledgeBaseQuery);@since[object Object]
+api.enable(knowledgeBaseQuery);@since[object Object]
 ```
 
 
@@ -26700,7 +26693,8 @@ new KnowledgeBaseQuery(scope: Construct, id: string, props: KnowledgeBaseQueryPr
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.attachTo">attachTo</a></code> | Attach this Knowledge Base Query feature to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.enableInApi">enableInApi</a></code> | Enable this Knowledge Base Query feature in the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.enableInWebApp">enableInWebApp</a></code> | Enable this Knowledge Base Query feature in the WebApplication. |
 
 ---
 
@@ -26733,21 +26727,39 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.KnowledgeBaseQuery.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.KnowledgeBaseQuery.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Knowledge Base Query feature to the ProcessingEnvironmentApi.
+Enable this Knowledge Base Query feature in the ProcessingEnvironmentApi.
 
 Creates the query knowledge base data source and resolver.
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.KnowledgeBaseQuery.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.KnowledgeBaseQuery.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
+
+---
+
+##### `enableInWebApp` <a name="enableInWebApp" id="@cdklabs/genai-idp.KnowledgeBaseQuery.enableInWebApp"></a>
+
+```typescript
+public enableInWebApp(webApp: IWebApplication): void
+```
+
+Enable this Knowledge Base Query feature in the WebApplication.
+
+Contributes the ShouldUseDocumentKnowledgeBase setting to the UI.
+
+###### `webApp`<sup>Required</sup> <a name="webApp" id="@cdklabs/genai-idp.KnowledgeBaseQuery.enableInWebApp.parameter.webApp"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IWebApplication">IWebApplication</a>
+
+The WebApplication to enable in.
 
 ---
 
@@ -32211,8 +32223,8 @@ The ProcessingEnvironmentApi creates an AppSync GraphQL API with resolvers for:
 - Uploading new documents for processing
 - Copying documents to baseline for evaluation
 
-Additional features can be integrated using the `addFeature()` method, which
-accepts any construct implementing `IProcessingEnvironmentApiFeature`.
+Additional features can be integrated using the `enable()` method, which
+accepts any construct implementing `IApiFeature`.
 
 #### Initializers <a name="Initializers" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.Initializer"></a>
 
@@ -32278,8 +32290,8 @@ Configuration properties for the API.
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.grantSubscription">grantSubscription</a></code> | Adds an IAM policy statement for Subscription access to this GraphQLApi to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addEnvironmentVariable">addEnvironmentVariable</a></code> | Add an environment variable to the construct. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addConfigurationTable">addConfigurationTable</a></code> | Add configuration table data sources and resolvers to the GraphQL API. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addFeature">addFeature</a></code> | Add a feature to the ProcessingEnvironmentApi. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addTrackingTable">addTrackingTable</a></code> | Add tracking table data sources and resolvers to the GraphQL API. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.enable">enable</a></code> | Enable a feature in the ProcessingEnvironmentApi. |
 
 ---
 
@@ -32506,7 +32518,7 @@ Add a None data source to the GraphQL API.
 
 This helper method allows features to create None data sources for resolvers
 that don't require a backend (e.g., for local resolvers or pass-through operations).
-Features implementing IProcessingEnvironmentApiFeature can use this method during their attachTo()
+Features implementing IApiFeature can use this method during their enableInApi()
 implementation.
 
 ###### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addNoneDataSource.parameter.id"></a>
@@ -32850,33 +32862,6 @@ The DynamoDB table that stores configuration settings.
 
 ---
 
-##### `addFeature` <a name="addFeature" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addFeature"></a>
-
-```typescript
-public addFeature(feature: IProcessingEnvironmentApiFeature): void
-```
-
-Add a feature to the ProcessingEnvironmentApi.
-
-This is the recommended way to integrate features with the API.
-The feature will attach itself to the API by creating data sources and resolvers.
-
-*Example*
-
-```typescript
-const agentAnalytics = new AgentAnalytics(this, 'AgentAnalytics', { ... });
-api.addFeature(agentAnalytics);
-```
-
-
-###### `feature`<sup>Required</sup> <a name="feature" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addFeature.parameter.feature"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
-
-The feature to add to the API.
-
----
-
 ##### `addTrackingTable` <a name="addTrackingTable" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addTrackingTable"></a>
 
 ```typescript
@@ -32921,6 +32906,33 @@ The S3 bucket where source documents are stored.
 - *Type:* aws-cdk-lib.aws_s3.IBucket
 
 The S3 bucket where processed documents are stored.
+
+---
+
+##### `enable` <a name="enable" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.enable"></a>
+
+```typescript
+public enable(feature: IApiFeature): void
+```
+
+Enable a feature in the ProcessingEnvironmentApi.
+
+This is the recommended way to integrate features with the API.
+The feature will enable itself in the API by creating data sources and resolvers.
+
+*Example*
+
+```typescript
+const agentAnalytics = new AgentAnalytics(this, 'AgentAnalytics', { ... });
+api.enable(agentAnalytics);
+```
+
+
+###### `feature`<sup>Required</sup> <a name="feature" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.enable.parameter.feature"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
+
+The feature to enable in the API.
 
 ---
 
@@ -33052,6 +33064,7 @@ GraphQL API Attributes of an API.
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.name">name</a></code> | <code>string</code> | the name of the API. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.schema">schema</a></code> | <code>aws-cdk-lib.aws_appsync.ISchema</code> | the schema attached to this api (only available for GraphQL APIs, not available for merged APIs). |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.apiKey">apiKey</a></code> | <code>string</code> | the configured API key, if present. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.property.uploadResolverFunction">uploadResolverFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | The Lambda function that generates presigned URLs for document uploads. |
 
 ---
 
@@ -33244,6 +33257,18 @@ the configured API key, if present.
 
 ---
 
+##### `uploadResolverFunction`<sup>Required</sup> <a name="uploadResolverFunction" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.property.uploadResolverFunction"></a>
+
+```typescript
+public readonly uploadResolverFunction: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+The Lambda function that generates presigned URLs for document uploads.
+
+---
+
 #### Constants <a name="Constants" id="Constants"></a>
 
 | **Name** | **Type** | **Description** |
@@ -33266,7 +33291,7 @@ Uniquely identifies this class.
 
 ### ProcessingProgressMonitor <a name="ProcessingProgressMonitor" id="@cdklabs/genai-idp.ProcessingProgressMonitor"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IProcessingProgressMonitor">IProcessingProgressMonitor</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IProcessingProgressMonitor">IProcessingProgressMonitor</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
 Processing Progress Monitor construct for Step Functions execution tracking.
 
@@ -33320,7 +33345,7 @@ new ProcessingProgressMonitor(scope: Construct, id: string, props: ProcessingPro
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.ProcessingProgressMonitor.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingProgressMonitor.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingProgressMonitor.attachTo">attachTo</a></code> | Attach this Processing Progress Monitor feature to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.ProcessingProgressMonitor.enableInApi">enableInApi</a></code> | Enable this Processing Progress Monitor feature in the ProcessingEnvironmentApi. |
 
 ---
 
@@ -33353,13 +33378,13 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.ProcessingProgressMonitor.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.ProcessingProgressMonitor.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Processing Progress Monitor feature to the ProcessingEnvironmentApi.
+Enable this Processing Progress Monitor feature in the ProcessingEnvironmentApi.
 
 This method integrates the execution monitoring functionality with the GraphQL API
 by creating the necessary data sources and resolvers. It should be called after
@@ -33370,13 +33395,13 @@ const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
 const progressMonitor = new ProcessingProgressMonitor(this, 'ProgressMonitor', {
   stateMachine: processor.stateMachine,
 });
-api.addFeature(progressMonitor);
+api.enable(progressMonitor);
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.ProcessingProgressMonitor.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.ProcessingProgressMonitor.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -39605,7 +39630,7 @@ Uniquely identifies this class.
 
 ### TestStudio <a name="TestStudio" id="@cdklabs/genai-idp.TestStudio"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.ITestStudio">ITestStudio</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.ITestStudio">ITestStudio</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
 Test Studio construct for test management and analysis.
 
@@ -39658,8 +39683,7 @@ new TestStudio(scope: Construct, id: string, props: TestStudioProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.TestStudio.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.TestStudio.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.TestStudio.attachTo">attachTo</a></code> | Attach this Test Studio feature to the ProcessingEnvironmentApi. |
-| <code><a href="#@cdklabs/genai-idp.TestStudio.integrateWithApi">integrateWithApi</a></code> | Integrate Test Studio with ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.TestStudio.enableInApi">enableInApi</a></code> | Enable this Test Studio feature in the ProcessingEnvironmentApi. |
 
 ---
 
@@ -39692,13 +39716,13 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.TestStudio.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.TestStudio.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Test Studio feature to the ProcessingEnvironmentApi.
+Enable this Test Studio feature in the ProcessingEnvironmentApi.
 
 This method integrates the test management functionality with the GraphQL API
 by creating the necessary data sources and resolvers. It should be called after
@@ -39711,41 +39735,14 @@ const testStudio = new TestStudio(this, 'TestStudio', {
   trackingTable: environment.trackingTable,
   ...
 });
-testStudio.attachTo(api);
+api.enable(testStudio);
 ```
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.TestStudio.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.TestStudio.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
-
----
-
-##### ~~`integrateWithApi`~~ <a name="integrateWithApi" id="@cdklabs/genai-idp.TestStudio.integrateWithApi"></a>
-
-```typescript
-public integrateWithApi(api: IProcessingEnvironmentApi, _trackingTable: ITrackingTable): void
-```
-
-Integrate Test Studio with ProcessingEnvironmentApi.
-
-This method adds test-related resolvers to an existing ProcessingEnvironmentApi
-to enable GraphQL operations for test management and results analysis.
-
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.TestStudio.integrateWithApi.parameter.api"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
-
-The ProcessingEnvironmentApi to integrate with.
-
----
-
-###### `_trackingTable`<sup>Required</sup> <a name="_trackingTable" id="@cdklabs/genai-idp.TestStudio.integrateWithApi.parameter._trackingTable"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a>
-
-The tracking table for test execution data (ignored, uses stored value).
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -42319,7 +42316,7 @@ The Cognito UserPool Client used by the web application for OAuth flows.
 
 ### UserManagement <a name="UserManagement" id="@cdklabs/genai-idp.UserManagement"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IUserManagement">IUserManagement</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IUserManagement">IUserManagement</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
 User Management construct for user administration.
 
@@ -42380,7 +42377,7 @@ new UserManagement(scope: Construct, id: string, props: UserManagementProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.UserManagement.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.UserManagement.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp.UserManagement.attachTo">attachTo</a></code> | Attach this User Management feature to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.UserManagement.enableInApi">enableInApi</a></code> | Enable this User Management feature in the ProcessingEnvironmentApi. |
 
 ---
 
@@ -42413,13 +42410,13 @@ The mixins to apply.
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.UserManagement.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.UserManagement.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this User Management feature to the ProcessingEnvironmentApi.
+Enable this User Management feature in the ProcessingEnvironmentApi.
 
 This method integrates the user management functionality with the GraphQL API
 by creating the necessary data sources and resolvers. It should be called after
@@ -42428,13 +42425,13 @@ both the API and this construct have been created.
 Example:
 const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
 const userManagement = new UserManagement(this, 'UserManagement', { ... });
-userManagement.attachTo(api);
+api.enable(userManagement);
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.UserManagement.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.UserManagement.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -46081,6 +46078,9 @@ new WebApplication(scope: Construct, id: string, props: WebApplicationProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.WebApplication.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.WebApplication.with">with</a></code> | Applies one or more mixins to this construct. |
+| <code><a href="#@cdklabs/genai-idp.WebApplication.addCorsBucket">addCorsBucket</a></code> | Add a CORS rule to an S3 bucket for CloudFront access. |
+| <code><a href="#@cdklabs/genai-idp.WebApplication.addSetting">addSetting</a></code> | Add a setting to the web application's SSM parameter. |
+| <code><a href="#@cdklabs/genai-idp.WebApplication.enable">enable</a></code> | Enable a feature in the WebApplication. |
 
 ---
 
@@ -46110,6 +46110,62 @@ constructs.
 - *Type:* ...constructs.IMixin[]
 
 The mixins to apply.
+
+---
+
+##### `addCorsBucket` <a name="addCorsBucket" id="@cdklabs/genai-idp.WebApplication.addCorsBucket"></a>
+
+```typescript
+public addCorsBucket(bucket: IBucket): void
+```
+
+Add a CORS rule to an S3 bucket for CloudFront access.
+
+###### `bucket`<sup>Required</sup> <a name="bucket" id="@cdklabs/genai-idp.WebApplication.addCorsBucket.parameter.bucket"></a>
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket to configure CORS on.
+
+---
+
+##### `addSetting` <a name="addSetting" id="@cdklabs/genai-idp.WebApplication.addSetting"></a>
+
+```typescript
+public addSetting(key: string, value: string): void
+```
+
+Add a setting to the web application's SSM parameter.
+
+###### `key`<sup>Required</sup> <a name="key" id="@cdklabs/genai-idp.WebApplication.addSetting.parameter.key"></a>
+
+- *Type:* string
+
+The setting key.
+
+---
+
+###### `value`<sup>Required</sup> <a name="value" id="@cdklabs/genai-idp.WebApplication.addSetting.parameter.value"></a>
+
+- *Type:* string
+
+The setting value.
+
+---
+
+##### `enable` <a name="enable" id="@cdklabs/genai-idp.WebApplication.enable"></a>
+
+```typescript
+public enable(feature: IWebAppFeature): void
+```
+
+Enable a feature in the WebApplication.
+
+###### `feature`<sup>Required</sup> <a name="feature" id="@cdklabs/genai-idp.WebApplication.enable.parameter.feature"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IWebAppFeature">IWebAppFeature</a>
+
+The feature to enable.
 
 ---
 
@@ -58293,12 +58349,27 @@ const documentDiscoveryProps: DocumentDiscoveryProps = { ... }
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | The configuration table for storing discovery results. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.discoveryBucket">discoveryBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for document discovery uploads. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.discoveryTable">discoveryTable</a></code> | <code><a href="#@cdklabs/genai-idp.IDiscoveryTable">IDiscoveryTable</a></code> | Optional properties for the discovery table. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting resources. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for Lambda functions. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscoveryProps.property.vpcConfiguration">vpcConfiguration</a></code> | <code><a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a></code> | Optional VPC configuration for Lambda functions. |
+
+---
+
+##### `configurationTable`<sup>Required</sup> <a name="configurationTable" id="@cdklabs/genai-idp.DocumentDiscoveryProps.property.configurationTable"></a>
+
+```typescript
+public readonly configurationTable: IConfigurationTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a>
+
+The configuration table for storing discovery results.
+
+Used by the discovery processor to write generated configurations.
 
 ---
 
@@ -71581,8 +71652,6 @@ const webApplicationProps: WebApplicationProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.WebApplicationProps.property.userIdentity">userIdentity</a></code> | <code><a href="#@cdklabs/genai-idp.IUserIdentity">IUserIdentity</a></code> | The user identity management system that handles authentication and authorization for the web application. |
 | <code><a href="#@cdklabs/genai-idp.WebApplicationProps.property.autoConfigure">autoConfigure</a></code> | <code>boolean</code> | Whether to automatically configure CORS rules on S3 buckets for CloudFront access. |
 | <code><a href="#@cdklabs/genai-idp.WebApplicationProps.property.distribution">distribution</a></code> | <code>aws-cdk-lib.aws_cloudfront.IDistribution</code> | Optional pre-existing CloudFront distribution to use for the web application. |
-| <code><a href="#@cdklabs/genai-idp.WebApplicationProps.property.documentDiscovery">documentDiscovery</a></code> | <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a></code> | Optional document discovery integration for the web application. |
-| <code><a href="#@cdklabs/genai-idp.WebApplicationProps.property.enableDocumentKnowledgeBase">enableDocumentKnowledgeBase</a></code> | <code>boolean</code> | Whether a Document Knowledge Base is configured for this deployment. |
 | <code><a href="#@cdklabs/genai-idp.WebApplicationProps.property.loggingBucket">loggingBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 Bucket used for storing CloudFront and S3 access logs. |
 | <code><a href="#@cdklabs/genai-idp.WebApplicationProps.property.shouldAllowSignUpEmailDomain">shouldAllowSignUpEmailDomain</a></code> | <code>boolean</code> | Controls whether the UI allows users to sign up with any email domain. |
 | <code><a href="#@cdklabs/genai-idp.WebApplicationProps.property.webAppBucket">webAppBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional pre-existing S3 bucket to use for the web application. |
@@ -71679,37 +71748,6 @@ Optional pre-existing CloudFront distribution to use for the web application.
 
 When not provided, a default distribution will be created with sensible defaults
 that work well for most use cases.
-
----
-
-##### `documentDiscovery`<sup>Optional</sup> <a name="documentDiscovery" id="@cdklabs/genai-idp.WebApplicationProps.property.documentDiscovery"></a>
-
-```typescript
-public readonly documentDiscovery: IDocumentDiscovery;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a>
-- *Default:* Document discovery features are disabled in the UI
-
-Optional document discovery integration for the web application.
-
-When provided, enables document discovery features in the UI including
-sample document uploads and automatic configuration generation.
-
----
-
-##### `enableDocumentKnowledgeBase`<sup>Optional</sup> <a name="enableDocumentKnowledgeBase" id="@cdklabs/genai-idp.WebApplicationProps.property.enableDocumentKnowledgeBase"></a>
-
-```typescript
-public readonly enableDocumentKnowledgeBase: boolean;
-```
-
-- *Type:* boolean
-- *Default:* false
-
-Whether a Document Knowledge Base is configured for this deployment.
-
-When true, enables knowledge base features in the UI for querying processed documents.
 
 ---
 
@@ -71957,23 +71995,23 @@ Provides AI-powered analytics capabilities for natural language querying of proc
 
 | **Name** | **Description** |
 | --- | --- |
-| <code><a href="#@cdklabs/genai-idp.IAgentAnalytics.attachTo">attachTo</a></code> | Attach this Agent Analytics feature to a ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.IAgentAnalytics.enableInApi">enableInApi</a></code> | Enable this Agent Analytics feature in a ProcessingEnvironmentApi. |
 
 ---
 
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.IAgentAnalytics.attachTo"></a>
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.IAgentAnalytics.enableInApi"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public enableInApi(api: IProcessingEnvironmentApi): void
 ```
 
-Attach this Agent Analytics feature to a ProcessingEnvironmentApi.
+Enable this Agent Analytics feature in a ProcessingEnvironmentApi.
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.IAgentAnalytics.attachTo.parameter.api"></a>
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.IAgentAnalytics.enableInApi.parameter.api"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
 
-The ProcessingEnvironmentApi to attach to.
+The ProcessingEnvironmentApi to enable in.
 
 ---
 
@@ -72264,6 +72302,56 @@ public readonly tableStreamArn: string;
 ARN of the table's stream, if there is one.
 
 ---
+
+### IApiFeature <a name="IApiFeature" id="@cdklabs/genai-idp.IApiFeature"></a>
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp.AgentAnalytics">AgentAnalytics</a>, <a href="#@cdklabs/genai-idp.AgentCompanionChat">AgentCompanionChat</a>, <a href="#@cdklabs/genai-idp.CapacityPlanning">CapacityPlanning</a>, <a href="#@cdklabs/genai-idp.ChatWithDocument">ChatWithDocument</a>, <a href="#@cdklabs/genai-idp.DocumentDiscovery">DocumentDiscovery</a>, <a href="#@cdklabs/genai-idp.DocumentEditing">DocumentEditing</a>, <a href="#@cdklabs/genai-idp.ErrorAnalyzer">ErrorAnalyzer</a>, <a href="#@cdklabs/genai-idp.Evaluation">Evaluation</a>, <a href="#@cdklabs/genai-idp.HitlEnvironment">HitlEnvironment</a>, <a href="#@cdklabs/genai-idp.KnowledgeBaseQuery">KnowledgeBaseQuery</a>, <a href="#@cdklabs/genai-idp.ProcessingProgressMonitor">ProcessingProgressMonitor</a>, <a href="#@cdklabs/genai-idp.TestStudio">TestStudio</a>, <a href="#@cdklabs/genai-idp.UserManagement">UserManagement</a>, <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
+
+Interface for features that can be enabled in the ProcessingEnvironmentApi.
+
+This interface enables a plugin architecture where features encapsulate their own
+integration logic rather than having the API manage all feature integrations.
+Features implementing this interface can create their own data sources and resolvers
+by calling helper methods on the API.
+
+Example:
+class MyFeature extends Construct implements IApiFeature {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
+    const dataSource = api.addLambdaDataSource('MyFeatureDataSource', this.myFunction);
+    dataSource.createResolver('MyFeatureResolver', {
+      typeName: 'Query',
+      fieldName: 'myFeature',
+    });
+  }
+}
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IApiFeature.enableInApi">enableInApi</a></code> | Enable this feature in the ProcessingEnvironmentApi. |
+
+---
+
+##### `enableInApi` <a name="enableInApi" id="@cdklabs/genai-idp.IApiFeature.enableInApi"></a>
+
+```typescript
+public enableInApi(api: IProcessingEnvironmentApi): void
+```
+
+Enable this feature in the ProcessingEnvironmentApi.
+
+Typically adds GraphQL resolvers, data sources, and Lambda functions.
+This method is called by the feature to integrate itself with the API.
+
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.IApiFeature.enableInApi.parameter.api"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
+
+The ProcessingEnvironmentApi to enable in.
+
+---
+
 
 ### ICapacityPlanning <a name="ICapacityPlanning" id="@cdklabs/genai-idp.ICapacityPlanning"></a>
 
@@ -73025,59 +73113,6 @@ Interface for the document discovery system.
 
 Provides document analysis capabilities for automated configuration generation.
 
-#### Methods <a name="Methods" id="Methods"></a>
-
-| **Name** | **Description** |
-| --- | --- |
-| <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions">initializeFunctions</a></code> | Initialize Lambda functions with API dependencies. |
-
----
-
-##### `initializeFunctions` <a name="initializeFunctions" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions"></a>
-
-```typescript
-public initializeFunctions(api: IProcessingEnvironmentApi, configurationTable: IConfigurationTable, encryptionKey?: IKey, logLevel?: LogLevel, logRetention?: RetentionDays, vpcConfiguration?: VpcConfiguration): DocumentDiscoveryFunctions
-```
-
-Initialize Lambda functions with API dependencies.
-
-Called by ProcessingEnvironmentApi when adding document discovery.
-
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.api"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
-
----
-
-###### `configurationTable`<sup>Required</sup> <a name="configurationTable" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.configurationTable"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a>
-
----
-
-###### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.encryptionKey"></a>
-
-- *Type:* aws-cdk-lib.aws_kms.IKey
-
----
-
-###### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.logLevel"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
-
----
-
-###### `logRetention`<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.logRetention"></a>
-
-- *Type:* aws-cdk-lib.aws_logs.RetentionDays
-
----
-
-###### `vpcConfiguration`<sup>Optional</sup> <a name="vpcConfiguration" id="@cdklabs/genai-idp.IDocumentDiscovery.initializeFunctions.parameter.vpcConfiguration"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a>
-
----
 
 #### Properties <a name="Properties" id="Properties"></a>
 
@@ -73957,35 +73992,35 @@ Provides GraphQL API capabilities for monitoring and managing document processin
 
 | **Name** | **Description** |
 | --- | --- |
-| <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.addFeature">addFeature</a></code> | Add a feature to the ProcessingEnvironmentApi. |
+| <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.enable">enable</a></code> | Enable a feature in the ProcessingEnvironmentApi. |
 
 ---
 
-##### `addFeature` <a name="addFeature" id="@cdklabs/genai-idp.IProcessingEnvironmentApi.addFeature"></a>
+##### `enable` <a name="enable" id="@cdklabs/genai-idp.IProcessingEnvironmentApi.enable"></a>
 
 ```typescript
-public addFeature(feature: IProcessingEnvironmentApiFeature): void
+public enable(feature: IApiFeature): void
 ```
 
-Add a feature to the ProcessingEnvironmentApi.
+Enable a feature in the ProcessingEnvironmentApi.
 
 This is the recommended way to integrate features with the API.
-Features implementing IProcessingEnvironmentApiFeature will attach themselves
-to the API by creating data sources and resolvers.
+Features implementing IApiFeature will enable themselves
+in the API by creating data sources and resolvers.
 
 *Example*
 
 ```typescript
 const agentAnalytics = new AgentAnalytics(this, 'AgentAnalytics', { ... });
-api.addFeature(agentAnalytics);
+api.enable(agentAnalytics);
 ```
 
 
-###### `feature`<sup>Required</sup> <a name="feature" id="@cdklabs/genai-idp.IProcessingEnvironmentApi.addFeature.parameter.feature"></a>
+###### `feature`<sup>Required</sup> <a name="feature" id="@cdklabs/genai-idp.IProcessingEnvironmentApi.enable.parameter.feature"></a>
 
-- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Type:* <a href="#@cdklabs/genai-idp.IApiFeature">IApiFeature</a>
 
-The feature to add to the API.
+The feature to enable in the API.
 
 ---
 
@@ -74003,6 +74038,7 @@ The feature to add to the API.
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.modes">modes</a></code> | <code>aws-cdk-lib.aws_appsync.AuthorizationType[]</code> | The Authorization Types for this GraphQL Api. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.visibility">visibility</a></code> | <code>aws-cdk-lib.aws_appsync.Visibility</code> | the visibility of the API. |
 | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.graphqlUrl">graphqlUrl</a></code> | <code>string</code> | The URL endpoint for the GraphQL API. |
+| <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi.property.uploadResolverFunction">uploadResolverFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | The Lambda function that generates presigned URLs for document uploads. |
 
 ---
 
@@ -74136,56 +74172,20 @@ Used by client applications to interact with the document processing system.
 
 ---
 
-### IProcessingEnvironmentApiFeature <a name="IProcessingEnvironmentApiFeature" id="@cdklabs/genai-idp.IProcessingEnvironmentApiFeature"></a>
-
-- *Implemented By:* <a href="#@cdklabs/genai-idp.AgentAnalytics">AgentAnalytics</a>, <a href="#@cdklabs/genai-idp.AgentCompanionChat">AgentCompanionChat</a>, <a href="#@cdklabs/genai-idp.CapacityPlanning">CapacityPlanning</a>, <a href="#@cdklabs/genai-idp.ChatWithDocument">ChatWithDocument</a>, <a href="#@cdklabs/genai-idp.DocumentDiscovery">DocumentDiscovery</a>, <a href="#@cdklabs/genai-idp.DocumentEditing">DocumentEditing</a>, <a href="#@cdklabs/genai-idp.ErrorAnalyzer">ErrorAnalyzer</a>, <a href="#@cdklabs/genai-idp.Evaluation">Evaluation</a>, <a href="#@cdklabs/genai-idp.HitlEnvironment">HitlEnvironment</a>, <a href="#@cdklabs/genai-idp.KnowledgeBaseQuery">KnowledgeBaseQuery</a>, <a href="#@cdklabs/genai-idp.ProcessingProgressMonitor">ProcessingProgressMonitor</a>, <a href="#@cdklabs/genai-idp.TestStudio">TestStudio</a>, <a href="#@cdklabs/genai-idp.UserManagement">UserManagement</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
-
-Interface for features that can attach themselves to the ProcessingEnvironmentApi.
-
-This interface enables a plugin architecture where features encapsulate their own
-integration logic rather than having the API manage all feature integrations.
-Features implementing this interface can create their own data sources and resolvers
-by calling helper methods on the API.
-
-Example:
-class MyFeature extends Construct implements IProcessingEnvironmentApiFeature {
-  public attachTo(api: IProcessingEnvironmentApi): void {
-    const dataSource = api.addLambdaDataSource('MyFeatureDataSource', this.myFunction);
-    dataSource.createResolver('MyFeatureResolver', {
-      typeName: 'Query',
-      fieldName: 'myFeature',
-    });
-  }
-}
-
-#### Methods <a name="Methods" id="Methods"></a>
-
-| **Name** | **Description** |
-| --- | --- |
-| <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature.attachTo">attachTo</a></code> | Attach this feature to the ProcessingEnvironmentApi. |
-
----
-
-##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.IProcessingEnvironmentApiFeature.attachTo"></a>
+##### `uploadResolverFunction`<sup>Required</sup> <a name="uploadResolverFunction" id="@cdklabs/genai-idp.IProcessingEnvironmentApi.property.uploadResolverFunction"></a>
 
 ```typescript
-public attachTo(api: IProcessingEnvironmentApi): void
+public readonly uploadResolverFunction: IFunction;
 ```
 
-Attach this feature to the ProcessingEnvironmentApi.
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
 
-This method is called by the feature to integrate itself with the API.
-It should create any necessary data sources and resolvers using the
-helper methods provided by the API.
+The Lambda function that generates presigned URLs for document uploads.
 
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.IProcessingEnvironmentApiFeature.attachTo.parameter.api"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
-
-The ProcessingEnvironmentApi to attach to.
+Features that need to support uploads to additional buckets can grant
+this function write access and add environment variables.
 
 ---
-
 
 ### IProcessingProgressMonitor <a name="IProcessingProgressMonitor" id="@cdklabs/genai-idp.IProcessingProgressMonitor"></a>
 
@@ -74481,39 +74481,6 @@ Interface for Test Studio construct.
 Provides test management and analysis capabilities for document processing.
 Enables test set creation, execution, and results comparison.
 
-#### Methods <a name="Methods" id="Methods"></a>
-
-| **Name** | **Description** |
-| --- | --- |
-| <code><a href="#@cdklabs/genai-idp.ITestStudio.integrateWithApi">integrateWithApi</a></code> | Integrate Test Studio with ProcessingEnvironmentApi. |
-
----
-
-##### `integrateWithApi` <a name="integrateWithApi" id="@cdklabs/genai-idp.ITestStudio.integrateWithApi"></a>
-
-```typescript
-public integrateWithApi(api: IProcessingEnvironmentApi, trackingTable: ITrackingTable): void
-```
-
-Integrate Test Studio with ProcessingEnvironmentApi.
-
-Adds test management capabilities to the GraphQL API.
-
-###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.ITestStudio.integrateWithApi.parameter.api"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
-
-The ProcessingEnvironmentApi to integrate with.
-
----
-
-###### `trackingTable`<sup>Required</sup> <a name="trackingTable" id="@cdklabs/genai-idp.ITestStudio.integrateWithApi.parameter.trackingTable"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a>
-
-The tracking table for test execution data.
-
----
 
 #### Properties <a name="Properties" id="Properties"></a>
 
@@ -75159,6 +75126,43 @@ ARN of the table's stream, if there is one.
 
 ---
 
+### IWebAppFeature <a name="IWebAppFeature" id="@cdklabs/genai-idp.IWebAppFeature"></a>
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp.DocumentDiscovery">DocumentDiscovery</a>, <a href="#@cdklabs/genai-idp.Evaluation">Evaluation</a>, <a href="#@cdklabs/genai-idp.KnowledgeBaseQuery">KnowledgeBaseQuery</a>, <a href="#@cdklabs/genai-idp.IWebAppFeature">IWebAppFeature</a>
+
+Interface for features that can be enabled in the WebApplication.
+
+Features implementing this interface contribute UI settings (e.g., bucket names,
+feature flags) and optionally configure CORS rules for CloudFront access.
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IWebAppFeature.enableInWebApp">enableInWebApp</a></code> | Enable this feature in the WebApplication. |
+
+---
+
+##### `enableInWebApp` <a name="enableInWebApp" id="@cdklabs/genai-idp.IWebAppFeature.enableInWebApp"></a>
+
+```typescript
+public enableInWebApp(webApp: IWebApplication): void
+```
+
+Enable this feature in the WebApplication.
+
+Typically contributes settings to the SSM parameter and configures
+bucket CORS rules for CloudFront access.
+
+###### `webApp`<sup>Required</sup> <a name="webApp" id="@cdklabs/genai-idp.IWebAppFeature.enableInWebApp.parameter.webApp"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IWebApplication">IWebApplication</a>
+
+The WebApplication to enable in.
+
+---
+
+
 ### IWebApplication <a name="IWebApplication" id="@cdklabs/genai-idp.IWebApplication"></a>
 
 - *Implemented By:* <a href="#@cdklabs/genai-idp.WebApplication">WebApplication</a>, <a href="#@cdklabs/genai-idp.IWebApplication">IWebApplication</a>
@@ -75167,6 +75171,81 @@ Interface for the web application that provides a user interface for the documen
 
 Enables users to upload documents, monitor processing status, and access extraction results.
 
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IWebApplication.addCorsBucket">addCorsBucket</a></code> | Add a CORS rule to an S3 bucket for CloudFront access. |
+| <code><a href="#@cdklabs/genai-idp.IWebApplication.addSetting">addSetting</a></code> | Add a setting to the web application's SSM parameter. |
+| <code><a href="#@cdklabs/genai-idp.IWebApplication.enable">enable</a></code> | Enable a feature in the WebApplication. |
+
+---
+
+##### `addCorsBucket` <a name="addCorsBucket" id="@cdklabs/genai-idp.IWebApplication.addCorsBucket"></a>
+
+```typescript
+public addCorsBucket(bucket: IBucket): void
+```
+
+Add a CORS rule to an S3 bucket for CloudFront access.
+
+Configures the bucket to allow PUT/POST requests from the
+CloudFront distribution domain. Only applies when the bucket
+is a concrete s3.Bucket (not an imported IBucket).
+
+###### `bucket`<sup>Required</sup> <a name="bucket" id="@cdklabs/genai-idp.IWebApplication.addCorsBucket.parameter.bucket"></a>
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket to configure CORS on.
+
+---
+
+##### `addSetting` <a name="addSetting" id="@cdklabs/genai-idp.IWebApplication.addSetting"></a>
+
+```typescript
+public addSetting(key: string, value: string): void
+```
+
+Add a setting to the web application's SSM parameter.
+
+Settings are lazily resolved at synth time and included in the
+JSON settings parameter that the UI reads at runtime.
+
+###### `key`<sup>Required</sup> <a name="key" id="@cdklabs/genai-idp.IWebApplication.addSetting.parameter.key"></a>
+
+- *Type:* string
+
+The setting key.
+
+---
+
+###### `value`<sup>Required</sup> <a name="value" id="@cdklabs/genai-idp.IWebApplication.addSetting.parameter.value"></a>
+
+- *Type:* string
+
+The setting value.
+
+---
+
+##### `enable` <a name="enable" id="@cdklabs/genai-idp.IWebApplication.enable"></a>
+
+```typescript
+public enable(feature: IWebAppFeature): void
+```
+
+Enable a feature in the WebApplication.
+
+Features implementing IWebAppFeature will enable themselves
+in the web app by contributing settings and configuring CORS.
+
+###### `feature`<sup>Required</sup> <a name="feature" id="@cdklabs/genai-idp.IWebApplication.enable.parameter.feature"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IWebAppFeature">IWebAppFeature</a>
+
+The feature to enable.
+
+---
 
 #### Properties <a name="Properties" id="Properties"></a>
 

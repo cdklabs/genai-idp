@@ -19,7 +19,7 @@ import { VpcConfiguration } from "../../vpc-configuration";
 import * as functions from "../functions";
 import {
   IProcessingEnvironmentApi,
-  IProcessingEnvironmentApiFeature,
+  IApiFeature,
 } from "../processing-environment-api";
 
 /**
@@ -105,7 +105,7 @@ export interface ChatWithDocumentProps {
  * contextual responses about individual documents.
  *
  * Integrates with the ProcessingEnvironmentApi as a feature using the
- * `api.addFeature(chatWithDocument)` pattern.
+ * `api.enable(chatWithDocument)` pattern.
  *
  * @example
  * const chatWithDocument = new ChatWithDocument(this, 'ChatWithDocument', {
@@ -115,13 +115,13 @@ export interface ChatWithDocumentProps {
  *   configurationTable,
  *   outputBucket,
  * });
- * api.addFeature(chatWithDocument);
+ * api.enable(chatWithDocument);
  *
  * @since v0.4.16
  */
 export class ChatWithDocument
   extends Construct
-  implements IChatWithDocument, IProcessingEnvironmentApiFeature
+  implements IChatWithDocument, IApiFeature
 {
   private readonly knowledgeBase: IKnowledgeBase;
   private readonly chatModel: IBedrockInvokable;
@@ -150,14 +150,14 @@ export class ChatWithDocument
   }
 
   /**
-   * Attach this Chat with Document feature to the ProcessingEnvironmentApi.
+   * Enable this Chat with Document feature in the ProcessingEnvironmentApi.
    *
    * Creates the chat with document data source and resolver.
    *
-   * @param api The ProcessingEnvironmentApi to attach to
+   * @param api The ProcessingEnvironmentApi to enable in
    * @since v0.4.16
    */
-  public attachTo(api: IProcessingEnvironmentApi): void {
+  public enableInApi(api: IProcessingEnvironmentApi): void {
     const chatWithDocumentResolverFunction =
       new functions.ChatWithDocumentResolverFunction(
         api as Construct,
