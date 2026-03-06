@@ -89,6 +89,12 @@ export interface IAgentAnalytics extends IConstruct {
  */
 export interface AgentAnalyticsProps {
   /**
+   * The DynamoDB table for tracking agent jobs and analytics queries.
+   * Consumers are responsible for configuring billing mode, encryption,
+   * point-in-time recovery, and removal policy.
+   */
+  readonly agentTable: IAgentTable;
+  /**
    * The DynamoDB table that tracks document processing status and metadata.
    * Used by analytics agents to query processed document data.
    */
@@ -203,18 +209,8 @@ export class AgentAnalytics
   constructor(scope: Construct, id: string, props: AgentAnalyticsProps) {
     super(scope, id);
 
-    // Create DynamoDB table for agent job tracking
-    this.agentTable = new AgentTable(this, "AgentTable", {
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      encryption: props.encryptionKey
-        ? dynamodb.TableEncryption.CUSTOMER_MANAGED
-        : dynamodb.TableEncryption.AWS_MANAGED,
-      encryptionKey: props.encryptionKey,
-      pointInTimeRecoverySpecification: {
-        pointInTimeRecoveryEnabled: true,
-      },
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    // Use consumer-provided agent table
+    this.agentTable = props.agentTable;
 
     // Create agent processor function first (required by agent request handler)
     // Use Lazy.string() to defer API URL resolution until attachTo() is called

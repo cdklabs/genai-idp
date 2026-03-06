@@ -9,15 +9,18 @@ import { Database } from "@aws-cdk/aws-glue-alpha";
 import {
   AgentAnalytics,
   AgentCompanionChat,
+  AgentTable,
   ChatWithDocument,
   ConfigurationTable,
   DocumentDiscovery,
   Evaluation,
   KnowledgeBaseQuery,
+  MessagesTable,
   ProcessingEnvironment,
   ProcessingEnvironmentApi,
   ProcessingProgressMonitor,
   ReportingEnvironment,
+  SessionTable,
   TrackingTable,
   UserIdentity,
   UserManagement,
@@ -241,6 +244,12 @@ export class BdaLendingStack extends Stack {
       this,
       "AgentCompanionChat",
       {
+        sessionTable: new SessionTable(this, "ChatSessionTable", {
+          encryptionKey: key,
+        }),
+        messagesTable: new MessagesTable(this, "ChatMessagesTable", {
+          encryptionKey: key,
+        }),
         configurationTable,
         trackingTable,
         lookupFunction: environment.lookupFunction,
@@ -317,6 +326,9 @@ export class BdaLendingStack extends Stack {
 
     // Enable AI-powered analytics agent for processing insights
     const agentAnalytics = new AgentAnalytics(this, "AgentAnalytics", {
+      agentTable: new AgentTable(this, "AgentAnalyticsTable", {
+        encryptionKey: key,
+      }),
       trackingTable,
       configurationTable,
       model: CrossRegionInferenceProfile.fromConfig({
