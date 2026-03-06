@@ -11572,6 +11572,186 @@ Uniquely identifies this class.
 
 ---
 
+### ChatWithDocument <a name="ChatWithDocument" id="@cdklabs/genai-idp.ChatWithDocument"></a>
+
+- *Implements:* <a href="#@cdklabs/genai-idp.IChatWithDocument">IChatWithDocument</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+
+Chat with Document feature for conversational document interaction.
+
+Provides natural language conversation capabilities about a specific
+processed document. It combines document context from the knowledge base
+with conversational AI, maintaining conversation history and providing
+contextual responses about individual documents.
+
+Integrates with the ProcessingEnvironmentApi as a feature using the
+`api.addFeature(chatWithDocument)` pattern.
+
+*Example*
+
+```typescript
+const chatWithDocument = new ChatWithDocument(this, 'ChatWithDocument', {
+  knowledgeBase,
+  chatModel,
+  trackingTable,
+  configurationTable,
+  outputBucket,
+});
+api.addFeature(chatWithDocument);@since[object Object]
+```
+
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.ChatWithDocument.Initializer"></a>
+
+```typescript
+import { ChatWithDocument } from '@cdklabs/genai-idp'
+
+new ChatWithDocument(scope: Construct, id: string, props: ChatWithDocumentProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocument.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocument.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocument.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps">ChatWithDocumentProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.ChatWithDocument.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.ChatWithDocument.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.ChatWithDocument.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.ChatWithDocumentProps">ChatWithDocumentProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocument.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocument.with">with</a></code> | Applies one or more mixins to this construct. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocument.attachTo">attachTo</a></code> | Attach this Chat with Document feature to the ProcessingEnvironmentApi. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.ChatWithDocument.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.ChatWithDocument.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.ChatWithDocument.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
+
+##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.ChatWithDocument.attachTo"></a>
+
+```typescript
+public attachTo(api: IProcessingEnvironmentApi): void
+```
+
+Attach this Chat with Document feature to the ProcessingEnvironmentApi.
+
+Creates the chat with document data source and resolver.
+
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.ChatWithDocument.attachTo.parameter.api"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
+
+The ProcessingEnvironmentApi to attach to.
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocument.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.ChatWithDocument.isConstruct"></a>
+
+```typescript
+import { ChatWithDocument } from '@cdklabs/genai-idp'
+
+ChatWithDocument.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.ChatWithDocument.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocument.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.ChatWithDocument.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+
 ### CompleteSectionReviewFunction <a name="CompleteSectionReviewFunction" id="@cdklabs/genai-idp.CompleteSectionReviewFunction"></a>
 
 Lambda function that completes section-level reviews in the HITL workflow.
@@ -21629,7 +21809,7 @@ Uniquely identifies this class.
 
 ### DocumentDiscovery <a name="DocumentDiscovery" id="@cdklabs/genai-idp.DocumentDiscovery"></a>
 
-- *Implements:* <a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a>
+- *Implements:* <a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
 
 A construct that provides document discovery capabilities.
 
@@ -21677,6 +21857,7 @@ new DocumentDiscovery(scope: Construct, id: string, props: DocumentDiscoveryProp
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.with">with</a></code> | Applies one or more mixins to this construct. |
+| <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.attachTo">attachTo</a></code> | Attach this Document Discovery feature to the ProcessingEnvironmentApi. |
 | <code><a href="#@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions">initializeFunctions</a></code> | Initialize the Lambda functions with API URL. |
 
 ---
@@ -21710,7 +21891,26 @@ The mixins to apply.
 
 ---
 
-##### `initializeFunctions` <a name="initializeFunctions" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions"></a>
+##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.DocumentDiscovery.attachTo"></a>
+
+```typescript
+public attachTo(api: IProcessingEnvironmentApi): void
+```
+
+Attach this Document Discovery feature to the ProcessingEnvironmentApi.
+
+Creates the discovery upload resolver, discovery table data source,
+and all associated resolvers for discovery job management.
+
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.DocumentDiscovery.attachTo.parameter.api"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
+
+The ProcessingEnvironmentApi to attach to.
+
+---
+
+##### ~~`initializeFunctions`~~ <a name="initializeFunctions" id="@cdklabs/genai-idp.DocumentDiscovery.initializeFunctions"></a>
 
 ```typescript
 public initializeFunctions(api: IProcessingEnvironmentApi, configurationTable: IConfigurationTable, encryptionKey?: IKey, logLevel?: LogLevel, logRetention?: RetentionDays, vpcConfiguration?: VpcConfiguration): DocumentDiscoveryFunctions
@@ -21852,6 +22052,186 @@ public readonly discoveryTable: IDiscoveryTable;
 - *Type:* <a href="#@cdklabs/genai-idp.IDiscoveryTable">IDiscoveryTable</a>
 
 The DynamoDB table that tracks discovery job status and metadata.
+
+---
+
+
+### DocumentEditing <a name="DocumentEditing" id="@cdklabs/genai-idp.DocumentEditing"></a>
+
+- *Implements:* <a href="#@cdklabs/genai-idp.IDocumentEditing">IDocumentEditing</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+
+Document Editing feature for section-level document modifications.
+
+Provides the ability to modify document sections and trigger reprocessing.
+This enables users to make corrections or adjustments to processed documents
+and have those changes reflected in the processing results.
+
+Integrates with the ProcessingEnvironmentApi as a feature using the
+`api.addFeature(documentEditing)` pattern.
+
+*Example*
+
+```typescript
+const documentEditing = new DocumentEditing(this, 'DocumentEditing', {
+  trackingTable,
+  documentQueue,
+  workingBucket,
+  inputBucket,
+  outputBucket,
+  dataRetentionInDays: 30,
+});
+api.addFeature(documentEditing);@since[object Object]
+```
+
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.DocumentEditing.Initializer"></a>
+
+```typescript
+import { DocumentEditing } from '@cdklabs/genai-idp'
+
+new DocumentEditing(scope: Construct, id: string, props: DocumentEditingProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditing.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditing.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditing.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.DocumentEditingProps">DocumentEditingProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.DocumentEditing.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.DocumentEditing.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.DocumentEditing.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.DocumentEditingProps">DocumentEditingProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditing.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditing.with">with</a></code> | Applies one or more mixins to this construct. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditing.attachTo">attachTo</a></code> | Attach this Document Editing feature to the ProcessingEnvironmentApi. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.DocumentEditing.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.DocumentEditing.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.DocumentEditing.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
+
+##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.DocumentEditing.attachTo"></a>
+
+```typescript
+public attachTo(api: IProcessingEnvironmentApi): void
+```
+
+Attach this Document Editing feature to the ProcessingEnvironmentApi.
+
+Creates the process changes data source and resolver.
+
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.DocumentEditing.attachTo.parameter.api"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
+
+The ProcessingEnvironmentApi to attach to.
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditing.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.DocumentEditing.isConstruct"></a>
+
+```typescript
+import { DocumentEditing } from '@cdklabs/genai-idp'
+
+DocumentEditing.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.DocumentEditing.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditing.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.DocumentEditing.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
 
 ---
 
@@ -23258,6 +23638,196 @@ public readonly PROPERTY_INJECTION_ID: string;
 Uniquely identifies this class.
 
 ---
+
+### Evaluation <a name="Evaluation" id="@cdklabs/genai-idp.Evaluation"></a>
+
+- *Implements:* <a href="#@cdklabs/genai-idp.IEvaluation">IEvaluation</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+
+Evaluation feature for document processing accuracy measurement.
+
+Provides the ability to copy processed documents to a baseline bucket
+for evaluation purposes. This enables comparing extraction results against
+known correct values to measure accuracy and evaluate model performance.
+
+Integrates with the ProcessingEnvironmentApi as a feature using the
+`api.addFeature(evaluation)` pattern.
+
+*Example*
+
+```typescript
+const evaluation = new Evaluation(this, 'Evaluation', {
+  evaluationBaselineBucket,
+  outputBucket,
+  encryptionKey: key,
+});
+api.addFeature(evaluation);@since[object Object]
+```
+
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.Evaluation.Initializer"></a>
+
+```typescript
+import { Evaluation } from '@cdklabs/genai-idp'
+
+new Evaluation(scope: Construct, id: string, props: EvaluationProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.EvaluationProps">EvaluationProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.Evaluation.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.Evaluation.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.Evaluation.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.EvaluationProps">EvaluationProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.with">with</a></code> | Applies one or more mixins to this construct. |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.attachTo">attachTo</a></code> | Attach this Evaluation feature to the ProcessingEnvironmentApi. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.Evaluation.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.Evaluation.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.Evaluation.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
+
+##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.Evaluation.attachTo"></a>
+
+```typescript
+public attachTo(api: IProcessingEnvironmentApi): void
+```
+
+Attach this Evaluation feature to the ProcessingEnvironmentApi.
+
+Creates the copy-to-baseline data source and resolver for evaluation workflows.
+
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.Evaluation.attachTo.parameter.api"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
+
+The ProcessingEnvironmentApi to attach to.
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.Evaluation.isConstruct"></a>
+
+```typescript
+import { Evaluation } from '@cdklabs/genai-idp'
+
+Evaluation.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.Evaluation.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.Evaluation.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for storing evaluation baseline documents. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.Evaluation.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `evaluationBaselineBucket`<sup>Required</sup> <a name="evaluationBaselineBucket" id="@cdklabs/genai-idp.Evaluation.property.evaluationBaselineBucket"></a>
+
+```typescript
+public readonly evaluationBaselineBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket for storing evaluation baseline documents.
+
+---
+
 
 ### FccDatasetDeployer <a name="FccDatasetDeployer" id="@cdklabs/genai-idp.FccDatasetDeployer"></a>
 
@@ -26061,6 +26631,196 @@ public readonly completeSectionReviewFunction: CompleteSectionReviewFunction;
 - *Type:* <a href="#@cdklabs/genai-idp.CompleteSectionReviewFunction">CompleteSectionReviewFunction</a>
 
 The Lambda function for completing section reviews.
+
+---
+
+
+### KnowledgeBaseQuery <a name="KnowledgeBaseQuery" id="@cdklabs/genai-idp.KnowledgeBaseQuery"></a>
+
+- *Implements:* <a href="#@cdklabs/genai-idp.IKnowledgeBaseQuery">IKnowledgeBaseQuery</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+
+Knowledge Base Query feature for natural language document querying.
+
+Provides the ability to query processed documents using natural language
+through Amazon Bedrock knowledge base. This enables users to search and
+retrieve information from the entire processed document dataset.
+
+Integrates with the ProcessingEnvironmentApi as a feature using the
+`api.addFeature(knowledgeBaseQuery)` pattern.
+
+*Example*
+
+```typescript
+const knowledgeBaseQuery = new KnowledgeBaseQuery(this, 'KnowledgeBaseQuery', {
+  knowledgeBase,
+  knowledgeBaseModel: chatModel,
+  guardrail,
+});
+api.addFeature(knowledgeBaseQuery);@since[object Object]
+```
+
+
+#### Initializers <a name="Initializers" id="@cdklabs/genai-idp.KnowledgeBaseQuery.Initializer"></a>
+
+```typescript
+import { KnowledgeBaseQuery } from '@cdklabs/genai-idp'
+
+new KnowledgeBaseQuery(scope: Construct, id: string, props: KnowledgeBaseQueryProps)
+```
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.Initializer.parameter.props">props</a></code> | <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQueryProps">KnowledgeBaseQueryProps</a></code> | *No description.* |
+
+---
+
+##### `scope`<sup>Required</sup> <a name="scope" id="@cdklabs/genai-idp.KnowledgeBaseQuery.Initializer.parameter.scope"></a>
+
+- *Type:* constructs.Construct
+
+---
+
+##### `id`<sup>Required</sup> <a name="id" id="@cdklabs/genai-idp.KnowledgeBaseQuery.Initializer.parameter.id"></a>
+
+- *Type:* string
+
+---
+
+##### `props`<sup>Required</sup> <a name="props" id="@cdklabs/genai-idp.KnowledgeBaseQuery.Initializer.parameter.props"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.KnowledgeBaseQueryProps">KnowledgeBaseQueryProps</a>
+
+---
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.toString">toString</a></code> | Returns a string representation of this construct. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.with">with</a></code> | Applies one or more mixins to this construct. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.attachTo">attachTo</a></code> | Attach this Knowledge Base Query feature to the ProcessingEnvironmentApi. |
+
+---
+
+##### `toString` <a name="toString" id="@cdklabs/genai-idp.KnowledgeBaseQuery.toString"></a>
+
+```typescript
+public toString(): string
+```
+
+Returns a string representation of this construct.
+
+##### `with` <a name="with" id="@cdklabs/genai-idp.KnowledgeBaseQuery.with"></a>
+
+```typescript
+public with(mixins: ...IMixin[]): IConstruct
+```
+
+Applies one or more mixins to this construct.
+
+Mixins are applied in order. The list of constructs is captured at the
+start of the call, so constructs added by a mixin will not be visited.
+Use multiple `with()` calls if subsequent mixins should apply to added
+constructs.
+
+###### `mixins`<sup>Required</sup> <a name="mixins" id="@cdklabs/genai-idp.KnowledgeBaseQuery.with.parameter.mixins"></a>
+
+- *Type:* ...constructs.IMixin[]
+
+The mixins to apply.
+
+---
+
+##### `attachTo` <a name="attachTo" id="@cdklabs/genai-idp.KnowledgeBaseQuery.attachTo"></a>
+
+```typescript
+public attachTo(api: IProcessingEnvironmentApi): void
+```
+
+Attach this Knowledge Base Query feature to the ProcessingEnvironmentApi.
+
+Creates the query knowledge base data source and resolver.
+
+###### `api`<sup>Required</sup> <a name="api" id="@cdklabs/genai-idp.KnowledgeBaseQuery.attachTo.parameter.api"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a>
+
+The ProcessingEnvironmentApi to attach to.
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.isConstruct">isConstruct</a></code> | Checks if `x` is a construct. |
+
+---
+
+##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp.KnowledgeBaseQuery.isConstruct"></a>
+
+```typescript
+import { KnowledgeBaseQuery } from '@cdklabs/genai-idp'
+
+KnowledgeBaseQuery.isConstruct(x: any)
+```
+
+Checks if `x` is a construct.
+
+Use this method instead of `instanceof` to properly detect `Construct`
+instances, even when the construct library is symlinked.
+
+Explanation: in JavaScript, multiple copies of the `constructs` library on
+disk are seen as independent, completely different libraries. As a
+consequence, the class `Construct` in each copy of the `constructs` library
+is seen as a different class, and an instance of one class will not test as
+`instanceof` the other class. `npm install` will not create installations
+like this, but users may manually symlink construct libraries together or
+use a monorepo tool: in those cases, multiple copies of the `constructs`
+library can be accidentally installed, and `instanceof` will behave
+unpredictably. It is safest to avoid using `instanceof`, and using
+this type-testing method instead.
+
+###### `x`<sup>Required</sup> <a name="x" id="@cdklabs/genai-idp.KnowledgeBaseQuery.isConstruct.parameter.x"></a>
+
+- *Type:* any
+
+Any object.
+
+---
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQuery.property.knowledgeBase">knowledgeBase</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase</code> | The Amazon Bedrock knowledge base for document querying. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.KnowledgeBaseQuery.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `knowledgeBase`<sup>Required</sup> <a name="knowledgeBase" id="@cdklabs/genai-idp.KnowledgeBaseQuery.property.knowledgeBase"></a>
+
+```typescript
+public readonly knowledgeBase: IKnowledgeBase;
+```
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase
+
+The Amazon Bedrock knowledge base for document querying.
 
 ---
 
@@ -31450,11 +32210,9 @@ The ProcessingEnvironmentApi creates an AppSync GraphQL API with resolvers for:
 - Accessing document contents and extraction results
 - Uploading new documents for processing
 - Copying documents to baseline for evaluation
-- Querying document knowledge base (if configured)
 
-It integrates with the processing environment's resources including DynamoDB tables,
-S3 buckets, and optional knowledge base to provide a comprehensive interface for
-monitoring and managing the document processing workflow.
+Additional features can be integrated using the `addFeature()` method, which
+accepts any construct implementing `IProcessingEnvironmentApiFeature`.
 
 #### Initializers <a name="Initializers" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.Initializer"></a>
 
@@ -31519,12 +32277,8 @@ Configuration properties for the API.
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.grantQuery">grantQuery</a></code> | Adds an IAM policy statement for Query access to this GraphQLApi to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.grantSubscription">grantSubscription</a></code> | Adds an IAM policy statement for Subscription access to this GraphQLApi to an IAM principal's policy. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addEnvironmentVariable">addEnvironmentVariable</a></code> | Add an environment variable to the construct. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument">addChatWithDocument</a></code> | Add Chat with Document capabilities to the GraphQL API. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addConfigurationTable">addConfigurationTable</a></code> | Add configuration table data sources and resolvers to the GraphQL API. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addDocumentDiscovery">addDocumentDiscovery</a></code> | Add Document Discovery capabilities to the GraphQL API. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addEvaluation">addEvaluation</a></code> | Add evaluation capabilities to the GraphQL API. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addFeature">addFeature</a></code> | Add a feature to the ProcessingEnvironmentApi. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addKnowledgeBase">addKnowledgeBase</a></code> | Add knowledge base querying capabilities to the GraphQL API. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApi.addTrackingTable">addTrackingTable</a></code> | Add tracking table data sources and resolvers to the GraphQL API. |
 
 ---
@@ -32067,54 +32821,6 @@ Add an environment variable to the construct.
 
 ---
 
-##### `addChatWithDocument` <a name="addChatWithDocument" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument"></a>
-
-```typescript
-public addChatWithDocument(knowledgeBase: IKnowledgeBase, chatModel: IBedrockInvokable, guardrail?: IGuardrail): void
-```
-
-Add Chat with Document capabilities to the GraphQL API.
-
-This method adds natural language conversation functionality about processed documents
-by combining document context from the knowledge base with conversational AI.
-It maintains conversation history and provides contextual responses.
-
-*Example*
-
-```typescript
-// Add chat with document after API creation
-api.addChatWithDocument(
-  knowledgeBase,
-  chatModel,
-  myGuardrail
-);
-```
-
-
-###### `knowledgeBase`<sup>Required</sup> <a name="knowledgeBase" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument.parameter.knowledgeBase"></a>
-
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase
-
-The Bedrock knowledge base for document context.
-
----
-
-###### `chatModel`<sup>Required</sup> <a name="chatModel" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument.parameter.chatModel"></a>
-
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
-
-The invokable model for chat functionality.
-
----
-
-###### `guardrail`<sup>Optional</sup> <a name="guardrail" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addChatWithDocument.parameter.guardrail"></a>
-
-- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
-
-Optional Bedrock guardrail for content filtering.
-
----
-
 ##### `addConfigurationTable` <a name="addConfigurationTable" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addConfigurationTable"></a>
 
 ```typescript
@@ -32144,53 +32850,6 @@ The DynamoDB table that stores configuration settings.
 
 ---
 
-##### `addDocumentDiscovery` <a name="addDocumentDiscovery" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addDocumentDiscovery"></a>
-
-```typescript
-public addDocumentDiscovery(documentDiscovery: IDocumentDiscovery): void
-```
-
-Add Document Discovery capabilities to the GraphQL API.
-
-This method adds document discovery functionality including automated
-document analysis and configuration generation capabilities.
-
-###### `documentDiscovery`<sup>Required</sup> <a name="documentDiscovery" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addDocumentDiscovery.parameter.documentDiscovery"></a>
-
-- *Type:* <a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a>
-
-The document discovery construct with table, queue, and functions.
-
----
-
-##### `addEvaluation` <a name="addEvaluation" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addEvaluation"></a>
-
-```typescript
-public addEvaluation(evaluationBaselineBucket: IBucket): void
-```
-
-Add evaluation capabilities to the GraphQL API.
-
-This method adds document evaluation functionality, including the ability
-to copy documents to a baseline bucket for evaluation purposes.
-It creates the necessary resolvers and data sources for evaluation workflows.
-
-*Example*
-
-```typescript
-// Add evaluation functionality after API creation
-api.addEvaluation(myEvaluationBaselineBucket);
-```
-
-
-###### `evaluationBaselineBucket`<sup>Required</sup> <a name="evaluationBaselineBucket" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addEvaluation.parameter.evaluationBaselineBucket"></a>
-
-- *Type:* aws-cdk-lib.aws_s3.IBucket
-
-The S3 bucket for storing evaluation baseline documents.
-
----
-
 ##### `addFeature` <a name="addFeature" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addFeature"></a>
 
 ```typescript
@@ -32215,54 +32874,6 @@ api.addFeature(agentAnalytics);
 - *Type:* <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
 
 The feature to add to the API.
-
----
-
-##### `addKnowledgeBase` <a name="addKnowledgeBase" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addKnowledgeBase"></a>
-
-```typescript
-public addKnowledgeBase(knowledgeBase: IKnowledgeBase, knowledgeBaseModel: IBedrockInvokable, knowledgeBaseGuardrail?: IGuardrail): void
-```
-
-Add knowledge base querying capabilities to the GraphQL API.
-
-This method adds natural language querying functionality for processed documents
-using Amazon Bedrock knowledge base. It creates the necessary resolvers and
-data sources to enable document querying through the GraphQL API.
-
-*Example*
-
-```typescript
-// Add knowledge base functionality after API creation
-api.addKnowledgeBase(
-  myKnowledgeBase,
-  bedrock.BedrockFoundationModel.AMAZON_NOVA_PRO_V1_0,
-  myGuardrail
-);
-```
-
-
-###### `knowledgeBase`<sup>Required</sup> <a name="knowledgeBase" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addKnowledgeBase.parameter.knowledgeBase"></a>
-
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase
-
-The Amazon Bedrock knowledge base for document querying.
-
----
-
-###### `knowledgeBaseModel`<sup>Required</sup> <a name="knowledgeBaseModel" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addKnowledgeBase.parameter.knowledgeBaseModel"></a>
-
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
-
-The invokable model to use for knowledge base queries.
-
----
-
-###### `knowledgeBaseGuardrail`<sup>Optional</sup> <a name="knowledgeBaseGuardrail" id="@cdklabs/genai-idp.ProcessingEnvironmentApi.addKnowledgeBase.parameter.knowledgeBaseGuardrail"></a>
-
-- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
-
-Optional Bedrock guardrail to apply to model interactions.
 
 ---
 
@@ -53071,6 +53682,158 @@ Used to encrypt/decrypt data processed by the function.
 
 ---
 
+### ChatWithDocumentProps <a name="ChatWithDocumentProps" id="@cdklabs/genai-idp.ChatWithDocumentProps"></a>
+
+Properties for configuring the ChatWithDocument feature.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.ChatWithDocumentProps.Initializer"></a>
+
+```typescript
+import { ChatWithDocumentProps } from '@cdklabs/genai-idp'
+
+const chatWithDocumentProps: ChatWithDocumentProps = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps.property.chatModel">chatModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model for chat functionality. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | The DynamoDB table that stores configuration settings. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps.property.knowledgeBase">knowledgeBase</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase</code> | The Bedrock knowledge base for document context retrieval. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps.property.outputBucket">outputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where processed documents and extraction results are stored. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table that tracks document processing status and metadata. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting function resources. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps.property.guardrail">guardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail for content filtering. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the chat function. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs. |
+| <code><a href="#@cdklabs/genai-idp.ChatWithDocumentProps.property.vpcConfiguration">vpcConfiguration</a></code> | <code><a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a></code> | Optional VPC configuration for Lambda functions. |
+
+---
+
+##### `chatModel`<sup>Required</sup> <a name="chatModel" id="@cdklabs/genai-idp.ChatWithDocumentProps.property.chatModel"></a>
+
+```typescript
+public readonly chatModel: IBedrockInvokable;
+```
+
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
+
+The invokable model for chat functionality.
+
+---
+
+##### `configurationTable`<sup>Required</sup> <a name="configurationTable" id="@cdklabs/genai-idp.ChatWithDocumentProps.property.configurationTable"></a>
+
+```typescript
+public readonly configurationTable: IConfigurationTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a>
+
+The DynamoDB table that stores configuration settings.
+
+---
+
+##### `knowledgeBase`<sup>Required</sup> <a name="knowledgeBase" id="@cdklabs/genai-idp.ChatWithDocumentProps.property.knowledgeBase"></a>
+
+```typescript
+public readonly knowledgeBase: IKnowledgeBase;
+```
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase
+
+The Bedrock knowledge base for document context retrieval.
+
+---
+
+##### `outputBucket`<sup>Required</sup> <a name="outputBucket" id="@cdklabs/genai-idp.ChatWithDocumentProps.property.outputBucket"></a>
+
+```typescript
+public readonly outputBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket where processed documents and extraction results are stored.
+
+---
+
+##### `trackingTable`<sup>Required</sup> <a name="trackingTable" id="@cdklabs/genai-idp.ChatWithDocumentProps.property.trackingTable"></a>
+
+```typescript
+public readonly trackingTable: ITrackingTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a>
+
+The DynamoDB table that tracks document processing status and metadata.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.ChatWithDocumentProps.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Default:* AWS managed encryption
+
+Optional KMS key for encrypting function resources.
+
+---
+
+##### `guardrail`<sup>Optional</sup> <a name="guardrail" id="@cdklabs/genai-idp.ChatWithDocumentProps.property.guardrail"></a>
+
+```typescript
+public readonly guardrail: IGuardrail;
+```
+
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
+
+Optional Bedrock guardrail for content filtering.
+
+---
+
+##### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.ChatWithDocumentProps.property.logLevel"></a>
+
+```typescript
+public readonly logLevel: LogLevel;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+- *Default:* LogLevel.INFO
+
+The log level for the chat function.
+
+---
+
+##### `logRetention`<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.ChatWithDocumentProps.property.logRetention"></a>
+
+```typescript
+public readonly logRetention: RetentionDays;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+- *Default:* logs.RetentionDays.ONE_WEEK
+
+The retention period for CloudWatch logs.
+
+---
+
+##### `vpcConfiguration`<sup>Optional</sup> <a name="vpcConfiguration" id="@cdklabs/genai-idp.ChatWithDocumentProps.property.vpcConfiguration"></a>
+
+```typescript
+public readonly vpcConfiguration: VpcConfiguration;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a>
+
+Optional VPC configuration for Lambda functions.
+
+---
+
 ### CompleteSectionReviewFunctionProps <a name="CompleteSectionReviewFunctionProps" id="@cdklabs/genai-idp.CompleteSectionReviewFunctionProps"></a>
 
 Properties for the Complete Section Review function.
@@ -57611,6 +58374,144 @@ Optional VPC configuration for Lambda functions.
 
 ---
 
+### DocumentEditingProps <a name="DocumentEditingProps" id="@cdklabs/genai-idp.DocumentEditingProps"></a>
+
+Properties for configuring the DocumentEditing feature.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.DocumentEditingProps.Initializer"></a>
+
+```typescript
+import { DocumentEditingProps } from '@cdklabs/genai-idp'
+
+const documentEditingProps: DocumentEditingProps = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditingProps.property.dataRetentionInDays">dataRetentionInDays</a></code> | <code>number</code> | Data retention period in days for processed documents. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditingProps.property.documentQueue">documentQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue for document processing requests. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditingProps.property.inputBucket">inputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where source documents are stored. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditingProps.property.outputBucket">outputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where processed documents are stored. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditingProps.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table that tracks document processing status. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditingProps.property.workingBucket">workingBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for working files during document processing. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditingProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting function resources. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditingProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs. |
+| <code><a href="#@cdklabs/genai-idp.DocumentEditingProps.property.vpcConfiguration">vpcConfiguration</a></code> | <code><a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a></code> | Optional VPC configuration for Lambda functions. |
+
+---
+
+##### `dataRetentionInDays`<sup>Required</sup> <a name="dataRetentionInDays" id="@cdklabs/genai-idp.DocumentEditingProps.property.dataRetentionInDays"></a>
+
+```typescript
+public readonly dataRetentionInDays: number;
+```
+
+- *Type:* number
+
+Data retention period in days for processed documents.
+
+---
+
+##### `documentQueue`<sup>Required</sup> <a name="documentQueue" id="@cdklabs/genai-idp.DocumentEditingProps.property.documentQueue"></a>
+
+```typescript
+public readonly documentQueue: IQueue;
+```
+
+- *Type:* aws-cdk-lib.aws_sqs.IQueue
+
+The SQS queue for document processing requests.
+
+---
+
+##### `inputBucket`<sup>Required</sup> <a name="inputBucket" id="@cdklabs/genai-idp.DocumentEditingProps.property.inputBucket"></a>
+
+```typescript
+public readonly inputBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket where source documents are stored.
+
+---
+
+##### `outputBucket`<sup>Required</sup> <a name="outputBucket" id="@cdklabs/genai-idp.DocumentEditingProps.property.outputBucket"></a>
+
+```typescript
+public readonly outputBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket where processed documents are stored.
+
+---
+
+##### `trackingTable`<sup>Required</sup> <a name="trackingTable" id="@cdklabs/genai-idp.DocumentEditingProps.property.trackingTable"></a>
+
+```typescript
+public readonly trackingTable: ITrackingTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a>
+
+The DynamoDB table that tracks document processing status.
+
+---
+
+##### `workingBucket`<sup>Required</sup> <a name="workingBucket" id="@cdklabs/genai-idp.DocumentEditingProps.property.workingBucket"></a>
+
+```typescript
+public readonly workingBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket for working files during document processing.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.DocumentEditingProps.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Default:* AWS managed encryption
+
+Optional KMS key for encrypting function resources.
+
+---
+
+##### `logRetention`<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.DocumentEditingProps.property.logRetention"></a>
+
+```typescript
+public readonly logRetention: RetentionDays;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+- *Default:* logs.RetentionDays.ONE_WEEK
+
+The retention period for CloudWatch logs.
+
+---
+
+##### `vpcConfiguration`<sup>Optional</sup> <a name="vpcConfiguration" id="@cdklabs/genai-idp.DocumentEditingProps.property.vpcConfiguration"></a>
+
+```typescript
+public readonly vpcConfiguration: VpcConfiguration;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a>
+
+Optional VPC configuration for Lambda functions.
+
+---
+
 ### DocumentProcessorAttachmentOptions <a name="DocumentProcessorAttachmentOptions" id="@cdklabs/genai-idp.DocumentProcessorAttachmentOptions"></a>
 
 #### Initializer <a name="Initializer" id="@cdklabs/genai-idp.DocumentProcessorAttachmentOptions.Initializer"></a>
@@ -58668,6 +59569,97 @@ public readonly traceTable: ITable;
 Optional DynamoDB table for storing trace IDs and analysis results.
 
 When not provided, a new table will be created.
+
+---
+
+### EvaluationProps <a name="EvaluationProps" id="@cdklabs/genai-idp.EvaluationProps"></a>
+
+Properties for configuring the Evaluation feature.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.EvaluationProps.Initializer"></a>
+
+```typescript
+import { EvaluationProps } from '@cdklabs/genai-idp'
+
+const evaluationProps: EvaluationProps = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.EvaluationProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for storing evaluation baseline documents. |
+| <code><a href="#@cdklabs/genai-idp.EvaluationProps.property.outputBucket">outputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where processed documents and extraction results are stored. |
+| <code><a href="#@cdklabs/genai-idp.EvaluationProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting evaluation data. |
+| <code><a href="#@cdklabs/genai-idp.EvaluationProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs. |
+| <code><a href="#@cdklabs/genai-idp.EvaluationProps.property.vpcConfiguration">vpcConfiguration</a></code> | <code><a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a></code> | Optional VPC configuration for Lambda functions. |
+
+---
+
+##### `evaluationBaselineBucket`<sup>Required</sup> <a name="evaluationBaselineBucket" id="@cdklabs/genai-idp.EvaluationProps.property.evaluationBaselineBucket"></a>
+
+```typescript
+public readonly evaluationBaselineBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket for storing evaluation baseline documents.
+
+Used for comparing extraction results against known correct values
+to measure accuracy and evaluate model performance.
+
+---
+
+##### `outputBucket`<sup>Required</sup> <a name="outputBucket" id="@cdklabs/genai-idp.EvaluationProps.property.outputBucket"></a>
+
+```typescript
+public readonly outputBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket where processed documents and extraction results are stored.
+
+The evaluation feature reads from this bucket to copy documents to baseline.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.EvaluationProps.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Default:* AWS managed encryption
+
+Optional KMS key for encrypting evaluation data.
+
+---
+
+##### `logRetention`<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.EvaluationProps.property.logRetention"></a>
+
+```typescript
+public readonly logRetention: RetentionDays;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+- *Default:* logs.RetentionDays.ONE_WEEK
+
+The retention period for CloudWatch logs.
+
+---
+
+##### `vpcConfiguration`<sup>Optional</sup> <a name="vpcConfiguration" id="@cdklabs/genai-idp.EvaluationProps.property.vpcConfiguration"></a>
+
+```typescript
+public readonly vpcConfiguration: VpcConfiguration;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a>
+
+Optional VPC configuration for Lambda functions.
 
 ---
 
@@ -61614,6 +62606,125 @@ public subnets is not allowed (unless `allowPublicSubnet` is set to `true`).
 
 ---
 
+### KnowledgeBaseQueryProps <a name="KnowledgeBaseQueryProps" id="@cdklabs/genai-idp.KnowledgeBaseQueryProps"></a>
+
+Properties for configuring the KnowledgeBaseQuery feature.
+
+#### Initializer <a name="Initializer" id="@cdklabs/genai-idp.KnowledgeBaseQueryProps.Initializer"></a>
+
+```typescript
+import { KnowledgeBaseQueryProps } from '@cdklabs/genai-idp'
+
+const knowledgeBaseQueryProps: KnowledgeBaseQueryProps = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.knowledgeBase">knowledgeBase</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase</code> | The Amazon Bedrock knowledge base for document querying. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.knowledgeBaseModel">knowledgeBaseModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model to use for knowledge base queries. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting function resources. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.guardrail">guardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to model interactions. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the query function. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs. |
+| <code><a href="#@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.vpcConfiguration">vpcConfiguration</a></code> | <code><a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a></code> | Optional VPC configuration for Lambda functions. |
+
+---
+
+##### `knowledgeBase`<sup>Required</sup> <a name="knowledgeBase" id="@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.knowledgeBase"></a>
+
+```typescript
+public readonly knowledgeBase: IKnowledgeBase;
+```
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase
+
+The Amazon Bedrock knowledge base for document querying.
+
+Enables natural language querying of processed documents.
+
+---
+
+##### `knowledgeBaseModel`<sup>Required</sup> <a name="knowledgeBaseModel" id="@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.knowledgeBaseModel"></a>
+
+```typescript
+public readonly knowledgeBaseModel: IBedrockInvokable;
+```
+
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
+
+The invokable model to use for knowledge base queries.
+
+Can be a Bedrock foundation model, inference profile, or custom model.
+
+---
+
+##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.encryptionKey"></a>
+
+```typescript
+public readonly encryptionKey: IKey;
+```
+
+- *Type:* aws-cdk-lib.aws_kms.IKey
+- *Default:* AWS managed encryption
+
+Optional KMS key for encrypting function resources.
+
+---
+
+##### `guardrail`<sup>Optional</sup> <a name="guardrail" id="@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.guardrail"></a>
+
+```typescript
+public readonly guardrail: IGuardrail;
+```
+
+- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
+
+Optional Bedrock guardrail to apply to model interactions.
+
+Helps ensure model outputs adhere to content policies and guidelines.
+
+---
+
+##### `logLevel`<sup>Optional</sup> <a name="logLevel" id="@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.logLevel"></a>
+
+```typescript
+public readonly logLevel: LogLevel;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a>
+- *Default:* LogLevel.INFO
+
+The log level for the query function.
+
+---
+
+##### `logRetention`<sup>Optional</sup> <a name="logRetention" id="@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.logRetention"></a>
+
+```typescript
+public readonly logRetention: RetentionDays;
+```
+
+- *Type:* aws-cdk-lib.aws_logs.RetentionDays
+- *Default:* logs.RetentionDays.ONE_WEEK
+
+The retention period for CloudWatch logs.
+
+---
+
+##### `vpcConfiguration`<sup>Optional</sup> <a name="vpcConfiguration" id="@cdklabs/genai-idp.KnowledgeBaseQueryProps.property.vpcConfiguration"></a>
+
+```typescript
+public readonly vpcConfiguration: VpcConfiguration;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a>
+
+Optional VPC configuration for Lambda functions.
+
+---
+
 ### ListAgentChatSessionsFunctionProps <a name="ListAgentChatSessionsFunctionProps" id="@cdklabs/genai-idp.ListAgentChatSessionsFunctionProps"></a>
 
 Properties for the List Agent Chat Sessions function.
@@ -64321,19 +65432,10 @@ const processingEnvironmentApiProps: ProcessingEnvironmentApiProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.inputBucket">inputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where source documents to be processed are stored. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.outputBucket">outputBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket where processed documents and extraction results are stored. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table that tracks document processing status and metadata. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.dataRetentionInDays">dataRetentionInDays</a></code> | <code>number</code> | Data retention period in days for processed documents. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.documentDiscovery">documentDiscovery</a></code> | <code><a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a></code> | Optional document discovery for automated document analysis. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.documentQueue">documentQueue</a></code> | <code>aws-cdk-lib.aws_sqs.IQueue</code> | The SQS queue for document processing requests. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key used for encrypting sensitive data in the processing environment. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket name for storing evaluation baseline documents. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBase">knowledgeBase</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase</code> | Optional knowledge base identifier for document querying capabilities. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBaseGuardrail">knowledgeBaseGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to model interactions. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBaseModel">knowledgeBaseModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model to use for knowledge base queries. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for document processing components. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | The retention period for CloudWatch logs generated by document processing components. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | Optional Step Functions state machine for document processing workflow. |
 | <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.vpcConfiguration">vpcConfiguration</a></code> | <code><a href="#@cdklabs/genai-idp.VpcConfiguration">VpcConfiguration</a></code> | Optional VPC configuration for document processing components. |
-| <code><a href="#@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.workingBucket">workingBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for working files during document processing. |
 
 ---
 
@@ -64551,49 +65653,6 @@ Stores information about documents being processed, including status and results
 
 ---
 
-##### `dataRetentionInDays`<sup>Optional</sup> <a name="dataRetentionInDays" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.dataRetentionInDays"></a>
-
-```typescript
-public readonly dataRetentionInDays: number;
-```
-
-- *Type:* number
-
-Data retention period in days for processed documents.
-
-Controls how long document data is kept in the system.
-
----
-
-##### `documentDiscovery`<sup>Optional</sup> <a name="documentDiscovery" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.documentDiscovery"></a>
-
-```typescript
-public readonly documentDiscovery: IDocumentDiscovery;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.IDocumentDiscovery">IDocumentDiscovery</a>
-
-Optional document discovery for automated document analysis.
-
-When provided, enables document discovery capabilities including
-automated configuration generation and document structure analysis.
-
----
-
-##### `documentQueue`<sup>Optional</sup> <a name="documentQueue" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.documentQueue"></a>
-
-```typescript
-public readonly documentQueue: IQueue;
-```
-
-- *Type:* aws-cdk-lib.aws_sqs.IQueue
-
-The SQS queue for document processing requests.
-
-Used to queue documents for processing and manage workflow execution.
-
----
-
 ##### `encryptionKey`<sup>Optional</sup> <a name="encryptionKey" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.encryptionKey"></a>
 
 ```typescript
@@ -64605,67 +65664,6 @@ public readonly encryptionKey: IKey;
 Optional KMS key used for encrypting sensitive data in the processing environment.
 
 When provided, ensures that document content and metadata are encrypted at rest.
-
----
-
-##### `evaluationBaselineBucket`<sup>Optional</sup> <a name="evaluationBaselineBucket" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.evaluationBaselineBucket"></a>
-
-```typescript
-public readonly evaluationBaselineBucket: IBucket;
-```
-
-- *Type:* aws-cdk-lib.aws_s3.IBucket
-
-Optional S3 bucket name for storing evaluation baseline documents.
-
-Used for comparing extraction results against known correct values
-to measure accuracy and evaluate model performance.
-
----
-
-##### `knowledgeBase`<sup>Optional</sup> <a name="knowledgeBase" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBase"></a>
-
-```typescript
-public readonly knowledgeBase: IKnowledgeBase;
-```
-
-- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase
-
-Optional knowledge base identifier for document querying capabilities.
-
-When provided, enables natural language querying of processed documents
-using the specified Amazon Bedrock knowledge base.
-
----
-
-##### `knowledgeBaseGuardrail`<sup>Optional</sup> <a name="knowledgeBaseGuardrail" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBaseGuardrail"></a>
-
-```typescript
-public readonly knowledgeBaseGuardrail: IGuardrail;
-```
-
-- *Type:* @aws-cdk/aws-bedrock-alpha.IGuardrail
-
-Optional Bedrock guardrail to apply to model interactions.
-
-Helps ensure model outputs adhere to content policies and guidelines
-by filtering inappropriate content and enforcing usage policies.
-
----
-
-##### `knowledgeBaseModel`<sup>Optional</sup> <a name="knowledgeBaseModel" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.knowledgeBaseModel"></a>
-
-```typescript
-public readonly knowledgeBaseModel: IBedrockInvokable;
-```
-
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
-- *Default:* bedrock.BedrockFoundationModel.AMAZON_NOVA_PRO_V1_0
-
-Optional invokable model to use for knowledge base queries.
-
-Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-Enables natural language querying of processed documents when a knowledge base is configured.
 
 ---
 
@@ -64697,21 +65695,6 @@ Controls how long system logs are kept for troubleshooting and auditing.
 
 ---
 
-##### `stateMachine`<sup>Optional</sup> <a name="stateMachine" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.stateMachine"></a>
-
-```typescript
-public readonly stateMachine: IStateMachine;
-```
-
-- *Type:* aws-cdk-lib.aws_stepfunctions.IStateMachine
-
-Optional Step Functions state machine for document processing workflow.
-
-When provided, enables querying of execution details and step-by-step
-processing status through the GraphQL API.
-
----
-
 ##### `vpcConfiguration`<sup>Optional</sup> <a name="vpcConfiguration" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.vpcConfiguration"></a>
 
 ```typescript
@@ -64723,20 +65706,6 @@ public readonly vpcConfiguration: VpcConfiguration;
 Optional VPC configuration for document processing components.
 
 When provided, deploys processing components within a VPC with specified settings.
-
----
-
-##### `workingBucket`<sup>Optional</sup> <a name="workingBucket" id="@cdklabs/genai-idp.ProcessingEnvironmentApiProps.property.workingBucket"></a>
-
-```typescript
-public readonly workingBucket: IBucket;
-```
-
-- *Type:* aws-cdk-lib.aws_s3.IBucket
-
-The S3 bucket for working files during document processing.
-
-Used for temporary storage of intermediate processing results.
 
 ---
 
@@ -71358,6 +72327,39 @@ Handles API requests and invokes the calculation function.
 
 ---
 
+### IChatWithDocument <a name="IChatWithDocument" id="@cdklabs/genai-idp.IChatWithDocument"></a>
+
+- *Extends:* constructs.IConstruct
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp.ChatWithDocument">ChatWithDocument</a>, <a href="#@cdklabs/genai-idp.IChatWithDocument">IChatWithDocument</a>
+
+Interface for the Chat with Document feature.
+
+Provides natural language conversation capabilities about a specific
+processed document by combining document context from the knowledge base
+with conversational AI.
+
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IChatWithDocument.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.IChatWithDocument.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
 ### IConcurrencyTable <a name="IConcurrencyTable" id="@cdklabs/genai-idp.IConcurrencyTable"></a>
 
 - *Extends:* aws-cdk-lib.aws_dynamodb.ITable
@@ -72123,6 +73125,38 @@ The DynamoDB table that tracks discovery job status and metadata.
 
 ---
 
+### IDocumentEditing <a name="IDocumentEditing" id="@cdklabs/genai-idp.IDocumentEditing"></a>
+
+- *Extends:* constructs.IConstruct
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp.DocumentEditing">DocumentEditing</a>, <a href="#@cdklabs/genai-idp.IDocumentEditing">IDocumentEditing</a>
+
+Interface for the Document Editing feature.
+
+Provides document section editing and change processing capabilities,
+allowing users to modify document sections and trigger reprocessing.
+
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IDocumentEditing.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.IDocumentEditing.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
 ### IDocumentProcessor <a name="IDocumentProcessor" id="@cdklabs/genai-idp.IDocumentProcessor"></a>
 
 - *Extends:* constructs.IConstruct
@@ -72285,6 +73319,52 @@ Optional DynamoDB table for storing trace IDs and analysis results.
 
 ---
 
+### IEvaluation <a name="IEvaluation" id="@cdklabs/genai-idp.IEvaluation"></a>
+
+- *Extends:* constructs.IConstruct
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp.Evaluation">Evaluation</a>, <a href="#@cdklabs/genai-idp.IEvaluation">IEvaluation</a>
+
+Interface for the Evaluation feature.
+
+Provides evaluation and baseline management capabilities for document processing.
+Enables copying processed documents to a baseline bucket for accuracy evaluation
+and model performance measurement.
+
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IEvaluation.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.IEvaluation.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for storing evaluation baseline documents. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.IEvaluation.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `evaluationBaselineBucket`<sup>Required</sup> <a name="evaluationBaselineBucket" id="@cdklabs/genai-idp.IEvaluation.property.evaluationBaselineBucket"></a>
+
+```typescript
+public readonly evaluationBaselineBucket: IBucket;
+```
+
+- *Type:* aws-cdk-lib.aws_s3.IBucket
+
+The S3 bucket for storing evaluation baseline documents.
+
+---
+
 ### IHitlEnvironment <a name="IHitlEnvironment" id="@cdklabs/genai-idp.IHitlEnvironment"></a>
 
 - *Extends:* constructs.IConstruct
@@ -72327,6 +73407,51 @@ public readonly completeSectionReviewFunction: CompleteSectionReviewFunction;
 - *Type:* <a href="#@cdklabs/genai-idp.CompleteSectionReviewFunction">CompleteSectionReviewFunction</a>
 
 The Lambda function for completing section reviews.
+
+---
+
+### IKnowledgeBaseQuery <a name="IKnowledgeBaseQuery" id="@cdklabs/genai-idp.IKnowledgeBaseQuery"></a>
+
+- *Extends:* constructs.IConstruct
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp.KnowledgeBaseQuery">KnowledgeBaseQuery</a>, <a href="#@cdklabs/genai-idp.IKnowledgeBaseQuery">IKnowledgeBaseQuery</a>
+
+Interface for the Knowledge Base Query feature.
+
+Provides natural language querying capabilities for processed documents
+using Amazon Bedrock knowledge base.
+
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.IKnowledgeBaseQuery.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
+| <code><a href="#@cdklabs/genai-idp.IKnowledgeBaseQuery.property.knowledgeBase">knowledgeBase</a></code> | <code>@cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase</code> | The Amazon Bedrock knowledge base for document querying. |
+
+---
+
+##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp.IKnowledgeBaseQuery.property.node"></a>
+
+```typescript
+public readonly node: Node;
+```
+
+- *Type:* constructs.Node
+
+The tree node.
+
+---
+
+##### `knowledgeBase`<sup>Required</sup> <a name="knowledgeBase" id="@cdklabs/genai-idp.IKnowledgeBaseQuery.property.knowledgeBase"></a>
+
+```typescript
+public readonly knowledgeBase: IKnowledgeBase;
+```
+
+- *Type:* @cdklabs/generative-ai-cdk-constructs.bedrock.IKnowledgeBase
+
+The Amazon Bedrock knowledge base for document querying.
 
 ---
 
@@ -73013,7 +74138,7 @@ Used by client applications to interact with the document processing system.
 
 ### IProcessingEnvironmentApiFeature <a name="IProcessingEnvironmentApiFeature" id="@cdklabs/genai-idp.IProcessingEnvironmentApiFeature"></a>
 
-- *Implemented By:* <a href="#@cdklabs/genai-idp.AgentAnalytics">AgentAnalytics</a>, <a href="#@cdklabs/genai-idp.AgentCompanionChat">AgentCompanionChat</a>, <a href="#@cdklabs/genai-idp.CapacityPlanning">CapacityPlanning</a>, <a href="#@cdklabs/genai-idp.ErrorAnalyzer">ErrorAnalyzer</a>, <a href="#@cdklabs/genai-idp.HitlEnvironment">HitlEnvironment</a>, <a href="#@cdklabs/genai-idp.ProcessingProgressMonitor">ProcessingProgressMonitor</a>, <a href="#@cdklabs/genai-idp.TestStudio">TestStudio</a>, <a href="#@cdklabs/genai-idp.UserManagement">UserManagement</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
+- *Implemented By:* <a href="#@cdklabs/genai-idp.AgentAnalytics">AgentAnalytics</a>, <a href="#@cdklabs/genai-idp.AgentCompanionChat">AgentCompanionChat</a>, <a href="#@cdklabs/genai-idp.CapacityPlanning">CapacityPlanning</a>, <a href="#@cdklabs/genai-idp.ChatWithDocument">ChatWithDocument</a>, <a href="#@cdklabs/genai-idp.DocumentDiscovery">DocumentDiscovery</a>, <a href="#@cdklabs/genai-idp.DocumentEditing">DocumentEditing</a>, <a href="#@cdklabs/genai-idp.ErrorAnalyzer">ErrorAnalyzer</a>, <a href="#@cdklabs/genai-idp.Evaluation">Evaluation</a>, <a href="#@cdklabs/genai-idp.HitlEnvironment">HitlEnvironment</a>, <a href="#@cdklabs/genai-idp.KnowledgeBaseQuery">KnowledgeBaseQuery</a>, <a href="#@cdklabs/genai-idp.ProcessingProgressMonitor">ProcessingProgressMonitor</a>, <a href="#@cdklabs/genai-idp.TestStudio">TestStudio</a>, <a href="#@cdklabs/genai-idp.UserManagement">UserManagement</a>, <a href="#@cdklabs/genai-idp.IProcessingEnvironmentApiFeature">IProcessingEnvironmentApiFeature</a>
 
 Interface for features that can attach themselves to the ProcessingEnvironmentApi.
 

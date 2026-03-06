@@ -4,35 +4,19 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import * as path from "path";
-import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
-import {
-  IGuardrail,
-  IBedrockInvokable,
-} from "@aws-cdk/aws-bedrock-alpha/bedrock";
-// Keep IKnowledgeBase from old package until it's available in alpha
-import { IKnowledgeBase } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import * as cdk from "aws-cdk-lib";
 import * as appsync from "aws-cdk-lib/aws-appsync";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { IBucket } from "aws-cdk-lib/aws-s3";
-import { IQueue } from "aws-cdk-lib/aws-sqs";
-import * as stepfunctions from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
-import { IDocumentDiscovery } from "./document-discovery";
 import { LogLevel } from "../log-level";
 import { ProcessingEnvironmentApiBaseProps } from "./processing-environment-api-base-props";
 import { IConfigurationTable } from "../configuration-table";
 import { ITrackingTable } from "../tracking-table";
 import { VpcConfiguration } from "../vpc-configuration";
 import * as functions from "./functions";
-
-/**
- * Type alias for backward compatibility.
- * IInvokable is now IBedrockInvokable from the alpha module.
- */
-type IInvokable = IBedrockInvokable;
 
 /**
  * Interface for features that can attach themselves to the ProcessingEnvironmentApi.
@@ -148,68 +132,6 @@ export interface ProcessingEnvironmentApiProps extends ProcessingEnvironmentApiB
    * When provided, deploys processing components within a VPC with specified settings.
    */
   readonly vpcConfiguration?: VpcConfiguration;
-
-  /**
-   * Optional S3 bucket name for storing evaluation baseline documents.
-   * Used for comparing extraction results against known correct values
-   * to measure accuracy and evaluate model performance.
-   */
-  readonly evaluationBaselineBucket?: IBucket;
-
-  /**
-   * Optional invokable model to use for knowledge base queries.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * Enables natural language querying of processed documents when a knowledge base is configured.
-   *
-   * @default bedrock.BedrockFoundationModel.AMAZON_NOVA_PRO_V1_0
-   */
-  readonly knowledgeBaseModel?: bedrock.IBedrockInvokable;
-
-  /**
-   * Optional knowledge base identifier for document querying capabilities.
-   * When provided, enables natural language querying of processed documents
-   * using the specified Amazon Bedrock knowledge base.
-   */
-  readonly knowledgeBase?: IKnowledgeBase;
-
-  /**
-   * Optional Bedrock guardrail to apply to model interactions.
-   * Helps ensure model outputs adhere to content policies and guidelines
-   * by filtering inappropriate content and enforcing usage policies.
-   */
-  readonly knowledgeBaseGuardrail?: bedrock.IGuardrail;
-
-  /**
-   * Optional Step Functions state machine for document processing workflow.
-   * When provided, enables querying of execution details and step-by-step
-   * processing status through the GraphQL API.
-   */
-  readonly stateMachine?: stepfunctions.IStateMachine;
-
-  /**
-   * Optional document discovery for automated document analysis.
-   * When provided, enables document discovery capabilities including
-   * automated configuration generation and document structure analysis.
-   */
-  readonly documentDiscovery?: IDocumentDiscovery;
-
-  /**
-   * The S3 bucket for working files during document processing.
-   * Used for temporary storage of intermediate processing results.
-   */
-  readonly workingBucket?: IBucket;
-
-  /**
-   * The SQS queue for document processing requests.
-   * Used to queue documents for processing and manage workflow execution.
-   */
-  readonly documentQueue?: IQueue;
-
-  /**
-   * Data retention period in days for processed documents.
-   * Controls how long document data is kept in the system.
-   */
-  readonly dataRetentionInDays?: number;
 }
 
 /**
@@ -221,38 +143,19 @@ export interface ProcessingEnvironmentApiProps extends ProcessingEnvironmentApiB
  * - Accessing document contents and extraction results
  * - Uploading new documents for processing
  * - Copying documents to baseline for evaluation
- * - Querying document knowledge base (if configured)
  *
- * It integrates with the processing environment's resources including DynamoDB tables,
- * S3 buckets, and optional knowledge base to provide a comprehensive interface for
- * monitoring and managing the document processing workflow.
- */
-/**
- * A construct that provides a GraphQL API for tracking and managing document processing.
+ * Additional features can be integrated using the `addFeature()` method, which
+ * accepts any construct implementing `IProcessingEnvironmentApiFeature`.
  *
- * The ProcessingEnvironmentApi creates an AppSync GraphQL API with resolvers for:
- * - Querying document status and metadata
- * - Managing document processing (delete, reprocess)
- * - Accessing document contents and extraction results
- * - Uploading new documents for processing
- * - Copying documents to baseline for evaluation
- * - Querying document knowledge base (if configured)
- *
- * It integrates with the processing environment's resources including DynamoDB tables,
- * S3 buckets, and optional knowledge base to provide a comprehensive interface for
- * monitoring and managing the document processing workflow.
+ * @since v0.4.16
  */
 export class ProcessingEnvironmentApi
   extends appsync.GraphqlApi
   implements IProcessingEnvironmentApi
 {
-  private readonly _logLevel?: LogLevel;
   private readonly _encryptionKey?: kms.IKey;
   private readonly _logRetention?: logs.RetentionDays;
   private readonly _vpcConfiguration?: VpcConfiguration;
-  private readonly _configurationTable: IConfigurationTable;
-  private readonly _trackingTable: ITrackingTable;
-  private readonly outputBucket: IBucket;
 
   /**
    * Creates a new ProcessingEnvironmentApi.
@@ -287,13 +190,9 @@ export class ProcessingEnvironmentApi
     });
 
     // Store configuration for later use in add* methods
-    this._logLevel = props.logLevel;
     this._encryptionKey = props.encryptionKey;
     this._logRetention = props.logRetention;
     this._vpcConfiguration = props.vpcConfiguration;
-    this._configurationTable = props.configurationTable;
-    this._trackingTable = props.trackingTable;
-    this.outputBucket = props.outputBucket;
 
     // Add file contents resolver
     const getFileContentsDataSource = this.addGetFileContentsDataSource(
@@ -308,7 +207,6 @@ export class ProcessingEnvironmentApi
     const uploadDocumentDataSource = this.addUploadDocumentDataSource(
       props.inputBucket,
       props.outputBucket,
-      props.evaluationBaselineBucket,
       props.encryptionKey,
       props.logRetention,
       props.vpcConfiguration,
@@ -324,39 +222,6 @@ export class ProcessingEnvironmentApi
 
     this.createReprocessDocumentMutationResolver(reprocessDocumentDataSource);
 
-    // Add process changes resolver if required properties are available
-    if (
-      props.workingBucket &&
-      props.documentQueue &&
-      props.dataRetentionInDays !== undefined
-    ) {
-      const processChangesDataSource = this.addProcessChangesDataSource(
-        props.trackingTable,
-        props.documentQueue,
-        props.workingBucket,
-        props.inputBucket,
-        props.outputBucket,
-        props.dataRetentionInDays,
-        props.encryptionKey,
-        props.logRetention,
-        props.vpcConfiguration,
-      );
-      this.createProcessChangesMutationResolver(processChangesDataSource);
-    }
-
-    // Add optional components using modular methods
-    if (props.evaluationBaselineBucket) {
-      this.addEvaluation(props.evaluationBaselineBucket);
-    }
-
-    if (props.knowledgeBase && props.knowledgeBaseModel) {
-      this.addKnowledgeBase(
-        props.knowledgeBase,
-        props.knowledgeBaseModel,
-        props.knowledgeBaseGuardrail,
-      );
-    }
-
     // Add core functionality
     this.addTrackingTable(
       props.trackingTable,
@@ -364,14 +229,6 @@ export class ProcessingEnvironmentApi
       props.outputBucket,
     );
     this.addConfigurationTable(props.configurationTable);
-
-    // Add optional Discovery functionality
-    if (props.documentDiscovery) {
-      this.addDocumentDiscovery(props.documentDiscovery);
-    }
-
-    // Note: MCPIntegration doesn't have an add method yet as it's primarily
-    // a standalone construct that provides OAuth endpoints
   }
 
   /**
@@ -433,67 +290,6 @@ export class ProcessingEnvironmentApi
   }
 
   /**
-   * Add knowledge base querying capabilities to the GraphQL API.
-   *
-   * This method adds natural language querying functionality for processed documents
-   * using Amazon Bedrock knowledge base. It creates the necessary resolvers and
-   * data sources to enable document querying through the GraphQL API.
-   *
-   * @example
-   * // Add knowledge base functionality after API creation
-   * api.addKnowledgeBase(
-   *   myKnowledgeBase,
-   *   bedrock.BedrockFoundationModel.AMAZON_NOVA_PRO_V1_0,
-   *   myGuardrail
-   * );
-   *
-   * @param knowledgeBase The Amazon Bedrock knowledge base for document querying
-   * @param knowledgeBaseModel The invokable model to use for knowledge base queries
-   * @param knowledgeBaseGuardrail Optional Bedrock guardrail to apply to model interactions
-   */
-  public addKnowledgeBase(
-    knowledgeBase: IKnowledgeBase,
-    knowledgeBaseModel: bedrock.IBedrockInvokable,
-    knowledgeBaseGuardrail?: bedrock.IGuardrail,
-  ): void {
-    const queryKnowledgeBaseDataSource = this.addQueryKnowledgeBaseDataSource(
-      knowledgeBase,
-      knowledgeBaseModel,
-      knowledgeBaseGuardrail,
-      this._logLevel,
-      this._encryptionKey,
-      this._logRetention,
-      this._vpcConfiguration,
-    );
-
-    this.createQueryKnowledgeBaseQueryResolver(queryKnowledgeBaseDataSource);
-  }
-
-  /**
-   * Add evaluation capabilities to the GraphQL API.
-   *
-   * This method adds document evaluation functionality, including the ability
-   * to copy documents to a baseline bucket for evaluation purposes.
-   * It creates the necessary resolvers and data sources for evaluation workflows.
-   *
-   * @example
-   * // Add evaluation functionality after API creation
-   * api.addEvaluation(myEvaluationBaselineBucket);
-   *
-   * @param evaluationBaselineBucket The S3 bucket for storing evaluation baseline documents
-   */
-  public addEvaluation(evaluationBaselineBucket: IBucket): void {
-    const copyToBaselineDataSource = this.addCopyToBaselineDataSource(
-      evaluationBaselineBucket,
-      this.outputBucket,
-      this._encryptionKey,
-      this._logRetention,
-      this._vpcConfiguration,
-    );
-    this.createCopyToBaselineMutationResolver(copyToBaselineDataSource);
-  }
-
-  /**
    * Add tracking table data sources and resolvers to the GraphQL API.
    *
    * This method adds all tracking table related functionality including:
@@ -552,46 +348,6 @@ export class ProcessingEnvironmentApi
       this._logRetention,
       this._vpcConfiguration,
     );
-  }
-
-  /**
-   * Add Chat with Document capabilities to the GraphQL API.
-   *
-   * This method adds natural language conversation functionality about processed documents
-   * by combining document context from the knowledge base with conversational AI.
-   * It maintains conversation history and provides contextual responses.
-   *
-   * @example
-   * // Add chat with document after API creation
-   * api.addChatWithDocument(
-   *   knowledgeBase,
-   *   chatModel,
-   *   myGuardrail
-   * );
-   *
-   * @param knowledgeBase The Bedrock knowledge base for document context
-   * @param chatModel The invokable model for chat functionality
-   * @param guardrail Optional Bedrock guardrail for content filtering
-   */
-  public addChatWithDocument(
-    knowledgeBase: IKnowledgeBase,
-    chatModel: bedrock.IBedrockInvokable,
-    guardrail?: bedrock.IGuardrail,
-  ): void {
-    const chatWithDocumentDataSource = this.addChatWithDocumentDataSource(
-      knowledgeBase,
-      chatModel,
-      this._trackingTable,
-      this._configurationTable,
-      this.outputBucket,
-      guardrail,
-      this._logLevel,
-      this._encryptionKey,
-      this._logRetention,
-      this._vpcConfiguration,
-    );
-
-    this.createChatWithDocumentQueryResolver(chatWithDocumentDataSource);
   }
 
   private addTrackingTableDataSourceAndResolvers(
@@ -1088,76 +844,6 @@ export class ProcessingEnvironmentApi
   }
 
   /**
-   * Add Copy To Baseline Data Source to the GraphQL API.
-   *
-   * This method creates a Lambda data source for copying processed documents
-   * to the evaluation baseline bucket for use in accuracy evaluation.
-   *
-   * @param evaluationBaselineBucket The S3 bucket for evaluation baseline documents
-   * @param outputBucket The S3 bucket for output documents
-   * @param encryptionKey The KMS key for encryption
-   * @param logRetention The log retention period
-   * @param vpcConfiguration The VPC configuration
-   * @returns The created Lambda data source
-   */
-  private addCopyToBaselineDataSource(
-    evaluationBaselineBucket: IBucket,
-    outputBucket: IBucket,
-    encryptionKey?: kms.IKey,
-    logRetention?: logs.RetentionDays,
-    vpcConfiguration?: VpcConfiguration,
-  ): appsync.LambdaDataSource {
-    const copyToBaselineResolverFunction =
-      new functions.CopyToBaselineResolverFunction(
-        this,
-        "CopyToBaselineResolverFunction",
-        {
-          outputBucket: outputBucket,
-          evaluationBaselineBucket: evaluationBaselineBucket,
-          api: this,
-          encryptionKey: encryptionKey,
-          logGroup: new logs.LogGroup(
-            this,
-            "CopyToBaselineResolverFunctionLogGroup",
-            {
-              encryptionKey: encryptionKey,
-              retention: logRetention || logs.RetentionDays.ONE_WEEK,
-            },
-          ),
-          ...vpcConfiguration,
-        },
-      );
-
-    return this.addLambdaDataSource(
-      "CopyToBaselineDataSource",
-      copyToBaselineResolverFunction,
-      {
-        name: "CopyToBaselineDataSource",
-        description: "Lambda function for copying files to baseline bucket",
-      },
-    );
-  }
-
-  /**
-   * Create Copy To Baseline Mutation Resolver using the provided data source.
-   *
-   * This method creates a resolver that handles document copying mutations
-   * using the specified Lambda data source.
-   *
-   * @param dataSource The Lambda data source for copying documents to baseline
-   * @returns The created resolver
-   */
-  private createCopyToBaselineMutationResolver(
-    dataSource: appsync.LambdaDataSource,
-  ): appsync.Resolver {
-    return this.createResolver("CopyToBaselineResolver", {
-      dataSource: dataSource,
-      typeName: "Mutation",
-      fieldName: "copyToBaseline",
-    });
-  }
-
-  /**
    * Add Reprocess Document Data Source to the GraphQL API.
    *
    * This method creates a Lambda data source for document reprocessing operations.
@@ -1225,106 +911,11 @@ export class ProcessingEnvironmentApi
   }
 
   /**
-   * Add Process Changes Data Source to the GraphQL API.
-   *
-   * This method creates a Lambda data source for processing document section changes.
-   * The data source can be used to create resolvers that allow clients to modify
-   * document sections and trigger reprocessing.
-   *
-   * @param trackingTable The DynamoDB table for tracking document processing
-   * @param documentQueue The SQS queue for document processing
-   * @param workingBucket The S3 bucket for working files
-   * @param inputBucket The S3 bucket for input documents
-   * @param outputBucket The S3 bucket for output documents
-   * @param dataRetentionInDays Data retention period in days
-   * @param encryptionKey The KMS key for encryption
-   * @param logRetention The log retention period
-   * @param vpcConfiguration The VPC configuration
-   * @returns The created Lambda data source
-   */
-  private addProcessChangesDataSource(
-    trackingTable: ITrackingTable,
-    documentQueue: IQueue,
-    workingBucket: IBucket,
-    inputBucket: IBucket,
-    outputBucket: IBucket,
-    dataRetentionInDays: number,
-    encryptionKey?: kms.IKey,
-    logRetention?: logs.RetentionDays,
-    vpcConfiguration?: VpcConfiguration,
-  ): appsync.LambdaDataSource {
-    const processChangesResolverFunction =
-      new functions.ProcessChangesResolverFunction(
-        this,
-        "ProcessChangesResolverFunction",
-        {
-          trackingTable: trackingTable,
-          documentQueue: documentQueue,
-          workingBucket: workingBucket,
-          inputBucket: inputBucket,
-          outputBucket: outputBucket,
-          appsyncApiUrl: this.graphqlUrl,
-          graphqlApiArn: this.arn,
-          dataRetentionInDays: dataRetentionInDays,
-          encryptionKey: encryptionKey,
-          logGroup: new logs.LogGroup(
-            this,
-            "ProcessChangesResolverFunctionLogGroup",
-            {
-              encryptionKey: encryptionKey,
-              retention: logRetention || logs.RetentionDays.ONE_WEEK,
-            },
-          ),
-          ...vpcConfiguration,
-        },
-      );
-
-    return this.addLambdaDataSource(
-      "ProcessChangesDataSource",
-      processChangesResolverFunction,
-      {
-        name: "ProcessChangesDataSource",
-        description: "Lambda function for processing section changes",
-      },
-    );
-  }
-
-  /**
-   * Create Process Changes Mutation Resolver using the provided data source.
-   *
-   * This method creates a resolver that handles document section changes mutations
-   * using the specified Lambda data source.
-   *
-   * @param dataSource The Lambda data source for processing changes
-   * @returns The created resolver
-   */
-  private createProcessChangesMutationResolver(
-    dataSource: appsync.LambdaDataSource,
-  ): appsync.Resolver {
-    return this.createResolver("ProcessChangesResolver", {
-      dataSource: dataSource,
-      typeName: "Mutation",
-      fieldName: "processChanges",
-    });
-  }
-
-  /**
-   * Add Upload Document Resolver to the GraphQL API.
-   *
-   * This method creates a resolver that generates presigned URLs
-   * for uploading documents directly to S3 from the client.
-   *
-   * @param props The tracking API properties
-   * @param environment The processing environment
-   * @private
-   */
-  /**
    * Add Upload Document Data Source to the GraphQL API.
    *
    * This method creates a Lambda data source for generating presigned URLs
    * for uploading documents directly to S3 from the client.
    *
-   * @param evaluationBaselineBucket The S3 bucket for evaluation baseline documents
    * @param inputBucket The S3 bucket for input documents
    * @param outputBucket The S3 bucket for output documents
    * @param encryptionKey The KMS key for encryption
@@ -1335,7 +926,6 @@ export class ProcessingEnvironmentApi
   private addUploadDocumentDataSource(
     inputBucket: IBucket,
     outputBucket: IBucket,
-    evaluationBaselineBucket?: IBucket,
     encryptionKey?: kms.IKey,
     logRetention?: logs.RetentionDays,
     vpcConfiguration?: VpcConfiguration,
@@ -1346,7 +936,6 @@ export class ProcessingEnvironmentApi
       {
         inputBucket: inputBucket,
         outputBucket: outputBucket,
-        evaluationBaselineBucket: evaluationBaselineBucket,
         encryptionKey: encryptionKey,
         logGroup: new logs.LogGroup(this, "UploadResolverFunctionLogGroup", {
           encryptionKey: encryptionKey,
@@ -1383,281 +972,5 @@ export class ProcessingEnvironmentApi
       typeName: "Mutation",
       fieldName: "uploadDocument",
     });
-  }
-
-  /**
-   * Add Query Knowledge Base Data Source to the GraphQL API.
-   *
-   * This method creates a Lambda data source for querying the document
-   * knowledge base using natural language. It integrates with Amazon Bedrock
-   * to provide intelligent document search capabilities.
-   *
-   * @param knowledgeBase The Bedrock knowledge base to query
-   * @param logLevel The log level for the resolver
-   * @param key The KMS key for encryption
-   * @param logRetention The log retention period
-   * @param vpcConfiguration The VPC configuration
-   * @returns The created Lambda data source
-   */
-  private addQueryKnowledgeBaseDataSource(
-    knowledgeBase: IKnowledgeBase,
-    knowledgeBaseModel: IInvokable,
-    knowledgeBaseGuardrail?: IGuardrail,
-    logLevel?: LogLevel,
-    key?: kms.IKey,
-    logRetention?: logs.RetentionDays,
-    vpcConfiguration?: VpcConfiguration,
-  ): appsync.LambdaDataSource {
-    const queryKnowledgeBaseResolverFunction =
-      new functions.QueryKnowledgeBaseResolverFunction(
-        this,
-        "QueryKnowledgeBaseResolverFunction",
-        {
-          knowledgeBase: knowledgeBase,
-          knowledgeBaseModel: knowledgeBaseModel,
-          guardrail: knowledgeBaseGuardrail,
-          logLevel: logLevel ?? LogLevel.INFO,
-          encryptionKey: key,
-          logGroup: new logs.LogGroup(
-            this,
-            "QueryKnowledgeBaseResolverFunctionLogGroup",
-            {
-              encryptionKey: key,
-              retention: logRetention || logs.RetentionDays.ONE_WEEK,
-            },
-          ),
-          ...vpcConfiguration,
-        },
-      );
-
-    return this.addLambdaDataSource(
-      "QueryKnowledgeBaseDataSource",
-      queryKnowledgeBaseResolverFunction,
-      {
-        name: "QueryKnowledgeBase",
-        description: "Lambda function to query Bedrock Knowledge Base",
-      },
-    );
-  }
-
-  /**
-   * Create Query Knowledge Base Query Resolver using the provided data source.
-   *
-   * This method creates a resolver that handles knowledge base queries
-   * using the specified Lambda data source.
-   *
-   * @param dataSource The Lambda data source for knowledge base queries
-   * @returns The created resolver
-   */
-  private createQueryKnowledgeBaseQueryResolver(
-    dataSource: appsync.LambdaDataSource,
-  ): appsync.Resolver {
-    return this.createResolver("QueryKnowledgeBaseResolver", {
-      dataSource: dataSource,
-      typeName: "Query",
-      fieldName: "queryKnowledgeBase",
-    });
-  }
-
-  /**
-   * Add Chat with Document data source.
-   *
-   * This method creates a Lambda data source for chat with document functionality
-   * and configures the necessary permissions and environment variables.
-   *
-   * @param knowledgeBase The Bedrock knowledge base for document context
-   * @param chatModel The invokable model for chat functionality
-   * @param guardrail Optional Bedrock guardrail for content filtering
-   * @param logLevel The log level for the function
-   * @param key Optional KMS key for encryption
-   * @param logRetention Log retention period
-   * @param vpcConfiguration Optional VPC configuration
-   * @returns The created Lambda data source
-   */
-  private addChatWithDocumentDataSource(
-    knowledgeBase: IKnowledgeBase,
-    chatModel: IInvokable,
-    trackingTable: ITrackingTable,
-    configurationTable: IConfigurationTable,
-    outputBucket: IBucket,
-    guardrail?: IGuardrail,
-    logLevel?: LogLevel,
-    key?: kms.IKey,
-    logRetention?: logs.RetentionDays,
-    vpcConfiguration?: VpcConfiguration,
-  ): appsync.LambdaDataSource {
-    const chatWithDocumentResolverFunction =
-      new functions.ChatWithDocumentResolverFunction(
-        this,
-        "ChatWithDocumentResolverFunction",
-        {
-          knowledgeBase: knowledgeBase,
-          chatModel: chatModel,
-          trackingTable: trackingTable,
-          configurationTable: configurationTable,
-          outputBucket: outputBucket,
-          guardrail: guardrail,
-          logLevel: logLevel ?? LogLevel.INFO,
-          encryptionKey: key,
-          logGroup: new logs.LogGroup(
-            this,
-            "ChatWithDocumentResolverFunctionLogGroup",
-            {
-              encryptionKey: key,
-              retention: logRetention || logs.RetentionDays.ONE_WEEK,
-            },
-          ),
-          ...vpcConfiguration,
-        },
-      );
-
-    return this.addLambdaDataSource(
-      "ChatWithDocumentDataSource",
-      chatWithDocumentResolverFunction,
-      {
-        name: "ChatWithDocument",
-        description: "Lambda function for chat with document functionality",
-      },
-    );
-  }
-
-  /**
-   * Create Chat with Document Query Resolver using the provided data source.
-   *
-   * This method creates a resolver that handles chat with document queries
-   * using the specified Lambda data source.
-   *
-   * @param dataSource The Lambda data source for chat with document
-   * @returns The created resolver
-   */
-  private createChatWithDocumentQueryResolver(
-    dataSource: appsync.LambdaDataSource,
-  ): appsync.Resolver {
-    return this.createResolver("ChatWithDocumentResolver", {
-      dataSource: dataSource,
-      typeName: "Query",
-      fieldName: "chatWithDocument",
-    });
-  }
-
-  /**
-   * Add Document Discovery capabilities to the GraphQL API.
-   *
-   * This method adds document discovery functionality including automated
-   * document analysis and configuration generation capabilities.
-   *
-   * @param documentDiscovery The document discovery construct with table, queue, and functions
-   */
-  public addDocumentDiscovery(documentDiscovery: IDocumentDiscovery): void {
-    // Initialize functions with API URL and environment settings
-    const { uploadResolverFunction } = documentDiscovery.initializeFunctions(
-      this,
-      this._configurationTable,
-      this._encryptionKey,
-      this._logLevel,
-      this._logRetention,
-      this._vpcConfiguration,
-    );
-
-    // Add upload discovery document resolver
-    const discoveryUploadDataSource = this.addLambdaDataSource(
-      "DiscoveryUploadDataSource",
-      uploadResolverFunction,
-      {
-        name: "DiscoveryUploadResolver",
-        description: "Lambda function for discovery document uploads",
-      },
-    );
-
-    this.createResolver("UploadDiscoveryDocumentResolver", {
-      dataSource: discoveryUploadDataSource,
-      typeName: "Mutation",
-      fieldName: "uploadDiscoveryDocument",
-    });
-
-    // Add discovery table data source for queries
-    const discoveryTableDataSource = this.addDynamoDbDataSource(
-      "DiscoveryTableDataSource",
-      documentDiscovery.discoveryTable,
-    );
-
-    // Create list discovery jobs resolver
-    discoveryTableDataSource.createResolver("ListDiscoveryJobsResolver", {
-      typeName: "Query",
-      fieldName: "listDiscoveryJobs",
-      requestMappingTemplate: appsync.MappingTemplate.fromString(`
-        {
-          "version": "2017-02-28",
-          "operation": "Scan",
-          "limit": $util.defaultIfNull($ctx.args.limit, 20),
-          "nextToken": $util.toJson($util.defaultIfNullOrBlank($ctx.args.nextToken, null))
-        }
-      `),
-      responseMappingTemplate: appsync.MappingTemplate.fromString(`
-        {
-          "DiscoveryJobs": $util.toJson($ctx.result.items),
-          "nextToken": $util.toJson($util.defaultIfNullOrBlank($ctx.result.nextToken, null))
-        }
-      `),
-    });
-
-    // Create update discovery job status resolver (for internal use)
-    discoveryTableDataSource.createResolver(
-      "UpdateDiscoveryJobStatusResolver",
-      {
-        typeName: "Mutation",
-        fieldName: "updateDiscoveryJobStatus",
-        requestMappingTemplate: appsync.MappingTemplate.fromString(`
-          ## Validate status is one of the allowed values
-          #set($validStatuses = ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"])
-          #if(!$validStatuses.contains($ctx.args.status))
-            $util.error("Invalid status value. Status must be one of: PENDING, IN_PROGRESS, COMPLETED, FAILED", "ValidationException")
-          #end
-          
-          #set($expNames = {})
-          #set($expValues = {})
-          
-          ## Set status (required)
-          $util.qr($expNames.put("#status", "status"))
-          $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
-          #set($updateExpression = "SET #status = :status")
-          
-          ## Set errorMessage (optional)
-          #if($ctx.args.errorMessage)
-            $util.qr($expNames.put("#errorMessage", "errorMessage"))
-            $util.qr($expValues.put(":errorMessage", $util.dynamodb.toDynamoDB($ctx.args.errorMessage)))
-            #set($updateExpression = "\${updateExpression}, #errorMessage = :errorMessage")
-          #end
-          
-          ## Set updatedAt to current timestamp
-          $util.qr($expNames.put("#updatedAt", "updatedAt"))
-          $util.qr($expValues.put(":updatedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
-          #set($updateExpression = "\${updateExpression}, #updatedAt = :updatedAt")
-          
-          ## Set completedAt when status is COMPLETED or FAILED
-          #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED")
-            $util.qr($expNames.put("#completedAt", "completedAt"))
-            $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
-            #set($updateExpression = "\${updateExpression}, #completedAt = :completedAt")
-          #end
-          
-          {
-            "version": "2018-05-29",
-            "operation": "UpdateItem",
-            "key": {
-              "jobId": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-            },
-            "update": {
-              "expression": "$updateExpression",
-              "expressionNames": $util.toJson($expNames),
-              "expressionValues": $util.toJson($expValues)
-            }
-          }
-        `),
-        responseMappingTemplate: appsync.MappingTemplate.fromString(`
-          $util.toJson($ctx.result)
-        `),
-      },
-    );
   }
 }

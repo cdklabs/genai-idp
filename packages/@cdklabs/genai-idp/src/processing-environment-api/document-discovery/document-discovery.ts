@@ -3,6 +3,7 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import * as appsync from "aws-cdk-lib/aws-appsync";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { IBucket } from "aws-cdk-lib/aws-s3";
@@ -16,7 +17,10 @@ import {
 import { IConfigurationTable } from "../../configuration-table";
 import { LogLevel } from "../../log-level";
 import { VpcConfiguration } from "../../vpc-configuration";
-import { IProcessingEnvironmentApi } from "../processing-environment-api";
+import {
+  IProcessingEnvironmentApi,
+  IProcessingEnvironmentApiFeature,
+} from "../processing-environment-api";
 
 /**
  * Result of initializing DocumentDiscovery functions.
@@ -109,7 +113,10 @@ export interface DocumentDiscoveryProps {
  * analysis and configuration generation, including DynamoDB table, SQS queue,
  * and Lambda functions for processing discovery jobs.
  */
-export class DocumentDiscovery extends Construct implements IDocumentDiscovery {
+export class DocumentDiscovery
+  extends Construct
+  implements IDocumentDiscovery, IProcessingEnvironmentApiFeature
+{
   readonly discoveryBucket: IBucket;
   readonly discoveryTable: IDiscoveryTable;
   readonly discoveryQueue: IDiscoveryQueue;
@@ -129,6 +136,8 @@ export class DocumentDiscovery extends Construct implements IDocumentDiscovery {
   /**
    * Initialize the Lambda functions with API URL.
    * Called by ProcessingEnvironmentApi when adding document discovery.
+   *
+   * @deprecated Use `api.addFeature(documentDiscovery)` instead. Will be removed in v1.0.0.
    */
   public initializeFunctions(
     api: IProcessingEnvironmentApi,
@@ -175,5 +184,129 @@ export class DocumentDiscovery extends Construct implements IDocumentDiscovery {
     );
 
     return { uploadResolverFunction, processorFunction };
+  }
+
+  /**
+   * Attach this Document Discovery feature to the ProcessingEnvironmentApi.
+   *
+   * Creates the discovery upload resolver, discovery table data source,
+   * and all associated resolvers for discovery job management.
+   *
+   * @param api The ProcessingEnvironmentApi to attach to
+   * @since v0.4.16
+   */
+  public attachTo(api: IProcessingEnvironmentApi): void {
+    // Initialize functions with API URL and environment settings
+    const { uploadResolverFunction } = this.initializeFunctions(
+      api,
+      (api as any)._configurationTable,
+      (api as any)._encryptionKey,
+      (api as any)._logLevel,
+      (api as any)._logRetention,
+      (api as any)._vpcConfiguration,
+    );
+
+    // Add upload discovery document resolver
+    const discoveryUploadDataSource = api.addLambdaDataSource(
+      "DiscoveryUploadDataSource",
+      uploadResolverFunction,
+      {
+        name: "DiscoveryUploadResolver",
+        description: "Lambda function for discovery document uploads",
+      },
+    );
+
+    discoveryUploadDataSource.createResolver(
+      "UploadDiscoveryDocumentResolver",
+      {
+        typeName: "Mutation",
+        fieldName: "uploadDiscoveryDocument",
+      },
+    );
+
+    // Add discovery table data source for queries
+    const discoveryTableDataSource = api.addDynamoDbDataSource(
+      "DiscoveryTableDataSource",
+      this.discoveryTable,
+    );
+
+    // Create list discovery jobs resolver
+    discoveryTableDataSource.createResolver("ListDiscoveryJobsResolver", {
+      typeName: "Query",
+      fieldName: "listDiscoveryJobs",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "version": "2017-02-28",
+          "operation": "Scan",
+          "limit": $util.defaultIfNull($ctx.args.limit, 20),
+          "nextToken": $util.toJson($util.defaultIfNullOrBlank($ctx.args.nextToken, null))
+        }
+      `),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "DiscoveryJobs": $util.toJson($ctx.result.items),
+          "nextToken": $util.toJson($util.defaultIfNullOrBlank($ctx.result.nextToken, null))
+        }
+      `),
+    });
+
+    // Create update discovery job status resolver (for internal use)
+    discoveryTableDataSource.createResolver(
+      "UpdateDiscoveryJobStatusResolver",
+      {
+        typeName: "Mutation",
+        fieldName: "updateDiscoveryJobStatus",
+        requestMappingTemplate: appsync.MappingTemplate.fromString(`
+          ## Validate status is one of the allowed values
+          #set($validStatuses = ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"])
+          #if(!$validStatuses.contains($ctx.args.status))
+            $util.error("Invalid status value. Status must be one of: PENDING, IN_PROGRESS, COMPLETED, FAILED", "ValidationException")
+          #end
+          
+          #set($expNames = {})
+          #set($expValues = {})
+          
+          ## Set status (required)
+          $util.qr($expNames.put("#status", "status"))
+          $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
+          #set($updateExpression = "SET #status = :status")
+          
+          ## Set errorMessage (optional)
+          #if($ctx.args.errorMessage)
+            $util.qr($expNames.put("#errorMessage", "errorMessage"))
+            $util.qr($expValues.put(":errorMessage", $util.dynamodb.toDynamoDB($ctx.args.errorMessage)))
+            #set($updateExpression = "\${updateExpression}, #errorMessage = :errorMessage")
+          #end
+          
+          ## Set updatedAt to current timestamp
+          $util.qr($expNames.put("#updatedAt", "updatedAt"))
+          $util.qr($expValues.put(":updatedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
+          #set($updateExpression = "\${updateExpression}, #updatedAt = :updatedAt")
+          
+          ## Set completedAt when status is COMPLETED or FAILED
+          #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED")
+            $util.qr($expNames.put("#completedAt", "completedAt"))
+            $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
+            #set($updateExpression = "\${updateExpression}, #completedAt = :completedAt")
+          #end
+          
+          {
+            "version": "2018-05-29",
+            "operation": "UpdateItem",
+            "key": {
+              "jobId": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+            },
+            "update": {
+              "expression": "$updateExpression",
+              "expressionNames": $util.toJson($expNames),
+              "expressionValues": $util.toJson($expValues)
+            }
+          }
+        `),
+        responseMappingTemplate: appsync.MappingTemplate.fromString(`
+          $util.toJson($ctx.result)
+        `),
+      },
+    );
   }
 }

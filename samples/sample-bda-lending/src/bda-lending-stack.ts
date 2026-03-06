@@ -9,8 +9,11 @@ import { Database } from "@aws-cdk/aws-glue-alpha";
 import {
   AgentAnalytics,
   AgentCompanionChat,
+  ChatWithDocument,
   ConfigurationTable,
   DocumentDiscovery,
+  Evaluation,
+  KnowledgeBaseQuery,
   ProcessingEnvironment,
   ProcessingEnvironmentApi,
   ProcessingProgressMonitor,
@@ -115,7 +118,6 @@ export class BdaLendingStack extends Stack {
       outputBucket,
       encryptionKey: key,
       configurationTable,
-      evaluationBaselineBucket,
       trackingTable,
       authorizationConfig: {
         defaultAuthorization: {
@@ -218,6 +220,13 @@ export class BdaLendingStack extends Stack {
     );
     api.addFeature(progressMonitor);
 
+    // Add evaluation feature
+    api.addFeature(new Evaluation(this, "Evaluation", {
+      evaluationBaselineBucket,
+      outputBucket,
+      encryptionKey: key,
+    }));
+
     api.grantQuery(userIdentity.identityPool.authenticatedRole);
     api.grantSubscription(userIdentity.identityPool.authenticatedRole);
 
@@ -273,10 +282,19 @@ export class BdaLendingStack extends Stack {
       geoRegion: CrossRegionInferenceProfileRegion.US,
     });
 
-    api.addKnowledgeBase(knowledgeBase, chatModel);
+    api.addFeature(new KnowledgeBaseQuery(this, "KnowledgeBaseQuery", {
+      knowledgeBase,
+      knowledgeBaseModel: chatModel,
+    }));
 
     // Add chat with document functionality
-    api.addChatWithDocument(knowledgeBase, chatModel);
+    api.addFeature(new ChatWithDocument(this, "ChatWithDocument", {
+      knowledgeBase,
+      chatModel,
+      trackingTable,
+      configurationTable,
+      outputBucket,
+    }));
 
     // Create and add Agent Analytics using the new feature pattern
     const agentAnalytics = new AgentAnalytics(this, "AgentAnalytics", {
@@ -292,7 +310,7 @@ export class BdaLendingStack extends Stack {
     });
     api.addFeature(agentAnalytics);
 
-    api.addDocumentDiscovery(documentDiscovery);
+    api.addFeature(documentDiscovery);
 
     new CfnOutput(this, "WebSiteUrl", {
       value: `https://${webApplication.distribution.distributionDomainName}`,

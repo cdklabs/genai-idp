@@ -15,3 +15,7 @@ export * from "./error-analyzer";
 export * from "./capacity-planning";
 export * from "./user-management";
 export * from "./document-discovery";
+export * from "./evaluation";
+export * from "./knowledge-base";
+export * from "./chat-with-document";
+export * from "./document-editing";

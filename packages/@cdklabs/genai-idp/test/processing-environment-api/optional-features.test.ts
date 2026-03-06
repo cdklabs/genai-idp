@@ -20,6 +20,7 @@ import {
   TrackingTable,
   VpcConfiguration,
   ProcessingProgressMonitor,
+  Evaluation,
 } from "../../src";
 
 describe("ProcessingEnvironmentApi - Optional Features", () => {
@@ -120,7 +121,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
       expect(api).toBeDefined();
     });
 
-    test("integrates with evaluation baseline bucket", () => {
+    test("integrates with evaluation feature", () => {
       const evaluationBaselineBucket = new Bucket(
         stack,
         "EvaluationBaselineBucket",
@@ -131,8 +132,13 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
         outputBucket,
         trackingTable,
         configurationTable,
-        evaluationBaselineBucket,
       });
+
+      const evaluation = new Evaluation(stack, "Evaluation", {
+        evaluationBaselineBucket,
+        outputBucket,
+      });
+      api.addFeature(evaluation);
 
       expect(api).toBeDefined();
 
@@ -144,7 +150,7 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
       });
     });
 
-    test("addEvaluation method works independently", () => {
+    test("addFeature with Evaluation works independently", () => {
       const api = new ProcessingEnvironmentApi(stack, "TestApi", {
         inputBucket,
         outputBucket,
@@ -157,9 +163,13 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
         "EvaluationBaselineBucket",
       );
 
-      // Test the public method
+      // Test the feature pattern
       expect(() => {
-        api.addEvaluation(evaluationBaselineBucket);
+        const evaluation = new Evaluation(stack, "Evaluation", {
+          evaluationBaselineBucket,
+          outputBucket,
+        });
+        api.addFeature(evaluation);
       }).not.toThrow();
     });
   });
@@ -294,9 +304,16 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
         trackingTable,
         configurationTable,
         encryptionKey,
-        evaluationBaselineBucket,
         logRetention: RetentionDays.ONE_MONTH,
       });
+
+      // Add evaluation feature
+      const evaluation = new Evaluation(stack, "Evaluation", {
+        evaluationBaselineBucket,
+        outputBucket,
+        encryptionKey,
+      });
+      api.addFeature(evaluation);
 
       // Add progress monitor feature
       const progressMonitor = new ProcessingProgressMonitor(
@@ -341,9 +358,13 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
         ),
       });
 
-      // Test that public methods work after construction
+      // Test that features can be added after construction
       expect(() => {
-        api.addEvaluation(evaluationBaselineBucket);
+        const evaluation = new Evaluation(stack, "Evaluation", {
+          evaluationBaselineBucket,
+          outputBucket,
+        });
+        api.addFeature(evaluation);
         const progressMonitor = new ProcessingProgressMonitor(
           stack,
           "ProgressMonitor",
