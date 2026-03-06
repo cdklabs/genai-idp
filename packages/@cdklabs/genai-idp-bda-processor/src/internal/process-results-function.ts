@@ -117,7 +117,6 @@ export interface ProcessResultsFunctionProps extends IdpPythonFunctionOptions {
  * updates the tracking table, and stores results in the output bucket. Supports
  * HITL workflows via SageMaker A2I and sends progress notifications through AppSync.
  *
- * @since v0.1.0
  */
 export class ProcessResultsFunction extends PythonFunction {
   constructor(

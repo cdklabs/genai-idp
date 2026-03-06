@@ -119,7 +119,6 @@ export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
  * output bucket. Supports guardrails for content policy enforcement and sends
  * progress notifications through AppSync.
  *
- * @since v0.1.0
  */
 export class SummarizationFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: SummarizationFunctionProps) {

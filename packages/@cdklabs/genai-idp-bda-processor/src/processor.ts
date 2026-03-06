@@ -100,8 +100,7 @@ export interface BdaProcessorProps extends DocumentProcessorProps {
    * - LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
    *
    * @default SectionSplittingStrategy.LLM_DETERMINED
-   * @since v0.4.8
-   */
+   *    */
   readonly sectionSplittingStrategy?: SectionSplittingStrategy;
 
   /**
@@ -111,8 +110,7 @@ export interface BdaProcessorProps extends DocumentProcessorProps {
    * BDA blueprints from document samples, streamlining the configuration process.
    *
    * @default false
-   * @since v0.4.8
-   */
+   *    */
   readonly enableDiscovery?: boolean;
 }
 
@@ -124,7 +122,6 @@ export interface BdaProcessorProps extends DocumentProcessorProps {
  * evaluates accuracy. Automatically attaches to the processing environment
  * for queue-based document ingestion.
  *
- * @since v0.1.0
  */
 export class BdaProcessor extends Construct implements IBdaProcessor {
   /** The processing environment this processor is attached to. */
