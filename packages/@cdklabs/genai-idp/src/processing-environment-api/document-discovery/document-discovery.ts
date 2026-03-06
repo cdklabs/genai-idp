@@ -145,8 +145,7 @@ export class DocumentDiscovery
    * on the discovery bucket for CloudFront access.
    *
    * @param webApp The WebApplication to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInWebApp(webApp: IWebApplication): void {
     webApp.addSetting("DiscoveryBucket", this.discoveryBucket.bucketName);
     webApp.addCorsBucket(this.discoveryBucket);
@@ -201,8 +200,7 @@ export class DocumentDiscovery
    * and all associated resolvers for discovery job management.
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     // Initialize functions with API URL and environment settings
     // Optional params (encryptionKey, logLevel, etc.) fall back to this.props values

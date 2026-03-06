@@ -61,7 +61,6 @@ export interface FccDatasetDeployerProps {
  * The deployment is idempotent - it will only download and deploy the dataset
  * if it doesn't already exist with the specified version.
  *
- * @since v0.4.8
  */
 export class FccDatasetDeployer extends Construct {
   /**

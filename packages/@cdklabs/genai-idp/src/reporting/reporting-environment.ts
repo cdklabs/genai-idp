@@ -119,8 +119,7 @@ export interface ReportingEnvironmentProps {
    * This provides more sophisticated evaluation metrics beyond simple string matching.
    *
    * @default true
-   * @since v0.4.8
-   */
+   *    */
   readonly enableSticklerEvaluation?: boolean;
 
   /**
@@ -131,8 +130,7 @@ export interface ReportingEnvironmentProps {
    * classification issues in specific sections of documents.
    *
    * @default false
-   * @since v0.4.8
-   */
+   *    */
   readonly enableSplitClassificationMetrics?: boolean;
 }
 

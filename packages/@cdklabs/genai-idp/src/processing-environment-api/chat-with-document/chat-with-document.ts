@@ -29,14 +29,12 @@ import {
  * processed document by combining document context from the knowledge base
  * with conversational AI.
  *
- * @since v0.4.16
  */
 export interface IChatWithDocument extends IConstruct {}
 
 /**
  * Properties for configuring the ChatWithDocument feature.
  *
- * @since v0.4.16
  */
 export interface ChatWithDocumentProps {
   /**
@@ -117,7 +115,6 @@ export interface ChatWithDocumentProps {
  * });
  * api.enable(chatWithDocument);
  *
- * @since v0.4.16
  */
 export class ChatWithDocument
   extends Construct
@@ -155,8 +152,7 @@ export class ChatWithDocument
    * Creates the chat with document data source and resolver.
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     const chatWithDocumentResolverFunction =
       new functions.ChatWithDocumentResolverFunction(

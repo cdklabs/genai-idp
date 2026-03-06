@@ -18,7 +18,6 @@ import { ITrackingTable } from "../../tracking-table";
  * Enables external application access through Model Context Protocol.
  * Provides AgentCore Gateway deployment with OAuth 2.0 authentication.
  *
- * @since v0.4.8
  */
 export interface IMCPIntegration extends IConstruct {
   /**
@@ -40,7 +39,6 @@ export interface IMCPIntegration extends IConstruct {
 /**
  * Properties for MCPIntegration construct.
  *
- * @since v0.4.8
  */
 export interface MCPIntegrationProps {
   /**
@@ -96,7 +94,6 @@ export interface MCPIntegrationProps {
  * MCP Integration enables external applications (like IDEs, chat clients, etc.)
  * to interact with the document processing system through a standardized protocol.
  *
- * @since v0.4.8
  */
 export class MCPIntegration extends Construct implements IMCPIntegration {
   /**

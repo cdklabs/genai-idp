@@ -23,7 +23,6 @@ import {
  * Cognito-enabled deployments. Enables management of user accounts,
  * roles, and permissions through the GraphQL API.
  *
- * @since v0.4.16
  */
 export interface IUserManagement extends IConstruct {
   /**
@@ -47,7 +46,6 @@ export interface IUserManagement extends IConstruct {
 /**
  * Properties for UserManagement construct.
  *
- * @since v0.4.16
  */
 export interface UserManagementProps {
   /**
@@ -125,7 +123,6 @@ export interface UserManagementProps {
  * user management operations through GraphQL mutations and queries, enabling
  * administrative users to manage accounts through the web interface.
  *
- * @since v0.4.16
  */
 export class UserManagement
   extends Construct
@@ -206,8 +203,7 @@ export class UserManagement
    * api.enable(userManagement);
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     // Create data source for user management function
     const userManagementDataSource = api.addLambdaDataSource(

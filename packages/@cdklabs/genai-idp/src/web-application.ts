@@ -26,7 +26,6 @@ import { IUserIdentity } from "./user-identity";
  * Features implementing this interface contribute UI settings (e.g., bucket names,
  * feature flags) and optionally configure CORS rules for CloudFront access.
  *
- * @since v0.4.16
  */
 export interface IWebAppFeature {
   /**
@@ -64,8 +63,7 @@ export interface IWebApplication {
    * in the web app by contributing settings and configuring CORS.
    *
    * @param feature The feature to enable
-   * @since v0.4.16
-   */
+   *    */
   enable(feature: IWebAppFeature): void;
 
   /**
@@ -76,8 +74,7 @@ export interface IWebApplication {
    *
    * @param key The setting key
    * @param value The setting value
-   * @since v0.4.16
-   */
+   *    */
   addSetting(key: string, value: string): void;
 
   /**
@@ -88,8 +85,7 @@ export interface IWebApplication {
    * is a concrete s3.Bucket (not an imported IBucket).
    *
    * @param bucket The S3 bucket to configure CORS on
-   * @since v0.4.16
-   */
+   *    */
   addCorsBucket(bucket: s3.IBucket): void;
 }
 
@@ -181,7 +177,6 @@ export interface WebApplicationProps {
  * for automated builds and SSM parameters for runtime configuration. Features can
  * contribute settings and CORS rules via the `enable()` method.
  *
- * @since v0.4.8
  */
 export class WebApplication extends Construct implements IWebApplication {
   /**
@@ -407,8 +402,7 @@ export class WebApplication extends Construct implements IWebApplication {
    * Enable a feature in the WebApplication.
    *
    * @param feature The feature to enable
-   * @since v0.4.16
-   */
+   *    */
   public enable(feature: IWebAppFeature): void {
     feature.enableInWebApp(this);
   }
@@ -418,8 +412,7 @@ export class WebApplication extends Construct implements IWebApplication {
    *
    * @param key The setting key
    * @param value The setting value
-   * @since v0.4.16
-   */
+   *    */
   public addSetting(key: string, value: string): void {
     this._settings[key] = value;
   }
@@ -428,8 +421,7 @@ export class WebApplication extends Construct implements IWebApplication {
    * Add a CORS rule to an S3 bucket for CloudFront access.
    *
    * @param bucket The S3 bucket to configure CORS on
-   * @since v0.4.16
-   */
+   *    */
   public addCorsBucket(bucket: s3.IBucket): void {
     if (!this._autoConfigure) return;
     if (bucket instanceof s3.Bucket) {

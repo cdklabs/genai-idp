@@ -43,7 +43,6 @@ export interface OcrBenchmarkDeployerFunctionProps extends IdpPythonFunctionOpti
  * It's designed to be used as a CloudFormation custom resource
  * during stack deployment.
  *
- * @since v0.4.16
  */
 export class OcrBenchmarkDeployerFunction extends lambda_python.PythonFunction {
   constructor(

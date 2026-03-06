@@ -11596,7 +11596,7 @@ const chatWithDocument = new ChatWithDocument(this, 'ChatWithDocument', {
   configurationTable,
   outputBucket,
 });
-api.enable(chatWithDocument);@since[object Object]
+api.enable(chatWithDocument);
 ```
 
 
@@ -22053,7 +22053,7 @@ const documentEditing = new DocumentEditing(this, 'DocumentEditing', {
   outputBucket,
   dataRetentionInDays: 30,
 });
-api.enable(documentEditing);@since[object Object]
+api.enable(documentEditing);
 ```
 
 
@@ -23633,7 +23633,7 @@ const evaluation = new Evaluation(this, 'Evaluation', {
   outputBucket,
   encryptionKey: key,
 });
-api.enable(evaluation);@since[object Object]
+api.enable(evaluation);
 ```
 
 
@@ -26649,7 +26649,7 @@ const knowledgeBaseQuery = new KnowledgeBaseQuery(this, 'KnowledgeBaseQuery', {
   knowledgeBaseModel: chatModel,
   guardrail,
 });
-api.enable(knowledgeBaseQuery);@since[object Object]
+api.enable(knowledgeBaseQuery);
 ```
 
 

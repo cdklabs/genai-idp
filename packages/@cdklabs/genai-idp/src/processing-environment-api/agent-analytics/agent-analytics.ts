@@ -170,7 +170,6 @@ export interface AgentAnalyticsProps {
  * - Secure code sandbox for data transfer
  * - Python visualization tool for charts and tables
  *
- * @since v0.4.8
  */
 export class AgentAnalytics
   extends Construct

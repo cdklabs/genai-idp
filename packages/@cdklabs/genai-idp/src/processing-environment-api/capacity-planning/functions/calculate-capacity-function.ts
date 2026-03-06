@@ -45,7 +45,6 @@ export interface CalculateCapacityFunctionProps extends IdpPythonFunctionOptions
  * This function analyzes document processing metrics from the tracking table
  * to provide capacity planning recommendations and resource optimization insights.
  *
- * @since v0.4.16
  */
 export class CalculateCapacityFunction extends lambda_python.PythonFunction {
   constructor(

@@ -28,7 +28,6 @@ import {
  * Provides interactive AI assistant with multi-agent orchestration.
  * Enables session-based chat with real-time streaming through AppSync.
  *
- * @since v0.4.8
  */
 export interface IAgentCompanionChat extends IConstruct {
   /**
@@ -57,7 +56,6 @@ export interface IAgentCompanionChat extends IConstruct {
 /**
  * Properties for AgentCompanionChat construct.
  *
- * @since v0.4.8
  */
 export interface AgentCompanionChatProps {
   /**
@@ -189,7 +187,6 @@ export interface AgentCompanionChatProps {
  * intelligent assistance for document processing workflows, error diagnosis,
  * and system analytics.
  *
- * @since v0.4.8
  */
 export class AgentCompanionChat
   extends Construct
@@ -464,8 +461,7 @@ export class AgentCompanionChat
    * api.enable(agentCompanionChat);
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     // Store the API URL for lazy resolution in the orchestrator function
     this._appsyncApiUrl = api.graphqlUrl;

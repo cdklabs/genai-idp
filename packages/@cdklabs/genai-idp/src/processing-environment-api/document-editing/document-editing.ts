@@ -22,14 +22,12 @@ import {
  * Provides document section editing and change processing capabilities,
  * allowing users to modify document sections and trigger reprocessing.
  *
- * @since v0.4.16
  */
 export interface IDocumentEditing extends IConstruct {}
 
 /**
  * Properties for configuring the DocumentEditing feature.
  *
- * @since v0.4.16
  */
 export interface DocumentEditingProps {
   /**
@@ -103,7 +101,6 @@ export interface DocumentEditingProps {
  * });
  * api.enable(documentEditing);
  *
- * @since v0.4.16
  */
 export class DocumentEditing
   extends Construct
@@ -139,8 +136,7 @@ export class DocumentEditing
    * Creates the process changes data source and resolver.
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     const processChangesResolverFunction =
       new functions.ProcessChangesResolverFunction(

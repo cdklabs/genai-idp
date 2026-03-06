@@ -69,7 +69,6 @@ export interface UserManagementFunctionProps extends IdpPythonFunctionOptions {
  * **Important**: This function requires a UserIdentity construct with both
  * UserPool and IdentityPool for complete user management functionality.
  *
- * @since v0.4.16
  */
 export class UserManagementFunction extends lambda_python.PythonFunction {
   constructor(

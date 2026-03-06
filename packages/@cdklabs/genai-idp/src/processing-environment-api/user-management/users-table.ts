@@ -32,7 +32,6 @@ export interface IUsersTable extends ITable {}
  * - Persona (Admin, Reviewer)
  * - Status and timestamps
  *
- * @since v0.4.16
  */
 export class UsersTable extends Table implements IUsersTable {
   constructor(scope: Construct, id: string, props?: UsersTableProps) {

@@ -46,7 +46,6 @@ export interface UserSyncFunctionProps extends IdpPythonFunctionOptions {
  * **Important**: This function requires a UserIdentity construct with both
  * UserPool and IdentityPool for complete synchronization functionality.
  *
- * @since v0.4.16
  */
 export class UserSyncFunction extends lambda_python.PythonFunction {
   constructor(scope: Construct, id: string, props: UserSyncFunctionProps) {

@@ -37,7 +37,6 @@ export interface CalculateCapacityResolverFunctionProps extends IdpPythonFunctio
  * This function acts as a bridge between the GraphQL API and the capacity calculation
  * function, handling request/response transformation and error handling.
  *
- * @since v0.4.16
  */
 export class CalculateCapacityResolverFunction
   extends lambda_python.PythonFunction

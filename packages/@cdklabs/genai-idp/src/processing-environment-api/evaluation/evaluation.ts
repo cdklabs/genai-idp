@@ -23,7 +23,6 @@ import {
  * Enables copying processed documents to a baseline bucket for accuracy evaluation
  * and model performance measurement.
  *
- * @since v0.4.16
  */
 export interface IEvaluation extends IConstruct {
   /**
@@ -35,7 +34,6 @@ export interface IEvaluation extends IConstruct {
 /**
  * Properties for configuring the Evaluation feature.
  *
- * @since v0.4.16
  */
 export interface EvaluationProps {
   /**
@@ -89,7 +87,6 @@ export interface EvaluationProps {
  * });
  * api.enable(evaluation);
  *
- * @since v0.4.16
  */
 export class Evaluation
   extends Construct
@@ -122,8 +119,7 @@ export class Evaluation
    * on the baseline bucket for CloudFront access.
    *
    * @param webApp The WebApplication to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInWebApp(webApp: IWebApplication): void {
     webApp.addSetting(
       "EvaluationBaselineBucket",
@@ -138,8 +134,7 @@ export class Evaluation
    * Creates the copy-to-baseline data source and resolver for evaluation workflows.
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     // Grant the upload resolver function write access to the baseline bucket
     // so the UI can generate presigned URLs for uploading baseline documents

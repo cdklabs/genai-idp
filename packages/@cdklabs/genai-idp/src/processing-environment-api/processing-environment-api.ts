@@ -37,7 +37,6 @@ import * as functions from "./functions";
  *   }
  * }
  *
- * @since v0.4.16
  */
 export interface IApiFeature {
   /**
@@ -81,8 +80,7 @@ export interface IProcessingEnvironmentApi extends appsync.IGraphqlApi {
    * api.enable(agentAnalytics);
    *
    * @param feature The feature to enable in the API
-   * @since v0.4.16
-   */
+   *    */
   enable(feature: IApiFeature): void;
 }
 
@@ -153,7 +151,6 @@ export interface ProcessingEnvironmentApiProps extends ProcessingEnvironmentApiB
  * Additional features can be integrated using the `enable()` method, which
  * accepts any construct implementing `IApiFeature`.
  *
- * @since v0.4.16
  */
 export class ProcessingEnvironmentApi
   extends appsync.GraphqlApi
@@ -256,8 +253,7 @@ export class ProcessingEnvironmentApi
    * @param fn The Lambda function to use as the data source
    * @param options Optional configuration for the data source
    * @returns The created Lambda data source
-   * @since v0.4.16
-   */
+   *    */
   public addLambdaDataSource(
     id: string,
     fn: lambda.IFunction,
@@ -277,8 +273,7 @@ export class ProcessingEnvironmentApi
    * @param id The unique identifier for the data source
    * @param options Optional configuration for the data source
    * @returns The created None data source
-   * @since v0.4.16
-   */
+   *    */
   public addNoneDataSource(
     id: string,
     options?: appsync.DataSourceOptions,
@@ -297,8 +292,7 @@ export class ProcessingEnvironmentApi
    * api.enable(agentAnalytics);
    *
    * @param feature The feature to enable in the API
-   * @since v0.4.16
-   */
+   *    */
   public enable(feature: IApiFeature): void {
     feature.enableInApi(this);
   }

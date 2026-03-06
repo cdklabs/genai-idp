@@ -148,8 +148,7 @@ export class HitlEnvironment
    * ```
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     // Create data source for the complete section review function
     const completeSectionReviewDataSource = api.addLambdaDataSource(

@@ -32,7 +32,6 @@ import {
  * Provides test management and analysis capabilities for document processing.
  * Enables test set creation, execution, and results comparison.
  *
- * @since v0.4.8
  */
 export interface ITestStudio extends IConstruct {
   /**
@@ -76,7 +75,6 @@ export interface ITestStudio extends IConstruct {
 /**
  * Properties for TestStudio construct.
  *
- * @since v0.4.8
  */
 export interface TestStudioProps {
   /**
@@ -124,8 +122,7 @@ export interface TestStudioProps {
    * to the test bucket for document splitting evaluation.
    *
    * @default false
-   * @since v0.4.16
-   */
+   *    */
   readonly enableDocSplitDataset?: boolean;
 
   /**
@@ -134,8 +131,7 @@ export interface TestStudioProps {
    * to the test bucket for OCR quality evaluation.
    *
    * @default false
-   * @since v0.4.16
-   */
+   *    */
   readonly enableOcrBenchmark?: boolean;
 
   /**
@@ -168,7 +164,6 @@ export interface TestStudioProps {
  * Test Studio integrates with the ProcessingEnvironment to enable
  * systematic testing and evaluation of document processing workflows.
  *
- * @since v0.4.8
  */
 export class TestStudio extends Construct implements ITestStudio, IApiFeature {
   /**
@@ -219,14 +214,12 @@ export class TestStudio extends Construct implements ITestStudio, IApiFeature {
 
   /**
    * Optional DocSplit test set deployer for document splitting evaluation.
-   * @since v0.4.16
-   */
+   *    */
   public readonly docSplitTestSetDeployer?: lambda.IFunction;
 
   /**
    * Optional OCR benchmark deployer for OCR quality evaluation.
-   * @since v0.4.16
-   */
+   *    */
   public readonly ocrBenchmarkDeployer?: lambda.IFunction;
 
   constructor(scope: Construct, id: string, props: TestStudioProps) {
@@ -420,8 +413,7 @@ export class TestStudio extends Construct implements ITestStudio, IApiFeature {
    * ```
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     // Create test set resolver function using stored trackingTable
     const testSetResolverFunction = new functions.TestSetResolverFunction(

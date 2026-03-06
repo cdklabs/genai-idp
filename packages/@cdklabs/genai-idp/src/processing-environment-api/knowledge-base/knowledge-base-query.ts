@@ -27,7 +27,6 @@ import {
  * Provides natural language querying capabilities for processed documents
  * using Amazon Bedrock knowledge base.
  *
- * @since v0.4.16
  */
 export interface IKnowledgeBaseQuery extends IConstruct {
   /**
@@ -39,7 +38,6 @@ export interface IKnowledgeBaseQuery extends IConstruct {
 /**
  * Properties for configuring the KnowledgeBaseQuery feature.
  *
- * @since v0.4.16
  */
 export interface KnowledgeBaseQueryProps {
   /**
@@ -105,7 +103,6 @@ export interface KnowledgeBaseQueryProps {
  * });
  * api.enable(knowledgeBaseQuery);
  *
- * @since v0.4.16
  */
 export class KnowledgeBaseQuery
   extends Construct
@@ -141,8 +138,7 @@ export class KnowledgeBaseQuery
    * Contributes the ShouldUseDocumentKnowledgeBase setting to the UI.
    *
    * @param webApp The WebApplication to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInWebApp(webApp: IWebApplication): void {
     webApp.addSetting("ShouldUseDocumentKnowledgeBase", "true");
   }
@@ -153,8 +149,7 @@ export class KnowledgeBaseQuery
    * Creates the query knowledge base data source and resolver.
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     const queryKnowledgeBaseResolverFunction =
       new functions.QueryKnowledgeBaseResolverFunction(

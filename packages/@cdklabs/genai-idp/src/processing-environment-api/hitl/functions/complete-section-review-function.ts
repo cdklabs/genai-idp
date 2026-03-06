@@ -19,7 +19,6 @@ import { ITrackingTable } from "../../../tracking-table";
  * This function handles the completion of section-level reviews in the HITL workflow.
  * It updates the tracking table with review results and triggers downstream processing.
  *
- * @since v0.4.16
  */
 export interface CompleteSectionReviewFunctionProps extends IdpPythonFunctionOptions {
   /**
@@ -48,7 +47,6 @@ export interface CompleteSectionReviewFunctionProps extends IdpPythonFunctionOpt
  * - Maintains page/section alignment
  * - Updates review status in tracking table
  *
- * @since v0.4.16
  */
 export class CompleteSectionReviewFunction
   extends lambda_python.PythonFunction

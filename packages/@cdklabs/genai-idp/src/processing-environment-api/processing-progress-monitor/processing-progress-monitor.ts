@@ -20,7 +20,6 @@ import {
  * Provides Step Functions execution monitoring capabilities for tracking
  * document processing workflow progress through the GraphQL API.
  *
- * @since v0.4.16
  */
 export interface IProcessingProgressMonitor extends IConstruct {
   /**
@@ -32,7 +31,6 @@ export interface IProcessingProgressMonitor extends IConstruct {
 /**
  * Properties for ProcessingProgressMonitor construct.
  *
- * @since v0.4.16
  */
 export interface ProcessingProgressMonitorProps {
   /**
@@ -77,7 +75,6 @@ export interface ProcessingProgressMonitorProps {
  * Step Functions execution details through GraphQL queries, enabling
  * the UI to display processing progress and workflow status.
  *
- * @since v0.4.16
  */
 export class ProcessingProgressMonitor
   extends Construct
@@ -125,8 +122,7 @@ export class ProcessingProgressMonitor
    * api.enable(progressMonitor);
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     // Import the resolver functions
     const { GetStepFunctionExecutionResolverFunction } = functions;

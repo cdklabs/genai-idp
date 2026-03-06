@@ -23,7 +23,6 @@ import {
  * Provides capacity planning and optimization capabilities for Pattern 2 workflows.
  * Analyzes document processing metrics to provide resource allocation recommendations.
  *
- * @since v0.4.16
  */
 export interface ICapacityPlanning extends IConstruct {
   /**
@@ -42,7 +41,6 @@ export interface ICapacityPlanning extends IConstruct {
 /**
  * Properties for CapacityPlanning construct.
  *
- * @since v0.4.16
  */
 export interface CapacityPlanningProps {
   /**
@@ -84,7 +82,6 @@ export interface CapacityPlanningProps {
  * Pattern 1 and Pattern 3 have different resource characteristics and should
  * use pattern-specific optimization approaches.
  *
- * @since v0.4.16
  */
 export class CapacityPlanning
   extends Construct
@@ -149,8 +146,7 @@ export class CapacityPlanning
    * api.enable(capacityPlanning);
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     // Create data source for capacity planning resolver
     const capacityPlanningDataSource = api.addLambdaDataSource(

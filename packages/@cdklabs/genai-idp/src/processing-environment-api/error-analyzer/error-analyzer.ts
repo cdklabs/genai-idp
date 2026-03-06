@@ -22,7 +22,6 @@ import {
  * Enables intelligent troubleshooting using Claude Sonnet 4 with CloudWatch log analysis
  * and X-Ray trace correlation.
  *
- * @since v0.4.8
  */
 export interface IErrorAnalyzer extends IConstruct {
   /**
@@ -39,7 +38,6 @@ export interface IErrorAnalyzer extends IConstruct {
 /**
  * Properties for ErrorAnalyzer construct.
  *
- * @since v0.4.8
  */
 export interface ErrorAnalyzerProps {
   /**
@@ -105,7 +103,6 @@ export interface ErrorAnalyzerProps {
  * intelligent troubleshooting for document processing workflows, helping
  * users quickly identify and resolve processing failures.
  *
- * @since v0.4.8
  */
 export class ErrorAnalyzer
   extends Construct
@@ -174,8 +171,7 @@ export class ErrorAnalyzer
    * api.enable(errorAnalyzer);
    *
    * @param api The ProcessingEnvironmentApi to enable in
-   * @since v0.4.16
-   */
+   *    */
   public enableInApi(api: IProcessingEnvironmentApi): void {
     // Import the resolver functions
     const { ErrorAnalyzerResolverFunction } = functions;
