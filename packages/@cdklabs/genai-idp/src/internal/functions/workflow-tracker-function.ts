@@ -7,6 +7,7 @@ import path from "path";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import { Duration } from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import { IKey } from "aws-cdk-lib/aws-kms";
 import { IFunction, Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
@@ -65,6 +66,14 @@ export interface WorkflowTrackerFunctionProps extends IdpPythonFunctionOptions {
    * When provided, the function will use GraphQL mutations to update document status.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * Optional KMS encryption key for granting encrypt/decrypt permissions.
+   * When provided, the function is granted encrypt and decrypt access to this key.
+   *
+   * @default - No encryption key grants are applied
+   */
+  readonly encryptionKey?: IKey;
 }
 
 /**
@@ -160,5 +169,8 @@ export class WorkflowTrackerFunction extends PythonFunction {
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);
+
+    // Grant encryption key permissions if provided
+    props.encryptionKey?.grantEncryptDecrypt(this);
   }
 }

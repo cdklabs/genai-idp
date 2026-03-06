@@ -524,11 +524,10 @@ export class ProcessingEnvironment
         reportingEnvironment: this.reportingEnvironment,
         saveReportingDataFunction: this.saveReportingDataFunction,
         api: this.api,
+        encryptionKey: this.encryptionKey,
         ...this.vpcConfiguration,
       },
     );
-
-    this.encryptionKey?.grantEncryptDecrypt(this.workflowTracker);
 
     this.lookupFunction = new functions.LookupFunction(this, "LookupFunction", {
       trackingTable: this.trackingTable,
