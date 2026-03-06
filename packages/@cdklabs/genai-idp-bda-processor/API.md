@@ -1097,6 +1097,13 @@ Uniquely identifies this class.
 
 - *Implements:* <a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessor">IBdaProcessor</a>
 
+BDA document processor using Amazon Bedrock Data Automation.
+
+Orchestrates document processing through a Step Functions state machine that
+invokes BDA for extraction, processes results, generates summaries, and
+evaluates accuracy. Automatically attaches to the processing environment
+for queue-based document ingestion.
+
 #### Initializers <a name="Initializers" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.Initializer"></a>
 
 ```typescript
@@ -1507,9 +1514,9 @@ Any object.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the document processing workflow. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment this processor is attached to. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | Maximum number of documents that can be processed concurrently. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the processing workflow. |
 
 ---
 
@@ -1533,10 +1540,7 @@ public readonly environment: IProcessingEnvironment;
 
 - *Type:* @cdklabs/genai-idp.IProcessingEnvironment
 
-The processing environment that provides shared infrastructure and services.
-
-Contains input/output buckets, tracking tables, API endpoints, and other
-resources needed for document processing operations.
+The processing environment this processor is attached to.
 
 ---
 
@@ -1548,9 +1552,7 @@ public readonly maxProcessingConcurrency: number;
 
 - *Type:* number
 
-The maximum number of documents that can be processed concurrently.
-
-Controls the throughput and resource utilization of the document processing system.
+Maximum number of documents that can be processed concurrently.
 
 ---
 
@@ -1562,11 +1564,7 @@ public readonly stateMachine: IStateMachine;
 
 - *Type:* aws-cdk-lib.aws_stepfunctions.IStateMachine
 
-The Step Functions state machine that orchestrates the document processing workflow.
-
-Manages the sequence of processing steps and handles error conditions.
-This state machine is triggered for each document that needs processing
-and coordinates the entire extraction pipeline.
+The Step Functions state machine that orchestrates the processing workflow.
 
 ---
 
@@ -2256,11 +2254,13 @@ public bind(processor: IBdaProcessor): IBdaProcessorConfigurationDefinition
 
 Binds the configuration to a processor instance.
 
-This method applies the configuration to the processor.
+Creates a custom resource that writes the default configuration to the configuration table.
 
 ###### `processor`<sup>Required</sup> <a name="processor" id="@cdklabs/genai-idp-bda-processor.BdaProcessorConfiguration.bind.parameter.processor"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp-bda-processor.IBdaProcessor">IBdaProcessor</a>
+
+The BDA document processor to bind to.
 
 ---
 

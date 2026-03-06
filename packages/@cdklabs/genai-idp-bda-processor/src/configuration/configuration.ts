@@ -159,6 +159,13 @@ export class BdaProcessorConfiguration implements IBdaProcessorConfiguration {
     private readonly definition: IBdaProcessorConfigurationDefinition,
   ) {}
 
+  /**
+   * Binds the configuration to a processor instance.
+   * Creates a custom resource that writes the default configuration to the configuration table.
+   *
+   * @param processor The BDA document processor to bind to
+   * @returns The configuration definition with resolved model references
+   */
   public bind(processor: IBdaProcessor): IBdaProcessorConfigurationDefinition {
     new CustomResource(processor, "UpdateDefaultConfig", {
       serviceToken: processor.environment.configurationFunction.functionArn,

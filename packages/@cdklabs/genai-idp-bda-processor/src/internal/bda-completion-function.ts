@@ -73,6 +73,15 @@ export interface BdaCompletionFunctionProps extends IdpPythonFunctionOptions {
   readonly encryptionKey?: IKey;
 }
 
+/**
+ * Handles completion events from Amazon Bedrock Data Automation jobs.
+ *
+ * Listens for BDA job completion events via EventBridge, updates the tracking table
+ * with job status, and sends task responses to the Step Functions state machine
+ * to continue the processing workflow.
+ *
+ * @since v0.1.0
+ */
 export class BdaCompletionFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: BdaCompletionFunctionProps) {
     super(scope, id, {

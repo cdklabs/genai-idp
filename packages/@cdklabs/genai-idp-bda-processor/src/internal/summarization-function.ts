@@ -111,6 +111,16 @@ export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Generates document summaries using Bedrock foundation models.
+ *
+ * Reads processed document content and extraction results, invokes a configured
+ * foundation model to produce concise summaries, and stores the results in the
+ * output bucket. Supports guardrails for content policy enforcement and sends
+ * progress notifications through AppSync.
+ *
+ * @since v0.1.0
+ */
 export class SummarizationFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: SummarizationFunctionProps) {
     super(scope, id, {

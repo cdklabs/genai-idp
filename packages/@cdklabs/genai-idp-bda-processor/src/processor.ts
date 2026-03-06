@@ -116,9 +116,22 @@ export interface BdaProcessorProps extends DocumentProcessorProps {
   readonly enableDiscovery?: boolean;
 }
 
+/**
+ * BDA document processor using Amazon Bedrock Data Automation.
+ *
+ * Orchestrates document processing through a Step Functions state machine that
+ * invokes BDA for extraction, processes results, generates summaries, and
+ * evaluates accuracy. Automatically attaches to the processing environment
+ * for queue-based document ingestion.
+ *
+ * @since v0.1.0
+ */
 export class BdaProcessor extends Construct implements IBdaProcessor {
+  /** The processing environment this processor is attached to. */
   public readonly environment: IProcessingEnvironment;
+  /** Maximum number of documents that can be processed concurrently. */
   public readonly maxProcessingConcurrency: number;
+  /** The Step Functions state machine that orchestrates the processing workflow. */
   public readonly stateMachine: sfn.IStateMachine;
 
   constructor(scope: Construct, id: string, props: BdaProcessorProps) {

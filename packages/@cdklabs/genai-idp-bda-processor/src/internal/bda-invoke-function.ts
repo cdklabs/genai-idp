@@ -85,6 +85,15 @@ export interface BdaInvokeFunctionProps extends IdpPythonFunctionOptions {
   readonly project: IDataAutomationProject;
 }
 
+/**
+ * Initiates Amazon Bedrock Data Automation jobs for document processing.
+ *
+ * Submits documents from the input bucket to the configured BDA project,
+ * tracks job IDs in the tracking table, and emits CloudWatch metrics
+ * for monitoring job invocation rates and errors.
+ *
+ * @since v0.1.0
+ */
 export class BdaInvokeFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: BdaInvokeFunctionProps) {
     super(scope, id, {

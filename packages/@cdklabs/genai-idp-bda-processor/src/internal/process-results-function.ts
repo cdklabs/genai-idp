@@ -110,6 +110,15 @@ export interface ProcessResultsFunctionProps extends IdpPythonFunctionOptions {
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Processes extraction results from completed BDA jobs.
+ *
+ * Reads raw BDA output, formats structured data according to the application schema,
+ * updates the tracking table, and stores results in the output bucket. Supports
+ * HITL workflows via SageMaker A2I and sends progress notifications through AppSync.
+ *
+ * @since v0.1.0
+ */
 export class ProcessResultsFunction extends PythonFunction {
   constructor(
     scope: Construct,
