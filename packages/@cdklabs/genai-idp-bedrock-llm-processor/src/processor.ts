@@ -150,8 +150,7 @@ export interface BedrockLlmProcessorProps extends DocumentProcessorProps {
    * extraction for complex documents but may increase processing time.
    *
    * @default false
-   * @since v0.4.8
-   */
+   *    */
   readonly enableAgenticExtraction?: boolean;
 
   /**
@@ -163,8 +162,7 @@ export interface BedrockLlmProcessorProps extends DocumentProcessorProps {
    * with predictable naming patterns.
    *
    * @default false
-   * @since v0.4.8
-   */
+   *    */
   readonly enableRegexClassification?: boolean;
 
   /**
@@ -175,8 +173,7 @@ export interface BedrockLlmProcessorProps extends DocumentProcessorProps {
    * flexibility to correct classification errors without reprocessing entire documents.
    *
    * @default false
-   * @since v0.4.8
-   */
+   *    */
   readonly enableEditSections?: boolean;
 
   /**
@@ -187,8 +184,7 @@ export interface BedrockLlmProcessorProps extends DocumentProcessorProps {
    * optimize costs and performance for large documents.
    *
    * @default MaxPagesForClassification.ALL
-   * @since v0.4.8
-   */
+   *    */
   readonly maxPagesForClassification?: number | MaxPagesForClassification;
 
   /**
@@ -203,8 +199,7 @@ export interface BedrockLlmProcessorProps extends DocumentProcessorProps {
    * - LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
    *
    * @default SectionSplittingStrategy.LLM_DETERMINED
-   * @since v0.4.8
-   */
+   *    */
   readonly sectionSplittingStrategy?: SectionSplittingStrategy;
 }
 
@@ -221,9 +216,37 @@ export class BedrockLlmProcessor
   extends Construct
   implements IBedrockLlmProcessor
 {
+  /**
+   * The evaluation function used for assessing extraction accuracy.
+   * When configured with a baseline bucket and evaluation model, this function
+   * compares extraction results against known correct values.
+   *
+   *    */
   public readonly evaluationFunction?: any;
+
+  /**
+   * The processing environment that provides shared infrastructure resources.
+   * Includes buckets, tables, API, encryption, and VPC configuration used
+   * by all processing functions within this processor.
+   *
+   *    */
   public readonly environment: IProcessingEnvironment;
+
+  /**
+   * The maximum number of documents that can be processed concurrently.
+   * Controls the parallelism of the Step Functions state machine to balance
+   * throughput against resource consumption.
+   *
+   * @default 100
+   *    */
   public readonly maxProcessingConcurrency: number;
+
+  /**
+   * The Step Functions state machine that orchestrates the document processing workflow.
+   * Coordinates OCR, classification, extraction, assessment, summarization,
+   * rule validation, and evaluation steps in the correct sequence.
+   *
+   *    */
   public readonly stateMachine: sfn.IStateMachine;
 
   constructor(scope: Construct, id: string, props: BedrockLlmProcessorProps) {

@@ -83,6 +83,14 @@ export interface RuleValidationFunctionProps extends IdpPythonFunctionOptions {
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Lambda function that validates extraction results against configured business rules.
+ *
+ * Applies rule-based validation to extracted document fields, checking for data
+ * consistency, format compliance, and business logic constraints. Uses Bedrock models
+ * to perform intelligent validation beyond simple pattern matching.
+ *
+ */
 export class RuleValidationFunction extends PythonFunction {
   constructor(
     scope: Construct,

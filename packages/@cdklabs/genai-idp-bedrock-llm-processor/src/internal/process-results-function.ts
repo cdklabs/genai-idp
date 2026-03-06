@@ -43,6 +43,10 @@ export interface ProcessResultsFunctionProps extends IdpPythonFunctionOptions {
    */
   readonly logLevel?: LogLevel;
 
+  /**
+   * The DynamoDB table that tracks document processing status and metadata.
+   * The function updates final processing results in this table.
+   */
   readonly trackingTable: ITrackingTable;
 
   /**
@@ -89,6 +93,14 @@ export interface ProcessResultsFunctionProps extends IdpPythonFunctionOptions {
   readonly sageMakerA2IReviewPortalUrl?: string;
 }
 
+/**
+ * Lambda function that aggregates and finalizes document processing results.
+ *
+ * Collects outputs from all processing stages (OCR, classification, extraction,
+ * assessment, summarization) and produces the final consolidated result. Supports
+ * Human-in-the-Loop (HITL) workflows via SageMaker A2I for document review.
+ *
+ */
 export class ProcessResultsFunction extends PythonFunction {
   constructor(
     scope: Construct,

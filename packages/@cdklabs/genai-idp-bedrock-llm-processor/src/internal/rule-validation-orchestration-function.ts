@@ -96,6 +96,14 @@ export interface RuleValidationOrchestrationFunctionProps extends IdpPythonFunct
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Lambda function that orchestrates rule validation across document sections.
+ *
+ * Coordinates the execution of rule validation across all sections of a processed
+ * document, aggregating validation results and saving metrics to the reporting
+ * environment. Manages the overall validation workflow and result consolidation.
+ *
+ */
 export class RuleValidationOrchestrationFunction extends PythonFunction {
   constructor(
     scope: Construct,

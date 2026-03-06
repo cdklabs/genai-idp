@@ -560,10 +560,10 @@ Any object.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure resources. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the document processing workflow. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.evaluationFunction">evaluationFunction</a></code> | <code>any</code> | The evaluation function if evaluation is enabled for this processor. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.evaluationFunction">evaluationFunction</a></code> | <code>any</code> | The evaluation function used for assessing extraction accuracy. |
 
 ---
 
@@ -587,10 +587,10 @@ public readonly environment: IProcessingEnvironment;
 
 - *Type:* @cdklabs/genai-idp.IProcessingEnvironment
 
-The processing environment that provides shared infrastructure and services.
+The processing environment that provides shared infrastructure resources.
 
-Contains input/output buckets, tracking tables, API endpoints, and other
-resources needed for document processing operations.
+Includes buckets, tables, API, encryption, and VPC configuration used
+by all processing functions within this processor.
 
 ---
 
@@ -601,10 +601,12 @@ public readonly maxProcessingConcurrency: number;
 ```
 
 - *Type:* number
+- *Default:* 100
 
 The maximum number of documents that can be processed concurrently.
 
-Controls the throughput and resource utilization of the document processing system.
+Controls the parallelism of the Step Functions state machine to balance
+throughput against resource consumption.
 
 ---
 
@@ -618,9 +620,8 @@ public readonly stateMachine: IStateMachine;
 
 The Step Functions state machine that orchestrates the document processing workflow.
 
-Manages the sequence of processing steps and handles error conditions.
-This state machine is triggered for each document that needs processing
-and coordinates the entire extraction pipeline.
+Coordinates OCR, classification, extraction, assessment, summarization,
+rule validation, and evaluation steps in the correct sequence.
 
 ---
 
@@ -632,10 +633,10 @@ public readonly evaluationFunction: any;
 
 - *Type:* any
 
-The evaluation function if evaluation is enabled for this processor.
+The evaluation function used for assessing extraction accuracy.
 
-The evaluation function is created by the ProcessingEnvironment when
-evaluation baseline bucket and model are provided.
+When configured with a baseline bucket and evaluation model, this function
+compares extraction results against known correct values.
 
 ---
 

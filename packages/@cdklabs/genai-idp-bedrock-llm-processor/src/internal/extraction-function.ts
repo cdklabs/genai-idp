@@ -43,7 +43,12 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
    */
   readonly configurationTable: ITable;
 
+  /**
+   * The DynamoDB table that tracks document processing status and metadata.
+   * The function updates extraction results in this table.
+   */
   readonly trackingTable: ITrackingTable;
+
   /**
    * The S3 bucket containing input documents to be extracted.
    * Source of documents that need extraction.
@@ -95,6 +100,14 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Lambda function that extracts structured information from documents using Amazon Bedrock models.
+ *
+ * Processes classified document sections to extract fields and values according to the
+ * configured extraction schema. Supports custom prompt generation and guardrails for
+ * controlling model behavior during extraction.
+ *
+ */
 export class ExtractionFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: ExtractionFunctionProps) {
     super(scope, id, {
