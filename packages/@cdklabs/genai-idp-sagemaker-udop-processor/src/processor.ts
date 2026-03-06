@@ -375,15 +375,14 @@ export class SagemakerUdopProcessor
         reportingEnvironment: this.environment.reportingEnvironment,
         saveReportingDataFunction: this.environment.saveReportingDataFunction,
         api: this.environment.api,
+        encryptionKey: this.environment.encryptionKey,
+        evaluationModel: renderedDefinition.evaluationModel,
         logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
           retention: this.environment.logRetention,
         }),
         ...this.environment.vpcConfiguration,
       });
-
-      this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
-      renderedDefinition.evaluationModel.grantInvoke(evaluationFunction);
     } else {
       // Create a no-op function when evaluation is not configured
       evaluationFunction = new lambda.Function(this, "NoOpEvaluationFunction", {

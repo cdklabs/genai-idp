@@ -452,6 +452,8 @@ export class BedrockLlmProcessor
         reportingEnvironment: this.environment.reportingEnvironment,
         saveReportingDataFunction: this.environment.saveReportingDataFunction,
         api: this.environment.api,
+        encryptionKey: this.environment.encryptionKey,
+        evaluationModel: renderedConfiguration.evaluationModel,
         logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
           retention: this.environment.logRetention,
@@ -459,13 +461,6 @@ export class BedrockLlmProcessor
         ...this.environment.vpcConfiguration,
       },
     );
-
-    this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
-
-    // Only grant model invoke permissions if evaluation model is provided
-    if (renderedConfiguration.evaluationModel) {
-      renderedConfiguration.evaluationModel.grantInvoke(evaluationFunction);
-    }
 
     // Create State Machine IAM Role
     const stateMachineRole = new iam.Role(this, "StateMachineRole", {

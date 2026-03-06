@@ -3,8 +3,10 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import { IBedrockInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import { Duration } from "aws-cdk-lib";
+import { IKey } from "aws-cdk-lib/aws-kms";
 import { IFunction, Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
@@ -91,6 +93,22 @@ export interface EvaluationFunctionProps extends IdpPythonFunctionOptions {
    * When provided, the function will use GraphQL mutations to update document status.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * Optional KMS encryption key for granting encrypt/decrypt permissions.
+   * When provided, the function is granted encrypt and decrypt access to this key.
+   *
+   * @default - No encryption key grants are applied
+   */
+  readonly encryptionKey?: IKey;
+
+  /**
+   * Optional Bedrock model used for LLM-based evaluation.
+   * When provided, the function is granted invoke permissions on this model.
+   *
+   * @default - No evaluation model is configured
+   */
+  readonly evaluationModel?: IBedrockInvokable;
 }
 
 /**
@@ -181,5 +199,11 @@ export class EvaluationFunction extends PythonFunction {
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);
+
+    // Grant encryption key permissions if provided
+    props.encryptionKey?.grantEncryptDecrypt(this);
+
+    // Grant model invoke permissions if evaluation model is provided
+    props.evaluationModel?.grantInvoke(this);
   }
 }

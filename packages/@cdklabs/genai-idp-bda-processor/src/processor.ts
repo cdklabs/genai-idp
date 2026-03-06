@@ -241,6 +241,8 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
         reportingEnvironment: this.environment.reportingEnvironment,
         saveReportingDataFunction: this.environment.saveReportingDataFunction,
         api: this.environment.api,
+        encryptionKey: this.environment.encryptionKey,
+        evaluationModel: renderedDefinition.evaluationModel,
         logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
           retention: this.environment.logRetention,
@@ -248,13 +250,6 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
         ...this.environment.vpcConfiguration,
       },
     );
-
-    this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
-
-    // Only grant model invoke permissions if evaluation model is provided
-    if (renderedDefinition.evaluationModel) {
-      renderedDefinition.evaluationModel.grantInvoke(evaluationFunction);
-    }
 
     this.stateMachine = new sfn.StateMachine(
       this,
