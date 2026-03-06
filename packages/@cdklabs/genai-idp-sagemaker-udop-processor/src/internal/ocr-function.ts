@@ -89,6 +89,14 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Lambda function that performs optical character recognition (OCR) on documents.
+ *
+ * Extracts text content from document pages using Amazon Textract. Processes input
+ * documents in parallel using configurable worker concurrency to optimize throughput
+ * while managing resource utilization.
+ *
+ */
 export class OcrFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: OcrFunctionProps) {
     super(scope, id, {

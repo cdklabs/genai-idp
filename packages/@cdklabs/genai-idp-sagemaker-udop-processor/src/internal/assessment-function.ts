@@ -91,6 +91,14 @@ export interface AssessmentFunctionProps extends IdpPythonFunctionOptions {
   readonly assessmentGuardrail?: bedrock.IGuardrail;
 }
 
+/**
+ * Lambda function that performs document assessment using Amazon Bedrock models.
+ *
+ * Evaluates extracted document information against quality criteria and business rules,
+ * providing confidence scores and assessment results. Uses the configured Bedrock model
+ * to analyze extraction outputs and determine their accuracy and completeness.
+ *
+ */
 export class AssessmentFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: AssessmentFunctionProps) {
     super(scope, id, {

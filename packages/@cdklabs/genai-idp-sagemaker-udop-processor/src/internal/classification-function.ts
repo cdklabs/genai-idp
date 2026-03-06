@@ -101,6 +101,14 @@ export interface ClassificationFunctionProps extends IdpPythonFunctionOptions {
   readonly classificationGuardrail?: bedrock.IGuardrail;
 }
 
+/**
+ * Lambda function that classifies documents using a SageMaker endpoint.
+ *
+ * Analyzes document content to determine document types using specialized models
+ * like RVL-CDIP or UDOP deployed on SageMaker. Supports optional Bedrock guardrails
+ * for content filtering on classification outputs.
+ *
+ */
 export class ClassificationFunction extends PythonFunction {
   constructor(
     scope: Construct,

@@ -158,8 +158,7 @@ export interface SagemakerUdopProcessorProps extends DocumentProcessorProps {
    * flexibility to correct classification errors without reprocessing entire documents.
    *
    * @default false
-   * @since v0.4.8
-   */
+   *    */
   readonly enableEditSections?: boolean;
 
   /**
@@ -174,8 +173,7 @@ export interface SagemakerUdopProcessorProps extends DocumentProcessorProps {
    * - LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
    *
    * @default SectionSplittingStrategy.LLM_DETERMINED
-   * @since v0.4.8
-   */
+   *    */
   readonly sectionSplittingStrategy?: SectionSplittingStrategy;
 }
 
@@ -198,8 +196,29 @@ export class SagemakerUdopProcessor
   extends Construct
   implements ISagemakerUdopProcessor
 {
+  /**
+   * The processing environment that provides shared infrastructure resources.
+   * Includes buckets, tables, API, encryption, and VPC configuration used
+   * by all processing functions within this processor.
+   *
+   *    */
   public readonly environment: IProcessingEnvironment;
+
+  /**
+   * The maximum number of documents that can be processed concurrently.
+   * Controls the parallelism of the Step Functions state machine to balance
+   * throughput against resource consumption.
+   *
+   * @default 100
+   *    */
   public readonly maxProcessingConcurrency: number;
+
+  /**
+   * The Step Functions state machine that orchestrates the document processing workflow.
+   * Coordinates OCR, classification, extraction, assessment, summarization,
+   * and evaluation steps in the correct sequence.
+   *
+   *    */
   public readonly stateMachine: sfn.IStateMachine;
 
   constructor(

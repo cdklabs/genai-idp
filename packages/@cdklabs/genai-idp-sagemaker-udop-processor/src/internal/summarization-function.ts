@@ -91,6 +91,14 @@ export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
   readonly summarizationGuardrail?: bedrock.IGuardrail;
 }
 
+/**
+ * Lambda function that generates document summaries using Amazon Bedrock models.
+ *
+ * Produces concise summaries of processed documents by analyzing extracted content
+ * and generating natural language descriptions. Uses the configured Bedrock model
+ * with optional guardrails to ensure summary quality and content compliance.
+ *
+ */
 export class SummarizationFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: SummarizationFunctionProps) {
     super(scope, id, {

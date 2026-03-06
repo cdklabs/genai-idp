@@ -72,6 +72,14 @@ export interface ProcessResultsFunctionProps extends IdpPythonFunctionOptions {
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Lambda function that aggregates and finalizes document processing results.
+ *
+ * Collects outputs from all processing stages (OCR, classification, extraction,
+ * assessment, summarization) and produces the final consolidated result for
+ * storage in the output bucket.
+ *
+ */
 export class ProcessResultsFunction extends PythonFunction {
   constructor(
     scope: Construct,
