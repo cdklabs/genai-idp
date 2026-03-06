@@ -1591,10 +1591,10 @@ Any object.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.property.orchestratorFunction">orchestratorFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function for agent orchestration. |
-| <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.property.chatDataSources">chatDataSources</a></code> | <code>string[]</code> | Optional data sources for chat context. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.property.messagesTable">messagesTable</a></code> | <code><a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a></code> | DynamoDB table for chat messages storage. |
+| <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.property.orchestratorFunction">orchestratorFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function for agent orchestration. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.property.sessionTable">sessionTable</a></code> | <code><a href="#@cdklabs/genai-idp.ISessionTable">ISessionTable</a></code> | DynamoDB table for chat session storage. |
+| <code><a href="#@cdklabs/genai-idp.AgentCompanionChat.property.chatDataSources">chatDataSources</a></code> | <code>string[]</code> | Optional data sources for chat context. |
 
 ---
 
@@ -1610,6 +1610,18 @@ The tree node.
 
 ---
 
+##### `messagesTable`<sup>Required</sup> <a name="messagesTable" id="@cdklabs/genai-idp.AgentCompanionChat.property.messagesTable"></a>
+
+```typescript
+public readonly messagesTable: IMessagesTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a>
+
+DynamoDB table for chat messages storage.
+
+---
+
 ##### `orchestratorFunction`<sup>Required</sup> <a name="orchestratorFunction" id="@cdklabs/genai-idp.AgentCompanionChat.property.orchestratorFunction"></a>
 
 ```typescript
@@ -1622,6 +1634,18 @@ Lambda function for agent orchestration.
 
 ---
 
+##### `sessionTable`<sup>Required</sup> <a name="sessionTable" id="@cdklabs/genai-idp.AgentCompanionChat.property.sessionTable"></a>
+
+```typescript
+public readonly sessionTable: ISessionTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.ISessionTable">ISessionTable</a>
+
+DynamoDB table for chat session storage.
+
+---
+
 ##### `chatDataSources`<sup>Optional</sup> <a name="chatDataSources" id="@cdklabs/genai-idp.AgentCompanionChat.property.chatDataSources"></a>
 
 ```typescript
@@ -1631,30 +1655,6 @@ public readonly chatDataSources: string[];
 - *Type:* string[]
 
 Optional data sources for chat context.
-
----
-
-##### `messagesTable`<sup>Optional</sup> <a name="messagesTable" id="@cdklabs/genai-idp.AgentCompanionChat.property.messagesTable"></a>
-
-```typescript
-public readonly messagesTable: IMessagesTable;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a>
-
-DynamoDB table for chat messages storage.
-
----
-
-##### `sessionTable`<sup>Optional</sup> <a name="sessionTable" id="@cdklabs/genai-idp.AgentCompanionChat.property.sessionTable"></a>
-
-```typescript
-public readonly sessionTable: ISessionTable;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.ISessionTable">ISessionTable</a>
-
-DynamoDB table for chat session storage.
 
 ---
 
@@ -46268,6 +46268,7 @@ const agentAnalyticsProps: AgentAnalyticsProps = { ... }
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
+| <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.agentTable">agentTable</a></code> | <code><a href="#@cdklabs/genai-idp.IAgentTable">IAgentTable</a></code> | The DynamoDB table for tracking agent jobs and analytics queries. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | The DynamoDB table that stores configuration settings. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.metricNamespace">metricNamespace</a></code> | <code>string</code> | The namespace for CloudWatch metrics. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.model">model</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The foundation model or inference profile to use for document analysis agent. |
@@ -46279,6 +46280,21 @@ const agentAnalyticsProps: AgentAnalyticsProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.guardrail">guardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail for content filtering. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | Log level for agent analytics functions. |
 | <code><a href="#@cdklabs/genai-idp.AgentAnalyticsProps.property.logRetention">logRetention</a></code> | <code>aws-cdk-lib.aws_logs.RetentionDays</code> | Log retention period. |
+
+---
+
+##### `agentTable`<sup>Required</sup> <a name="agentTable" id="@cdklabs/genai-idp.AgentAnalyticsProps.property.agentTable"></a>
+
+```typescript
+public readonly agentTable: IAgentTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IAgentTable">IAgentTable</a>
+
+The DynamoDB table for tracking agent jobs and analytics queries.
+
+Consumers are responsible for configuring billing mode, encryption,
+point-in-time recovery, and removal policy.
 
 ---
 
@@ -47526,6 +47542,8 @@ const agentCompanionChatProps: AgentCompanionChatProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.cloudWatchLogGroupPrefix">cloudWatchLogGroupPrefix</a></code> | <code>string</code> | CloudWatch log group prefix for the stack. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.configurationTable">configurationTable</a></code> | <code><a href="#@cdklabs/genai-idp.IConfigurationTable">IConfigurationTable</a></code> | The DynamoDB table for configuration settings. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.lookupFunction">lookupFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | The Lambda function for looking up document information. |
+| <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.messagesTable">messagesTable</a></code> | <code><a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a></code> | DynamoDB table for chat messages storage. |
+| <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.sessionTable">sessionTable</a></code> | <code><a href="#@cdklabs/genai-idp.ISessionTable">ISessionTable</a></code> | DynamoDB table for chat session storage. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table for tracking document processing status. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.athenaDatabase">athenaDatabase</a></code> | <code>@aws-cdk/aws-glue-alpha.IDatabase</code> | Optional Athena database for analytics queries. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.athenaOutputLocation">athenaOutputLocation</a></code> | <code>string</code> | Optional S3 location for Athena query results. |
@@ -47536,8 +47554,6 @@ const agentCompanionChatProps: AgentCompanionChatProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.enableCodeIntelligence">enableCodeIntelligence</a></code> | <code>boolean</code> | Enable Code Intelligence agent for code-related queries. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS key for encrypting chat data. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.guardrail">guardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock Guardrail for agent responses. |
-| <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.messagesTable">messagesTable</a></code> | <code><a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a></code> | Optional DynamoDB table for chat messages storage. |
-| <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.sessionTable">sessionTable</a></code> | <code><a href="#@cdklabs/genai-idp.ISessionTable">ISessionTable</a></code> | Optional DynamoDB table for chat session storage. |
 | <code><a href="#@cdklabs/genai-idp.AgentCompanionChatProps.property.tracing">tracing</a></code> | <code>aws-cdk-lib.aws_lambda.Tracing</code> | Enable AWS X-Ray tracing for Lambda functions. |
 
 ---
@@ -47581,6 +47597,36 @@ public readonly lookupFunction: IFunction;
 The Lambda function for looking up document information.
 
 Required for retrieving document metadata and processing status.
+
+---
+
+##### `messagesTable`<sup>Required</sup> <a name="messagesTable" id="@cdklabs/genai-idp.AgentCompanionChatProps.property.messagesTable"></a>
+
+```typescript
+public readonly messagesTable: IMessagesTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a>
+
+DynamoDB table for chat messages storage.
+
+Consumers are responsible for configuring billing mode, encryption,
+point-in-time recovery, and removal policy.
+
+---
+
+##### `sessionTable`<sup>Required</sup> <a name="sessionTable" id="@cdklabs/genai-idp.AgentCompanionChatProps.property.sessionTable"></a>
+
+```typescript
+public readonly sessionTable: ISessionTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.ISessionTable">ISessionTable</a>
+
+DynamoDB table for chat session storage.
+
+Consumers are responsible for configuring billing mode, encryption,
+point-in-time recovery, and removal policy.
 
 ---
 
@@ -47727,36 +47773,6 @@ public readonly guardrail: IGuardrail;
 Optional Bedrock Guardrail for agent responses.
 
 Used to apply content filtering to agent responses.
-
----
-
-##### `messagesTable`<sup>Optional</sup> <a name="messagesTable" id="@cdklabs/genai-idp.AgentCompanionChatProps.property.messagesTable"></a>
-
-```typescript
-public readonly messagesTable: IMessagesTable;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a>
-- *Default:* A new table is created
-
-Optional DynamoDB table for chat messages storage.
-
-When not provided, a new table will be created.
-
----
-
-##### `sessionTable`<sup>Optional</sup> <a name="sessionTable" id="@cdklabs/genai-idp.AgentCompanionChatProps.property.sessionTable"></a>
-
-```typescript
-public readonly sessionTable: ISessionTable;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.ISessionTable">ISessionTable</a>
-- *Default:* A new table is created
-
-Optional DynamoDB table for chat session storage.
-
-When not provided, a new table will be created.
 
 ---
 
@@ -72107,10 +72123,10 @@ Enables session-based chat with real-time streaming through AppSync.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.IAgentCompanionChat.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp.IAgentCompanionChat.property.orchestratorFunction">orchestratorFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function for agent orchestration. |
-| <code><a href="#@cdklabs/genai-idp.IAgentCompanionChat.property.chatDataSources">chatDataSources</a></code> | <code>string[]</code> | Optional data sources for chat context. |
 | <code><a href="#@cdklabs/genai-idp.IAgentCompanionChat.property.messagesTable">messagesTable</a></code> | <code><a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a></code> | DynamoDB table for chat messages storage. |
+| <code><a href="#@cdklabs/genai-idp.IAgentCompanionChat.property.orchestratorFunction">orchestratorFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Lambda function for agent orchestration. |
 | <code><a href="#@cdklabs/genai-idp.IAgentCompanionChat.property.sessionTable">sessionTable</a></code> | <code><a href="#@cdklabs/genai-idp.ISessionTable">ISessionTable</a></code> | DynamoDB table for chat session storage. |
+| <code><a href="#@cdklabs/genai-idp.IAgentCompanionChat.property.chatDataSources">chatDataSources</a></code> | <code>string[]</code> | Optional data sources for chat context. |
 
 ---
 
@@ -72126,6 +72142,18 @@ The tree node.
 
 ---
 
+##### `messagesTable`<sup>Required</sup> <a name="messagesTable" id="@cdklabs/genai-idp.IAgentCompanionChat.property.messagesTable"></a>
+
+```typescript
+public readonly messagesTable: IMessagesTable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a>
+
+DynamoDB table for chat messages storage.
+
+---
+
 ##### `orchestratorFunction`<sup>Required</sup> <a name="orchestratorFunction" id="@cdklabs/genai-idp.IAgentCompanionChat.property.orchestratorFunction"></a>
 
 ```typescript
@@ -72138,33 +72166,7 @@ Lambda function for agent orchestration.
 
 ---
 
-##### `chatDataSources`<sup>Optional</sup> <a name="chatDataSources" id="@cdklabs/genai-idp.IAgentCompanionChat.property.chatDataSources"></a>
-
-```typescript
-public readonly chatDataSources: string[];
-```
-
-- *Type:* string[]
-
-Optional data sources for chat context.
-
----
-
-##### `messagesTable`<sup>Optional</sup> <a name="messagesTable" id="@cdklabs/genai-idp.IAgentCompanionChat.property.messagesTable"></a>
-
-```typescript
-public readonly messagesTable: IMessagesTable;
-```
-
-- *Type:* <a href="#@cdklabs/genai-idp.IMessagesTable">IMessagesTable</a>
-
-DynamoDB table for chat messages storage.
-
-Optional - can be provided by user or created by construct.
-
----
-
-##### `sessionTable`<sup>Optional</sup> <a name="sessionTable" id="@cdklabs/genai-idp.IAgentCompanionChat.property.sessionTable"></a>
+##### `sessionTable`<sup>Required</sup> <a name="sessionTable" id="@cdklabs/genai-idp.IAgentCompanionChat.property.sessionTable"></a>
 
 ```typescript
 public readonly sessionTable: ISessionTable;
@@ -72174,7 +72176,17 @@ public readonly sessionTable: ISessionTable;
 
 DynamoDB table for chat session storage.
 
-Optional - can be provided by user or created by construct.
+---
+
+##### `chatDataSources`<sup>Optional</sup> <a name="chatDataSources" id="@cdklabs/genai-idp.IAgentCompanionChat.property.chatDataSources"></a>
+
+```typescript
+public readonly chatDataSources: string[];
+```
+
+- *Type:* string[]
+
+Optional data sources for chat context.
 
 ---
 
