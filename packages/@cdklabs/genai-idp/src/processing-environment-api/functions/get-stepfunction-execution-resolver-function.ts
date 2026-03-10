@@ -6,12 +6,14 @@ SPDX-License-Identifier: Apache-2.0
 import * as path from "path";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
 import * as cdk from "aws-cdk-lib";
+import { Stack } from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as stepfunctions from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
+import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
 
 /**
  * Properties for configuring the GetStepFunctionExecutionResolverFunction.
@@ -94,6 +96,7 @@ export class GetStepFunctionExecutionResolverFunction
           ].join(" && "),
         ],
       },
+      layers: [IdpPythonLayerVersion.getOrCreate(Stack.of(scope))],
       runtime: lambda.Runtime.PYTHON_3_12,
       timeout: cdk.Duration.seconds(60),
       memorySize: 512,

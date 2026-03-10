@@ -15,10 +15,16 @@ import {
   TestRunnerFunction,
   TestSetResolverFunction,
   TestResultsResolverFunction,
+  DocSplitTestSetDeployerFunction,
+  OcrBenchmarkDeployerFunction,
 } from "./functions";
 import { ITestTable, TestTable } from "./test-table";
 import { ITrackingTable } from "../../tracking-table";
-import { IProcessingEnvironmentApi } from "../processing-environment-api";
+import * as functions from "../functions";
+import {
+  IProcessingEnvironmentApi,
+  IApiFeature,
+} from "../processing-environment-api";
 
 /**
  * Interface for Test Studio construct.
@@ -26,7 +32,6 @@ import { IProcessingEnvironmentApi } from "../processing-environment-api";
  * Provides test management and analysis capabilities for document processing.
  * Enables test set creation, execution, and results comparison.
  *
- * @since v0.4.8
  */
 export interface ITestStudio extends IConstruct {
   /**
@@ -65,26 +70,19 @@ export interface ITestStudio extends IConstruct {
    * Lambda function for test results retrieval and analysis.
    */
   readonly testResultsResolverFunction: lambda.IFunction;
-
-  /**
-   * Integrate Test Studio with ProcessingEnvironmentApi.
-   * Adds test management capabilities to the GraphQL API.
-   *
-   * @param api The ProcessingEnvironmentApi to integrate with
-   * @param trackingTable The tracking table for test execution data
-   */
-  integrateWithApi(
-    api: IProcessingEnvironmentApi,
-    trackingTable: ITrackingTable,
-  ): void;
 }
 
 /**
  * Properties for TestStudio construct.
  *
- * @since v0.4.8
  */
 export interface TestStudioProps {
+  /**
+   * The DynamoDB table that tracks document processing status and metadata.
+   * Required for test execution and results tracking.
+   */
+  readonly trackingTable: ITrackingTable;
+
   /**
    * Optional DynamoDB table for storing test sets and execution results.
    * When not provided, a new table will be created.
@@ -119,6 +117,24 @@ export interface TestStudioProps {
   readonly enableRealKieDataset?: boolean;
 
   /**
+   * Enable DocSplit test set deployment.
+   * When enabled, automatically deploys the DocSplit dataset
+   * to the test bucket for document splitting evaluation.
+   *
+   * @default false
+   *    */
+  readonly enableDocSplitDataset?: boolean;
+
+  /**
+   * Enable OCR benchmark dataset deployment.
+   * When enabled, automatically deploys the OCR benchmark dataset
+   * to the test bucket for OCR quality evaluation.
+   *
+   * @default false
+   *    */
+  readonly enableOcrBenchmark?: boolean;
+
+  /**
    * Optional S3 bucket for input documents.
    * Used when creating test sets from existing input files.
    * When not provided, test sets can only be created via direct upload.
@@ -148,9 +164,14 @@ export interface TestStudioProps {
  * Test Studio integrates with the ProcessingEnvironment to enable
  * systematic testing and evaluation of document processing workflows.
  *
- * @since v0.4.8
  */
-export class TestStudio extends Construct implements ITestStudio {
+export class TestStudio extends Construct implements ITestStudio, IApiFeature {
+  /**
+   * The DynamoDB table that tracks document processing status and metadata.
+   * Used for test execution and results tracking.
+   */
+  public readonly trackingTable: ITrackingTable;
+
   /**
    * DynamoDB table for storing test sets and execution results.
    */
@@ -191,8 +212,21 @@ export class TestStudio extends Construct implements ITestStudio {
    */
   public readonly fccDatasetDeployer?: FccDatasetDeployer;
 
-  constructor(scope: Construct, id: string, props: TestStudioProps = {}) {
+  /**
+   * Optional DocSplit test set deployer for document splitting evaluation.
+   *    */
+  public readonly docSplitTestSetDeployer?: lambda.IFunction;
+
+  /**
+   * Optional OCR benchmark deployer for OCR quality evaluation.
+   *    */
+  public readonly ocrBenchmarkDeployer?: lambda.IFunction;
+
+  constructor(scope: Construct, id: string, props: TestStudioProps) {
     super(scope, id);
+
+    // Store tracking table for use in enableInApi()
+    this.trackingTable = props.trackingTable;
 
     // Create or use provided test table
     this.testTable =
@@ -329,29 +363,156 @@ export class TestStudio extends Construct implements ITestStudio {
         },
       );
     }
+
+    // Deploy DocSplit test set if enabled
+    if (props.enableDocSplitDataset) {
+      this.docSplitTestSetDeployer = new DocSplitTestSetDeployerFunction(
+        this,
+        "DocSplitTestSetDeployer",
+        {
+          testBucket: this.testBucket!,
+          encryptionKey: props.encryptionKey,
+        },
+      );
+
+      // Grant permissions
+      this.testBucket?.grantReadWrite(this.docSplitTestSetDeployer);
+    }
+
+    // Deploy OCR benchmark dataset if enabled
+    if (props.enableOcrBenchmark) {
+      this.ocrBenchmarkDeployer = new OcrBenchmarkDeployerFunction(
+        this,
+        "OcrBenchmarkDeployer",
+        {
+          testBucket: this.testBucket!,
+          encryptionKey: props.encryptionKey,
+        },
+      );
+
+      // Grant permissions
+      this.testBucket?.grantReadWrite(this.ocrBenchmarkDeployer);
+    }
   }
 
   /**
-   * Integrate Test Studio with ProcessingEnvironmentApi.
+   * Enable this Test Studio feature in the ProcessingEnvironmentApi.
    *
-   * This method adds test-related resolvers to an existing ProcessingEnvironmentApi
-   * to enable GraphQL operations for test management and results analysis.
+   * This method integrates the test management functionality with the GraphQL API
+   * by creating the necessary data sources and resolvers. It should be called after
+   * both the API and this construct have been created.
    *
-   * @param api The ProcessingEnvironmentApi to integrate with
-   * @param trackingTable The tracking table for test execution data
-   */
-  public integrateWithApi(
-    api: IProcessingEnvironmentApi,
-    trackingTable: ITrackingTable,
-  ): void {
-    // Add test studio capabilities to the API
-    api.addTestStudio(
-      trackingTable,
-      this.testBucket!,
-      this.testBucket!, // Use test bucket as fallback for input bucket
-      this.testSetCopyQueue,
-      undefined, // No reporting bucket by default
-      this.testResultCacheUpdateQueue,
+   * Example:
+   * ```typescript
+   * const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
+   * const testStudio = new TestStudio(this, 'TestStudio', {
+   *   trackingTable: environment.trackingTable,
+   *   ...
+   * });
+   * api.enable(testStudio);
+   * ```
+   *
+   * @param api The ProcessingEnvironmentApi to enable in
+   *    */
+  public enableInApi(api: IProcessingEnvironmentApi): void {
+    // Create test set resolver function using stored trackingTable
+    const testSetResolverFunction = new functions.TestSetResolverFunction(
+      api as any,
+      "TestSetResolverFunction",
+      {
+        trackingTable: this.trackingTable,
+        testSetBucket: this.testBucket!,
+        inputBucket: this.testBucket!, // Use test bucket as fallback
+        testSetCopyQueue: this.testSetCopyQueue,
+        encryptionKey: undefined, // Will use API's encryption key
+      },
     );
+
+    // Create test results resolver function using stored trackingTable
+    const testResultsResolverFunction =
+      new functions.TestResultsResolverFunction(
+        api as any,
+        "TestResultsResolverFunction",
+        {
+          trackingTable: this.trackingTable,
+          reportingBucket: undefined,
+          testResultCacheUpdateQueue: this.testResultCacheUpdateQueue,
+          encryptionKey: undefined, // Will use API's encryption key
+        },
+      );
+
+    // Create data sources
+    const testSetDataSource = api.addLambdaDataSource(
+      "TestSetDataSource",
+      testSetResolverFunction,
+    );
+
+    const testResultsDataSource = api.addLambdaDataSource(
+      "TestResultsDataSource",
+      testResultsResolverFunction,
+    );
+
+    // Create test set resolvers
+    testSetDataSource.createResolver("GetTestSetsResolver", {
+      typeName: "Query",
+      fieldName: "getTestSets",
+    });
+
+    testSetDataSource.createResolver("AddTestSetResolver", {
+      typeName: "Mutation",
+      fieldName: "addTestSet",
+    });
+
+    testSetDataSource.createResolver("AddTestSetFromUploadResolver", {
+      typeName: "Mutation",
+      fieldName: "addTestSetFromUpload",
+    });
+
+    testSetDataSource.createResolver("DeleteTestSetsResolver", {
+      typeName: "Mutation",
+      fieldName: "deleteTestSets",
+    });
+
+    testSetDataSource.createResolver("ListBucketFilesResolver", {
+      typeName: "Query",
+      fieldName: "listBucketFiles",
+    });
+
+    testSetDataSource.createResolver("ValidateTestFileNameResolver", {
+      typeName: "Query",
+      fieldName: "validateTestFileName",
+    });
+
+    // Create test results resolvers
+    testResultsDataSource.createResolver("GetTestRunResolver", {
+      typeName: "Query",
+      fieldName: "getTestRun",
+    });
+
+    testResultsDataSource.createResolver("GetTestRunsResolver", {
+      typeName: "Query",
+      fieldName: "getTestRuns",
+    });
+
+    testResultsDataSource.createResolver("GetTestRunStatusResolver", {
+      typeName: "Query",
+      fieldName: "getTestRunStatus",
+    });
+
+    testResultsDataSource.createResolver("CompareTestRunsResolver", {
+      typeName: "Query",
+      fieldName: "compareTestRuns",
+    });
+
+    // Create test runner resolver (uses the same test results function)
+    testResultsDataSource.createResolver("StartTestRunResolver", {
+      typeName: "Mutation",
+      fieldName: "startTestRun",
+    });
+
+    testResultsDataSource.createResolver("DeleteTestsResolver", {
+      typeName: "Mutation",
+      fieldName: "deleteTests",
+    });
   }
 }

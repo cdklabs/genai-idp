@@ -53,6 +53,7 @@ export class BdaProcessorConfiguration implements IBdaProcessorConfiguration {
 
   /**
    * Creates a configuration for lending package processing.
+   * This configuration includes full class definitions and extraction schemas.
    *
    * @param options Optional configuration options
    * @returns A configuration definition with default settings
@@ -66,6 +67,90 @@ export class BdaProcessorConfiguration implements IBdaProcessorConfiguration {
   }
 
   /**
+   * Creates a minimal configuration for GovCloud deployments.
+   * This configuration demonstrates the "minimal override" pattern where only
+   * GovCloud-compatible model IDs are specified, and all other settings
+   * (classes, prompts, etc.) are inherited from system defaults at runtime.
+   *
+   * This approach is useful when you want to:
+   * - Use system default class definitions
+   * - Only override region-specific settings (like model IDs)
+   * - Keep your config file minimal and maintainable
+   *
+   * @param options Optional configuration options
+   * @returns A minimal configuration definition for GovCloud deployment
+   */
+  static lendingPackageSampleGovCloud(
+    options?: BdaProcessorConfigurationDefinitionOptions,
+  ): BdaProcessorConfiguration {
+    const definition =
+      BdaProcessorConfigurationDefinition.lendingPackageSampleGovCloud(options);
+    return new BdaProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for document splitting.
+   * This configuration focuses on splitting multi-document files into
+   * individual documents for processing.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for document splitting
+   */
+  static docSplit(
+    options?: BdaProcessorConfigurationDefinitionOptions,
+  ): BdaProcessorConfiguration {
+    const definition = BdaProcessorConfigurationDefinition.docSplit(options);
+    return new BdaProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for OCR benchmarking.
+   * This configuration is designed for evaluating OCR performance
+   * across different document types and quality levels.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for OCR benchmarking
+   */
+  static ocrBenchmark(
+    options?: BdaProcessorConfigurationDefinitionOptions,
+  ): BdaProcessorConfiguration {
+    const definition =
+      BdaProcessorConfigurationDefinition.ocrBenchmark(options);
+    return new BdaProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for RealKIE FCC verified documents.
+   * This configuration is optimized for processing FCC-verified documents
+   * from the RealKIE dataset.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for RealKIE FCC documents
+   */
+  static realkieFccVerified(
+    options?: BdaProcessorConfigurationDefinitionOptions,
+  ): BdaProcessorConfiguration {
+    const definition =
+      BdaProcessorConfigurationDefinition.realkieFccVerified(options);
+    return new BdaProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for RVL-CDIP document classification.
+   * This configuration is designed for the RVL-CDIP dataset, which contains
+   * 16 classes of document images for classification tasks.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for RVL-CDIP processing
+   */
+  static rvlCdip(
+    options?: BdaProcessorConfigurationDefinitionOptions,
+  ): BdaProcessorConfiguration {
+    const definition = BdaProcessorConfigurationDefinition.rvlCdip(options);
+    return new BdaProcessorConfiguration(definition);
+  }
+
+  /**
    * Protected constructor to enforce factory method usage.
    *
    * @param definition The configuration definition instance
@@ -74,6 +159,13 @@ export class BdaProcessorConfiguration implements IBdaProcessorConfiguration {
     private readonly definition: IBdaProcessorConfigurationDefinition,
   ) {}
 
+  /**
+   * Binds the configuration to a processor instance.
+   * Creates a custom resource that writes the default configuration to the configuration table.
+   *
+   * @param processor The BDA document processor to bind to
+   * @returns The configuration definition with resolved model references
+   */
   public bind(processor: IBdaProcessor): IBdaProcessorConfigurationDefinition {
     new CustomResource(processor, "UpdateDefaultConfig", {
       serviceToken: processor.environment.configurationFunction.functionArn,

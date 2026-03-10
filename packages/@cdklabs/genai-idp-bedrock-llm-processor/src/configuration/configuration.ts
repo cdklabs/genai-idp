@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import { CustomResource } from "aws-cdk-lib";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import {
   BedrockLlmProcessorConfigurationDefinition,
   BedrockLlmProcessorConfigurationDefinitionOptions,
@@ -174,6 +175,138 @@ export class BedrockLlmProcessorConfiguration implements IBedrockLlmProcessorCon
   }
 
   /**
+   * Creates a configuration for document splitting.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for document splitting
+   */
+  static docSplit(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): BedrockLlmProcessorConfiguration {
+    const definition =
+      BedrockLlmProcessorConfigurationDefinition.docSplit(options);
+    return new BedrockLlmProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for healthcare multisection package processing.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for healthcare multisection processing
+   */
+  static healthcareMultisectionPackage(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): BedrockLlmProcessorConfiguration {
+    const definition =
+      BedrockLlmProcessorConfigurationDefinition.healthcareMultisectionPackage(
+        options,
+      );
+    return new BedrockLlmProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a minimal configuration for GovCloud deployments.
+   *
+   * @param options Optional configuration options
+   * @returns A minimal configuration definition for GovCloud deployment
+   */
+  static lendingPackageSampleGovCloud(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): BedrockLlmProcessorConfiguration {
+    const definition =
+      BedrockLlmProcessorConfigurationDefinition.lendingPackageSampleGovCloud(
+        options,
+      );
+    return new BedrockLlmProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for OCR benchmarking.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for OCR benchmarking
+   */
+  static ocrBenchmark(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): BedrockLlmProcessorConfiguration {
+    const definition =
+      BedrockLlmProcessorConfigurationDefinition.ocrBenchmark(options);
+    return new BedrockLlmProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for RealKIE FCC verified documents.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for RealKIE FCC documents
+   */
+  static realkieFccVerified(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): BedrockLlmProcessorConfiguration {
+    const definition =
+      BedrockLlmProcessorConfigurationDefinition.realkieFccVerified(options);
+    return new BedrockLlmProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for rule extraction.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for rule extraction
+   */
+  static ruleExtraction(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): BedrockLlmProcessorConfiguration {
+    const definition =
+      BedrockLlmProcessorConfigurationDefinition.ruleExtraction(options);
+    return new BedrockLlmProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for rule validation.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for rule validation
+   */
+  static ruleValidation(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): BedrockLlmProcessorConfiguration {
+    const definition =
+      BedrockLlmProcessorConfigurationDefinition.ruleValidation(options);
+    return new BedrockLlmProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for RVL-CDIP document classification.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for RVL-CDIP processing
+   */
+  static rvlCdip(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): BedrockLlmProcessorConfiguration {
+    const definition =
+      BedrockLlmProcessorConfigurationDefinition.rvlCdip(options);
+    return new BedrockLlmProcessorConfiguration(definition);
+  }
+
+  /**
+   * Creates a configuration for RVL-CDIP with few-shot examples.
+   *
+   * @param options Optional configuration options
+   * @returns A configuration definition for RVL-CDIP with few-shot examples
+   */
+  static rvlCdipWithFewShotExamples(
+    options?: BedrockLlmProcessorConfigurationDefinitionOptions,
+  ): BedrockLlmProcessorConfiguration {
+    const definition =
+      BedrockLlmProcessorConfigurationDefinition.rvlCdipWithFewShotExamples(
+        options,
+      );
+    return new BedrockLlmProcessorConfiguration(definition);
+  }
+
+  /**
    * Protected constructor to enforce factory method usage.
    *
    * @param definition The configuration definition instance
@@ -193,6 +326,25 @@ export class BedrockLlmProcessorConfiguration implements IBedrockLlmProcessorCon
         ConfigurationTable: processor.environment.configurationTable.tableName,
       },
     });
+
+    // If custom prompt Lambda ARN is in config but no function reference exists,
+    // import the function so it can be used for permissions
+    const rawConfig = this.definition.raw();
+    const customPromptArn = rawConfig?.extraction?.custom_prompt_lambda_arn;
+
+    if (customPromptArn && !this.definition.customPromptGenerator) {
+      const importedFunction = lambda.Function.fromFunctionArn(
+        processor,
+        "CustomPromptGenerator",
+        customPromptArn,
+      );
+
+      // Return a wrapped definition with the imported function
+      return {
+        ...this.definition,
+        customPromptGenerator: importedFunction,
+      };
+    }
 
     return this.definition;
   }

@@ -6,16 +6,20 @@ SPDX-License-Identifier: Apache-2.0
 import { IGuardrail } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { IDatabase } from "@aws-cdk/aws-glue-alpha";
 import * as cdk from "aws-cdk-lib";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Construct, IConstruct } from "constructs";
 import { AgentChatProcessorFunction } from "./functions";
-import { IMessagesTable, MessagesTable } from "./messages-table";
-import { ISessionTable, SessionTable } from "./session-table";
+import * as agentCompanionChatFunctions from "./functions";
+import { IMessagesTable } from "./messages-table";
+import { ISessionTable } from "./session-table";
 import { IConfigurationTable } from "../../configuration-table";
 import { ITrackingTable } from "../../tracking-table";
-import { IProcessingEnvironmentApi } from "../processing-environment-api";
+import * as functions from "../functions";
+import {
+  IProcessingEnvironmentApi,
+  IApiFeature,
+} from "../processing-environment-api";
 
 /**
  * Interface for Agent Companion Chat construct.
@@ -23,20 +27,17 @@ import { IProcessingEnvironmentApi } from "../processing-environment-api";
  * Provides interactive AI assistant with multi-agent orchestration.
  * Enables session-based chat with real-time streaming through AppSync.
  *
- * @since v0.4.8
  */
 export interface IAgentCompanionChat extends IConstruct {
   /**
    * DynamoDB table for chat session storage.
-   * Optional - can be provided by user or created by construct.
    */
-  readonly sessionTable?: ISessionTable;
+  readonly sessionTable: ISessionTable;
 
   /**
    * DynamoDB table for chat messages storage.
-   * Optional - can be provided by user or created by construct.
    */
-  readonly messagesTable?: IMessagesTable;
+  readonly messagesTable: IMessagesTable;
 
   /**
    * Lambda function for agent orchestration.
@@ -47,37 +48,26 @@ export interface IAgentCompanionChat extends IConstruct {
    * Optional data sources for chat context.
    */
   readonly chatDataSources?: string[];
-
-  /**
-   * Integrate Agent Companion Chat with ProcessingEnvironmentApi.
-   * Adds chat capabilities to the GraphQL API.
-   *
-   * @param api The ProcessingEnvironmentApi to integrate with
-   */
-  integrateWithApi(api: IProcessingEnvironmentApi): void;
 }
 
 /**
  * Properties for AgentCompanionChat construct.
  *
- * @since v0.4.8
  */
 export interface AgentCompanionChatProps {
   /**
-   * Optional DynamoDB table for chat session storage.
-   * When not provided, a new table will be created.
-   *
-   * @default - A new table is created
+   * DynamoDB table for chat session storage.
+   * Consumers are responsible for configuring billing mode, encryption,
+   * point-in-time recovery, and removal policy.
    */
-  readonly sessionTable?: ISessionTable;
+  readonly sessionTable: ISessionTable;
 
   /**
-   * Optional DynamoDB table for chat messages storage.
-   * When not provided, a new table will be created.
-   *
-   * @default - A new table is created
+   * DynamoDB table for chat messages storage.
+   * Consumers are responsible for configuring billing mode, encryption,
+   * point-in-time recovery, and removal policy.
    */
-  readonly messagesTable?: IMessagesTable;
+  readonly messagesTable: IMessagesTable;
 
   /**
    * The DynamoDB table for configuration settings.
@@ -96,12 +86,6 @@ export interface AgentCompanionChatProps {
    * Required for retrieving document metadata and processing status.
    */
   readonly lookupFunction: lambda.IFunction;
-
-  /**
-   * The AppSync GraphQL API URL for streaming responses.
-   * Required for publishing incremental responses via subscriptions.
-   */
-  readonly appsyncApiUrl: string;
 
   /**
    * CloudWatch log group prefix for the stack.
@@ -198,21 +182,20 @@ export interface AgentCompanionChatProps {
  * intelligent assistance for document processing workflows, error diagnosis,
  * and system analytics.
  *
- * @since v0.4.8
  */
 export class AgentCompanionChat
   extends Construct
-  implements IAgentCompanionChat
+  implements IAgentCompanionChat, IApiFeature
 {
   /**
    * DynamoDB table for chat session storage.
    */
-  public readonly sessionTable?: ISessionTable;
+  public readonly sessionTable: ISessionTable;
 
   /**
    * DynamoDB table for chat messages storage.
    */
-  public readonly messagesTable?: IMessagesTable;
+  public readonly messagesTable: IMessagesTable;
 
   /**
    * Lambda function for agent orchestration.
@@ -223,6 +206,11 @@ export class AgentCompanionChat
    * Optional data sources for chat context.
    */
   public readonly chatDataSources?: string[];
+
+  /**
+   * Private storage for AppSync API URL, set during attachTo().
+   */
+  private _appsyncApiUrl?: string;
 
   constructor(scope: Construct, id: string, props: AgentCompanionChatProps) {
     super(scope, id);
@@ -237,9 +225,6 @@ export class AgentCompanionChat
     if (!props.lookupFunction) {
       throw new Error("AgentCompanionChat requires a lookupFunction");
     }
-    if (!props.appsyncApiUrl) {
-      throw new Error("AgentCompanionChat requires an appsyncApiUrl");
-    }
     if (!props.cloudWatchLogGroupPrefix) {
       throw new Error("AgentCompanionChat requires a cloudWatchLogGroupPrefix");
     }
@@ -248,43 +233,24 @@ export class AgentCompanionChat
 
     this.chatDataSources = props.chatDataSources;
 
-    // Create or use provided session table
-    this.sessionTable =
-      props.sessionTable ??
-      new SessionTable(this, "SessionTable", {
-        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-        encryption: props.encryptionKey
-          ? dynamodb.TableEncryption.CUSTOMER_MANAGED
-          : dynamodb.TableEncryption.AWS_MANAGED,
-        encryptionKey: props.encryptionKey,
-        removalPolicy: cdk.RemovalPolicy.RETAIN,
-        pointInTimeRecovery: true,
-      });
-
-    // Create or use provided messages table
-    this.messagesTable =
-      props.messagesTable ??
-      new MessagesTable(this, "MessagesTable", {
-        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-        encryption: props.encryptionKey
-          ? dynamodb.TableEncryption.CUSTOMER_MANAGED
-          : dynamodb.TableEncryption.AWS_MANAGED,
-        encryptionKey: props.encryptionKey,
-        removalPolicy: cdk.RemovalPolicy.RETAIN,
-        pointInTimeRecovery: true,
-      });
+    // Use consumer-provided tables
+    this.sessionTable = props.sessionTable;
+    this.messagesTable = props.messagesTable;
 
     // Create orchestrator function using AgentChatProcessorFunction
+    // Use Lazy.string() to defer API URL resolution until attachTo() is called
     this.orchestratorFunction = new AgentChatProcessorFunction(
       this,
       "OrchestratorFunction",
       {
-        sessionTable: this.sessionTable!,
-        messagesTable: this.messagesTable!,
+        sessionTable: this.sessionTable,
+        messagesTable: this.messagesTable,
         configurationTable: props.configurationTable,
         trackingTable: props.trackingTable,
         lookupFunction: props.lookupFunction,
-        appsyncApiUrl: props.appsyncApiUrl,
+        appsyncApiUrl: cdk.Lazy.string({
+          produce: () => this._appsyncApiUrl || "",
+        }),
         stackName: stackName,
         cloudWatchLogGroupPrefix: props.cloudWatchLogGroupPrefix,
         cloudWatchLogGroups: props.cloudWatchLogGroups,
@@ -302,8 +268,8 @@ export class AgentCompanionChat
     );
 
     // Grant permissions
-    this.sessionTable?.grantReadWriteData(this.orchestratorFunction);
-    this.messagesTable?.grantReadWriteData(this.orchestratorFunction);
+    this.sessionTable.grantReadWriteData(this.orchestratorFunction);
+    this.messagesTable.grantReadWriteData(this.orchestratorFunction);
 
     // Grant Bedrock permissions
     this.orchestratorFunction.addToRolePolicy(
@@ -456,16 +422,118 @@ export class AgentCompanionChat
   }
 
   /**
-   * Integrate Agent Companion Chat with ProcessingEnvironmentApi.
+   * Enable this Agent Companion Chat feature in the ProcessingEnvironmentApi.
    *
-   * This method adds agent chat capabilities to an existing ProcessingEnvironmentApi
-   * to enable GraphQL operations for AI assistant interactions, session management,
-   * and real-time streaming.
+   * This method integrates the AI assistant functionality with the GraphQL API
+   * by creating the necessary data sources and resolvers. It should be called after
+   * both the API and this construct have been created.
    *
-   * @param api The ProcessingEnvironmentApi to integrate with
-   */
-  public integrateWithApi(api: IProcessingEnvironmentApi): void {
-    // Add agent companion chat capabilities to the API
-    api.addAgentCompanionChat(this);
+   * Example:
+   * const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
+   * const agentCompanionChat = new AgentCompanionChat(this, 'AgentCompanionChat', { ... });
+   * api.enable(agentCompanionChat);
+   *
+   * @param api The ProcessingEnvironmentApi to enable in
+   *    */
+  public enableInApi(api: IProcessingEnvironmentApi): void {
+    // Store the API URL for lazy resolution in the orchestrator function
+    this._appsyncApiUrl = api.graphqlUrl;
+
+    // Import the resolver functions
+    const { AgentChatResolverFunction } = functions;
+    const {
+      ListAgentChatSessionsFunction,
+      GetAgentChatMessagesFunction,
+      DeleteAgentChatSessionFunction,
+    } = agentCompanionChatFunctions;
+
+    // Create agent chat resolver function (handles sendAgentChatMessage)
+    const agentChatResolverFunction = new AgentChatResolverFunction(
+      api as any,
+      "AgentChatResolverFunction",
+      {
+        sessionTable: this.sessionTable,
+        messagesTable: this.messagesTable,
+        orchestratorFunction: this.orchestratorFunction,
+        enableCodeIntelligence: true, // Default to enabled
+        encryptionKey: undefined, // Will use API's encryption key
+      },
+    );
+
+    // Create list sessions function
+    const listAgentChatSessionsFunction = new ListAgentChatSessionsFunction(
+      api as any,
+      "ListAgentChatSessionsFunction",
+      {
+        sessionTable: this.sessionTable,
+        encryptionKey: undefined, // Will use API's encryption key
+      },
+    );
+
+    // Create get messages function
+    const getAgentChatMessagesFunction = new GetAgentChatMessagesFunction(
+      api as any,
+      "GetAgentChatMessagesFunction",
+      {
+        messagesTable: this.messagesTable,
+        encryptionKey: undefined, // Will use API's encryption key
+      },
+    );
+
+    // Create delete session function
+    const deleteAgentChatSessionFunction = new DeleteAgentChatSessionFunction(
+      api as any,
+      "DeleteAgentChatSessionFunction",
+      {
+        sessionTable: this.sessionTable,
+        messagesTable: this.messagesTable,
+        encryptionKey: undefined, // Will use API's encryption key
+      },
+    );
+
+    // Create data sources
+    const agentChatDataSource = api.addLambdaDataSource(
+      "AgentChatDataSource",
+      agentChatResolverFunction,
+    );
+
+    const listSessionsDataSource = api.addLambdaDataSource(
+      "ListAgentChatSessionsDataSource",
+      listAgentChatSessionsFunction,
+    );
+
+    const getMessagesDataSource = api.addLambdaDataSource(
+      "GetAgentChatMessagesDataSource",
+      getAgentChatMessagesFunction,
+    );
+
+    const deleteSessionDataSource = api.addLambdaDataSource(
+      "DeleteAgentChatSessionDataSource",
+      deleteAgentChatSessionFunction,
+    );
+
+    // Create agent chat message resolver (mutation)
+    agentChatDataSource.createResolver("SendAgentChatMessageResolver", {
+      typeName: "Mutation",
+      fieldName: "sendAgentChatMessage",
+    });
+
+    // Create list sessions resolver (query)
+    listSessionsDataSource.createResolver("ListChatSessionsResolver", {
+      typeName: "Query",
+      fieldName: "listChatSessions",
+    });
+
+    // Create get messages resolver (query)
+    getMessagesDataSource.createResolver("GetChatMessagesResolver", {
+      typeName: "Query",
+      fieldName: "getChatMessages",
+    });
+
+    // Create delete session resolver (mutation)
+    deleteSessionDataSource.createResolver("DeleteChatSessionResolver", {
+      typeName: "Mutation",
+      fieldName: "deleteChatSession",
+    });
   }
 }

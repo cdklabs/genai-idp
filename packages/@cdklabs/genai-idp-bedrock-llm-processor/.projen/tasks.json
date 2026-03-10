@@ -60,19 +60,16 @@
           "spawn": "bundle:lambda:extraction_function"
         },
         {
-          "spawn": "bundle:lambda:hitl-process-function"
-        },
-        {
-          "spawn": "bundle:lambda:hitl-status-update-function"
-        },
-        {
-          "spawn": "bundle:lambda:hitl-wait-function"
-        },
-        {
           "spawn": "bundle:lambda:ocr_function"
         },
         {
           "spawn": "bundle:lambda:processresults_function"
+        },
+        {
+          "spawn": "bundle:lambda:rule-validation-function"
+        },
+        {
+          "spawn": "bundle:lambda:rule-validation-orchestration-function"
         },
         {
           "spawn": "bundle:lambda:summarization_function"
@@ -81,16 +78,34 @@
           "spawn": "bundle:config:bank-statement-sample"
         },
         {
-          "spawn": "bundle:config:criteria-validation"
+          "spawn": "bundle:config:docsplit"
+        },
+        {
+          "spawn": "bundle:config:healthcare-multisection-package"
         },
         {
           "spawn": "bundle:config:lending-package-sample"
         },
         {
-          "spawn": "bundle:config:rvl-cdip-package-sample"
+          "spawn": "bundle:config:lending-package-sample-govcloud"
         },
         {
-          "spawn": "bundle:config:rvl-cdip-package-sample-with-few-shot-examples"
+          "spawn": "bundle:config:ocr-benchmark"
+        },
+        {
+          "spawn": "bundle:config:realkie-fcc-verified"
+        },
+        {
+          "spawn": "bundle:config:rule-extraction"
+        },
+        {
+          "spawn": "bundle:config:rule-validation"
+        },
+        {
+          "spawn": "bundle:config:rvl-cdip"
+        },
+        {
+          "spawn": "bundle:config:rvl-cdip-with-few-shot-examples"
         },
         {
           "spawn": "bundle:state-machine"
@@ -111,14 +126,25 @@
         }
       ]
     },
-    "bundle:config:criteria-validation": {
-      "name": "bundle:config:criteria-validation",
+    "bundle:config:docsplit": {
+      "name": "bundle:config:docsplit",
       "steps": [
         {
-          "exec": "mkdir -p assets/configs/criteria-validation"
+          "exec": "mkdir -p assets/configs/docsplit"
         },
         {
-          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/criteria-validation/config.yaml assets/configs/criteria-validation/."
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/docsplit/config.yaml assets/configs/docsplit/."
+        }
+      ]
+    },
+    "bundle:config:healthcare-multisection-package": {
+      "name": "bundle:config:healthcare-multisection-package",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/healthcare-multisection-package"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/healthcare-multisection-package/config.yaml assets/configs/healthcare-multisection-package/."
         }
       ]
     },
@@ -133,25 +159,80 @@
         }
       ]
     },
-    "bundle:config:rvl-cdip-package-sample": {
-      "name": "bundle:config:rvl-cdip-package-sample",
+    "bundle:config:lending-package-sample-govcloud": {
+      "name": "bundle:config:lending-package-sample-govcloud",
       "steps": [
         {
-          "exec": "mkdir -p assets/configs/rvl-cdip-package-sample"
+          "exec": "mkdir -p assets/configs/lending-package-sample-govcloud"
         },
         {
-          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/rvl-cdip-package-sample/config.yaml assets/configs/rvl-cdip-package-sample/."
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/lending-package-sample-govcloud/config.yaml assets/configs/lending-package-sample-govcloud/."
         }
       ]
     },
-    "bundle:config:rvl-cdip-package-sample-with-few-shot-examples": {
-      "name": "bundle:config:rvl-cdip-package-sample-with-few-shot-examples",
+    "bundle:config:ocr-benchmark": {
+      "name": "bundle:config:ocr-benchmark",
       "steps": [
         {
-          "exec": "mkdir -p assets/configs/rvl-cdip-package-sample-with-few-shot-examples"
+          "exec": "mkdir -p assets/configs/ocr-benchmark"
         },
         {
-          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/rvl-cdip-package-sample-with-few-shot-examples/config.yaml assets/configs/rvl-cdip-package-sample-with-few-shot-examples/."
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/ocr-benchmark/config.yaml assets/configs/ocr-benchmark/."
+        }
+      ]
+    },
+    "bundle:config:realkie-fcc-verified": {
+      "name": "bundle:config:realkie-fcc-verified",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/realkie-fcc-verified"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/realkie-fcc-verified/config.yaml assets/configs/realkie-fcc-verified/."
+        }
+      ]
+    },
+    "bundle:config:rule-extraction": {
+      "name": "bundle:config:rule-extraction",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/rule-extraction"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/rule-extraction/config.yaml assets/configs/rule-extraction/."
+        }
+      ]
+    },
+    "bundle:config:rule-validation": {
+      "name": "bundle:config:rule-validation",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/rule-validation"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/rule-validation/config.yaml assets/configs/rule-validation/."
+        }
+      ]
+    },
+    "bundle:config:rvl-cdip": {
+      "name": "bundle:config:rvl-cdip",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/rvl-cdip"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/rvl-cdip/config.yaml assets/configs/rvl-cdip/."
+        }
+      ]
+    },
+    "bundle:config:rvl-cdip-with-few-shot-examples": {
+      "name": "bundle:config:rvl-cdip-with-few-shot-examples",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/rvl-cdip-with-few-shot-examples"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-2/rvl-cdip-with-few-shot-examples/config.yaml assets/configs/rvl-cdip-with-few-shot-examples/."
         }
       ]
     },
@@ -199,39 +280,6 @@
         }
       ]
     },
-    "bundle:lambda:hitl-process-function": {
-      "name": "bundle:lambda:hitl-process-function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/hitl-process-function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/hitl-process-function/* assets/lambdas/hitl-process-function/."
-        }
-      ]
-    },
-    "bundle:lambda:hitl-status-update-function": {
-      "name": "bundle:lambda:hitl-status-update-function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/hitl-status-update-function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/hitl-status-update-function/* assets/lambdas/hitl-status-update-function/."
-        }
-      ]
-    },
-    "bundle:lambda:hitl-wait-function": {
-      "name": "bundle:lambda:hitl-wait-function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/hitl-wait-function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/hitl-wait-function/* assets/lambdas/hitl-wait-function/."
-        }
-      ]
-    },
     "bundle:lambda:ocr_function": {
       "name": "bundle:lambda:ocr_function",
       "steps": [
@@ -251,6 +299,28 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/processresults_function/* assets/lambdas/processresults_function/."
+        }
+      ]
+    },
+    "bundle:lambda:rule-validation-function": {
+      "name": "bundle:lambda:rule-validation-function",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/rule-validation-function"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/rule-validation-function/* assets/lambdas/rule-validation-function/."
+        }
+      ]
+    },
+    "bundle:lambda:rule-validation-orchestration-function": {
+      "name": "bundle:lambda:rule-validation-orchestration-function",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/rule-validation-orchestration-function"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/patterns/pattern-2/src/rule-validation-orchestration-function/* assets/lambdas/rule-validation-orchestration-function/."
         }
       ]
     },

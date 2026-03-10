@@ -6,6 +6,9 @@ model.tar.gz
 .checksums/
 .build_checksum
 .lib_checksum
+
+# Build artifacts - backup files from publish.py
+*.pre-build-backup
 .vscode/
 .DS_Store
 dist/
@@ -18,7 +21,6 @@ __pycache__
 *.code-workspace
 .ruff_cache
 .kiro
-rvl_cdip_*
 notebooks/examples/data
 .idea/
 .dsr/
@@ -37,3 +39,14 @@ pyrightconfig.temp.json
 .venv/
 .venv-*/
 venv/
+
+#Temp notebook data
+output/*
+*.log
+dataset
+venv-*/
+notebooks/doc-split-metrics-exp/
+# SAM CLI config (may contain sensitive ARNs)
+samconfig.toml
+..bfg-report
+.git-rewrite

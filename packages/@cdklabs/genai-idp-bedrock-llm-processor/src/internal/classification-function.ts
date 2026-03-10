@@ -101,6 +101,14 @@ export interface ClassificationFunctionProps extends IdpPythonFunctionOptions {
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Lambda function that classifies document pages using Amazon Bedrock models.
+ *
+ * Analyzes document content to determine document types and group pages into logical
+ * sections. Uses the configured Bedrock classification model to identify document
+ * boundaries and assign type labels based on the processing configuration.
+ *
+ */
 export class ClassificationFunction extends PythonFunction {
   constructor(
     scope: Construct,

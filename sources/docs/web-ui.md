@@ -19,6 +19,7 @@ _The GenAIIDP Web Interface showing the document tracking dashboard with status 
 - Inspection of processing outputs for section classification and information extraction
 - Accuracy evaluation reports when baseline data is provided
 - View and edit pattern configuration, including document classes, prompt engineering, and model settings
+- Manage multiple configuration versions — create, compare, activate, and delete versions (see [configuration-versions.md](configuration-versions.md))
 - **Confidence threshold configuration** for HITL (Human-in-the-Loop) triggering through the Assessment & HITL Configuration section
 - Document upload from local computer
 - Knowledge base querying for document collections
@@ -81,13 +82,103 @@ The Edit Sections feature uses **2-phase schema knowledge optimization**:
 - **Performance Optimization**: Automatic selective processing for efficiency
 - **Data Preservation**: Unmodified sections retain all processing results
 
+#### Pattern-1 Support (Data-Only Edit Mode)
+
+Pattern-1 uses **Bedrock Data Automation (BDA)** with automatic section management. Edit Mode in Pattern-1 provides **data-only editing**:
+
+- **Data Editing**: Edit extraction data (predictions and ground truth) via the "Edit Data" button for each section
+- **Section Structure**: Read-only - section boundaries, classifications, and page assignments are managed by BDA
+- **Reprocessing**: "Save and Reprocess" triggers evaluation and summarization steps without re-invoking BDA
+- **BDA Skip Logic**: When reprocessing with existing pages/sections data, BDA invocation is automatically skipped
+
+**Note**: Pattern-2 and Pattern-3 offer full section structure editing. Pattern-1 maintains BDA-managed section boundaries while allowing extraction data modifications.
+
+## Edit Pages
+
+The Edit Pages feature provides an intelligent interface for modifying individual page classifications and text content, with automatic selective reprocessing for Pattern-2 and Pattern-3 workflows.
+
+### Key Capabilities
+
+- **View Page Text**: Access clean, readable page text without JSON formatting in a modal editor
+- **Classification Reset**: Reset page classifications to force reclassification during reprocessing
+- **Text Editing**: Modify page OCR text with immediate S3 saves to prevent data loss
+- **Confidence Editing**: Edit OCR confidence data displayed as markdown tables
+- **Split-Pane Editor**: Side-by-side layout with text editor and live markdown preview
+- **Intelligent Reprocessing**: Only affected sections are reprocessed based on modification type
+- **Pattern Compatibility**: Available for Pattern-2 and Pattern-3, with informative guidance for Pattern-1
+
+### How to Use
+
+1. Navigate to a completed document's detail page
+2. In the "Document Pages" panel, click the "Edit Pages" button
+3. **For Pattern-2/Pattern-3**: Enter edit mode with page-level editing capabilities
+4. **For Pattern-1**: View informative modal explaining BDA architecture differences
+
+#### Editing Workflow (Pattern-2/Pattern-3)
+
+##### View Mode (Default)
+- Click "View Page Text" button to view page content in read-only mode
+- Modal displays text with live markdown preview
+- Switch to "Text + Confidence" view to see OCR confidence table
+
+##### Edit Mode
+1. **Click "Edit Pages"**: Activates edit mode for all pages
+2. **Reset Page Classification** (optional):
+   - Click the  button next to page Class/Type
+   - Page becomes "Unclassified" and will be reclassified during reprocessing
+3. **Edit Page Text**:
+   - Click "Edit Page Text" button to open modal editor
+   - **Text + Markdown View**: Edit plain text (left) with live markdown preview (right)
+   - **Text + Confidence View**: Edit markdown confidence table (left) with rendered preview (right)
+   - Click "Save" to write changes to S3 immediately
+   - Unsaved changes warning prevents data loss
+4. **Submit Changes**: Click "Save & Process Changes" to trigger reprocessing
+5. **Review Impact**: Confirmation modal shows how many pages will trigger reclassification vs re-extraction
+6. **Confirm**: Click "Confirm & Process" to submit document for selective reprocessing
+
+### Processing Optimization
+
+The Edit Pages feature uses intelligent selective reprocessing:
+
+#### Page Classification Reset
+- **Impact**: Removes all sections containing the page
+- **Triggers**: Full reclassification and re-extraction
+- **Use Case**: When page was incorrectly classified
+
+#### Page Text Modification
+- **Impact**: Clears extraction results for sections containing the page
+- **Preserves**: Sections and classifications remain intact
+- **Triggers**: Re-extraction only (skips OCR and classification)
+- **Use Case**: Correcting OCR errors to improve extraction accuracy
+
+#### Backend Processing
+- **OCR**: Automatically skipped (page text already updated)
+- **Classification**: Skipped for text-only modifications, runs for class resets
+- **Extraction**: Runs for all affected sections
+- **Assessment**: Runs if extraction completes
+
+### Text Format Handling
+
+- **Display**: Plain text extracted from JSON wrapper - no raw JSON visible to users
+- **Editing**: User edits plain text in a clean Monaco editor
+- **Storage**: Text wrapped back in `{"text": "..."}` format for backward compatibility
+- **Confidence**: Markdown table format for readability (Text | Confidence columns)
+
+### Pattern Compatibility
+
+#### Pattern-2 and Pattern-3 Support
+
+- **Full Functionality**: Complete page editing capabilities with intelligent reprocessing
+- **Performance Optimization**: Automatic selective processing based on modification type
+- **Data Preservation**: Unmodified pages and sections retain all processing results
+
 #### Pattern-1 Information
 
-Pattern-1 uses **Bedrock Data Automation (BDA)** with automatic section management. When Edit Sections is clicked, users see an informative modal explaining:
+Pattern-1 uses **Bedrock Data Automation (BDA)** with automatic page management. When Edit Pages is clicked, users see an informative modal explaining:
 
-- **Architecture Differences**: BDA handles section boundaries automatically
-- **Alternative Workflows**: Available options like "View/Edit Data", Configuration updates, and document reprocessing
-- **Future Considerations**: Guidance on using Pattern-2/Pattern-3 for fine-grained section control
+- **Architecture Differences**: BDA handles page processing automatically
+- **Alternative Workflows**: Available options like "View Page Text", Configuration updates, and document reprocessing
+- **Future Considerations**: Guidance on using Pattern-2/Pattern-3 for fine-grained page control
 
 ## Document Analytics
 

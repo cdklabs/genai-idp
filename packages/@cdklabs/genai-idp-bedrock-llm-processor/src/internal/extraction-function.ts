@@ -17,6 +17,7 @@ import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { IKey } from "aws-cdk-lib/aws-kms";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
@@ -42,7 +43,12 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
    */
   readonly configurationTable: ITable;
 
+  /**
+   * The DynamoDB table that tracks document processing status and metadata.
+   * The function updates extraction results in this table.
+   */
   readonly trackingTable: ITrackingTable;
+
   /**
    * The S3 bucket containing input documents to be extracted.
    * Source of documents that need extraction.
@@ -80,6 +86,13 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
   readonly extractionGuardrail?: bedrock.IGuardrail;
 
   /**
+   * Optional custom prompt generator Lambda function.
+   * When provided, this function will be invoked to customize extraction prompts
+   * based on document content, business rules, or external integrations.
+   */
+  readonly customPromptGenerator?: lambda.IFunction;
+
+  /**
    * Optional ProcessingEnvironmentApi for progress notifications.
    * When provided, the function will use GraphQL mutations to update document status
    * and notify clients about processing progress.
@@ -87,6 +100,14 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Lambda function that extracts structured information from documents using Amazon Bedrock models.
+ *
+ * Processes classified document sections to extract fields and values according to the
+ * configured extraction schema. Supports custom prompt generation and guardrails for
+ * controlling model behavior during extraction.
+ *
+ */
 export class ExtractionFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: ExtractionFunctionProps) {
     super(scope, id, {
@@ -159,6 +180,11 @@ export class ExtractionFunction extends PythonFunction {
     props.encryptionKey?.grantEncryptDecrypt(this);
     props.extractionModel.grantInvoke(this);
     props.extractionGuardrail?.grantApply(this);
+
+    // Grant invoke permissions to custom prompt generator if provided
+    if (props.customPromptGenerator) {
+      props.customPromptGenerator.grantInvoke(this);
+    }
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

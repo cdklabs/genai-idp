@@ -41,7 +41,7 @@ For programmatic deployment, updates, and batch processing, use the IDP CLI.
 #### Install the CLI
 
 ```bash
-cd idp_cli
+cd lib/idp_cli_pkg
 pip install -e .
 ```
 
@@ -116,7 +116,7 @@ You need to have the following packages installed on your computer:
 3. [sam (AWS SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
 4. python 3.11 or later
 5. A local Docker daemon
-6. Python packages for publish.py: `pip install boto3 rich typer PyYAML botocore setuptools ruff`
+6. Python packages for publish.py: `pip install boto3 rich typer PyYAML botocore setuptools ruff build cfn-lint`
 7. **Node.js 22.12+** and **npm** (required for UI validation in publish script)
 
 For guidance on setting up a development environment, see:
@@ -336,7 +336,7 @@ For batch processing, evaluation workflows, or automated testing:
 
 ```bash
 # Install CLI
-cd idp_cli && pip install -e .
+cd lib/idp_cli_pkg && pip install -e .
 
 # Process sample documents
 idp-cli run-inference \
@@ -488,7 +488,7 @@ This simulates an incoming document rate of 500 docs per minute for 10 minutes.
 Use the dynamic load simulator script for variable document rates over time:
 
 ```bash
-python ./scripts/simulate_load.py -s source_bucket -k prefix/exampledoc.pdf -d idp-kmsxxxxxxxxx -f schedule.csv
+python ./scripts/simulate_dynamic_load.py -s source_bucket -k prefix/exampledoc.pdf -d idp-kmsxxxxxxxxx -f schedule.csv
 ```
 
 This simulates incoming documents based on minute-by-minute rates in the schedule CSV file.

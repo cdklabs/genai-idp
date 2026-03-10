@@ -17,6 +17,7 @@ import {
 import { Arn, ArnFormat, Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { IKey } from "aws-cdk-lib/aws-kms";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
@@ -89,8 +90,23 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
    * Helps ensure model outputs adhere to content policies and guidelines.
    */
   readonly extractionGuardrail?: bedrock.IGuardrail;
+
+  /**
+   * Optional custom prompt generator Lambda function.
+   * When provided, this function will be invoked to customize extraction prompts
+   * based on document content, business rules, or external integrations.
+   */
+  readonly customPromptGenerator?: lambda.IFunction;
 }
 
+/**
+ * Lambda function that extracts structured information from documents using Amazon Bedrock models.
+ *
+ * Processes classified document sections to extract fields and values according to the
+ * configured extraction schema. Supports custom prompt generation and guardrails for
+ * controlling model behavior during extraction.
+ *
+ */
 export class ExtractionFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: ExtractionFunctionProps) {
     super(scope, id, {
@@ -164,6 +180,11 @@ export class ExtractionFunction extends PythonFunction {
     props.workingBucket.grantReadWrite(this);
     props.configurationTable.grantReadWriteData(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
+
+    // Grant invoke permissions to custom prompt generator if provided
+    if (props.customPromptGenerator) {
+      props.customPromptGenerator.grantInvoke(this);
+    }
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

@@ -186,15 +186,6 @@ document types and categories.
 
 SageMaker UDOP document processor implementation that uses specialized models for document processing.
 
-This processor implements an intelligent document processing workflow that uses specialized
-models like UDOP (Unified Document Processing) or RVL-CDIP deployed on SageMaker for document classification,
-followed by foundation models for information extraction.
-
-SageMaker UDOP Processor is ideal for specialized document types that require custom classification models
-beyond what's possible with foundation models alone, such as complex forms, technical documents,
-or domain-specific content. It provides the highest level of customization for document
-classification while maintaining the flexibility of foundation models for extraction.
-
 #### Initializers <a name="Initializers" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.Initializer"></a>
 
 ```typescript
@@ -241,7 +232,7 @@ new SagemakerUdopProcessor(scope: Construct, id: string, props: SagemakerUdopPro
 
 ---
 
-##### `toString` <a name="toString" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.toString"></a>
+##### ~~`toString`~~ <a name="toString" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.toString"></a>
 
 ```typescript
 public toString(): string
@@ -249,7 +240,7 @@ public toString(): string
 
 Returns a string representation of this construct.
 
-##### `with` <a name="with" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.with"></a>
+##### ~~`with`~~ <a name="with" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.with"></a>
 
 ```typescript
 public with(mixins: ...IMixin[]): IConstruct
@@ -270,7 +261,7 @@ The mixins to apply.
 
 ---
 
-##### `metricClassificationRequestsTotal` <a name="metricClassificationRequestsTotal" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricClassificationRequestsTotal"></a>
+##### ~~`metricClassificationRequestsTotal`~~ <a name="metricClassificationRequestsTotal" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricClassificationRequestsTotal"></a>
 
 ```typescript
 public metricClassificationRequestsTotal(props?: MetricOptions): Metric
@@ -286,7 +277,7 @@ Optional metric configuration properties.
 
 ---
 
-##### `metricInputDocumentPages` <a name="metricInputDocumentPages" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocumentPages"></a>
+##### ~~`metricInputDocumentPages`~~ <a name="metricInputDocumentPages" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocumentPages"></a>
 
 ```typescript
 public metricInputDocumentPages(props?: MetricOptions): Metric
@@ -302,7 +293,7 @@ Optional metric configuration properties.
 
 ---
 
-##### `metricInputDocuments` <a name="metricInputDocuments" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocuments"></a>
+##### ~~`metricInputDocuments`~~ <a name="metricInputDocuments" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocuments"></a>
 
 ```typescript
 public metricInputDocuments(props?: MetricOptions): Metric
@@ -326,7 +317,7 @@ Optional metric configuration properties.
 
 ---
 
-##### `isConstruct` <a name="isConstruct" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.isConstruct"></a>
+##### ~~`isConstruct`~~ <a name="isConstruct" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.isConstruct"></a>
 
 ```typescript
 import { SagemakerUdopProcessor } from '@cdklabs/genai-idp-sagemaker-udop-processor'
@@ -363,13 +354,25 @@ Any object.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure resources. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the document processing workflow. |
 
 ---
 
-##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.node"></a>
+##### ~~`node`~~<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.node"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+This processor implements an intelligent document processing workflow that uses specialized
+models like UDOP (Unified Document Processing) or RVL-CDIP deployed on SageMaker for document classification,
+followed by foundation models for information extraction.
+
+SageMaker UDOP Processor is ideal for specialized document types that require custom classification models
+beyond what's possible with foundation models alone, such as complex forms, technical documents,
+or domain-specific content. It provides the highest level of customization for document
+classification while maintaining the flexibility of foundation models for extraction.
 
 ```typescript
 public readonly node: Node;
@@ -381,7 +384,19 @@ The tree node.
 
 ---
 
-##### `environment`<sup>Required</sup> <a name="environment" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.environment"></a>
+##### ~~`environment`~~<sup>Required</sup> <a name="environment" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.environment"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+This processor implements an intelligent document processing workflow that uses specialized
+models like UDOP (Unified Document Processing) or RVL-CDIP deployed on SageMaker for document classification,
+followed by foundation models for information extraction.
+
+SageMaker UDOP Processor is ideal for specialized document types that require custom classification models
+beyond what's possible with foundation models alone, such as complex forms, technical documents,
+or domain-specific content. It provides the highest level of customization for document
+classification while maintaining the flexibility of foundation models for extraction.
 
 ```typescript
 public readonly environment: IProcessingEnvironment;
@@ -389,28 +404,54 @@ public readonly environment: IProcessingEnvironment;
 
 - *Type:* @cdklabs/genai-idp.IProcessingEnvironment
 
-The processing environment that provides shared infrastructure and services.
+The processing environment that provides shared infrastructure resources.
 
-Contains input/output buckets, tracking tables, API endpoints, and other
-resources needed for document processing operations.
+Includes buckets, tables, API, encryption, and VPC configuration used
+by all processing functions within this processor.
 
 ---
 
-##### `maxProcessingConcurrency`<sup>Required</sup> <a name="maxProcessingConcurrency" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.maxProcessingConcurrency"></a>
+##### ~~`maxProcessingConcurrency`~~<sup>Required</sup> <a name="maxProcessingConcurrency" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.maxProcessingConcurrency"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+This processor implements an intelligent document processing workflow that uses specialized
+models like UDOP (Unified Document Processing) or RVL-CDIP deployed on SageMaker for document classification,
+followed by foundation models for information extraction.
+
+SageMaker UDOP Processor is ideal for specialized document types that require custom classification models
+beyond what's possible with foundation models alone, such as complex forms, technical documents,
+or domain-specific content. It provides the highest level of customization for document
+classification while maintaining the flexibility of foundation models for extraction.
 
 ```typescript
 public readonly maxProcessingConcurrency: number;
 ```
 
 - *Type:* number
+- *Default:* 100
 
 The maximum number of documents that can be processed concurrently.
 
-Controls the throughput and resource utilization of the document processing system.
+Controls the parallelism of the Step Functions state machine to balance
+throughput against resource consumption.
 
 ---
 
-##### `stateMachine`<sup>Required</sup> <a name="stateMachine" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.stateMachine"></a>
+##### ~~`stateMachine`~~<sup>Required</sup> <a name="stateMachine" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.property.stateMachine"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+This processor implements an intelligent document processing workflow that uses specialized
+models like UDOP (Unified Document Processing) or RVL-CDIP deployed on SageMaker for document classification,
+followed by foundation models for information extraction.
+
+SageMaker UDOP Processor is ideal for specialized document types that require custom classification models
+beyond what's possible with foundation models alone, such as complex forms, technical documents,
+or domain-specific content. It provides the highest level of customization for document
+classification while maintaining the flexibility of foundation models for extraction.
 
 ```typescript
 public readonly stateMachine: IStateMachine;
@@ -420,9 +461,8 @@ public readonly stateMachine: IStateMachine;
 
 The Step Functions state machine that orchestrates the document processing workflow.
 
-Manages the sequence of processing steps and handles error conditions.
-This state machine is triggered for each document that needs processing
-and coordinates the entire extraction pipeline.
+Coordinates OCR, classification, extraction, assessment, summarization,
+and evaluation steps in the correct sequence.
 
 ---
 
@@ -613,6 +653,7 @@ const sagemakerUdopProcessorConfigurationDefinitionOptions: SagemakerUdopProcess
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.assessmentModel">assessmentModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating assessment results. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.customPromptGeneratorFunction">customPromptGeneratorFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Optional custom prompt generator Lambda function. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional configuration for the evaluation stage. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.extractionModel">extractionModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional configuration for the extraction stage. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional configuration for the summarization stage. |
@@ -633,6 +674,21 @@ Optional invokable model used for evaluating assessment results.
 Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
 Used to assess the quality and accuracy of extracted information by
 comparing assessment results against expected values.
+
+---
+
+##### `customPromptGeneratorFunction`<sup>Optional</sup> <a name="customPromptGeneratorFunction" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinitionOptions.property.customPromptGeneratorFunction"></a>
+
+```typescript
+public readonly customPromptGeneratorFunction: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+Optional custom prompt generator Lambda function.
+
+When provided, the function ARN will be injected into the configuration
+at `extraction.custom_prompt_lambda_arn`.
 
 ---
 
@@ -682,16 +738,6 @@ Defines the model and parameters used for generating document summaries.
 
 Configuration properties for the SageMaker UDOP document processor.
 
-SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
-for document classification, combined with foundation models for extraction.
-This processor is ideal for specialized document types that require custom
-classification models for accurate document categorization before extraction.
-
-SageMaker UDOP Processor offers the highest level of customization for document processing,
-allowing you to deploy and use specialized models for document classification
-while still leveraging foundation models for extraction tasks. This processor
-is particularly useful for domain-specific document processing needs.
-
 #### Initializer <a name="Initializer" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.Initializer"></a>
 
 ```typescript
@@ -710,7 +756,6 @@ const sagemakerUdopProcessorProps: SagemakerUdopProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.configuration">configuration</a></code> | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfiguration">ISagemakerUdopProcessorConfiguration</a></code> | Configuration for the SageMaker UDOP document processor. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.assessmentGuardrail">assessmentGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to assessment model interactions. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.customPromptGenerator">customPromptGenerator</a></code> | <code>@cdklabs/genai-idp.ICustomPromptGenerator</code> | Optional custom prompt generator for injecting business logic into extraction processing. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.enableEditSections">enableEditSections</a></code> | <code>boolean</code> | Enable edit sections feature for classification updates. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline documents for evaluation. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationEnabled">evaluationEnabled</a></code> | <code>boolean</code> | Controls whether extraction results are evaluated for accuracy. |
@@ -721,7 +766,20 @@ const sagemakerUdopProcessorProps: SagemakerUdopProcessorProps = { ... }
 
 ---
 
-##### `environment`<sup>Required</sup> <a name="environment" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.environment"></a>
+##### ~~`environment`~~<sup>Required</sup> <a name="environment" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.environment"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly environment: IProcessingEnvironment;
@@ -736,7 +794,20 @@ resources needed for document processing operations.
 
 ---
 
-##### `maxProcessingConcurrency`<sup>Optional</sup> <a name="maxProcessingConcurrency" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.maxProcessingConcurrency"></a>
+##### ~~`maxProcessingConcurrency`~~<sup>Optional</sup> <a name="maxProcessingConcurrency" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.maxProcessingConcurrency"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly maxProcessingConcurrency: number;
@@ -751,7 +822,20 @@ Controls the throughput and resource utilization of the document processing syst
 
 ---
 
-##### `classifierEndpoint`<sup>Required</sup> <a name="classifierEndpoint" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classifierEndpoint"></a>
+##### ~~`classifierEndpoint`~~<sup>Required</sup> <a name="classifierEndpoint" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classifierEndpoint"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly classifierEndpoint: IEndpoint;
@@ -771,7 +855,20 @@ and pass it directly to the processor.
 
 ---
 
-##### `configuration`<sup>Required</sup> <a name="configuration" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.configuration"></a>
+##### ~~`configuration`~~<sup>Required</sup> <a name="configuration" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.configuration"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly configuration: ISagemakerUdopProcessorConfiguration;
@@ -786,7 +883,20 @@ including schema definitions, prompts, and evaluation settings.
 
 ---
 
-##### `assessmentGuardrail`<sup>Optional</sup> <a name="assessmentGuardrail" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.assessmentGuardrail"></a>
+##### ~~`assessmentGuardrail`~~<sup>Optional</sup> <a name="assessmentGuardrail" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.assessmentGuardrail"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly assessmentGuardrail: IGuardrail;
@@ -802,7 +912,20 @@ by filtering inappropriate content and enforcing usage policies.
 
 ---
 
-##### `classificationGuardrail`<sup>Optional</sup> <a name="classificationGuardrail" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classificationGuardrail"></a>
+##### ~~`classificationGuardrail`~~<sup>Optional</sup> <a name="classificationGuardrail" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.classificationGuardrail"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly classificationGuardrail: IGuardrail;
@@ -818,23 +941,20 @@ by filtering inappropriate content and enforcing usage policies.
 
 ---
 
-##### `customPromptGenerator`<sup>Optional</sup> <a name="customPromptGenerator" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.customPromptGenerator"></a>
+##### ~~`enableEditSections`~~<sup>Optional</sup> <a name="enableEditSections" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.enableEditSections"></a>
 
-```typescript
-public readonly customPromptGenerator: ICustomPromptGenerator;
-```
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
 
-- *Type:* @cdklabs/genai-idp.ICustomPromptGenerator
-- *Default:* No custom prompt generator is used
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
 
-Optional custom prompt generator for injecting business logic into extraction processing.
-
-When provided, this Lambda function will be called to customize prompts based on
-document content, business rules, or external system integrations.
-
----
-
-##### `enableEditSections`<sup>Optional</sup> <a name="enableEditSections" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.enableEditSections"></a>
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly enableEditSections: boolean;
@@ -851,7 +971,20 @@ flexibility to correct classification errors without reprocessing entire documen
 
 ---
 
-##### `evaluationBaselineBucket`<sup>Optional</sup> <a name="evaluationBaselineBucket" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationBaselineBucket"></a>
+##### ~~`evaluationBaselineBucket`~~<sup>Optional</sup> <a name="evaluationBaselineBucket" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationBaselineBucket"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly evaluationBaselineBucket: IBucket;
@@ -869,7 +1002,20 @@ Required when evaluationEnabled is true.
 
 ---
 
-##### `evaluationEnabled`<sup>Optional</sup> <a name="evaluationEnabled" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationEnabled"></a>
+##### ~~`evaluationEnabled`~~<sup>Optional</sup> <a name="evaluationEnabled" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.evaluationEnabled"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly evaluationEnabled: boolean;
@@ -885,7 +1031,20 @@ to measure extraction quality and identify improvement areas.
 
 ---
 
-##### `extractionGuardrail`<sup>Optional</sup> <a name="extractionGuardrail" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.extractionGuardrail"></a>
+##### ~~`extractionGuardrail`~~<sup>Optional</sup> <a name="extractionGuardrail" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.extractionGuardrail"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly extractionGuardrail: IGuardrail;
@@ -901,7 +1060,20 @@ by filtering inappropriate content and enforcing usage policies.
 
 ---
 
-##### `ocrMaxWorkers`<sup>Optional</sup> <a name="ocrMaxWorkers" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.ocrMaxWorkers"></a>
+##### ~~`ocrMaxWorkers`~~<sup>Optional</sup> <a name="ocrMaxWorkers" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.ocrMaxWorkers"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly ocrMaxWorkers: number;
@@ -917,7 +1089,20 @@ throughput while managing resource utilization.
 
 ---
 
-##### `sectionSplittingStrategy`<sup>Optional</sup> <a name="sectionSplittingStrategy" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.sectionSplittingStrategy"></a>
+##### ~~`sectionSplittingStrategy`~~<sup>Optional</sup> <a name="sectionSplittingStrategy" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.sectionSplittingStrategy"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly sectionSplittingStrategy: SectionSplittingStrategy;
@@ -938,7 +1123,20 @@ Options:
 
 ---
 
-##### `summarizationGuardrail`<sup>Optional</sup> <a name="summarizationGuardrail" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.summarizationGuardrail"></a>
+##### ~~`summarizationGuardrail`~~<sup>Optional</sup> <a name="summarizationGuardrail" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorProps.property.summarizationGuardrail"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models for accurate document categorization before extraction.
+
+SageMaker UDOP Processor offers the highest level of customization for document processing,
+allowing you to deploy and use specialized models for document classification
+while still leveraging foundation models for extraction tasks. This processor
+is particularly useful for domain-specific document processing needs.
 
 ```typescript
 public readonly summarizationGuardrail: IGuardrail;
@@ -1097,7 +1295,7 @@ new SagemakerUdopProcessorConfigurationDefinition()
 
 ---
 
-##### `fromFile` <a name="fromFile" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinition.fromFile"></a>
+##### ~~`fromFile`~~ <a name="fromFile" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinition.fromFile"></a>
 
 ```typescript
 import { SagemakerUdopProcessorConfigurationDefinition } from '@cdklabs/genai-idp-sagemaker-udop-processor'
@@ -1125,7 +1323,7 @@ Optional customization for processing stages.
 
 ---
 
-##### `rvlCdipPackageSample` <a name="rvlCdipPackageSample" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinition.rvlCdipPackageSample"></a>
+##### ~~`rvlCdipPackageSample`~~ <a name="rvlCdipPackageSample" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessorConfigurationDefinition.rvlCdipPackageSample"></a>
 
 ```typescript
 import { SagemakerUdopProcessorConfigurationDefinition } from '@cdklabs/genai-idp-sagemaker-udop-processor'
@@ -1211,18 +1409,6 @@ The SageMaker UDOP document processor to apply the schema to.
 
 Interface for SageMaker UDOP document processor implementation.
 
-SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
-for document classification, combined with foundation models for extraction.
-This processor is ideal for specialized document types that require custom
-classification models like RVL-CDIP or UDOP for accurate document categorization
-before extraction.
-
-Use SageMaker UDOP Processor when:
-- Processing highly specialized or complex document types
-- You need custom classification models beyond what foundation models can provide
-- You have domain-specific document types requiring specialized handling
-- You want to leverage fine-tuned models for specific document domains
-
 
 #### Properties <a name="Properties" id="Properties"></a>
 
@@ -1236,7 +1422,22 @@ Use SageMaker UDOP Processor when:
 
 ---
 
-##### `node`<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.node"></a>
+##### ~~`node`~~<sup>Required</sup> <a name="node" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.node"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models like RVL-CDIP or UDOP for accurate document categorization
+before extraction.
+
+Use SageMaker UDOP Processor when:
+- Processing highly specialized or complex document types
+- You need custom classification models beyond what foundation models can provide
+- You have domain-specific document types requiring specialized handling
+- You want to leverage fine-tuned models for specific document domains
 
 ```typescript
 public readonly node: Node;
@@ -1248,7 +1449,22 @@ The tree node.
 
 ---
 
-##### `environment`<sup>Required</sup> <a name="environment" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.environment"></a>
+##### ~~`environment`~~<sup>Required</sup> <a name="environment" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.environment"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models like RVL-CDIP or UDOP for accurate document categorization
+before extraction.
+
+Use SageMaker UDOP Processor when:
+- Processing highly specialized or complex document types
+- You need custom classification models beyond what foundation models can provide
+- You have domain-specific document types requiring specialized handling
+- You want to leverage fine-tuned models for specific document domains
 
 ```typescript
 public readonly environment: IProcessingEnvironment;
@@ -1263,7 +1479,22 @@ resources needed for document processing operations.
 
 ---
 
-##### `maxProcessingConcurrency`<sup>Required</sup> <a name="maxProcessingConcurrency" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.maxProcessingConcurrency"></a>
+##### ~~`maxProcessingConcurrency`~~<sup>Required</sup> <a name="maxProcessingConcurrency" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.maxProcessingConcurrency"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models like RVL-CDIP or UDOP for accurate document categorization
+before extraction.
+
+Use SageMaker UDOP Processor when:
+- Processing highly specialized or complex document types
+- You need custom classification models beyond what foundation models can provide
+- You have domain-specific document types requiring specialized handling
+- You want to leverage fine-tuned models for specific document domains
 
 ```typescript
 public readonly maxProcessingConcurrency: number;
@@ -1277,7 +1508,22 @@ Controls the throughput and resource utilization of the document processing syst
 
 ---
 
-##### `stateMachine`<sup>Required</sup> <a name="stateMachine" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.stateMachine"></a>
+##### ~~`stateMachine`~~<sup>Required</sup> <a name="stateMachine" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.stateMachine"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models like RVL-CDIP or UDOP for accurate document categorization
+before extraction.
+
+Use SageMaker UDOP Processor when:
+- Processing highly specialized or complex document types
+- You need custom classification models beyond what foundation models can provide
+- You have domain-specific document types requiring specialized handling
+- You want to leverage fine-tuned models for specific document domains
 
 ```typescript
 public readonly stateMachine: IStateMachine;
@@ -1293,7 +1539,22 @@ and coordinates the entire extraction pipeline.
 
 ---
 
-##### `evaluationFunction`<sup>Optional</sup> <a name="evaluationFunction" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.evaluationFunction"></a>
+##### ~~`evaluationFunction`~~<sup>Optional</sup> <a name="evaluationFunction" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessor.property.evaluationFunction"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
+for document classification, combined with foundation models for extraction.
+This processor is ideal for specialized document types that require custom
+classification models like RVL-CDIP or UDOP for accurate document categorization
+before extraction.
+
+Use SageMaker UDOP Processor when:
+- Processing highly specialized or complex document types
+- You need custom classification models beyond what foundation models can provide
+- You have domain-specific document types requiring specialized handling
+- You want to leverage fine-tuned models for specific document domains
 
 ```typescript
 public readonly evaluationFunction: any;
@@ -1360,12 +1621,16 @@ Defines the structure and capabilities of configuration for SageMaker UDOP proce
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.extractionModel">extractionModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model used for information extraction. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.assessmentModel">assessmentModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for document assessment. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.customPromptGenerator">customPromptGenerator</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Optional custom prompt generator Lambda function. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating extraction results. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for document summarization. |
 
 ---
 
-##### `extractionModel`<sup>Required</sup> <a name="extractionModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.extractionModel"></a>
+##### ~~`extractionModel`~~<sup>Required</sup> <a name="extractionModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.extractionModel"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
 
 ```typescript
 public readonly extractionModel: IBedrockInvokable;
@@ -1381,7 +1646,10 @@ transforming unstructured content into structured information.
 
 ---
 
-##### `assessmentModel`<sup>Optional</sup> <a name="assessmentModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.assessmentModel"></a>
+##### ~~`assessmentModel`~~<sup>Optional</sup> <a name="assessmentModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.assessmentModel"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
 
 ```typescript
 public readonly assessmentModel: IBedrockInvokable;
@@ -1395,7 +1663,30 @@ Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
 
 ---
 
-##### `evaluationModel`<sup>Optional</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.evaluationModel"></a>
+##### ~~`customPromptGenerator`~~<sup>Optional</sup> <a name="customPromptGenerator" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.customPromptGenerator"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+
+```typescript
+public readonly customPromptGenerator: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+- *Default:* undefined
+
+Optional custom prompt generator Lambda function.
+
+When provided, this function will be invoked during extraction to customize prompts.
+This is either the function provided via configuration options, or imported from
+the ARN specified in the configuration file.
+
+---
+
+##### ~~`evaluationModel`~~<sup>Optional</sup> <a name="evaluationModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.evaluationModel"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
 
 ```typescript
 public readonly evaluationModel: IBedrockInvokable;
@@ -1411,7 +1702,10 @@ comparing extraction results against expected values.
 
 ---
 
-##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.summarizationModel"></a>
+##### ~~`summarizationModel`~~<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-sagemaker-udop-processor.ISagemakerUdopProcessorConfigurationDefinition.property.summarizationModel"></a>
+
+- *Deprecated:* This processor pattern is deprecated and will be removed in v0.5.0.
+Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
 
 ```typescript
 public readonly summarizationModel: IBedrockInvokable;

@@ -51,22 +51,10 @@
           "spawn": "bundle:lambda:bda_completion_function"
         },
         {
-          "spawn": "bundle:lambda:bda_discovery_function"
-        },
-        {
           "spawn": "bundle:lambda:bda_invoke_function"
         },
         {
           "spawn": "bundle:lambda:evaluation_function"
-        },
-        {
-          "spawn": "bundle:lambda:hitl-process-function"
-        },
-        {
-          "spawn": "bundle:lambda:hitl-status-update-function"
-        },
-        {
-          "spawn": "bundle:lambda:hitl-wait-function"
         },
         {
           "spawn": "bundle:lambda:processresults_function"
@@ -78,10 +66,36 @@
           "spawn": "bundle:config:lending-package-sample"
         },
         {
+          "spawn": "bundle:config:lending-package-sample-govcloud"
+        },
+        {
+          "spawn": "bundle:config:docsplit"
+        },
+        {
+          "spawn": "bundle:config:ocr-benchmark"
+        },
+        {
+          "spawn": "bundle:config:realkie-fcc-verified"
+        },
+        {
+          "spawn": "bundle:config:rvl-cdip"
+        },
+        {
           "spawn": "bundle:state-machine"
         },
         {
           "spawn": "bundle:schema"
+        }
+      ]
+    },
+    "bundle:config:docsplit": {
+      "name": "bundle:config:docsplit",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/docsplit"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-1/docsplit/config.yaml assets/configs/docsplit/."
         }
       ]
     },
@@ -96,6 +110,50 @@
         }
       ]
     },
+    "bundle:config:lending-package-sample-govcloud": {
+      "name": "bundle:config:lending-package-sample-govcloud",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/lending-package-sample-govcloud"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-1/lending-package-sample-govcloud/config.yaml assets/configs/lending-package-sample-govcloud/."
+        }
+      ]
+    },
+    "bundle:config:ocr-benchmark": {
+      "name": "bundle:config:ocr-benchmark",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/ocr-benchmark"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-1/ocr-benchmark/config.yaml assets/configs/ocr-benchmark/."
+        }
+      ]
+    },
+    "bundle:config:realkie-fcc-verified": {
+      "name": "bundle:config:realkie-fcc-verified",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/realkie-fcc-verified"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-1/realkie-fcc-verified/config.yaml assets/configs/realkie-fcc-verified/."
+        }
+      ]
+    },
+    "bundle:config:rvl-cdip": {
+      "name": "bundle:config:rvl-cdip",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/rvl-cdip"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/pattern-1/rvl-cdip/config.yaml assets/configs/rvl-cdip/."
+        }
+      ]
+    },
     "bundle:lambda:bda_completion_function": {
       "name": "bundle:lambda:bda_completion_function",
       "steps": [
@@ -104,17 +162,6 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/bda_completion_function/* assets/lambdas/bda_completion_function/."
-        }
-      ]
-    },
-    "bundle:lambda:bda_discovery_function": {
-      "name": "bundle:lambda:bda_discovery_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/bda_discovery_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/bda_discovery_function/* assets/lambdas/bda_discovery_function/."
         }
       ]
     },
@@ -137,39 +184,6 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/evaluation_function/* assets/lambdas/evaluation_function/."
-        }
-      ]
-    },
-    "bundle:lambda:hitl-process-function": {
-      "name": "bundle:lambda:hitl-process-function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/hitl-process-function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/hitl-process-function/* assets/lambdas/hitl-process-function/."
-        }
-      ]
-    },
-    "bundle:lambda:hitl-status-update-function": {
-      "name": "bundle:lambda:hitl-status-update-function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/hitl-status-update-function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/hitl-status-update-function/* assets/lambdas/hitl-status-update-function/."
-        }
-      ]
-    },
-    "bundle:lambda:hitl-wait-function": {
-      "name": "bundle:lambda:hitl-wait-function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/hitl-wait-function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/hitl-wait-function/* assets/lambdas/hitl-wait-function/."
         }
       ]
     },

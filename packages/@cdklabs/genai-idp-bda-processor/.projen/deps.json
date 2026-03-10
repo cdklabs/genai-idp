@@ -2,27 +2,27 @@
   "dependencies": [
     {
       "name": "@aws-cdk/aws-bedrock-agentcore-alpha",
-      "version": "^2.240.0-alpha.0",
+      "version": "^2.241.0-alpha.0",
       "type": "build"
     },
     {
       "name": "@aws-cdk/aws-bedrock-alpha",
-      "version": "^2.240.0-alpha.0",
+      "version": "^2.241.0-alpha.0",
       "type": "build"
     },
     {
       "name": "@aws-cdk/aws-glue-alpha",
-      "version": "^2.240.0-alpha.0",
+      "version": "^2.241.0-alpha.0",
       "type": "build"
     },
     {
       "name": "@aws-cdk/aws-lambda-python-alpha",
-      "version": "^2.240.0-alpha.0",
+      "version": "^2.241.0-alpha.0",
       "type": "build"
     },
     {
       "name": "@aws-cdk/aws-sagemaker-alpha",
-      "version": "^2.240.0-alpha.0",
+      "version": "^2.241.0-alpha.0",
       "type": "build"
     },
     {
@@ -137,27 +137,27 @@
     },
     {
       "name": "@aws-cdk/aws-bedrock-agentcore-alpha",
-      "version": "^2.240.0-alpha.0",
+      "version": "^2.241.0-alpha.0",
       "type": "peer"
     },
     {
       "name": "@aws-cdk/aws-bedrock-alpha",
-      "version": "^2.240.0-alpha.0",
+      "version": "^2.241.0-alpha.0",
       "type": "peer"
     },
     {
       "name": "@aws-cdk/aws-glue-alpha",
-      "version": "^2.240.0-alpha.0",
+      "version": "^2.241.0-alpha.0",
       "type": "peer"
     },
     {
       "name": "@aws-cdk/aws-lambda-python-alpha",
-      "version": "^2.240.0-alpha.0",
+      "version": "^2.241.0-alpha.0",
       "type": "peer"
     },
     {
       "name": "@aws-cdk/aws-sagemaker-alpha",
-      "version": "^2.240.0-alpha.0",
+      "version": "^2.241.0-alpha.0",
       "type": "peer"
     },
     {
@@ -171,7 +171,7 @@
     },
     {
       "name": "aws-cdk-lib",
-      "version": "^2.240.0",
+      "version": "^2.241.0",
       "type": "peer"
     },
     {

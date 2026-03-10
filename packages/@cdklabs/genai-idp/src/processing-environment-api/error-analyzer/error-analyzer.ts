@@ -9,7 +9,11 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Construct, IConstruct } from "constructs";
 import { ErrorAnalyzerFunction } from "./functions";
-import { IProcessingEnvironmentApi } from "../processing-environment-api";
+import * as functions from "../functions";
+import {
+  IProcessingEnvironmentApi,
+  IApiFeature,
+} from "../processing-environment-api";
 
 /**
  * Interface for Error Analyzer construct.
@@ -18,7 +22,6 @@ import { IProcessingEnvironmentApi } from "../processing-environment-api";
  * Enables intelligent troubleshooting using Claude Sonnet 4 with CloudWatch log analysis
  * and X-Ray trace correlation.
  *
- * @since v0.4.8
  */
 export interface IErrorAnalyzer extends IConstruct {
   /**
@@ -30,20 +33,11 @@ export interface IErrorAnalyzer extends IConstruct {
    * Optional DynamoDB table for storing trace IDs and analysis results.
    */
   readonly traceTable?: dynamodb.ITable;
-
-  /**
-   * Integrate Error Analyzer with ProcessingEnvironmentApi.
-   * Adds error analysis capabilities to the GraphQL API.
-   *
-   * @param api The ProcessingEnvironmentApi to integrate with
-   */
-  integrateWithApi(api: IProcessingEnvironmentApi): void;
 }
 
 /**
  * Properties for ErrorAnalyzer construct.
  *
- * @since v0.4.8
  */
 export interface ErrorAnalyzerProps {
   /**
@@ -109,9 +103,11 @@ export interface ErrorAnalyzerProps {
  * intelligent troubleshooting for document processing workflows, helping
  * users quickly identify and resolve processing failures.
  *
- * @since v0.4.8
  */
-export class ErrorAnalyzer extends Construct implements IErrorAnalyzer {
+export class ErrorAnalyzer
+  extends Construct
+  implements IErrorAnalyzer, IApiFeature
+{
   /**
    * Lambda function for AI-powered error analysis.
    */
@@ -163,15 +159,54 @@ export class ErrorAnalyzer extends Construct implements IErrorAnalyzer {
   }
 
   /**
-   * Integrate Error Analyzer with ProcessingEnvironmentApi.
+   * Enable this Error Analyzer feature in the ProcessingEnvironmentApi.
    *
-   * This method adds error analysis capabilities to an existing ProcessingEnvironmentApi
-   * to enable GraphQL operations for AI-powered failure diagnosis and troubleshooting.
+   * This method integrates the error analysis functionality with the GraphQL API
+   * by creating the necessary data sources and resolvers. It should be called after
+   * both the API and this construct have been created.
    *
-   * @param api The ProcessingEnvironmentApi to integrate with
-   */
-  public integrateWithApi(api: IProcessingEnvironmentApi): void {
-    // Add error analyzer capabilities to the API
-    api.addErrorAnalyzer(this);
+   * Example:
+   * const api = new ProcessingEnvironmentApi(this, 'Api', { ... });
+   * const errorAnalyzer = new ErrorAnalyzer(this, 'ErrorAnalyzer', { ... });
+   * api.enable(errorAnalyzer);
+   *
+   * @param api The ProcessingEnvironmentApi to enable in
+   *    */
+  public enableInApi(api: IProcessingEnvironmentApi): void {
+    // Import the resolver functions
+    const { ErrorAnalyzerResolverFunction } = functions;
+
+    // Create error analyzer resolver function
+    const errorAnalyzerResolverFunction = new ErrorAnalyzerResolverFunction(
+      api as any,
+      "ErrorAnalyzerResolverFunction",
+      {
+        analyzerFunction: this.analyzerFunction,
+        traceTable: this.traceTable!,
+        encryptionKey: undefined, // Will use API's encryption key
+      },
+    );
+
+    // Create data source
+    const errorAnalyzerDataSource = api.addLambdaDataSource(
+      "ErrorAnalyzerDataSource",
+      errorAnalyzerResolverFunction,
+    );
+
+    // Create error analysis resolvers
+    errorAnalyzerDataSource.createResolver("AnalyzeErrorResolver", {
+      typeName: "Mutation",
+      fieldName: "analyzeError",
+    });
+
+    errorAnalyzerDataSource.createResolver("GetErrorAnalysisResolver", {
+      typeName: "Query",
+      fieldName: "getErrorAnalysis",
+    });
+
+    errorAnalyzerDataSource.createResolver("ListErrorAnalysesResolver", {
+      typeName: "Query",
+      fieldName: "listErrorAnalyses",
+    });
   }
 }

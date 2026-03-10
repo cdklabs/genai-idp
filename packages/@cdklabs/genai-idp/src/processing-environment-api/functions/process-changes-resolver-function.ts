@@ -6,7 +6,6 @@ SPDX-License-Identifier: Apache-2.0
 import * as path from "path";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
 import * as cdk from "aws-cdk-lib";
-import * as iam from "aws-cdk-lib/aws-iam";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
@@ -14,6 +13,7 @@ import { IQueue } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
 import { ITrackingTable } from "../../tracking-table";
+import { IProcessingEnvironmentApi } from "../processing-environment-api";
 
 /**
  * Properties for configuring the ProcessChangesResolverFunction.
@@ -45,14 +45,10 @@ export interface ProcessChangesResolverFunctionProps extends IdpPythonFunctionOp
   readonly outputBucket: IBucket;
 
   /**
-   * The GraphQL API URL for AppSync operations.
+   * The GraphQL API for making mutations.
+   * Used to update document status after processing changes.
    */
-  readonly appsyncApiUrl: string;
-
-  /**
-   * The GraphQL API ARN for AppSync permissions.
-   */
-  readonly graphqlApiArn: string;
+  readonly api: IProcessingEnvironmentApi;
 
   /**
    * Data retention period in days.
@@ -129,7 +125,7 @@ export class ProcessChangesResolverFunction
         WORKING_BUCKET: props.workingBucket.bucketName,
         INPUT_BUCKET: props.inputBucket.bucketName,
         OUTPUT_BUCKET: props.outputBucket.bucketName,
-        APPSYNC_API_URL: props.appsyncApiUrl,
+        APPSYNC_API_URL: props.api.graphqlUrl,
       },
       ...props,
     });
@@ -141,12 +137,7 @@ export class ProcessChangesResolverFunction
     props.workingBucket.grantReadWrite(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
 
-    // Allow AppSync access for document updates
-    this.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["appsync:GraphQL"],
-        resources: [`${props.graphqlApiArn}/types/Mutation/*`],
-      }),
-    );
+    // Grant AppSync mutation permissions
+    props.api.grantMutation(this);
   }
 }

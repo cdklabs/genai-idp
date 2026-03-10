@@ -35,6 +35,10 @@ export interface QueueSenderFunctionProps extends IdpPythonFunctionOptions {
    */
   readonly documentQueue: sqs.IQueue;
 
+  /**
+   * The DynamoDB table that tracks document processing status and metadata.
+   * Used to record document processing requests and their current state.
+   */
   readonly trackingTable: ITrackingTable;
   /**
    * The S3 bucket where processed documents and extraction results are stored.

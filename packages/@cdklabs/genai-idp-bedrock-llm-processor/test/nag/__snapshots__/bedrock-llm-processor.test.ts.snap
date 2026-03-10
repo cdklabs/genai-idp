@@ -74,7 +74,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "000b7dbd87e723148899010f79e734650249fb648594b8a4c1eea82c75b0df85.zip",
+          "S3Key": "3721ffc6902366a4499f390492c4d5550ffb11de7f711d77b08dc0e00ba64cf1.zip",
         },
         "Environment": {
           "Variables": {
@@ -369,7 +369,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "3548af33b81e3c143c9d1093bb52754d72d95fb8dbc5b71ce19d695eeb399c53.zip",
+          "S3Key": "66df911d86c56a5ba2bcf7fc9d278884b3dcfbca3f6c640857d3095604ad29b7.zip",
         },
         "Environment": {
           "Variables": {
@@ -687,7 +687,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "Key": "f6356bb87783ab8a6614fd90fa06facd061319104f63cd1366185878dc9df628.json",
+          "Key": "5213c8f7c8e83dd407ff70275347666f2f3727892c32f4fa504b95388f4acbc9.json",
         },
         "DefinitionSubstitutions": {
           "AssessmentFunctionArn": {
@@ -702,22 +702,15 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
               "Arn",
             ],
           },
-          "EvaluationLambdaArn": "",
+          "EvaluationLambdaArn": {
+            "Fn::GetAtt": [
+              "BedrockLlmProcessorEvaluationFunction40C8B277",
+              "Arn",
+            ],
+          },
           "ExtractionFunctionArn": {
             "Fn::GetAtt": [
               "BedrockLlmProcessorExtractionFunction4D289D78",
-              "Arn",
-            ],
-          },
-          "HITLStatusUpdateFunctionArn": {
-            "Fn::GetAtt": [
-              "BedrockLlmProcessorHITLStatusUpdateFunction48765F5B",
-              "Arn",
-            ],
-          },
-          "HITLWaitFunctionArn": {
-            "Fn::GetAtt": [
-              "BedrockLlmProcessorHITLWaitFunction2B3E639C",
               "Arn",
             ],
           },
@@ -733,6 +726,18 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "ProcessResultsLambdaArn": {
             "Fn::GetAtt": [
               "BedrockLlmProcessorProcessResultsFunction8854D1C1",
+              "Arn",
+            ],
+          },
+          "RuleValidationLambdaArn": {
+            "Fn::GetAtt": [
+              "BedrockLlmProcessorRuleValidationFunction795429BB",
+              "Arn",
+            ],
+          },
+          "RuleValidationOrchestrationLambdaArn": {
+            "Fn::GetAtt": [
+              "BedrockLlmProcessorRuleValidationOrchestrationFunction09B4B7EB",
               "Arn",
             ],
           },
@@ -769,6 +774,282 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
       "Type": "AWS::StepFunctions::StateMachine",
       "UpdateReplacePolicy": "Delete",
     },
+    "BedrockLlmProcessorEvaluationFunction40C8B277": {
+      "DependsOn": [
+        "BedrockLlmProcessorEvaluationFunctionServiceRoleDefaultPolicy3A11FCF7",
+        "BedrockLlmProcessorEvaluationFunctionServiceRole0B214B85",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "3ee254604115a6f84e69cdd89a66ce80296a76e23be263d4f8cb434298431d3b.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "APPSYNC_API_URL": "https://example.com/graphql",
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "MockConfigTable9B38FA67",
+            },
+            "DOCUMENT_TRACKING_MODE": "appsync",
+            "EVALUATION_OUTPUT_BUCKET": {
+              "Ref": "MockOutputBucket40EE28D0",
+            },
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "PROCESSING_OUTPUT_BUCKET": {
+              "Ref": "MockOutputBucket40EE28D0",
+            },
+            "TRACKING_TABLE": {
+              "Ref": "MockTrackingTableC27D2FF3",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "MockWorkingBucketAF257EA5",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerf0ed018eA0B6BF52",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BedrockLlmProcessorEvaluationFunctionLogGroupD9363FED",
+          },
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "BedrockLlmProcessorEvaluationFunctionServiceRole0B214B85",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 30,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BedrockLlmProcessorEvaluationFunctionLogGroupD9363FED": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "MockKey4B46A5C5",
+            "Arn",
+          ],
+        },
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BedrockLlmProcessorEvaluationFunctionServiceRole0B214B85": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BedrockLlmProcessorEvaluationFunctionServiceRoleDefaultPolicy3A11FCF7": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockOutputBucket40EE28D0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockOutputBucket40EE28D0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockWorkingBucketAF257EA5",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockWorkingBucketAF257EA5",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "appsync:GraphQL",
+              "Effect": "Allow",
+              "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockKey4B46A5C5",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BedrockLlmProcessorEvaluationFunctionServiceRoleDefaultPolicy3A11FCF7",
+        "Roles": [
+          {
+            "Ref": "BedrockLlmProcessorEvaluationFunctionServiceRole0B214B85",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
     "BedrockLlmProcessorExtractionFunction4D289D78": {
       "DependsOn": [
         "BedrockLlmProcessorExtractionFunctionServiceRoleDefaultPolicyE2AA64D1",
@@ -779,7 +1060,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "e078f0c96d3a99d9487dcde956772dd16038792f412c14ee94b9824175197089.zip",
+          "S3Key": "703ed1911fc416edece5a9c5963a1abea5135084ee4712a014faf8af596b5d68.zip",
         },
         "Environment": {
           "Variables": {
@@ -1085,614 +1366,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
       },
       "Type": "AWS::IAM::Policy",
     },
-    "BedrockLlmProcessorHITLEventRule95D37B48": {
-      "Properties": {
-        "EventPattern": {
-          "detail": {
-            "humanLoopStatus": [
-              "Completed",
-              "Failed",
-              "Stopped",
-            ],
-          },
-          "detail-type": [
-            "SageMaker A2I HumanLoop Status Change",
-          ],
-          "source": [
-            "aws.sagemaker",
-          ],
-        },
-        "State": "ENABLED",
-        "Targets": [
-          {
-            "Arn": {
-              "Fn::GetAtt": [
-                "BedrockLlmProcessorHITLProcessFunctionBD8AA7D2",
-                "Arn",
-              ],
-            },
-            "Id": "Target0",
-          },
-        ],
-      },
-      "Type": "AWS::Events::Rule",
-    },
-    "BedrockLlmProcessorHITLEventRuleAllowEventRuleTestStackBedrockLlmProcessorHITLProcessFunction4C6A9C2C5B5DA807": {
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "BedrockLlmProcessorHITLProcessFunctionBD8AA7D2",
-            "Arn",
-          ],
-        },
-        "Principal": "events.amazonaws.com",
-        "SourceArn": {
-          "Fn::GetAtt": [
-            "BedrockLlmProcessorHITLEventRule95D37B48",
-            "Arn",
-          ],
-        },
-      },
-      "Type": "AWS::Lambda::Permission",
-    },
-    "BedrockLlmProcessorHITLProcessFunctionBD8AA7D2": {
-      "DependsOn": [
-        "BedrockLlmProcessorHITLProcessFunctionServiceRoleDefaultPolicyB4113B0B",
-        "BedrockLlmProcessorHITLProcessFunctionServiceRole424B7D1E",
-      ],
-      "Properties": {
-        "Code": {
-          "S3Bucket": {
-            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
-          },
-          "S3Key": "80d072503da7060cb70f045d0255b88b4581ece15fdca91eb2d75beb699bb55f.zip",
-        },
-        "Environment": {
-          "Variables": {
-            "LOG_LEVEL": "INFO",
-            "TRACKING_TABLE": {
-              "Ref": "MockTrackingTableC27D2FF3",
-            },
-          },
-        },
-        "Handler": "index.handler",
-        "Layers": [
-          {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A",
-          },
-        ],
-        "LoggingConfig": {
-          "LogGroup": {
-            "Ref": "BedrockLlmProcessorHITLProcessFunctionLogGroup910378BE",
-          },
-        },
-        "MemorySize": 512,
-        "Role": {
-          "Fn::GetAtt": [
-            "BedrockLlmProcessorHITLProcessFunctionServiceRole424B7D1E",
-            "Arn",
-          ],
-        },
-        "Runtime": "python3.12",
-        "Timeout": 300,
-      },
-      "Type": "AWS::Lambda::Function",
-    },
-    "BedrockLlmProcessorHITLProcessFunctionLogGroup910378BE": {
-      "DeletionPolicy": "Retain",
-      "Properties": {
-        "KmsKeyId": {
-          "Fn::GetAtt": [
-            "MockKey4B46A5C5",
-            "Arn",
-          ],
-        },
-        "RetentionInDays": 7,
-      },
-      "Type": "AWS::Logs::LogGroup",
-      "UpdateReplacePolicy": "Retain",
-    },
-    "BedrockLlmProcessorHITLProcessFunctionServiceRole424B7D1E": {
-      "Properties": {
-        "AssumeRolePolicyDocument": {
-          "Statement": [
-            {
-              "Action": "sts:AssumeRole",
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "lambda.amazonaws.com",
-              },
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "ManagedPolicyArns": [
-          {
-            "Fn::Join": [
-              "",
-              [
-                "arn:",
-                {
-                  "Ref": "AWS::Partition",
-                },
-                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-              ],
-            ],
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Role",
-    },
-    "BedrockLlmProcessorHITLProcessFunctionServiceRoleDefaultPolicyB4113B0B": {
-      "Properties": {
-        "PolicyDocument": {
-          "Statement": [
-            {
-              "Action": [
-                "dynamodb:BatchGetItem",
-                "dynamodb:Query",
-                "dynamodb:GetItem",
-                "dynamodb:Scan",
-                "dynamodb:ConditionCheckItem",
-                "dynamodb:BatchWriteItem",
-                "dynamodb:PutItem",
-                "dynamodb:UpdateItem",
-                "dynamodb:DeleteItem",
-                "dynamodb:DescribeTable",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "MockTrackingTableC27D2FF3",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": [
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "MockTrackingTableC27D2FF3",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-              ],
-              "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockInputBucketC83AF371",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "MockInputBucketC83AF371",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-                "s3:DeleteObject*",
-                "s3:PutObject",
-                "s3:PutObjectLegalHold",
-                "s3:PutObjectRetention",
-                "s3:PutObjectTagging",
-                "s3:PutObjectVersionTagging",
-                "s3:Abort*",
-              ],
-              "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockOutputBucket40EE28D0",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "MockOutputBucket40EE28D0",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": [
-                "states:SendTaskSuccess",
-                "states:SendTaskFailure",
-              ],
-              "Effect": "Allow",
-              "Resource": "*",
-            },
-            {
-              "Action": "cloudwatch:PutMetricData",
-              "Effect": "Allow",
-              "Resource": "*",
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "PolicyName": "BedrockLlmProcessorHITLProcessFunctionServiceRoleDefaultPolicyB4113B0B",
-        "Roles": [
-          {
-            "Ref": "BedrockLlmProcessorHITLProcessFunctionServiceRole424B7D1E",
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Policy",
-    },
-    "BedrockLlmProcessorHITLStatusUpdateFunction48765F5B": {
-      "DependsOn": [
-        "BedrockLlmProcessorHITLStatusUpdateFunctionServiceRoleDefaultPolicy1E76EE2A",
-        "BedrockLlmProcessorHITLStatusUpdateFunctionServiceRole5DCCCAA6",
-      ],
-      "Properties": {
-        "Code": {
-          "S3Bucket": {
-            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
-          },
-          "S3Key": "80abbab70f68ec305b68666aa51a9a474d29f331891c633fc09809331bada3bf.zip",
-        },
-        "Handler": "index.handler",
-        "Layers": [
-          {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A",
-          },
-        ],
-        "LoggingConfig": {
-          "LogGroup": {
-            "Ref": "BedrockLlmProcessorHITLStatusUpdateFunctionLogGroup8B2B1146",
-          },
-        },
-        "MemorySize": 512,
-        "Role": {
-          "Fn::GetAtt": [
-            "BedrockLlmProcessorHITLStatusUpdateFunctionServiceRole5DCCCAA6",
-            "Arn",
-          ],
-        },
-        "Runtime": "python3.12",
-        "Timeout": 60,
-      },
-      "Type": "AWS::Lambda::Function",
-    },
-    "BedrockLlmProcessorHITLStatusUpdateFunctionLogGroup8B2B1146": {
-      "DeletionPolicy": "Retain",
-      "Properties": {
-        "KmsKeyId": {
-          "Fn::GetAtt": [
-            "MockKey4B46A5C5",
-            "Arn",
-          ],
-        },
-        "RetentionInDays": 7,
-      },
-      "Type": "AWS::Logs::LogGroup",
-      "UpdateReplacePolicy": "Retain",
-    },
-    "BedrockLlmProcessorHITLStatusUpdateFunctionServiceRole5DCCCAA6": {
-      "Properties": {
-        "AssumeRolePolicyDocument": {
-          "Statement": [
-            {
-              "Action": "sts:AssumeRole",
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "lambda.amazonaws.com",
-              },
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "ManagedPolicyArns": [
-          {
-            "Fn::Join": [
-              "",
-              [
-                "arn:",
-                {
-                  "Ref": "AWS::Partition",
-                },
-                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-              ],
-            ],
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Role",
-    },
-    "BedrockLlmProcessorHITLStatusUpdateFunctionServiceRoleDefaultPolicy1E76EE2A": {
-      "Properties": {
-        "PolicyDocument": {
-          "Statement": [
-            {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-                "s3:DeleteObject*",
-                "s3:PutObject",
-                "s3:PutObjectLegalHold",
-                "s3:PutObjectRetention",
-                "s3:PutObjectTagging",
-                "s3:PutObjectVersionTagging",
-                "s3:Abort*",
-              ],
-              "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockWorkingBucketAF257EA5",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "MockWorkingBucketAF257EA5",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": [
-                "kms:Decrypt",
-                "kms:Encrypt",
-                "kms:ReEncrypt*",
-                "kms:GenerateDataKey*",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "MockKey4B46A5C5",
-                  "Arn",
-                ],
-              },
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "PolicyName": "BedrockLlmProcessorHITLStatusUpdateFunctionServiceRoleDefaultPolicy1E76EE2A",
-        "Roles": [
-          {
-            "Ref": "BedrockLlmProcessorHITLStatusUpdateFunctionServiceRole5DCCCAA6",
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Policy",
-    },
-    "BedrockLlmProcessorHITLWaitFunction2B3E639C": {
-      "DependsOn": [
-        "BedrockLlmProcessorHITLWaitFunctionServiceRoleDefaultPolicyA9CD3B09",
-        "BedrockLlmProcessorHITLWaitFunctionServiceRole6C514950",
-      ],
-      "Properties": {
-        "Code": {
-          "S3Bucket": {
-            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
-          },
-          "S3Key": "aa099d4be2967a6a4a13ed9d8359171dac1f6f68a7a31deeb5dc0bbf9c471ca1.zip",
-        },
-        "Environment": {
-          "Variables": {
-            "APPSYNC_API_URL": "https://example.com/graphql",
-            "DOCUMENT_TRACKING_MODE": "appsync",
-            "LOG_LEVEL": "INFO",
-            "SAGEMAKER_A2I_REVIEW_PORTAL_URL": "",
-            "TRACKING_TABLE": {
-              "Ref": "MockTrackingTableC27D2FF3",
-            },
-            "WORKING_BUCKET": {
-              "Ref": "MockWorkingBucketAF257EA5",
-            },
-          },
-        },
-        "Handler": "index.handler",
-        "Layers": [
-          {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A",
-          },
-        ],
-        "LoggingConfig": {
-          "LogGroup": {
-            "Ref": "BedrockLlmProcessorHITLWaitFunctionLogGroup1EA66E87",
-          },
-        },
-        "MemorySize": 512,
-        "Role": {
-          "Fn::GetAtt": [
-            "BedrockLlmProcessorHITLWaitFunctionServiceRole6C514950",
-            "Arn",
-          ],
-        },
-        "Runtime": "python3.12",
-        "Timeout": 300,
-      },
-      "Type": "AWS::Lambda::Function",
-    },
-    "BedrockLlmProcessorHITLWaitFunctionLogGroup1EA66E87": {
-      "DeletionPolicy": "Retain",
-      "Properties": {
-        "KmsKeyId": {
-          "Fn::GetAtt": [
-            "MockKey4B46A5C5",
-            "Arn",
-          ],
-        },
-        "RetentionInDays": 7,
-      },
-      "Type": "AWS::Logs::LogGroup",
-      "UpdateReplacePolicy": "Retain",
-    },
-    "BedrockLlmProcessorHITLWaitFunctionServiceRole6C514950": {
-      "Properties": {
-        "AssumeRolePolicyDocument": {
-          "Statement": [
-            {
-              "Action": "sts:AssumeRole",
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "lambda.amazonaws.com",
-              },
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "ManagedPolicyArns": [
-          {
-            "Fn::Join": [
-              "",
-              [
-                "arn:",
-                {
-                  "Ref": "AWS::Partition",
-                },
-                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-              ],
-            ],
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Role",
-    },
-    "BedrockLlmProcessorHITLWaitFunctionServiceRoleDefaultPolicyA9CD3B09": {
-      "Properties": {
-        "PolicyDocument": {
-          "Statement": [
-            {
-              "Action": [
-                "dynamodb:BatchGetItem",
-                "dynamodb:Query",
-                "dynamodb:GetItem",
-                "dynamodb:Scan",
-                "dynamodb:ConditionCheckItem",
-                "dynamodb:BatchWriteItem",
-                "dynamodb:PutItem",
-                "dynamodb:UpdateItem",
-                "dynamodb:DeleteItem",
-                "dynamodb:DescribeTable",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "MockTrackingTableC27D2FF3",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": [
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "MockTrackingTableC27D2FF3",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-                "s3:DeleteObject*",
-                "s3:PutObject",
-                "s3:PutObjectLegalHold",
-                "s3:PutObjectRetention",
-                "s3:PutObjectTagging",
-                "s3:PutObjectVersionTagging",
-                "s3:Abort*",
-              ],
-              "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "MockWorkingBucketAF257EA5",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "MockWorkingBucketAF257EA5",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": "cloudwatch:PutMetricData",
-              "Effect": "Allow",
-              "Resource": "*",
-            },
-            {
-              "Action": "appsync:GraphQL",
-              "Effect": "Allow",
-              "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "PolicyName": "BedrockLlmProcessorHITLWaitFunctionServiceRoleDefaultPolicyA9CD3B09",
-        "Roles": [
-          {
-            "Ref": "BedrockLlmProcessorHITLWaitFunctionServiceRole6C514950",
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Policy",
-    },
     "BedrockLlmProcessorOCRFunction145292F0": {
       "DependsOn": [
         "BedrockLlmProcessorOCRFunctionServiceRoleDefaultPolicy5F314DC2",
@@ -1703,7 +1376,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "fb6b3e9d5fc3023833b79071568ed7b37cc855ad23270bec861508f6509cb188.zip",
+          "S3Key": "76be758f87a0185d679fa32eac25b1545884be8ab5ef95d2df6157e311ebd1fa.zip",
         },
         "Environment": {
           "Variables": {
@@ -2007,7 +1680,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "1147219ca6c5d8f08b8e7a77143ca1d52a46191862e8cb9138e8b0026a6ccb25.zip",
+          "S3Key": "73b266977cdfd97d1ca803fb55f78c75fdb1b289cb9c426f1cc34f9865042f4a.zip",
         },
         "Environment": {
           "Variables": {
@@ -2352,6 +2025,680 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
         "Roles": [
           {
             "Ref": "BedrockLlmProcessorProcessResultsFunctionServiceRole2D93BEF4",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BedrockLlmProcessorRuleValidationFunction795429BB": {
+      "DependsOn": [
+        "BedrockLlmProcessorRuleValidationFunctionServiceRoleDefaultPolicy62B069B2",
+        "BedrockLlmProcessorRuleValidationFunctionServiceRoleA24DAE32",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "9cb5626506d7779b944ce6da46e57d3ecc2d198d1d6fa747212b646eee27caca.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "APPSYNC_API_URL": "https://example.com/graphql",
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "MockConfigTable9B38FA67",
+            },
+            "DOCUMENT_TRACKING_MODE": "appsync",
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "MockTrackingTableC27D2FF3",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "MockWorkingBucketAF257EA5",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer667299c113BB25CE",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BedrockLlmProcessorRuleValidationFunctionLogGroupA9ADBBDE",
+          },
+        },
+        "MemorySize": 4096,
+        "Role": {
+          "Fn::GetAtt": [
+            "BedrockLlmProcessorRuleValidationFunctionServiceRoleA24DAE32",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BedrockLlmProcessorRuleValidationFunctionLogGroupA9ADBBDE": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "MockKey4B46A5C5",
+            "Arn",
+          ],
+        },
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BedrockLlmProcessorRuleValidationFunctionServiceRoleA24DAE32": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BedrockLlmProcessorRuleValidationFunctionServiceRoleDefaultPolicy62B069B2": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockInputBucketC83AF371",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockInputBucketC83AF371",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockOutputBucket40EE28D0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockOutputBucket40EE28D0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockWorkingBucketAF257EA5",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockWorkingBucketAF257EA5",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream",
+                "bedrock:GetInferenceProfile",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:*::foundation-model/*",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:",
+                      {
+                        "Ref": "AWS::Region",
+                      },
+                      ":",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":inference-profile/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "appsync:GraphQL",
+              "Effect": "Allow",
+              "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BedrockLlmProcessorRuleValidationFunctionServiceRoleDefaultPolicy62B069B2",
+        "Roles": [
+          {
+            "Ref": "BedrockLlmProcessorRuleValidationFunctionServiceRoleA24DAE32",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "BedrockLlmProcessorRuleValidationOrchestrationFunction09B4B7EB": {
+      "DependsOn": [
+        "BedrockLlmProcessorRuleValidationOrchestrationFunctionServiceRoleDefaultPolicyE7AA1604",
+        "BedrockLlmProcessorRuleValidationOrchestrationFunctionServiceRole509A5D68",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "1d3fb23b66a64af09487e9ea8e9b852263c084612ced456b7b06f0a1e3c504f6.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "APPSYNC_API_URL": "https://example.com/graphql",
+            "CONFIGURATION_TABLE_NAME": {
+              "Ref": "MockConfigTable9B38FA67",
+            },
+            "DOCUMENT_TRACKING_MODE": "appsync",
+            "LOG_LEVEL": "INFO",
+            "METRIC_NAMESPACE": "TestNamespace",
+            "TRACKING_TABLE": {
+              "Ref": "MockTrackingTableC27D2FF3",
+            },
+            "WORKING_BUCKET": {
+              "Ref": "MockWorkingBucketAF257EA5",
+            },
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer0e18e66aF4D835CF",
+          },
+        ],
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "BedrockLlmProcessorRuleValidationOrchestrationFunctionLogGroup53C341A1",
+          },
+        },
+        "MemorySize": 4096,
+        "Role": {
+          "Fn::GetAtt": [
+            "BedrockLlmProcessorRuleValidationOrchestrationFunctionServiceRole509A5D68",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "BedrockLlmProcessorRuleValidationOrchestrationFunctionLogGroup53C341A1": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "MockKey4B46A5C5",
+            "Arn",
+          ],
+        },
+        "RetentionInDays": 7,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "BedrockLlmProcessorRuleValidationOrchestrationFunctionServiceRole509A5D68": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BedrockLlmProcessorRuleValidationOrchestrationFunctionServiceRoleDefaultPolicyE7AA1604": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockInputBucketC83AF371",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockInputBucketC83AF371",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockOutputBucket40EE28D0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockOutputBucket40EE28D0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MockWorkingBucketAF257EA5",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MockWorkingBucketAF257EA5",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockConfigTable9B38FA67",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "MockTrackingTableC27D2FF3",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream",
+                "bedrock:GetInferenceProfile",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:*::foundation-model/*",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":bedrock:",
+                      {
+                        "Ref": "AWS::Region",
+                      },
+                      ":",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":inference-profile/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "appsync:GraphQL",
+              "Effect": "Allow",
+              "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BedrockLlmProcessorRuleValidationOrchestrationFunctionServiceRoleDefaultPolicyE7AA1604",
+        "Roles": [
+          {
+            "Ref": "BedrockLlmProcessorRuleValidationOrchestrationFunctionServiceRole509A5D68",
           },
         ],
       },
@@ -3506,7 +3853,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
               "Resource": [
                 {
                   "Fn::GetAtt": [
-                    "BedrockLlmProcessorHITLWaitFunction2B3E639C",
+                    "BedrockLlmProcessorRuleValidationFunction795429BB",
                     "Arn",
                   ],
                 },
@@ -3516,7 +3863,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     [
                       {
                         "Fn::GetAtt": [
-                          "BedrockLlmProcessorHITLWaitFunction2B3E639C",
+                          "BedrockLlmProcessorRuleValidationFunction795429BB",
                           "Arn",
                         ],
                       },
@@ -3532,7 +3879,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
               "Resource": [
                 {
                   "Fn::GetAtt": [
-                    "BedrockLlmProcessorHITLStatusUpdateFunction48765F5B",
+                    "BedrockLlmProcessorRuleValidationOrchestrationFunction09B4B7EB",
                     "Arn",
                   ],
                 },
@@ -3542,7 +3889,33 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     [
                       {
                         "Fn::GetAtt": [
-                          "BedrockLlmProcessorHITLStatusUpdateFunction48765F5B",
+                          "BedrockLlmProcessorRuleValidationOrchestrationFunction09B4B7EB",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "BedrockLlmProcessorEvaluationFunction40C8B277",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "BedrockLlmProcessorEvaluationFunction40C8B277",
                           "Arn",
                         ],
                       },
@@ -3588,7 +3961,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "8a6bfa48157c21ad25db14b110b6ddc9b8589d418e58a7b3606419ee1c3c669d.zip",
+          "S3Key": "0a44329875ac8400f211980a5690b09c0b8e6b32ccddf86cbe2af3be754d6873.zip",
         },
         "Environment": {
           "Variables": {
@@ -4070,6 +4443,21 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
       "Type": "AWS::S3::Bucket",
       "UpdateReplacePolicy": "Retain",
     },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer0e18e66aF4D835CF": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, rule-validation-orchestration",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
     "comamazonawscdkcdklabsgenaiidpidpcommonlayer2260994d588C4C0A": {
       "Properties": {
         "CompatibleRuntimes": [
@@ -4079,7 +4467,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service",
       },
@@ -4094,9 +4482,24 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer667299c113BB25CE": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, rule-validation",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },
@@ -4109,7 +4512,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr",
       },
@@ -4124,7 +4527,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction",
       },
@@ -4139,9 +4542,24 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "65648446e975ee8558ecb621b361b5ddbfb2bade91d266e4fe8853082c9af310.zip",
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayerf0ed018eA0B6BF52": {
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "db6fc91662782a5621627b9756fd30b5cc5f35683658fa74926f31ceba30d0f1.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, evaluation",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },

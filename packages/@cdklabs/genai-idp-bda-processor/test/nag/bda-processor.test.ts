@@ -169,8 +169,8 @@ describe("BdaProcessor CDK Nag Compliance", () => {
 
       // Validate expected resource counts for BDA processor
       // Note: These counts may need adjustment based on actual resource creation
-      template.resourceCountIs("AWS::Lambda::Function", 13); // Adjusted based on actual count
-      template.resourceCountIs("AWS::IAM::Role", 14); // Adjusted based on actual count
+      template.resourceCountIs("AWS::Lambda::Function", 11); // Adjusted based on actual count
+      template.resourceCountIs("AWS::IAM::Role", 12); // Adjusted based on actual count
       template.resourceCountIs("AWS::SQS::Queue", 5); // Adjusted based on actual count
       template.resourceCountIs("AWS::S3::Bucket", 3); // Input, output, working buckets
       template.resourceCountIs("AWS::DynamoDB::Table", 4); // Adjust based on actual count

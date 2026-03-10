@@ -2,7 +2,7 @@
 
 ## Overview
 
-The GenAI IDP Accelerator now supports deployment to AWS GovCloud regions through a specialized template generation script. This solution addresses two key GovCloud requirements:
+The GenAI IDP Accelerator now supports "headless" deployment to AWS GovCloud regions through a specialized template generation script. This solution addresses two key GovCloud requirements:
 
 1. **ARN Partition Compatibility**: All ARN references use `arn:${AWS::Partition}:` instead of `arn:aws:` to work in both commercial and GovCloud regions
 2. **Service Compatibility**: Removes services not available in GovCloud (AppSync, CloudFront, WAF, Cognito UI components)
@@ -42,15 +42,18 @@ You need to have the following packages installed on your computer:
 1. bash shell (Linux, MacOS, Windows-WSL)
 2. aws (AWS CLI)
 3. [sam (AWS SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
-4. python 3.11 or later
-5. A local Docker daemon
-6. Python packages for publish.py: `pip install boto3 rich PyYAML botocore setuptools docker`
+4. python 3.12 (required to generate templates)
+5. Node.js >=22.12.0
+6. npm >=10.0.0
+7. A local Docker daemon
+8. Python packages for publish.py.  You are encouraged to configure a virtual environment for dependency management, ie. `python -m venv .venv`.  Activate the environment (`. .venv/bin/activate`) and then install dependencies via `pip install boto3 rich PyYAML botocore setuptools docker ruff build`
 
 ### Step 1: Generate GovCloud Template
 
 First, generate the GovCloud-compatible template - this run the standard build process first to create all Lambda functions and artifacts, and then creates a stripped down version for GovCloud:
 
 ```bash
+# Note: The Python script will create an S3 bucket automatically by concatenating the provided bucket name and region, ie. my-govcloud-bucket-us-gov-west-1.  You can change the bucket base name as desired.  Files will be placed under [my-prefix] prefix within the generated bucket.
 # Build for GovCloud region
 python scripts/generate_govcloud_template.py my-bucket-govcloud my-prefix us-gov-west-1
 
@@ -63,13 +66,17 @@ python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1
 Deploy the generated template to GovCloud using the AWS CloudFormation console (recommended) or deploy using AWS CLI e.g:
 
 ```bash
+# Populate {s3-bucket-govcloud} with the bucket name where you'd like the template to be uploaded
 aws cloudformation deploy \
   --template-file .aws-sam/idp-govcloud.yaml \
-  --stack-name my-idp-govcloud-stack \
+  --s3-bucket <S3BUCKET> \
+  --s3-prefix idp-headless \
+  --stack-name my-idp-headless-stack \
   --region us-gov-west-1 \
   --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
   --parameter-overrides \
-    IDPPattern="Pattern2 - Packet processing with Textract and Bedrock"
+    IDPPattern="Pattern2 - Packet processing with Textract and Bedrock" \
+  --s3-bucket {s3-bucket-govcloud}
 ```
 
 ## Services Removed in GovCloud
@@ -255,7 +262,7 @@ The following features are not available:
 
 **Missing Dependencies**
 
-- Ensure all Bedrock models are enabled in the region
+- Ensure all Bedrock models are enabled in the region.  GovCloud deployment uses amazon.nova-lite-v1:0, amazon.nova-pro-v1:0, us.anthropic.claude-3-5-sonnet-20240620-v1:0, and anthropic.claude-3-7-sonnet-20250219-v1:0 by default
 - Verify IAM permissions for service roles
 - Check S3 bucket policies and access
 

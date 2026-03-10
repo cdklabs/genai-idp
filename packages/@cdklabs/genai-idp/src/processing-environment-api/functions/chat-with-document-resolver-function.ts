@@ -33,6 +33,24 @@ export interface ChatWithDocumentResolverFunctionProps extends IdpPythonFunction
   readonly chatModel: bedrock.IInvokable;
 
   /**
+   * The tracking table for document metadata.
+   * Function needs read access to retrieve document pages.
+   */
+  readonly trackingTable: any; // ITrackingTable
+
+  /**
+   * The configuration table for system settings.
+   * Function needs read access to retrieve model configuration.
+   */
+  readonly configurationTable: any; // IConfigurationTable
+
+  /**
+   * The S3 bucket containing processed output documents.
+   * Function needs read/write access to cache full text.
+   */
+  readonly outputBucket: any; // IBucket
+
+  /**
    * Optional guardrail for content filtering and safety.
    */
   readonly guardrail?: IGuardrail;
@@ -113,6 +131,9 @@ export class ChatWithDocumentResolverFunction
         GUARDRAIL_ID_AND_VERSION: props.guardrail
           ? `${props.guardrail.guardrailId}:${props.guardrail.guardrailVersion}`
           : "",
+        TRACKING_TABLE_NAME: props.trackingTable.tableName,
+        CONFIGURATION_TABLE_NAME: props.configurationTable.tableName,
+        OUTPUT_BUCKET: props.outputBucket.bucketName,
       },
       layers: [IdpPythonLayerVersion.getOrCreate(cdk.Stack.of(scope))],
       logGroup: props.logGroup,
@@ -121,31 +142,18 @@ export class ChatWithDocumentResolverFunction
       securityGroups: props.securityGroups,
     });
 
-    // Grant permissions to query the knowledge base
-    props.knowledgeBase.grantQuery(this);
+    // Grant permissions to read from tracking and configuration tables
+    props.trackingTable.grantReadData(this);
+    props.configurationTable.grantReadData(this);
+
+    // Grant permissions to read/write to output bucket
+    props.outputBucket.grantReadWrite(this);
 
     // Grant permissions to invoke the chat model
-    this.addToRolePolicy(
-      new cdk.aws_iam.PolicyStatement({
-        effect: cdk.aws_iam.Effect.ALLOW,
-        actions: [
-          "bedrock:InvokeModel",
-          "bedrock:InvokeModelWithResponseStream",
-        ],
-        resources: [props.chatModel.invokableArn],
-      }),
-    );
-
-    // Grant guardrail permissions if provided
-    if (props.guardrail) {
-      this.addToRolePolicy(
-        new cdk.aws_iam.PolicyStatement({
-          effect: cdk.aws_iam.Effect.ALLOW,
-          actions: ["bedrock:ApplyGuardrail"],
-          resources: [props.guardrail.guardrailArn],
-        }),
-      );
-    }
+    props.chatModel.grantInvoke(this);
+    props.guardrail?.grantApply(this);
+    // Grant permissions to query the knowledge base
+    props.knowledgeBase.grantQuery(this);
 
     // Grant KMS permissions if encryption key is provided
     props.encryptionKey?.grantEncryptDecrypt(this);

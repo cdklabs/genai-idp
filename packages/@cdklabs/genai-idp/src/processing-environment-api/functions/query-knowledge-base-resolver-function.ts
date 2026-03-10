@@ -9,10 +9,12 @@ import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
 // Keep bedrock namespace from old package for IKnowledgeBase
 import { bedrock } from "@cdklabs/generative-ai-cdk-constructs";
 import * as cdk from "aws-cdk-lib";
+import { Stack } from "aws-cdk-lib";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
+import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
 import { LogLevel } from "../../log-level";
 
 /**
@@ -31,6 +33,10 @@ export interface QueryKnowledgeBaseResolverFunctionProps extends IdpPythonFuncti
    */
   readonly knowledgeBaseModel: bedrock.IInvokable;
 
+  /**
+   * Optional Bedrock guardrail for content filtering on knowledge base queries.
+   * When provided, applies content safety policies to query inputs and outputs.
+   */
   readonly guardrail?: IGuardrail;
   /**
    * The log level for the function.
@@ -100,6 +106,7 @@ export class QueryKnowledgeBaseResolverFunction
           ].join(" && "),
         ],
       },
+      layers: [IdpPythonLayerVersion.getOrCreate(Stack.of(scope))],
       runtime: lambda.Runtime.PYTHON_3_12,
       timeout: cdk.Duration.seconds(60),
       memorySize: 512,

@@ -51,7 +51,12 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
    */
   readonly configurationTable: ITable;
 
+  /**
+   * The DynamoDB table that tracks document processing status and metadata.
+   * The function updates OCR results in this table.
+   */
   readonly trackingTable: ITrackingTable;
+
   /**
    * The S3 bucket containing input documents to be processed.
    * Source of documents that need OCR processing.
@@ -103,6 +108,14 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Lambda function that performs optical character recognition (OCR) on documents.
+ *
+ * Extracts text content from document pages using Amazon Textract or Bedrock vision models.
+ * Supports multiple OCR backends including Textract for standard text extraction and
+ * Bedrock for vision-based extraction of complex document layouts.
+ *
+ */
 export class OcrFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: OcrFunctionProps) {
     super(scope, id, {

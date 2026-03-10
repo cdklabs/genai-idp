@@ -255,28 +255,40 @@ To modify the extraction behavior:
 - **Classification model (UDOP)** is still specified via CloudFormation parameter due to SageMaker endpoint requirements
 
 ### Extraction Attributes
-Attributes to be extracted are defined in the configuration files' `classes` section. The structure is similar to the example below:
+Attributes to be extracted are defined in the configuration files' `classes` section using JSON Schema format. The structure is similar to the example below:
 
 Example attribute definition:
 ```yaml
 classes:
-  - name: letter
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Letter
+    x-aws-idp-document-type: Letter
+    type: object
     description: A formal written message that is typically sent from one person to another
-    attributes:
-      - name: sender_name
+    properties:
+      SenderName:
+        type: string
         description: The name of the person or entity who wrote or sent the letter. Look for text following or near terms like 'from', 'sender', 'authored by', 'written by', or at the end of the letter before a signature.
-      - name: sender_address
+      SenderAddress:
+        type: string
         description: The physical address of the sender, typically appearing at the top of the letter. May be labeled as 'address', 'location', or 'from address'.
-      - name: recipient_name
+      RecipientName:
+        type: string
         description: The name of the person or entity receiving the letter. Look for this after 'to', 'recipient', 'addressee', or at the beginning of the letter.
-      - name: recipient_address
+      RecipientAddress:
+        type: string
         description: The physical address where the letter is to be delivered. Often labeled as 'to address' or 'delivery address', typically appearing below the recipient name.
-  - name: form
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Form
+    x-aws-idp-document-type: Form
+    type: object
     description: A document with blank spaces for filling in information
-    attributes:
-      - name: form_type
+    properties:
+      FormType:
+        type: string
         description: The category or purpose of the form, such as 'application', 'registration', 'request', etc. May be identified by 'form name', 'document type', or 'form category'.
-      - name: form_id
+      FormId:
+        type: string
         description: The unique identifier for the form, typically a number or alphanumeric code. Often labeled as 'form number', 'id', or 'reference number'.
 ```
 

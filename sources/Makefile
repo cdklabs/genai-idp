@@ -9,10 +9,64 @@ NC := \033[0m  # No Color
 # Default target - run both lint and test
 all: lint test
 
-# Run tests in idp_common_pkg and idp_cli directories
+# Install idp_common, idp-cli, and idp_sdk packages in development mode
+setup:
+	@echo "Installing idp_common package..."
+	pip install -e lib/idp_common_pkg
+	@echo "Installing idp-cli package..."
+	pip install -e lib/idp_cli_pkg
+	@echo "Installing idp_sdk package..."
+	pip install -e lib/idp_sdk
+	@echo "Installing capacity planning test dependencies..."
+	pip install -r src/lambda/calculate_capacity/requirements-test.txt
+	@echo -e "$(GREEN)✅ Setup complete! idp_common, idp-cli, idp_sdk, and test dependencies are now installed.$(NC)"
+
+# Start the UI development server
+# Usage: make ui-start [STACK_NAME=<stack-name>]
+ui-start:
+	@if [ -n "$(STACK_NAME)" ]; then \
+		echo "Retrieving .env configuration from stack $(STACK_NAME)..."; \
+		ENV_CONTENT=$$(aws cloudformation describe-stacks \
+			--stack-name $(STACK_NAME) \
+			--query "Stacks[0].Outputs[?OutputKey=='WebUITestEnvFile'].OutputValue" \
+			--output text 2>/dev/null); \
+		if [ -z "$$ENV_CONTENT" ] || [ "$$ENV_CONTENT" = "None" ]; then \
+			echo -e "$(RED)ERROR: Could not retrieve WebUITestEnvFile from stack $(STACK_NAME)$(NC)"; \
+			echo -e "$(YELLOW)Make sure the stack exists and has completed deployment.$(NC)"; \
+			exit 1; \
+		fi; \
+		echo "$$ENV_CONTENT" > src/ui/.env; \
+		echo -e "$(GREEN)✅ Created src/ui/.env from stack outputs$(NC)"; \
+	fi
+	@if [ ! -f src/ui/.env ]; then \
+		echo -e "$(RED)ERROR: src/ui/.env not found$(NC)"; \
+		echo -e "$(YELLOW)Either provide STACK_NAME to auto-generate, or create .env manually.$(NC)"; \
+		echo -e "$(YELLOW)Usage: make ui-start STACK_NAME=<your-stack-name>$(NC)"; \
+		exit 1; \
+	fi
+	@echo "Installing UI dependencies..."
+	cd src/ui && npm ci --prefer-offline --no-audit
+	@echo "Starting UI development server..."
+	cd src/ui && npm run start
+
+# Run tests in idp_common_pkg, idp_cli, idp_sdk, and capacity planning Lambda
 test:
 	$(MAKE) -C lib/idp_common_pkg test
-	cd idp_cli && python -m pytest -v
+	cd lib/idp_cli_pkg && python -m pytest -v
+	cd lib/idp_sdk && python -m pytest -m "not integration" -v
+	@echo "Running capacity planning Lambda tests..."
+	cd src/lambda/calculate_capacity && python -m pytest -v
+
+# Run only capacity planning tests
+test-capacity:
+	@echo "Running capacity planning Lambda tests..."
+	cd src/lambda/calculate_capacity && python -m pytest -v
+
+# Run capacity planning tests with coverage
+test-capacity-coverage:
+	@echo "Running capacity planning Lambda tests with coverage..."
+	cd src/lambda/calculate_capacity && python -m pytest --cov=. --cov-report=term --cov-report=html -v
+	@echo -e "$(GREEN)✅ Coverage report generated at src/lambda/calculate_capacity/htmlcov/index.html$(NC)"
 
 # Run both linting and formatting in one command
 lint: ruff-lint format check-arn-partitions validate-buildspec ui-lint
@@ -57,7 +111,7 @@ lint-cicd:
 # Validate AWS CodeBuild buildspec files
 validate-buildspec:
 	@echo "Validating buildspec files..."
-	@python3 scripts/validate_buildspec.py patterns/*/buildspec.yml || \
+	@python3 scripts/sdlc/validate_buildspec.py patterns/*/buildspec.yml || \
 		(echo -e "$(RED)ERROR: Buildspec validation failed!$(NC)" && exit 1)
 	@echo -e "$(GREEN)✅ All buildspec files are valid!$(NC)"
 
@@ -107,7 +161,7 @@ typecheck-stats:
 TARGET_BRANCH ?= main
 typecheck-pr:
 	@echo "Type checking changed files against $(TARGET_BRANCH)..."
-	python3 scripts/typecheck_pr_changes.py $(TARGET_BRANCH)
+	python3 scripts/sdlc/typecheck_pr_changes.py $(TARGET_BRANCH)
 
 
 ui-lint:
@@ -116,7 +170,7 @@ ui-lint:
 	STORED_HASH=$$(test -f src/ui/.checksum && cat src/ui/.checksum || echo ""); \
 	if [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
 		echo "UI code checksum changed - running lint..."; \
-		cd src/ui && npm ci --prefer-offline --no-audit && npm run lint && \
+		cd src/ui && npm ci --prefer-offline --no-audit && npm run lint -- --fix && \
 		echo "$$CURRENT_HASH" > .checksum; \
 		echo -e "$(GREEN)✅ UI lint completed and checksum updated$(NC)"; \
 	else \
@@ -140,3 +194,29 @@ fastcommit: fastlint
 	git add . && \
 	git commit -am "$${COMMIT_MESSAGE}" && \
 	git push
+
+# DSR (Deliverable Security Review) targets
+dsr-setup:
+	@echo "Setting up DSR tool..."
+	python3 scripts/dsr/setup.py
+
+dsr-scan:
+	@echo "Running DSR security scan..."
+	python3 scripts/dsr/run.py
+
+dsr-fix:
+	@echo "Running DSR interactive fix..."
+	python3 scripts/dsr/fix.py
+
+dsr:
+	@if [ ! -f .dsr/dsr ]; then \
+		echo "DSR not found, running setup..."; \
+		$(MAKE) dsr-setup; \
+	fi
+	@$(MAKE) dsr-scan
+	@echo ""
+	@echo "Do you want to run DSR fix? (y/N):"
+	@read answer && \
+	if [ "$$answer" = "y" ] || [ "$$answer" = "Y" ]; then \
+		$(MAKE) dsr-fix; \
+	fi

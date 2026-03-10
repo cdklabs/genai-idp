@@ -2,19 +2,6 @@
 
 The GenAI Intelligent Document Processing (IDP) Accelerator is a comprehensive solution for transforming unstructured documents into structured data using AWS's AI/ML services. This CDK implementation provides a modular, customizable approach to deploying the accelerator.
 
-## What's New in v0.4.8
-
-Version 0.4.8 introduces powerful capabilities for testing, AI assistance, and developer productivity:
-
-- **Test Studio** - Comprehensive test management with automated dataset deployment and interactive analytics
-- **Agent Companion Chat** - Multi-agent AI assistant for troubleshooting and analytics
-- **MCP Integration** - External application access via Model Context Protocol
-- **Error Analyzer** - AI-powered failure diagnosis with log and trace analysis
-- **Enhanced Evaluation** - Advanced accuracy measurement with Stickler library
-- **JSON Schema Configuration** - Modern configuration format with validation
-- **Agentic Extraction** - Iterative validation for improved accuracy
-- **X-Ray Tracing** - Distributed tracing for Lambda functions
-
 ## Architecture
 
 The GenAI IDP Accelerator follows a serverless architecture pattern, leveraging various AWS services to create a scalable document processing pipeline:

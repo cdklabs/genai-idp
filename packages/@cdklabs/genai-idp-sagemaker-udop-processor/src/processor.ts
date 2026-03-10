@@ -10,7 +10,6 @@ import {
   DocumentProcessorProps,
   IProcessingEnvironment,
   IDocumentProcessor,
-  ICustomPromptGenerator,
   SectionSplittingStrategy,
 } from "@cdklabs/genai-idp";
 import { EvaluationFunction } from "@cdklabs/genai-idp/lib/internal/functions/evaluation-function";
@@ -33,6 +32,9 @@ import { SummarizationFunction } from "./internal/summarization-function";
 /**
  * Interface for SageMaker UDOP document processor implementation.
  *
+ * @deprecated This processor pattern is deprecated and will be removed in v0.5.0.
+ * Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+ *
  * SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
  * for document classification, combined with foundation models for extraction.
  * This processor is ideal for specialized document types that require custom
@@ -49,6 +51,9 @@ export interface ISagemakerUdopProcessor extends IDocumentProcessor {}
 
 /**
  * Configuration properties for the SageMaker UDOP document processor.
+ *
+ * @deprecated This processor pattern is deprecated and will be removed in v0.5.0.
+ * Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
  *
  * SageMaker UDOP Processor uses specialized document processing with SageMaker endpoints
  * for document classification, combined with foundation models for extraction.
@@ -146,15 +151,6 @@ export interface SagemakerUdopProcessorProps extends DocumentProcessorProps {
   readonly assessmentGuardrail?: bedrock.IGuardrail;
 
   /**
-   * Optional custom prompt generator for injecting business logic into extraction processing.
-   * When provided, this Lambda function will be called to customize prompts based on
-   * document content, business rules, or external system integrations.
-   *
-   * @default - No custom prompt generator is used
-   */
-  readonly customPromptGenerator?: ICustomPromptGenerator;
-
-  /**
    * Enable edit sections feature for classification updates.
    *
    * When enabled, allows users to modify document classification through the UI
@@ -162,8 +158,7 @@ export interface SagemakerUdopProcessorProps extends DocumentProcessorProps {
    * flexibility to correct classification errors without reprocessing entire documents.
    *
    * @default false
-   * @since v0.4.8
-   */
+   *    */
   readonly enableEditSections?: boolean;
 
   /**
@@ -178,13 +173,15 @@ export interface SagemakerUdopProcessorProps extends DocumentProcessorProps {
    * - LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
    *
    * @default SectionSplittingStrategy.LLM_DETERMINED
-   * @since v0.4.8
-   */
+   *    */
   readonly sectionSplittingStrategy?: SectionSplittingStrategy;
 }
 
 /**
  * SageMaker UDOP document processor implementation that uses specialized models for document processing.
+ *
+ * @deprecated This processor pattern is deprecated and will be removed in v0.5.0.
+ * Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
  *
  * This processor implements an intelligent document processing workflow that uses specialized
  * models like UDOP (Unified Document Processing) or RVL-CDIP deployed on SageMaker for document classification,
@@ -199,8 +196,29 @@ export class SagemakerUdopProcessor
   extends Construct
   implements ISagemakerUdopProcessor
 {
+  /**
+   * The processing environment that provides shared infrastructure resources.
+   * Includes buckets, tables, API, encryption, and VPC configuration used
+   * by all processing functions within this processor.
+   *
+   *    */
   public readonly environment: IProcessingEnvironment;
+
+  /**
+   * The maximum number of documents that can be processed concurrently.
+   * Controls the parallelism of the Step Functions state machine to balance
+   * throughput against resource consumption.
+   *
+   * @default 100
+   *    */
   public readonly maxProcessingConcurrency: number;
+
+  /**
+   * The Step Functions state machine that orchestrates the document processing workflow.
+   * Coordinates OCR, classification, extraction, assessment, summarization,
+   * and evaluation steps in the correct sequence.
+   *
+   *    */
   public readonly stateMachine: sfn.IStateMachine;
 
   constructor(
@@ -277,6 +295,7 @@ export class SagemakerUdopProcessor
         encryptionKey: this.environment.encryptionKey,
         extractionModel: renderedDefinition.extractionModel,
         extractionGuardrail: props.extractionGuardrail,
+        customPromptGenerator: renderedDefinition.customPromptGenerator,
         logGroup: new logs.LogGroup(this, "ExtractionFunctionLogGroup", {
           retention: this.environment.logRetention,
           encryptionKey: this.environment.encryptionKey,
@@ -375,15 +394,14 @@ export class SagemakerUdopProcessor
         reportingEnvironment: this.environment.reportingEnvironment,
         saveReportingDataFunction: this.environment.saveReportingDataFunction,
         api: this.environment.api,
+        encryptionKey: this.environment.encryptionKey,
+        evaluationModel: renderedDefinition.evaluationModel,
         logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
           retention: this.environment.logRetention,
         }),
         ...this.environment.vpcConfiguration,
       });
-
-      this.environment.encryptionKey?.grantEncryptDecrypt(evaluationFunction);
-      renderedDefinition.evaluationModel.grantInvoke(evaluationFunction);
     } else {
       // Create a no-op function when evaluation is not configured
       evaluationFunction = new lambda.Function(this, "NoOpEvaluationFunction", {

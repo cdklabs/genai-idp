@@ -560,10 +560,10 @@ Any object.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure resources. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the document processing workflow. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.evaluationFunction">evaluationFunction</a></code> | <code>any</code> | The evaluation function if evaluation is enabled for this processor. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessor.property.evaluationFunction">evaluationFunction</a></code> | <code>any</code> | The evaluation function used for assessing extraction accuracy. |
 
 ---
 
@@ -587,10 +587,10 @@ public readonly environment: IProcessingEnvironment;
 
 - *Type:* @cdklabs/genai-idp.IProcessingEnvironment
 
-The processing environment that provides shared infrastructure and services.
+The processing environment that provides shared infrastructure resources.
 
-Contains input/output buckets, tracking tables, API endpoints, and other
-resources needed for document processing operations.
+Includes buckets, tables, API, encryption, and VPC configuration used
+by all processing functions within this processor.
 
 ---
 
@@ -601,10 +601,12 @@ public readonly maxProcessingConcurrency: number;
 ```
 
 - *Type:* number
+- *Default:* 100
 
 The maximum number of documents that can be processed concurrently.
 
-Controls the throughput and resource utilization of the document processing system.
+Controls the parallelism of the Step Functions state machine to balance
+throughput against resource consumption.
 
 ---
 
@@ -618,9 +620,8 @@ public readonly stateMachine: IStateMachine;
 
 The Step Functions state machine that orchestrates the document processing workflow.
 
-Manages the sequence of processing steps and handles error conditions.
-This state machine is triggered for each document that needs processing
-and coordinates the entire extraction pipeline.
+Coordinates OCR, classification, extraction, assessment, summarization,
+rule validation, and evaluation steps in the correct sequence.
 
 ---
 
@@ -632,10 +633,10 @@ public readonly evaluationFunction: any;
 
 - *Type:* any
 
-The evaluation function if evaluation is enabled for this processor.
+The evaluation function used for assessing extraction accuracy.
 
-The evaluation function is created by the ProcessingEnvironment when
-evaluation baseline bucket and model are provided.
+When configured with a baseline bucket and evaluation model, this function
+compares extraction results against known correct values.
 
 ---
 
@@ -663,6 +664,7 @@ const bedrockLlmProcessorConfigurationDefinitionOptions: BedrockLlmProcessorConf
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.assessmentModel">assessmentModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the assessment stage. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationMethod">classificationMethod</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.ClassificationMethod">ClassificationMethod</a></code> | Optional classification method to use for document categorization. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationModel">classificationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the classification stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.customPromptGeneratorFunction">customPromptGeneratorFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Optional custom prompt generator Lambda function. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the evaluation stage. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.extractionModel">extractionModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the extraction stage. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.ocrModel">ocrModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the OCR stage when using Bedrock-based OCR. |
@@ -705,6 +707,21 @@ public readonly classificationModel: IBedrockInvokable;
 - *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
 
 Optional model for the classification stage.
+
+---
+
+##### `customPromptGeneratorFunction`<sup>Optional</sup> <a name="customPromptGeneratorFunction" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.customPromptGeneratorFunction"></a>
+
+```typescript
+public readonly customPromptGeneratorFunction: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+Optional custom prompt generator Lambda function.
+
+When provided, the function ARN will be injected into the configuration
+at `extraction.custom_prompt_lambda_arn`.
 
 ---
 
@@ -790,17 +807,14 @@ const bedrockLlmProcessorProps: BedrockLlmProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.assessmentGuardrail">assessmentGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to assessment model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationGuardrail">classificationGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to classification model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.classificationMaxWorkers">classificationMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for document classification. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.customPromptGenerator">customPromptGenerator</a></code> | <code>@cdklabs/genai-idp.ICustomPromptGenerator</code> | Optional custom prompt generator for injecting business logic into extraction processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableAgenticExtraction">enableAgenticExtraction</a></code> | <code>boolean</code> | Enable agentic extraction with Strands framework. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableEditSections">enableEditSections</a></code> | <code>boolean</code> | Enable edit sections feature for classification updates. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableHitl">enableHitl</a></code> | <code>boolean</code> | Enable Human In The Loop (A2I) for document review. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableRegexClassification">enableRegexClassification</a></code> | <code>boolean</code> | Enable regex-based classification for performance optimization. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.evaluationBaselineBucket">evaluationBaselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket containing baseline documents for evaluation. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.extractionGuardrail">extractionGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to extraction model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.maxPagesForClassification">maxPagesForClassification</a></code> | <code>number \| @cdklabs/genai-idp.MaxPagesForClassification</code> | Maximum pages for classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.ocrGuardrail">ocrGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to OCR model interactions. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.ocrMaxWorkers">ocrMaxWorkers</a></code> | <code>number</code> | The maximum number of concurrent workers for OCR processing. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.sageMakerA2IReviewPortalUrl">sageMakerA2IReviewPortalUrl</a></code> | <code>string</code> | Optional SageMaker A2I Review Portal URL for HITL workflows. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.sectionSplittingStrategy">sectionSplittingStrategy</a></code> | <code>@cdklabs/genai-idp.SectionSplittingStrategy</code> | Section splitting strategy configuration. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.summarizationGuardrail">summarizationGuardrail</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IGuardrail</code> | Optional Bedrock guardrail to apply to summarization model interactions. |
 
@@ -899,22 +913,6 @@ throughput while managing resource utilization.
 
 ---
 
-##### `customPromptGenerator`<sup>Optional</sup> <a name="customPromptGenerator" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.customPromptGenerator"></a>
-
-```typescript
-public readonly customPromptGenerator: ICustomPromptGenerator;
-```
-
-- *Type:* @cdklabs/genai-idp.ICustomPromptGenerator
-- *Default:* No custom prompt generator is used
-
-Optional custom prompt generator for injecting business logic into extraction processing.
-
-When provided, this Lambda function will be called to customize prompts based on
-document content, business rules, or external system integrations.
-
----
-
 ##### `enableAgenticExtraction`<sup>Optional</sup> <a name="enableAgenticExtraction" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableAgenticExtraction"></a>
 
 ```typescript
@@ -946,19 +944,6 @@ Enable edit sections feature for classification updates.
 When enabled, allows users to modify document classification through the UI
 and trigger selective reprocessing of affected sections. This provides
 flexibility to correct classification errors without reprocessing entire documents.
-
----
-
-##### `enableHitl`<sup>Optional</sup> <a name="enableHitl" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.enableHitl"></a>
-
-```typescript
-public readonly enableHitl: boolean;
-```
-
-- *Type:* boolean
-- *Default:* false
-
-Enable Human In The Loop (A2I) for document review.
 
 ---
 
@@ -1058,22 +1043,6 @@ The maximum number of concurrent workers for OCR processing.
 
 Controls parallelism during the text extraction phase to optimize
 throughput while managing resource utilization.
-
----
-
-##### `sageMakerA2IReviewPortalUrl`<sup>Optional</sup> <a name="sageMakerA2IReviewPortalUrl" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorProps.property.sageMakerA2IReviewPortalUrl"></a>
-
-```typescript
-public readonly sageMakerA2IReviewPortalUrl: string;
-```
-
-- *Type:* string
-- *Default:* No A2I review portal URL is configured
-
-Optional SageMaker A2I Review Portal URL for HITL workflows.
-
-Used to provide human reviewers with access to the A2I review interface
-for document validation and correction workflows.
 
 ---
 
@@ -1179,12 +1148,21 @@ This method applies the configuration to the processor.
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.bankStatementSample">bankStatementSample</a></code> | Creates a configuration for bank statement processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.checkboxedAttributesExtraction">checkboxedAttributesExtraction</a></code> | Creates a configuration for checkbox extraction. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.criteriaValidation">criteriaValidation</a></code> | Creates a configuration for criteria validation. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.docSplit">docSplit</a></code> | Creates a configuration for document splitting. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.fewShotExampleWithMultimodalPageClassification">fewShotExampleWithMultimodalPageClassification</a></code> | Creates a configuration with few-shot examples and multimodal page classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.fromFile">fromFile</a></code> | Creates a configuration from a YAML file. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.healthcareMultisectionPackage">healthcareMultisectionPackage</a></code> | Creates a configuration for healthcare multisection package processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.lendingPackageSample">lendingPackageSample</a></code> | Creates a configuration for lending package processing. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.lendingPackageSampleGovCloud">lendingPackageSampleGovCloud</a></code> | Creates a minimal configuration for GovCloud deployments. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.medicalRecordsSummarization">medicalRecordsSummarization</a></code> | Creates a configuration for medical records summarization. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.ocrBenchmark">ocrBenchmark</a></code> | Creates a configuration for OCR benchmarking. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.realkieFccVerified">realkieFccVerified</a></code> | Creates a configuration for RealKIE FCC verified documents. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.ruleExtraction">ruleExtraction</a></code> | Creates a configuration for rule extraction. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.ruleValidation">ruleValidation</a></code> | Creates a configuration for rule validation. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.rvlCdip">rvlCdip</a></code> | Creates a configuration for RVL-CDIP document classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.rvlCdipPackageSample">rvlCdipPackageSample</a></code> | Creates a configuration for RVL-CDIP package processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.rvlCdipPackageSampleWithFewShotExamples">rvlCdipPackageSampleWithFewShotExamples</a></code> | Creates a configuration for RVL-CDIP package processing with few-shot examples. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.rvlCdipWithFewShotExamples">rvlCdipWithFewShotExamples</a></code> | Creates a configuration for RVL-CDIP with few-shot examples. |
 
 ---
 
@@ -1242,6 +1220,24 @@ Optional configuration options.
 
 ---
 
+##### `docSplit` <a name="docSplit" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.docSplit"></a>
+
+```typescript
+import { BedrockLlmProcessorConfiguration } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfiguration.docSplit(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for document splitting.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.docSplit.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
 ##### `fewShotExampleWithMultimodalPageClassification` <a name="fewShotExampleWithMultimodalPageClassification" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.fewShotExampleWithMultimodalPageClassification"></a>
 
 ```typescript
@@ -1286,6 +1282,24 @@ Optional configuration options to override file settings.
 
 ---
 
+##### `healthcareMultisectionPackage` <a name="healthcareMultisectionPackage" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.healthcareMultisectionPackage"></a>
+
+```typescript
+import { BedrockLlmProcessorConfiguration } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfiguration.healthcareMultisectionPackage(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for healthcare multisection package processing.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.healthcareMultisectionPackage.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
 ##### `lendingPackageSample` <a name="lendingPackageSample" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.lendingPackageSample"></a>
 
 ```typescript
@@ -1304,6 +1318,24 @@ Optional configuration options.
 
 ---
 
+##### `lendingPackageSampleGovCloud` <a name="lendingPackageSampleGovCloud" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.lendingPackageSampleGovCloud"></a>
+
+```typescript
+import { BedrockLlmProcessorConfiguration } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfiguration.lendingPackageSampleGovCloud(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a minimal configuration for GovCloud deployments.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.lendingPackageSampleGovCloud.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
 ##### `medicalRecordsSummarization` <a name="medicalRecordsSummarization" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.medicalRecordsSummarization"></a>
 
 ```typescript
@@ -1315,6 +1347,96 @@ BedrockLlmProcessorConfiguration.medicalRecordsSummarization(options?: BedrockLl
 Creates a configuration for medical records summarization.
 
 ###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.medicalRecordsSummarization.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
+##### `ocrBenchmark` <a name="ocrBenchmark" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.ocrBenchmark"></a>
+
+```typescript
+import { BedrockLlmProcessorConfiguration } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfiguration.ocrBenchmark(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for OCR benchmarking.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.ocrBenchmark.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
+##### `realkieFccVerified` <a name="realkieFccVerified" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.realkieFccVerified"></a>
+
+```typescript
+import { BedrockLlmProcessorConfiguration } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfiguration.realkieFccVerified(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for RealKIE FCC verified documents.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.realkieFccVerified.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
+##### `ruleExtraction` <a name="ruleExtraction" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.ruleExtraction"></a>
+
+```typescript
+import { BedrockLlmProcessorConfiguration } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfiguration.ruleExtraction(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for rule extraction.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.ruleExtraction.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
+##### `ruleValidation` <a name="ruleValidation" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.ruleValidation"></a>
+
+```typescript
+import { BedrockLlmProcessorConfiguration } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfiguration.ruleValidation(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for rule validation.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.ruleValidation.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
+##### `rvlCdip` <a name="rvlCdip" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.rvlCdip"></a>
+
+```typescript
+import { BedrockLlmProcessorConfiguration } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfiguration.rvlCdip(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for RVL-CDIP document classification.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.rvlCdip.parameter.options"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
 
@@ -1358,6 +1480,24 @@ Optional configuration options.
 
 ---
 
+##### `rvlCdipWithFewShotExamples` <a name="rvlCdipWithFewShotExamples" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.rvlCdipWithFewShotExamples"></a>
+
+```typescript
+import { BedrockLlmProcessorConfiguration } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfiguration.rvlCdipWithFewShotExamples(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration for RVL-CDIP with few-shot examples.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfiguration.rvlCdipWithFewShotExamples.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional configuration options.
+
+---
+
 
 
 ### BedrockLlmProcessorConfigurationDefinition <a name="BedrockLlmProcessorConfigurationDefinition" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition"></a>
@@ -1387,12 +1527,21 @@ new BedrockLlmProcessorConfigurationDefinition()
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.bankStatementSample">bankStatementSample</a></code> | Creates a configuration definition for bank statement sample processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.checkboxedAttributesExtraction">checkboxedAttributesExtraction</a></code> | Creates a configuration definition optimized for checkbox attribute extraction. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.criteriaValidation">criteriaValidation</a></code> | Creates a configuration definition for criteria validation processing. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.docSplit">docSplit</a></code> | Creates a configuration definition for document splitting. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.fewShotExampleWithMultimodalPageClassification">fewShotExampleWithMultimodalPageClassification</a></code> | Creates a configuration definition with few-shot examples for multimodal page classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.fromFile">fromFile</a></code> | Creates a configuration definition from a YAML file. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.healthcareMultisectionPackage">healthcareMultisectionPackage</a></code> | Creates a configuration definition for healthcare multisection package processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.lendingPackageSample">lendingPackageSample</a></code> | Creates a configuration definition for lending package sample processing. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.medicalRecordsSummarization">medicalRecordsSummarization</a></code> | Creates a configuration definition optimized for medical records summarization. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.lendingPackageSampleGovCloud">lendingPackageSampleGovCloud</a></code> | Creates a minimal configuration definition for GovCloud deployments. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.medicalRecordsSummarization">medicalRecordsSummarization</a></code> | Creates a configuration definition for medical records summarization. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.ocrBenchmark">ocrBenchmark</a></code> | Creates a configuration definition for OCR benchmarking. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.realkieFccVerified">realkieFccVerified</a></code> | Creates a configuration definition for RealKIE FCC verified documents. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.ruleExtraction">ruleExtraction</a></code> | Creates a configuration definition for rule extraction. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.ruleValidation">ruleValidation</a></code> | Creates a configuration definition for rule validation. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.rvlCdip">rvlCdip</a></code> | Creates a configuration definition for RVL-CDIP document classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.rvlCdipPackageSample">rvlCdipPackageSample</a></code> | Creates a configuration definition for RVL-CDIP package sample processing. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.rvlCdipPackageSampleWithFewShotExamples">rvlCdipPackageSampleWithFewShotExamples</a></code> | Creates a configuration definition for RVL-CDIP package sample with few-shot examples. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.rvlCdipWithFewShotExamples">rvlCdipWithFewShotExamples</a></code> | Creates a configuration definition for RVL-CDIP with few-shot examples. |
 
 ---
 
@@ -1459,6 +1608,27 @@ Optional customization for processing stages.
 
 ---
 
+##### `docSplit` <a name="docSplit" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.docSplit"></a>
+
+```typescript
+import { BedrockLlmProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfigurationDefinition.docSplit(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for document splitting.
+
+This configuration focuses on splitting multi-document files into
+individual documents for processing.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.docSplit.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for processing stages.
+
+---
+
 ##### `fewShotExampleWithMultimodalPageClassification` <a name="fewShotExampleWithMultimodalPageClassification" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.fewShotExampleWithMultimodalPageClassification"></a>
 
 ```typescript
@@ -1508,6 +1678,27 @@ Optional customization for processing stages.
 
 ---
 
+##### `healthcareMultisectionPackage` <a name="healthcareMultisectionPackage" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.healthcareMultisectionPackage"></a>
+
+```typescript
+import { BedrockLlmProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfigurationDefinition.healthcareMultisectionPackage(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for healthcare multisection package processing.
+
+This configuration includes settings optimized for processing complex healthcare
+documents with multiple sections.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.healthcareMultisectionPackage.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for processing stages.
+
+---
+
 ##### `lendingPackageSample` <a name="lendingPackageSample" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.lendingPackageSample"></a>
 
 ```typescript
@@ -1529,6 +1720,28 @@ Optional customization for processing stages.
 
 ---
 
+##### `lendingPackageSampleGovCloud` <a name="lendingPackageSampleGovCloud" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.lendingPackageSampleGovCloud"></a>
+
+```typescript
+import { BedrockLlmProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfigurationDefinition.lendingPackageSampleGovCloud(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a minimal configuration definition for GovCloud deployments.
+
+This configuration demonstrates the "minimal override" pattern where only
+GovCloud-compatible model IDs are specified, and all other settings
+are inherited from system defaults at runtime.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.lendingPackageSampleGovCloud.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for processing stages.
+
+---
+
 ##### `medicalRecordsSummarization` <a name="medicalRecordsSummarization" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.medicalRecordsSummarization"></a>
 
 ```typescript
@@ -1537,12 +1750,117 @@ import { BedrockLlmProcessorConfigurationDefinition } from '@cdklabs/genai-idp-b
 BedrockLlmProcessorConfigurationDefinition.medicalRecordsSummarization(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
 ```
 
-Creates a configuration definition optimized for medical records summarization.
+Creates a configuration definition for medical records summarization.
 
 This configuration includes specialized prompts and settings for extracting
 and summarizing key information from medical documents.
 
 ###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.medicalRecordsSummarization.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for processing stages.
+
+---
+
+##### `ocrBenchmark` <a name="ocrBenchmark" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.ocrBenchmark"></a>
+
+```typescript
+import { BedrockLlmProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfigurationDefinition.ocrBenchmark(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for OCR benchmarking.
+
+This configuration is designed for evaluating OCR performance
+across different document types and quality levels.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.ocrBenchmark.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for processing stages.
+
+---
+
+##### `realkieFccVerified` <a name="realkieFccVerified" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.realkieFccVerified"></a>
+
+```typescript
+import { BedrockLlmProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfigurationDefinition.realkieFccVerified(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for RealKIE FCC verified documents.
+
+This configuration is optimized for processing FCC-verified documents
+from the RealKIE dataset.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.realkieFccVerified.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for processing stages.
+
+---
+
+##### `ruleExtraction` <a name="ruleExtraction" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.ruleExtraction"></a>
+
+```typescript
+import { BedrockLlmProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfigurationDefinition.ruleExtraction(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for rule extraction.
+
+This configuration includes settings for extracting business rules
+and validation criteria from documents.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.ruleExtraction.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for processing stages.
+
+---
+
+##### `ruleValidation` <a name="ruleValidation" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.ruleValidation"></a>
+
+```typescript
+import { BedrockLlmProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfigurationDefinition.ruleValidation(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for rule validation.
+
+This configuration includes settings for validating documents
+against extracted business rules and criteria.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.ruleValidation.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for processing stages.
+
+---
+
+##### `rvlCdip` <a name="rvlCdip" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.rvlCdip"></a>
+
+```typescript
+import { BedrockLlmProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfigurationDefinition.rvlCdip(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for RVL-CDIP document classification.
+
+This configuration is designed for the RVL-CDIP dataset, which contains
+16 classes of document images for classification tasks.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.rvlCdip.parameter.options"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
 
@@ -1585,6 +1903,27 @@ This configuration includes few-shot examples to improve classification and extr
 accuracy for RVL-CDIP documents.
 
 ###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.rvlCdipPackageSampleWithFewShotExamples.parameter.options"></a>
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
+
+Optional customization for processing stages.
+
+---
+
+##### `rvlCdipWithFewShotExamples` <a name="rvlCdipWithFewShotExamples" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.rvlCdipWithFewShotExamples"></a>
+
+```typescript
+import { BedrockLlmProcessorConfigurationDefinition } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+BedrockLlmProcessorConfigurationDefinition.rvlCdipWithFewShotExamples(options?: BedrockLlmProcessorConfigurationDefinitionOptions)
+```
+
+Creates a configuration definition for RVL-CDIP with few-shot examples.
+
+This configuration includes few-shot examples to improve classification
+accuracy for RVL-CDIP documents.
+
+###### `options`<sup>Optional</sup> <a name="options" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinition.rvlCdipWithFewShotExamples.parameter.options"></a>
 
 - *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions">BedrockLlmProcessorConfigurationDefinitionOptions</a>
 
@@ -1804,6 +2143,7 @@ The Bedrock LLM document processor to apply to.
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.extractionModel">extractionModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model used for information extraction. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrBackend">ocrBackend</a></code> | <code>string</code> | OCR backend to use for text extraction. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.assessmentModel">assessmentModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating assessment results. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.customPromptGenerator">customPromptGenerator</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Optional custom prompt generator Lambda function. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating extraction results. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrModel">ocrModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for OCR when using Bedrock-based OCR. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for document summarization. |
@@ -1889,6 +2229,23 @@ Optional invokable model used for evaluating assessment results.
 Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
 Used to assess the quality and accuracy of extracted information by
 comparing assessment results against expected values.
+
+---
+
+##### `customPromptGenerator`<sup>Optional</sup> <a name="customPromptGenerator" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.customPromptGenerator"></a>
+
+```typescript
+public readonly customPromptGenerator: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+- *Default:* undefined
+
+Optional custom prompt generator Lambda function.
+
+When provided, this function will be invoked during extraction to customize prompts.
+This is either the function provided via configuration options, or imported from
+the ARN specified in the configuration file.
 
 ---
 

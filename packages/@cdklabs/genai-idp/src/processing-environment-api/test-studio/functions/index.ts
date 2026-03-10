@@ -7,3 +7,5 @@ export * from "./test-runner-function";
 export * from "./test-set-resolver-function";
 export * from "./test-results-resolver-function";
 export * from "./fcc-dataset-deployer-function";
+export * from "./docsplit-testset-deployer-function";
+export * from "./ocr-benchmark-deployer-function";

@@ -28,12 +28,16 @@ describe("DocumentDiscovery", () => {
     stack.node.setContext(cxapi.BUNDLING_STACKS, []);
 
     discoveryBucket = new s3.Bucket(stack, "DiscoveryBucket");
-    configurationTable = new ConfigurationTable(stack, "ConfigurationTable");
+
+    configurationTable = new ConfigurationTable(stack, "ConfigTable");
 
     // Create mock API
+    const mockResolver = { createResolver: jest.fn() };
     mockApi = {
       graphqlUrl: "https://example.appsync-api.us-east-1.amazonaws.com/graphql",
       grantMutation: jest.fn(),
+      addLambdaDataSource: jest.fn().mockReturnValue(mockResolver),
+      addDynamoDbDataSource: jest.fn().mockReturnValue(mockResolver),
     } as any;
   });
 
@@ -41,6 +45,7 @@ describe("DocumentDiscovery", () => {
     // WHEN
     const discovery = new DocumentDiscovery(stack, "Discovery", {
       discoveryBucket,
+      configurationTable,
     });
 
     // THEN
@@ -67,7 +72,7 @@ describe("DocumentDiscovery", () => {
       VisibilityTimeout: 300,
     });
 
-    // Should NOT create Lambda functions yet (created in initializeFunctions)
+    // Should NOT create Lambda functions yet (created in enableInApi)
     template.resourceCountIs("AWS::Lambda::Function", 0);
 
     // Should have discovery bucket, table, and queue
@@ -76,14 +81,15 @@ describe("DocumentDiscovery", () => {
     expect(discovery.discoveryQueue).toBeDefined();
   });
 
-  test("initializes functions when initializeFunctions is called", () => {
+  test("initializes functions when enableInApi is called", () => {
     // GIVEN
     const discovery = new DocumentDiscovery(stack, "Discovery", {
       discoveryBucket,
+      configurationTable,
     });
 
     // WHEN
-    discovery.initializeFunctions(mockApi, configurationTable);
+    discovery.enableInApi(mockApi);
 
     // THEN
     const template = Template.fromStack(stack);
@@ -92,17 +98,18 @@ describe("DocumentDiscovery", () => {
     template.resourceCountIs("AWS::Lambda::Function", 2);
   });
 
-  test("throws error if initializeFunctions called twice", () => {
+  test("throws error if enableInApi called twice", () => {
     // GIVEN
     const discovery = new DocumentDiscovery(stack, "Discovery", {
       discoveryBucket,
+      configurationTable,
     });
 
-    discovery.initializeFunctions(mockApi, configurationTable);
+    discovery.enableInApi(mockApi);
 
     // WHEN/THEN - CDK will throw construct name collision error
     expect(() => {
-      discovery.initializeFunctions(mockApi, configurationTable);
+      discovery.enableInApi(mockApi);
     }).toThrow("There is already a Construct with name 'UploadResolver'");
   });
 });

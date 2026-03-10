@@ -20,21 +20,50 @@ The web interface allows real-time configuration updates without stack redeploym
 - **Evaluation Methods**: Set evaluation methods and thresholds for each attribute
 - **Summarization**: Configure model, prompts, parameters, and enable/disable document summarization via the `enabled` property
 
+### Configuration Versions
+
+The solution supports **multiple named configuration versions**, enabling you to maintain independent configuration snapshots for A/B testing, environment separation, and iterative prompt tuning — all without redeploying the stack. Each version stores a complete, self-contained configuration. The active version determines which configuration is used for new document processing.
+
+Key capabilities:
+- **Create, edit, and delete** configuration versions with unique names and descriptions
+- **Activate** any version to make it the default for new processing
+- **Compare** versions side-by-side to see differences (exportable as CSV/JSON)
+- **Track** which version was used for each processed document and test run
+- **Select** a specific version when uploading documents, running tests, or using the CLI
+
+For comprehensive documentation, see [configuration-versions.md](configuration-versions.md).
+
 ### Configuration Management Features
 
-- **Save as Default**: Save your current configuration as the new default baseline. This replaces the existing default configuration and automatically clears custom overrides. **Warning**: Default configurations may be overwritten during solution upgrades - export your configuration first for backup.
+- **Save Changes**: Save your current configuration changes. The button is **enabled only when you have unsaved changes** (comparing your edits against the last saved configuration). After a successful save, a confirmation banner is displayed.
+- **Unsaved Changes Indicator**: Individual fields with unsaved edits display an orange dot next to the field label, and an info banner with a "Discard changes" button appears when the configuration form has unsaved edits.
+- **Browser Navigation Guard**: The browser warns before leaving the page when unsaved configuration changes exist (both on browser close/refresh and SPA navigation).
+- **Save as Default**: Save your current version's configuration as the new default baseline. This replaces the existing default configuration. **Warning**: Default configurations may be overwritten during solution upgrades - export your configuration first for backup.
+- **Restore Default (All)**: Reset the current version's configuration back to the default values, replacing all customizations.
+- **Refresh**: Reload the configuration from the server. Use this to sync your view with the latest saved configuration, discard unsaved local changes, or verify your configuration after external updates.
 - **Export Configuration**: Download your current configuration to local files in JSON or YAML format with customizable filenames. Use this to backup configurations before upgrades or share configurations between environments.
 - **Import Configuration**: Upload configuration files from your local machine OR import from the Configuration Library:
   - **From Local File**: Upload configuration files from your computer in JSON or YAML format with automatic format detection and validation
-  - **From Configuration Library** (NEW): Browse and import pre-configured document processing workflows from the solution's built-in configuration library
+  - **From Configuration Library**: Browse and import pre-configured document processing workflows from the solution's built-in configuration library
     - **Pattern-Filtered**: Only shows configurations compatible with your currently deployed pattern (Pattern 1, 2, or 3)
     - **Dual Format Support**: Automatically detects and imports both `config.yaml` and `config.json` formats
     - **README Preview**: View markdown-formatted documentation before importing to understand configuration purpose and features
     - **Format Indicators**: Visual badges show file format (YAML/JSON) and README availability
-    - **Library Contents**: Includes sample configurations like lending-package-sample, bank-statement-sample, rvl-cdip-package-sample, criteria-validation, and more
-- **Restore Default**: Reset all configuration settings back to the original default values, removing all customizations.
+    - **Library Contents**: Includes sample configurations like lending-package-sample, bank-statement-sample, rvl-cdip, criteria-validation, and more
+  - **Important**: Importing a configuration **replaces** your existing custom configuration entirely. Any prior customizations not included in the imported file will be reset to defaults. Export your current configuration first if you want to preserve it.
 
 Configuration changes are validated and applied immediately, with rollback capability if issues arise. See [web-ui.md](web-ui.md) for details on using the administration interface.
+
+### Configuration Management via CLI
+
+The IDP CLI provides command-line tools for configuration management:
+
+- **`idp-cli config-create`**: Generate configuration templates from system defaults
+- **`idp-cli config-validate`**: Validate configuration files against schemas
+- **`idp-cli config-download`**: Download configuration from deployed stacks
+- **`idp-cli config-upload`**: Upload configuration to deployed stacks
+
+See [idp-cli.md](idp-cli.md#config-create) for complete command documentation.
 
 ## Custom Configuration Path
 
@@ -62,10 +91,82 @@ CustomConfigPath: "s3://my-bucket/custom-config/config.yaml"
 
 **Configuration File Requirements:**
 - Must be valid YAML format
-- Should include all required sections for your chosen pattern (ocr, classes, classification, extraction, etc.)
-- Follow the same structure as the default configuration files in the `config_library` directory
+- Only needs to include `notes`, `classes`, and any settings that differ from system defaults (see "System Defaults and Configuration Inheritance" below)
+- Follow the same structure as the configuration files in the `config_library` directory
 
 Leave the `CustomConfigPath` parameter empty (default) to use the standard configuration library included with the solution.
+
+## System Defaults and Configuration Inheritance
+
+The GenAI IDP Accelerator uses a **system defaults** architecture where configurations inherit from pattern-specific default files. This means user configurations only need to specify differences from the defaults, making them simpler and more maintainable.
+
+### How It Works
+
+1. **System defaults** are loaded first from `lib/idp_common_pkg/idp_common/config/system_defaults/`:
+   - `pattern-1.yaml` - BDA pattern defaults
+   - `pattern-2.yaml` - Bedrock LLM pattern defaults
+   - `pattern-3.yaml` - UDOP pattern defaults
+
+2. **User configurations** are merged on top, overriding only the specified values
+
+3. **Result**: A complete configuration with user customizations applied to system defaults
+
+### Minimal Configuration Example
+
+A user configuration only needs:
+
+```yaml
+notes: "My document processing configuration"
+
+classes:
+  - $schema: https://json-schema.org/draft/2020-12/schema
+    $id: Invoice
+    type: object
+    x-aws-idp-document-type: Invoice
+    description: "A billing document"
+    properties:
+      invoice_number:
+        type: string
+        description: "Unique invoice identifier"
+```
+
+All other settings (OCR, classification, extraction, assessment, evaluation, summarization, discovery, agents) are inherited from the pattern's system defaults.
+
+### Override Example
+
+To override specific settings while keeping others at defaults:
+
+```yaml
+notes: "Configuration with custom classification method"
+
+# Override just the classification method
+classification:
+  classificationMethod: textbasedHolisticClassification
+
+# Override assessment to enable granular mode
+assessment:
+  granular:
+    enabled: true
+
+classes:
+  # ... your document classes
+```
+
+### Benefits
+
+- **Simpler configs** - Only specify what makes your use case unique
+- **Maintainable** - System default updates automatically apply to all configs
+- **Focused** - Easy to see what customizations are active
+- **Version-safe** - Defaults evolve with the solution while custom overrides remain stable
+
+### Configuration Library
+
+The `config_library/` directory contains example configurations demonstrating this inheritance pattern. Each config contains:
+- `notes:` - Description of the configuration
+- `classes:` - Document class definitions (JSON Schema format)
+- **Overrides** - Only settings that differ from system defaults
+
+See the [config_library README](../config_library/README.md) for available configurations and usage examples.
 
 ## Summarization Configuration
 

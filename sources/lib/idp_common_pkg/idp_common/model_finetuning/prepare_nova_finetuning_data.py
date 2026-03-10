@@ -393,7 +393,7 @@ class NovaDataPreparationService:
             )
 
         # Process samples in parallel
-        max_workers = min(32, os.cpu_count() * 2)
+        max_workers = min(32, (os.cpu_count() or 1) * 2)
         logger.info(f"Using {max_workers} workers for parallel processing")
 
         jsonl_records = []

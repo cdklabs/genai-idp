@@ -57,7 +57,6 @@ export interface AgentCoreGatewayDeployerProps {
  * the provided Cognito User Pool. The gateway enables external applications
  * to access IDP analytics through the Model Context Protocol (MCP).
  *
- * @since v0.4.8
  */
 export class AgentCoreGatewayDeployer extends Construct {
   /**

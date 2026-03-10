@@ -13,6 +13,7 @@ import { IBucket } from "aws-cdk-lib/aws-s3";
 import { md5hash } from "aws-cdk-lib/core/lib/helpers-internal";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
+import { IProcessingEnvironmentApi } from "../processing-environment-api";
 
 /**
  * Properties for configuring the CopyToBaselineResolverFunction.
@@ -31,16 +32,10 @@ export interface CopyToBaselineResolverFunctionProps extends IdpPythonFunctionOp
   readonly evaluationBaselineBucket: IBucket;
 
   /**
-   * The GraphQL API URL for making API calls.
+   * The GraphQL API for making mutations.
    * Used to update document status after copying operations.
    */
-  readonly graphqlApiUrl: string;
-
-  /**
-   * The GraphQL API ARN for permission grants.
-   * Used to allow the function to make GraphQL mutations.
-   */
-  readonly graphqlApiArn: string;
+  readonly api: IProcessingEnvironmentApi;
 
   /**
    * Optional KMS key for encrypting function resources.
@@ -115,16 +110,16 @@ export class CopyToBaselineResolverFunction
       environment: {
         OUTPUT_BUCKET: props.outputBucket.bucketName,
         EVALUATION_BASELINE_BUCKET: props.evaluationBaselineBucket.bucketName,
-        APPSYNC_API_URL: props.graphqlApiUrl,
+        APPSYNC_API_URL: props.api.graphqlUrl,
       },
       ...props,
     });
 
-    // Grant permissions
+    // Grant S3 permissions
     props.outputBucket.grantReadWrite(this);
+    props.evaluationBaselineBucket.grantReadWrite(this);
 
-    // If evaluation baseline bucket is provided, grant permissions
-    props.evaluationBaselineBucket?.grantReadWrite(this);
+    // Grant KMS permissions if encryption key is provided
     props.encryptionKey?.grantEncryptDecrypt(this);
 
     // Allow the function to invoke itself asynchronously
@@ -135,12 +130,7 @@ export class CopyToBaselineResolverFunction
       }),
     );
 
-    // Allow AppSync access for document updates
-    this.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["appsync:GraphQL"],
-        resources: [`${props.graphqlApiArn}/types/Mutation/*`],
-      }),
-    );
+    // Grant AppSync mutation permissions
+    props.api.grantMutation(this);
   }
 }

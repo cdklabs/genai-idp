@@ -142,6 +142,13 @@ def process_message(record: Dict[str, Any]) -> Tuple[bool, str]:
         object_key = document.input_key
         logger.info(f"Processing message {message_id} for object {object_key}")
 
+        # Check if document has been aborted before starting workflow
+        # This prevents starting workflows for documents the user has cancelled
+        current_doc = document_service.get_document(object_key)
+        if current_doc and current_doc.status == Status.ABORTED:
+            logger.info(f"Document {object_key} was aborted by user, skipping workflow start")
+            return True, message_id  # Return success to remove message from queue
+
         # X-Ray annotations
         xray_recorder.put_annotation('document_id', {document.id})
         xray_recorder.put_annotation('processing_stage', 'queue_processor')

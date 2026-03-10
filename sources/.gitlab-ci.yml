@@ -91,7 +91,7 @@ deployment_validation:
 
   script:
     # Check if service role has sufficient permissions for main stack deployment
-    - python3 scripts/validate_service_role_permissions.py
+    - python3 scripts/sdlc/validate_service_role_permissions.py
 
 integration_tests:
   stage: integration_tests
@@ -138,7 +138,7 @@ integration_tests:
     - export IDP_PIPELINE_NAME=genaiic-sdlc-deploy-pipeline
 
     # Run integration test deployment
-    - python3 scripts/integration_test_deployment.py
+    - python3 scripts/sdlc/integration_test_deployment.py
 
   after_script:
     # Display CodeBuild logs directly in GitLab runner console

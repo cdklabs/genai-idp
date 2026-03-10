@@ -1,248 +1,229 @@
-# GenAI IDP Accelerator - Active Context
+# Active Context
 
-## Current Task Status
+## Current Work Focus
 
-**GovCloud S3 Vectors Fix**: ✅ **COMPLETED** - Fixed GovCloud Deployment Failure Due to S3 Vectors Service
+### DynamoDB Configuration Compression - Issue #200 (February 19, 2026)
+**Status:** ✅ Completed
 
-**Previous Tasks**: 
-- ✅ **COMPLETED** - Test Suite Dependency Fix
-- ✅ **COMPLETED** - ProcessChanges Resolver Fix & Agent Analytics Optimization
-- ✅ **COMPLETED** - Section Edit Mode Performance Optimization  
-- ✅ **COMPLETED** - IDP CLI Dependency Security Updates
-- ✅ **COMPLETED** - Service Principal GovCloud Compatibility Updates
+#### Problem
+DynamoDB enforces a hard 400KB per-item limit. The `ConfigurationManager` stored the entire IDP configuration (all document class schemas, extraction settings, etc.) as a single DynamoDB item. This capped the solution at ~45-47 document classes, blocking enterprise use cases requiring 100-500+ document types.
 
-## GovCloud S3 Vectors Fix
+#### Solution: Gzip Compression
+Added transparent gzip compression to the DynamoDB read/write layer. Config data is compressed into a single Binary attribute, while metadata fields (Configuration, IsActive, Description, CreatedAt, UpdatedAt) remain as top-level DynamoDB attributes for queryability.
 
-Successfully resolved GovCloud deployment failure caused by S3 Vectors service not being available in GovCloud regions.
-
-### Issue Identified - GitHub Issue #159
-- **Problem 1**: Service principal exception for `indexing.s3vectors.${AWS::URLSuffix}` - service doesn't exist in GovCloud
-- **Problem 2**: Default parameter `KnowledgeBaseVectorStore` was set to `S3_VECTORS` which doesn't work in GovCloud
-- **Problem 3**: Deploy script domain incorrect: `aws.amazonaws-us-gov.com` should be `amazonaws-us-gov.com`
-- **What Worked**: Deployment with OPENSEARCH_SERVERLESS succeeded
-
-### Root Cause Analysis
-- **S3 Vectors Service Availability**: S3 Vectors is a relatively new AWS service NOT available in GovCloud (us-gov-west-1, us-gov-east-1)
-- **KMS Policy Issue**: Template's KMS key policy included conditional statement for S3 Vectors service principal even in GovCloud
-- **Parameter Problem**: `KnowledgeBaseVectorStore` parameter defaulted to S3_VECTORS, causing confusion and potential deployment attempts with unavailable service
-
-### Solution Implemented
-
-**File Modified**: `scripts/generate_govcloud_template.py`
-
-#### Change 1: Parameter Removal
-- Added `KnowledgeBaseVectorStore` to `self.ui_parameters` removal set
-- Ensures the parameter is completely removed from GovCloud template
-- Users won't see S3_VECTORS option in GovCloud deployments
-
-#### Change 2: Force Condition to False
-```python
-# In remove_conditions() method
-if 'IsS3VectorsVectorStore' in conditions:
-    conditions['IsS3VectorsVectorStore'] = False
-    self.logger.info("Forced IsS3VectorsVectorStore condition to False for GovCloud")
-```
-- Forces `IsS3VectorsVectorStore` condition to `False` instead of removing it
-- Ensures S3 Vectors KMS policy statement evaluates to `!Ref AWS::NoValue` and is excluded
-- CloudFormation won't validate the non-existent service principal
-
-#### Change 3: Domain Reference Fix
-```python
-# In print_deployment_summary() method
-if "us-gov" in region:
-    domain="amazonaws-us-gov.com"  # Fixed from aws.amazonaws-us-gov.com
-```
-- Corrected GovCloud console domain for 1-Click Launch URLs
-
-### Impact & Benefits
-
-**Deployment Success**:
-- ✅ GovCloud templates now deploy successfully without service principal errors
-- ✅ Knowledge Base functionality properly disabled for GovCloud compatibility
-- ✅ Correct 1-Click Launch URLs for GovCloud console
-
-**User Experience**:
-- ✅ No confusing S3_VECTORS option shown in GovCloud deployments
-- ✅ Clear path forward: OPENSEARCH_SERVERLESS as vector store option
-- ✅ Simplified parameter choices for GovCloud users
-
-**Technical Implementation**:
-- ✅ Condition-based approach prevents KMS policy inclusion without template errors
-- ✅ Maintains proper CloudFormation conditional logic
-- ✅ Clean separation of commercial vs GovCloud feature sets
-
-### Files Modified
-- `scripts/generate_govcloud_template.py` - All three fixes implemented
-- `CHANGELOG.md` - Documented fix in Unreleased section
-
-### Testing Considerations
-To fully validate:
-1. Generate GovCloud template and verify `KnowledgeBaseVectorStore` parameter is absent
-2. Verify `IsS3VectorsVectorStore` condition is set to `False` (not removed)
-3. Confirm KMS key policy does NOT contain S3 Vectors service principal
-4. Test 1-Click launch URL uses correct domain (`amazonaws-us-gov.com`)
-5. Deploy to GovCloud region to confirm no service principal errors
-
-## Test Suite Dependency Fix
-
-Successfully resolved test collection failure caused by missing type stubs dependency for Bedrock Runtime client.
-
-### Issue Identified
-- **Error**: `ModuleNotFoundError: No module named 'mypy_boto3_bedrock_runtime'` during test collection
-- **Location**: `lib/idp_common_pkg/idp_common/utils/bedrock_utils.py`
-- **Root Cause**: Type stubs dependency was only in `agentic-extraction` optional dependencies, not in `test` dependencies
-
-### Solution Implemented
-- **Added Dependency**: `mypy-boto3-bedrock-runtime>=1.39.0` to test dependencies in `pyproject.toml`
-- **File Modified**: `lib/idp_common_pkg/pyproject.toml`
-- **Rationale**: The `bedrock_utils.py` module imports `mypy_boto3_bedrock_runtime` for type hints on BedrockRuntimeClient, and these type stubs are required for the `test_bedrock_utils.py` unit tests to import and run
-
-### Test Results
-- **idp_common_pkg**: ✅ 428 passed, 20 skipped
-- **idp_cli**: ✅ 61 passed
-- **Total Time**: ~8.44 seconds
-- **Status**: All tests passing successfully
-
-### Technical Details
-The type stubs package `mypy-boto3-bedrock-runtime` provides type information for boto3's bedrock-runtime client, enabling:
-1. Better IDE autocomplete and type checking
-2. Type-safe wrapper class implementation in `BedrockClientWrapper`
-3. Proper type hints for invoke_model, converse, and converse_stream methods
-
-This dependency was already present in `agentic-extraction` dependencies but was missing from the `test` group, causing test collection to fail when importing the module.
-
-## ProcessChanges Resolver Fix & Agent Analytics Optimization Overview
-
-Successfully implemented comprehensive optimization techniques using a **2-phase schema knowledge approach** to dramatically improve agent analytics performance and resolve resolver failures:
-
-### **2-Phase Schema Knowledge Optimization Techniques**
-
-#### **Phase 1: Frontend Intelligence & Payload Optimization**
-**Technique**: Smart Change Detection with Selective Payload Construction
-- **Implementation**: Added `hasActualChanges()` function with deep comparison logic in `SectionsPanel.jsx`
-- **Optimization**: ProcessChanges mutation now sends only modified sections instead of ALL sections
-- **Performance Impact**: Reduced payload size by 83% (from 6 sections to 1 section for single changes)
-- **Agent Analytics Benefit**: Faster data processing with reduced network overhead and processing time
-
-#### **Phase 2: Backend Architecture Alignment & Service Integration**  
-**Technique**: Document Class Architecture with Service Layer Adoption
-- **Implementation**: Refactored `process_changes_resolver` to use proper IDP Common `Document` class patterns
-- **Optimization**: Replaced direct DynamoDB operations with `create_document_service()` 
-- **Race Condition Prevention**: Eliminated manual document state writing - processing pipeline handles updates via AppSync
-- **Agent Analytics Benefit**: Consistent data access patterns for faster analytics queries
-
-### **Critical Data Format Robustness**
-**Technique**: Multi-Format Data Handling with Graceful Fallbacks
-- **Issue Resolved**: Fixed `AttributeError: 'Document' object has no attribute 'get'` in resolver
-- **Root Cause**: `get_document()` returns Document object directly, not dictionary 
-- **Solution**: Removed incorrect `Document.from_dict()` call on Document objects
-- **Additional Fix**: Enhanced DynamoDB service to handle both JSON string and native object formats for metering field
-- **Agent Analytics Benefit**: Robust data access preventing analytics failures from format inconsistencies
-
-### **Implementation Details**
-
-#### **Frontend Changes** (`src/ui/src/components/sections-panel/SectionsPanel.jsx`):
-```javascript
-// Phase 1: Smart Change Detection  
-const hasActualChanges = (section, originalSections) => {
-  if (section.isNew) return true;
-  
-  const originalSection = originalSections?.find(orig => orig.Id === section.OriginalId);
-  if (!originalSection) return true;
-  
-  // Deep comparison of classification, page IDs, and section ID changes
-  if (section.Class !== originalSection.Class) return true;
-  // ... page ID deep comparison
-  if (section.Id !== section.OriginalId) return true;
-  
-  return false;
-};
-
-// Selective payload construction - ONLY send changed sections
-const actuallyModifiedSections = editedSections.filter(section => 
-  hasActualChanges(section, sections)
-);
+```mermaid
+flowchart LR
+    subgraph "Write Path"
+        W1[ConfigurationRecord] --> W2[to_dynamodb_item]
+        W2 --> W3[_compress_item]
+        W3 --> W4["DynamoDB put_item<br>metadata + compressed Binary"]
+    end
+    
+    subgraph "Read Path"
+        R1["DynamoDB get_item"] --> R2{Has _config_storage<br>= compressed?}
+        R2 -->|Yes| R3[_decompress_item<br>gzip decompress Binary]
+        R2 -->|No| R4[Legacy inline<br>return as-is]
+        R3 --> R5[ConfigurationRecord.from_dynamodb_item]
+        R4 --> R5
+    end
 ```
 
-#### **Backend Changes** (`src/lambda/process_changes_resolver/index.py`):
-```python
-# Phase 2: Proper Document service usage
-from idp_common.models import Document, Section, Status
-from idp_common.docs_service import create_document_service
+#### Compression Results
+- JSON schemas are extremely repetitive → 10-20x compression ratios
+- 100 classes (~800KB raw) → ~60KB compressed ✅
+- 500 classes (~4MB raw) → ~300KB compressed ✅
+- Supports up to ~500 document classes comfortably
 
-# FIXED: Use Document object directly (not Document.from_dict)
-doc_service = create_document_service()
-document = doc_service.get_document(object_key)  # Returns Document object
+#### Backward Compatibility
+- **Reads**: Auto-detects compressed vs legacy inline format via `_config_storage` marker
+- **Writes**: Always uses compressed format (new items)
+- **Upgrades**: Existing deployments continue working; configs auto-migrate to compressed on next write
+- **No infrastructure changes**: Zero new S3 buckets, IAM policies, env vars, or template.yaml changes
 
-# Document manipulation using proper classes
-new_section = Section(
-    section_id=section_id,
-    classification=classification,
-    confidence=1.0,
-    page_ids=[str(pid) for pid in page_ids]
-)
-document.sections.append(new_section)
+#### Files Changed
 
-# Let processing pipeline handle document updates via AppSync
+| File | Change |
+|------|--------|
+| `lib/idp_common_pkg/idp_common/config/configuration_manager.py` | Added `_compress_item()`, `_decompress_item()`, updated `_write_record()`, `_read_record()`, `get_raw_configuration()` |
+| `lib/idp_common_pkg/tests/unit/config/test_compression.py` | New: 18 comprehensive tests for compression |
+| `lib/idp_common_pkg/tests/unit/config/test_save_schema_configuration.py` | Updated to decompress before asserting |
+| `lib/idp_common_pkg/tests/unit/config/test_description_only_update.py` | Updated to decompress before asserting |
+
+---
+
+### Configuration Storage: Full Configs Per Version (February 14, 2026)
+**Status:** ✅ Completed - Core refactoring done
+
+#### Problem
+The previous "sparse delta" pattern for config versions was introducing significant complexity and bugs:
+- Two read paths (raw vs Pydantic-validated) needed to avoid Pydantic filling defaults
+- Complex merge logic at runtime (Default + sparse Version deltas)
+- Sync logic when default changed had to propagate to all versions
+- Null-as-deletion semantics for "restore to default"
+- Auto-cleanup stripping values that coincidentally matched defaults
+- ~200+ lines of merge/delta/sync code
+
+#### Decision
+Now that we have proper config versioning, sparse deltas are no longer needed. Each version stores a **complete, self-contained configuration snapshot**.
+
+#### New Design
+
+```mermaid
+flowchart TD
+    subgraph "DynamoDB Storage"
+        D[Default Version<br>Complete config from deployment]
+        V1[Version v1<br>Complete config snapshot]
+        V2[Version v2<br>Complete config snapshot]
+    end
+    
+    subgraph "Stack Updates"
+        SU[CDK/CloudFormation] -->|"Update Default ONLY"| D
+        SU -.->|"NEVER touch"| V1
+        SU -.->|"NEVER touch"| V2
+    end
+    
+    subgraph "UI Operations"
+        V1 --> UI[Display full config]
+        D --> DIFF[Compute diff for highlights]
+        UI -->|"Save changes"| SAVE[Apply deltas to full config<br>Save complete result]
+        UI -->|"Reset to default"| RESET[Copy Default → Version]
+        UI -->|"Save as default"| SAD[Copy Version → Default]
+    end
+    
+    subgraph "Runtime Processing"
+        V1 --> RT[get_merged_configuration<br>Just reads full config directly]
+    end
 ```
 
-#### **Data Format Robustness** (`lib/idp_common_pkg/idp_common/dynamodb/service.py`):
-```python
-# Enhanced metering data handling
-if isinstance(metering_data, str):
-    # JSON string format
-    doc.metering = json.loads(metering_data) if metering_data.strip() else {}
-else:
-    # Native DynamoDB object format
-    doc.metering = metering_data
-```
+#### Key Principles
 
-### **Performance & Business Impact**
+1. **Versions are independent snapshots**: Each version is a complete config. Updating the default does NOT auto-propagate to other versions.
 
-#### **Agent Analytics Performance Improvements:**
-1. **83% Payload Reduction**: From ALL sections to only modified sections
-2. **Elimination of Race Conditions**: Consistent data state for analytics queries
-3. **Robust Data Access**: Prevents analytics failures from format inconsistencies
-4. **Faster UI Response**: Reduced processing time and network overhead
+2. **What you save is what you get**: No hidden merge transforms. The config stored in DynamoDB is the config used at runtime.
 
-#### **Architectural Benefits:**
-1. **Architecture Compliance**: Aligns with established IDP Common patterns
-2. **Maintainability**: Uses standardized Document service patterns  
-3. **Scalability**: Selective processing suitable for large multi-document analytics
-4. **Reliability**: Eliminates manual database operations that could cause inconsistencies
+3. **UI diff is a display concern**: The UI computes `get_diff_dict(default, version)` for highlighting changes, but this is only for display — not for storage.
 
-#### **Business Value:**
-- **Performance**: Faster analytics queries and UI responsiveness
-- **Reliability**: Eliminated critical resolver failures affecting user workflow
-- **Maintainability**: Clean architecture reduces technical debt
-- **Scalability**: Optimization patterns suitable for enterprise-scale document processing
+4. **"Reset to default"**: Copies the current default config into the version.
 
-### **Testing & Validation**
-- **Comprehensive Test Suite**: Created `lib/idp_common_pkg/tests/unit/dynamodb/test_service_data_formats.py`
-- **Real Environment Testing**: Verified fix works with actual DynamoDB service and Lambda payload
-- **Multiple Data Format Testing**: Validated robust handling of JSON strings, native objects, Decimals, and edge cases
-- **Lint Compliance**: All code quality checks pass
+5. **"Restore field"**: UI looks up the default value and sets it in the version config.
 
-## Key Learning: 2-Phase Schema Knowledge Approach
+6. **Full config marker**: New-format configs have `_config_format: "full"` marker in DynamoDB.
 
-This optimization demonstrates the power of **2-phase schema knowledge** for agent analytics:
-1. **Phase 1 (Frontend)**: Intelligent data filtering at source reduces processing load
-2. **Phase 2 (Backend)**: Proper service layer architecture ensures consistent, efficient data access
+#### Legacy Support
 
-This pattern is applicable to other analytics optimization scenarios where both client-side intelligence and server-side architecture alignment are needed for optimal performance.
+- **Auto-detection**: `_is_full_config()` detects whether a stored config is full (new) or sparse (legacy)
+- **Auto-migration**: When a legacy sparse config is read at runtime, it's merged with default and the full result is saved back
+- **Backward-compatible methods**: `save_raw_configuration()` and `sync_custom_with_new_default()` are kept as wrappers
 
-## Implementation Files Modified
+#### Files Changed
 
-### ProcessChanges Resolver Optimization:
-- `src/ui/src/components/sections-panel/SectionsPanel.jsx` - Smart change detection and payload filtering
-- `src/lambda/process_changes_resolver/index.py` - Document class architecture and service usage
-- `lib/idp_common_pkg/idp_common/dynamodb/service.py` - Data format robustness enhancements
-- `lib/idp_common_pkg/tests/unit/dynamodb/test_service_data_formats.py` - Comprehensive test coverage
-- `CHANGELOG.md` - Performance optimization documentation
+| File | Change |
+|------|--------|
+| `lib/idp_common_pkg/idp_common/config/configuration_manager.py` | Complete rewrite of version storage logic |
+| `lib/idp_common_pkg/idp_common/config/__init__.py` | Simplified `get_merged_configuration` |
 
-### Previous Security & Compliance Updates:
-- Security vulnerability updates in IDP CLI
-- GovCloud compatibility templates and automation
-- Service principal dynamic expressions
+#### What Was Removed/Simplified
 
-This 2-phase optimization approach provides a reusable pattern for improving agent analytics performance while maintaining architectural integrity and data consistency.
+- `save_configuration()`: No longer syncs other versions when default is updated
+- `handle_update_custom_configuration()`: Normal updates apply deltas to full config, save full result
+- `get_merged_configuration()`: Reads full config directly (legacy fallback merges + auto-migrates)
+- `_sync_custom_with_new_default_sparse()`: Removed (was syncing versions on default change)
+- `save_raw_configuration()`: Now a backward-compat wrapper that converts sparse→full
+- `sync_custom_with_new_default()`: Now a no-op backward-compat wrapper
+
+#### Trade-offs Accepted
+
+✅ **Simpler code**: One read path, one write path, no merge logic at runtime
+✅ **Predictable behavior**: What you save is what you get
+✅ **Easier debugging**: Look at DynamoDB, see the full config
+❌ **Stack upgrades don't auto-propagate**: New default settings don't flow to existing versions
+   - Mitigation: UI can show "your version differs from current default" and let users choose
+
+---
+
+### Config Version Comparison Deep Diffs (February 14, 2026)
+**Status:** ✅ Completed
+
+#### Problem
+The "Compare Selected" config versions feature was not showing changes in `classes` (document extraction schemas) or `rule_classes` (rule validation schemas) sections. Two issues:
+1. `classes` was explicitly listed in `ignoredFields` — entirely skipped from comparison
+2. No identity-based array comparison — arrays of complex JSON Schema objects (keyed by `$id`) need to be compared by matching items by their `$id` field, not by array index
+
+#### Solution
+Modified `src/ui/src/components/configuration-layout/ConfigurationComparison.jsx`:
+- **Removed `classes` from `ignoredFields`** so document schemas are now included in comparison
+- **Added `isIdentityKeyedArray()` detection** — detects arrays where all items have a `$id` field (applies to `classes` and `rule_classes`)
+- **Added `$id`-based path generation** — for identity-keyed arrays, paths use the `$id` value as the key (e.g., `classes[Payslip].description`) instead of numeric index
+- **Added `$id`-based path resolution** — `getNestedValue()` supports bracket notation like `classes[Payslip]` to find the array item where `$id === 'Payslip'`
+- **Improved value formatting** — JSON-stringified objects/arrays get smarter display (truncation, item counts)
+- Regular arrays (non-identity-keyed) are still treated as leaf values and stringified for comparison
+
+#### Path format examples
+- `classes[Payslip].description` — class description changed
+- `classes[Payslip].properties.City.type` — nested field type changed
+- `classes[BankStatement].$schema` — class present in one version but not another shows as `<missing>`
+- `rule_classes[global_periods].rule_properties.minor_surgery` — rule property changed
+
+---
+
+### Configuration Versions Documentation (February 14, 2026)
+**Status:** ✅ Completed
+
+Created comprehensive documentation for the Configuration Versions feature:
+- **New file**: `docs/configuration-versions.md` — full feature doc covering concepts, Web UI, CLI, Test Studio, storage architecture, GraphQL API, and upgrade considerations
+- **Updated**: `docs/configuration.md` — added Configuration Versions section and unsaved changes/navigation guard docs
+- **Updated**: `docs/test-studio.md` — fixed version naming terminology (arbitrary names, not v0/v1/v2)
+- **Updated**: `docs/idp-cli.md` — corrected config-upload section to reflect full config storage (not sparse merging)
+- **Updated**: `docs/web-ui.md` — added brief config versions reference
+- **Updated**: `CHANGELOG.md` — added Configuration Versioning System entry under [Unreleased]
+
+---
+
+### TIFF Image Format Support Fix (February 6, 2026)
+**Status:** ✅ Completed
+
+Modified `_process_image_file_direct()` in `lib/idp_common_pkg/idp_common/ocr/service.py` to convert non-Bedrock-compatible formats (TIFF, BMP) to JPEG during OCR processing.
+
+---
+
+### Page/Section Number Alignment Fix (Pattern-1 to Pattern-2)
+**Date:** February 6, 2026
+**Status:** ✅ Completed
+
+Modified `patterns/pattern-1/src/processresults_function/index.py` to keep `page_indices` 0-based in result.json while transforming `page_id` and `section_id` to 1-based for S3 paths and Document model.
+
+---
+
+### GitHub Issue #87 - System Defaults Configuration ✅
+**Issue:** Simplify configuration management with system defaults
+**Date:** January 20, 2026
+
+System defaults YAML structure, merge utilities, CLI commands, and deploy integration all completed.
+
+## Important Patterns and Preferences
+
+### Configuration Design (Updated Feb 14, 2026)
+- **Versions store FULL configs** (not sparse deltas)
+- **Default is just another version** (the deployment baseline)
+- **Versions are independent** - default changes don't propagate
+- **UI computes diffs** for display highlighting only
+- **Legacy sparse configs auto-migrate** on first read
+
+### Configuration Merge Priority (for initial config creation)
+1. User's custom config (highest)
+2. Pattern-specific defaults (pattern-X.yaml)
+3. Base defaults (base.yaml)
+4. Pydantic model defaults (lowest)
+
+### Auto-Detection Logic
+Pattern is auto-detected from config:
+- `classificationMethod: "bda"` → pattern-1
+- `classificationMethod: "udop"` → pattern-3
+- Default → pattern-2
+
+## Learnings and Project Insights
+
+1. **Sparse deltas are complex**: The merge/sync/strip logic was a major source of bugs
+2. **Versioning eliminates need for deltas**: Each version can be a complete snapshot
+3. **Auto-migration is smooth**: Legacy sparse configs seamlessly upgrade to full on first read
+4. **Backward compat wrappers**: Keep old method signatures to avoid breaking callers

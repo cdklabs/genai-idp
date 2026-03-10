@@ -42,7 +42,12 @@ export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
    */
   readonly configurationTable: ITable;
 
+  /**
+   * The DynamoDB table that tracks document processing status and metadata.
+   * The function updates summarization results in this table.
+   */
   readonly trackingTable: ITrackingTable;
+
   /**
    * The S3 bucket containing input documents to be summarized.
    * Source of documents that need summarization.
@@ -87,6 +92,14 @@ export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
   readonly api?: IProcessingEnvironmentApi;
 }
 
+/**
+ * Lambda function that generates document summaries using Amazon Bedrock models.
+ *
+ * Produces concise summaries of processed documents by analyzing extracted content
+ * and generating natural language descriptions. Uses the configured Bedrock model
+ * with optional guardrails to ensure summary quality and content compliance.
+ *
+ */
 export class SummarizationFunction extends PythonFunction {
   constructor(scope: Construct, id: string, props: SummarizationFunctionProps) {
     super(scope, id, {

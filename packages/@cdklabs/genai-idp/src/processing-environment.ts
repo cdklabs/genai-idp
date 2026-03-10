@@ -26,12 +26,26 @@ import { IReportingEnvironment } from "./reporting";
 import { ITrackingTable, TrackingTable } from "./tracking-table";
 import { VpcConfiguration } from "./vpc-configuration";
 
+/**
+ * Options for attaching a document processor to a processing environment.
+ */
 export interface DocumentProcessorAttachmentOptions {
+  /**
+   * Optional S3 key prefix to filter which uploaded documents trigger this processor.
+   * When specified, only objects with keys matching this prefix will be processed.
+   */
   readonly prefix?: string;
 }
 
+/**
+ * Result returned after attaching a document processor to a processing environment.
+ */
 export interface DocumentProcessorAttachmentResult {}
 
+/**
+ * Interface for the core document processing environment.
+ * Provides shared infrastructure for document ingestion, processing, and result tracking.
+ */
 export interface IProcessingEnvironment {
   /**
    * Optional KMS key used for encrypting sensitive data in the processing environment.
@@ -518,17 +532,16 @@ export class ProcessingEnvironment
         }),
         concurrencyTable,
         metricNamespace: props.metricNamespace,
-        trackintTable: this.trackingTable,
+        trackingTable: this.trackingTable,
         outputBucket: this.outputBucket,
         workingBucket: this.workingBucket,
         reportingEnvironment: this.reportingEnvironment,
         saveReportingDataFunction: this.saveReportingDataFunction,
         api: this.api,
+        encryptionKey: this.encryptionKey,
         ...this.vpcConfiguration,
       },
     );
-
-    this.encryptionKey?.grantEncryptDecrypt(this.workflowTracker);
 
     this.lookupFunction = new functions.LookupFunction(this, "LookupFunction", {
       trackingTable: this.trackingTable,

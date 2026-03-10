@@ -14,7 +14,7 @@ import path from "path";
 import fs from 'fs';
 
 const stability = Stability.EXPERIMENTAL;
-const CDK_VERSION = '2.240.0';
+const CDK_VERSION = '2.241.0';
 const CONSTRUCTS_VERSION = '10.5.1';
 const GENAI_CONSTRUCTS_VERSION = '0.1.314';
 const JSII_VERSION = '~5.9';
@@ -131,10 +131,24 @@ fs.readdirSync(lambdasDir).forEach(lambdaName => {
   }));
 });
 
+// Bundle AppSync schema and resolvers from nested structure
+const appsyncLambdasDir = 'sources/nested/appsync/src/lambda';
+if (fs.existsSync(appsyncLambdasDir)) {
+  fs.readdirSync(appsyncLambdasDir).forEach(lambdaName => {
+    const lambdaSrcDir = path.join('../../../', appsyncLambdasDir, lambdaName);
+    genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:handler:${lambdaName}`, {
+      steps: [
+        { exec: `mkdir -p assets/lambdas/${lambdaName}` },
+        { exec: `rsync -rLct ${lambdaSrcDir}/ assets/lambdas/${lambdaName}/.` }
+      ]
+    }));
+  });
+}
+
 genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:appsync:env-api`, {
   steps: [
     { exec: `mkdir -p assets/appsync/env-api` },
-    { exec: `rsync -rLct ../../../sources/src/api/schema.graphql assets/appsync/env-api/.` }
+    { exec: `rsync -rLct ../../../sources/nested/appsync/src/api/schema.graphql assets/appsync/env-api/.` }
   ]
 }));
 
@@ -142,6 +156,14 @@ genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:webapp:ui`, {
   steps: [
     { exec: `mkdir -p assets/webapp/ui` },
     { exec: `rsync -rLct ../../../sources/src/ui/ assets/webapp/ui/.` }
+  ]
+}));
+
+// Bundle system defaults for config merging at synthesis time
+genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:system-defaults`, {
+  steps: [
+    { exec: `mkdir -p assets/system_defaults` },
+    { exec: `rsync -rLct ../../../sources/lib/idp_common_pkg/idp_common/config/system_defaults/*.yaml assets/system_defaults/.` }
   ]
 }));
 
@@ -188,7 +210,12 @@ fs.readdirSync(pattern1LambdasDir).forEach((lambdaName) => {
 });
 
 const pattern1_configs = [
-  "lending-package-sample"
+  "lending-package-sample",
+  "lending-package-sample-govcloud",
+  "docsplit",
+  "ocr-benchmark",
+  "realkie-fcc-verified",
+  "rvl-cdip"
 ]
 
 pattern1_configs.forEach((configName) => {
@@ -259,10 +286,16 @@ fs.readdirSync(pattern2LambdasDir).forEach((lambdaName) => {
 
 const pattern2_configs = [
   "bank-statement-sample",
-  "criteria-validation",
+  "docsplit",
+  "healthcare-multisection-package",
   "lending-package-sample",
-  "rvl-cdip-package-sample",
-  "rvl-cdip-package-sample-with-few-shot-examples",
+  "lending-package-sample-govcloud",
+  "ocr-benchmark",
+  "realkie-fcc-verified",
+  "rule-extraction",
+  "rule-validation",
+  "rvl-cdip",
+  "rvl-cdip-with-few-shot-examples",
 ]
 
 pattern2_configs.forEach((configName) => {
@@ -337,14 +370,14 @@ fs.readdirSync(pattern3LambdasDir).forEach((lambdaName) => {
 });
 
 const pattern3_configs = [
-  "rvl-cdip-package-sample"
+  { source: "rvl-cdip", target: "rvl-cdip-package-sample" }
 ]
 
-pattern3_configs.forEach((configName) => {
-  idpPattern3.bundleTask.spawn(idpPattern3.addTask(`bundle:config:${configName}`, {
+pattern3_configs.forEach((config) => {
+  idpPattern3.bundleTask.spawn(idpPattern3.addTask(`bundle:config:${config.target}`, {
     steps: [
-      { exec: `mkdir -p assets/configs/${configName}` },
-      { exec: `rsync -rLct ../../../sources/config_library/pattern-3/${configName}/config.yaml assets/configs/${configName}/.` }
+      { exec: `mkdir -p assets/configs/${config.target}` },
+      { exec: `rsync -rLct ../../../sources/config_library/pattern-3/${config.source}/config.yaml assets/configs/${config.target}/.` }
     ]
   }))
 });
@@ -426,7 +459,7 @@ new TextFile(rootProject, '.nvmrc', {
   lines: ['22']
 });
 
-rootProject.gitignore.addPatterns('.venv/', '.*.md');
+rootProject.gitignore.addPatterns('.venv/', '.*.md', '.kiro/');
 
 // Configure MkDocs with GitHub Pages and API documentation
 new MkDocs(rootProject, {
