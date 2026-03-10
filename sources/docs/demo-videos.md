@@ -26,9 +26,9 @@ A scalable, serverless solution for automated document processing and informatio
 
 **Duration**: ~3 minutes
 
-TODO Placeholder - replace asset with new short demo video
 
-https://github.com/user-attachments/assets/272b543b-e506-48ce-acc1-361422d22322
+https://github.com/user-attachments/assets/fc2652b5-a9cc-42d7-9975-887c8320a2f5
+
 
 **Related Documentation**: [README.md](../README.md)
 

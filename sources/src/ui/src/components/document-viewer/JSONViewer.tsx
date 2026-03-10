@@ -5,8 +5,7 @@ import React, { useState, useMemo, Suspense, useEffect } from 'react';
 import { Box, Button, Spinner } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
-import getFileContents from '../../graphql/queries/getFileContents';
-import uploadDocument from '../../graphql/queries/uploadDocument';
+import { getFileContents, uploadDocument } from '../../graphql/generated';
 
 // Lazy load VisualEditorModal for better performance
 const VisualEditorModal = React.lazy(
@@ -81,11 +80,11 @@ const JSONViewer = ({
       logger.info('Fetching content:', fileUri);
 
       const response = await client.graphql({
-        query: getFileContents as unknown as string,
+        query: getFileContents,
         variables: { s3Uri: fileUri },
       });
 
-      const result = (response as { data: { getFileContents: { isBinary: boolean; content: string } } }).data.getFileContents;
+      const result = response.data.getFileContents;
 
       if (result.isBinary === true) {
         setError('This file contains binary content that cannot be viewed.');
@@ -144,7 +143,7 @@ const JSONViewer = ({
 
       // Get presigned URL
       const response = await client.graphql({
-        query: uploadDocument as unknown as string,
+        query: uploadDocument,
         variables: {
           fileName,
           contentType: 'application/json',
@@ -153,10 +152,10 @@ const JSONViewer = ({
         },
       });
 
-      const { presignedUrl, usePostMethod } = (response as { data: { uploadDocument: { presignedUrl: string; usePostMethod: boolean } } })
-        .data.uploadDocument;
+      const { presignedUrl, usePostMethod } = response.data.uploadDocument;
+      const usePost = usePostMethod?.toLowerCase() === 'true';
 
-      if (!usePostMethod) {
+      if (!usePost) {
         throw new Error('Server returned PUT method which is not supported');
       }
 

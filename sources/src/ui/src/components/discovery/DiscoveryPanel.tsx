@@ -24,9 +24,7 @@ import {
 import type { SelectProps } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 
-import uploadDiscoveryDocument from '../../graphql/queries/uploadDiscoveryDocument';
-import listDiscoveryJobs from '../../graphql/queries/listDiscoveryJobs';
-import onDiscoveryJobStatusChange from '../../graphql/subscriptions/onDiscoveryJobStatusChange';
+import { uploadDiscoveryDocument, listDiscoveryJobs, onDiscoveryJobStatusChange } from '../../graphql/generated';
 import useSettingsContext from '../../contexts/settings';
 import useConfigurationVersions from '../../hooks/use-configuration-versions';
 import { getJsonValidationError } from '../common/utilities';
@@ -92,7 +90,7 @@ const DiscoveryPanel = (): React.JSX.Element => {
   const loadDiscoveryJobs = async () => {
     setIsLoadingJobs(true);
     try {
-      const response = await client.graphql({ query: listDiscoveryJobs as unknown as string });
+      const response = await client.graphql({ query: listDiscoveryJobs });
       // Access the DiscoveryJobs array from the response
       console.log('loadDiscoveryJobs done');
       console.log(response);
@@ -193,7 +191,7 @@ const DiscoveryPanel = (): React.JSX.Element => {
           subscribe: (callbacks: Record<string, unknown>) => { unsubscribe: () => void };
         };
         const observable = client.graphql({
-          query: onDiscoveryJobStatusChange as unknown as string,
+          query: onDiscoveryJobStatusChange,
           variables: { jobId: job.jobId },
         }) as unknown as GqlSubscription;
         const subscription = observable.subscribe({
@@ -384,26 +382,25 @@ const DiscoveryPanel = (): React.JSX.Element => {
       }
 
       const documentResponse = await client.graphql({
-        query: uploadDiscoveryDocument as unknown as string,
+        query: uploadDiscoveryDocument,
         variables: {
           fileName: documentFile.name,
           contentType: documentFile.type,
           prefix: prefix || '',
-          bucket: settings.DiscoveryBucket,
+          bucket: settings.DiscoveryBucket as string,
           groundTruthFileName: groundTruthFileName || '',
           version: selectedVersion?.value,
         },
       });
 
-      type UploadResp = Record<string, Record<string, Record<string, unknown>>>;
-      const uploadResult = (documentResponse as unknown as UploadResp).data.uploadDiscoveryDocument;
-      const docPresignedUrl = uploadResult.presignedUrl as string;
-      const docObjectKey = uploadResult.objectKey as string;
-      const docUsePostMethod = uploadResult.usePostMethod as boolean;
-      const docGroundTruthObjectKey = uploadResult.groundTruthObjectKey as string;
-      const docGroundTruthPresignedUrl = uploadResult.groundTruthPresignedUrl as string;
+      const uploadResult = documentResponse.data.uploadDiscoveryDocument;
+      const docPresignedUrl = uploadResult.presignedUrl;
+      const docObjectKey = uploadResult.objectKey;
+      const docUsePost = uploadResult.usePostMethod?.toLowerCase() === 'true';
+      const docGroundTruthObjectKey = uploadResult.groundTruthObjectKey;
+      const docGroundTruthPresignedUrl = uploadResult.groundTruthPresignedUrl;
 
-      if (!docUsePostMethod) {
+      if (!docUsePost) {
         throw new Error('Server returned PUT method which is not supported. Please update your backend code.');
       }
       // Upload document file to S3
@@ -418,8 +415,8 @@ const DiscoveryPanel = (): React.JSX.Element => {
         console.log(`Uploading ground truth ${groundTruthFile.name} to S3...`);
         await uploadFileToS3(
           groundTruthFile,
-          docGroundTruthPresignedUrl,
-          docGroundTruthObjectKey,
+          docGroundTruthPresignedUrl ?? '',
+          docGroundTruthObjectKey ?? '',
           'ground truth',
           newUploadStatus,
         );

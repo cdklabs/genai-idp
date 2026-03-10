@@ -40,6 +40,25 @@ def convert_floats_to_decimal(obj):
         return obj
 
 
+def convert_decimals_to_native(obj):
+    """
+    Recursively convert Decimal values to int or float for JSON serialization.
+
+    Args:
+        obj: Object that may contain Decimal values (e.g. from DynamoDB)
+
+    Returns:
+        Object with Decimals converted to int (if whole) or float
+    """
+    if isinstance(obj, Decimal):
+        return int(obj) if obj % 1 == 0 else float(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_decimals_to_native(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_decimals_to_native(i) for i in obj]
+    return obj
+
+
 class DocumentDynamoDBService:
     """
     Service for interacting directly with DynamoDB to manage Documents.
@@ -109,6 +128,7 @@ class DocumentDynamoDBService:
             "ObjectStatus": document.status.value,
             "InitialEventTime": document.initial_event_time,
             "QueuedTime": document.queued_time,
+            "ItemType": "document",
         }
 
         if expires_after:
@@ -279,6 +299,14 @@ class DocumentDynamoDBService:
             set_expressions.append("#HITLStatus = :HITLStatus")
             expression_names["#HITLStatus"] = "HITLStatus"
             expression_values[":HITLStatus"] = document.hitl_status
+            # Maintain sparse GSI attribute for pending review queries
+            # "PendingReview" = initial trigger, "Review Pending" = after release_review,
+            # "InProgress" = after claim_review
+            pending_statuses = ("PendingReview", "Review Pending", "InProgress")
+            if document.hitl_status in pending_statuses:
+                set_expressions.append("#HITLPendingReview = :HITLPendingReview")
+                expression_names["#HITLPendingReview"] = "HITLPendingReview"
+                expression_values[":HITLPendingReview"] = "true"
         if document.hitl_sections_pending:
             set_expressions.append("#HITLSectionsPending = :HITLSectionsPending")
             expression_names["#HITLSectionsPending"] = "HITLSectionsPending"
@@ -290,7 +318,24 @@ class DocumentDynamoDBService:
                 document.hitl_sections_completed
             )
 
+        # Add confidence alert count if available
+        if document.confidence_alert_count > 0:
+            set_expressions.append("#ConfidenceAlertCount = :ConfidenceAlertCount")
+            expression_names["#ConfidenceAlertCount"] = "ConfidenceAlertCount"
+            expression_values[":ConfidenceAlertCount"] = document.confidence_alert_count
+
+        # Build update expression with optional REMOVE clause
         update_expression = "SET " + ", ".join(set_expressions)
+
+        # Remove HITLPendingReview GSI attribute when review is completed/skipped
+        remove_expressions = []
+        if document.hitl_status:
+            pending_statuses = ("PendingReview", "Review Pending", "InProgress")
+            if document.hitl_status not in pending_statuses:
+                remove_expressions.append("HITLPendingReview")
+        if remove_expressions:
+            update_expression += " REMOVE " + ", ".join(remove_expressions)
+
         # Convert any float values to Decimal for DynamoDB compatibility
         expression_values = convert_floats_to_decimal(expression_values)  # type: ignore[assignment]
 
@@ -527,6 +572,9 @@ class DocumentDynamoDBService:
         """
         List documents with optional date filtering.
 
+        Uses TypeDateIndex GSI when available for efficient querying.
+        Falls back to scan if GSI query fails.
+
         Args:
             start_date_time: Optional start datetime filter (ISO 8601)
             end_date_time: Optional end datetime filter (ISO 8601)
@@ -539,6 +587,15 @@ class DocumentDynamoDBService:
         Raises:
             DynamoDBError: If the DynamoDB operation fails
         """
+        # Try GSI query first (efficient)
+        try:
+            return self._list_documents_via_gsi(
+                start_date_time, end_date_time, limit, exclusive_start_key
+            )
+        except Exception as e:
+            logger.warning(f"GSI query failed, falling back to scan: {e}")
+
+        # Fallback to scan
         filter_expression = None
         expression_attribute_values = {}
 
@@ -569,6 +626,57 @@ class DocumentDynamoDBService:
                 documents.append(self._dynamodb_item_to_document(item))
             except Exception as e:
                 logger.warning(f"Failed to convert item to document: {e}")
+
+        return {
+            "Documents": documents,
+            "nextToken": response.get("LastEvaluatedKey"),
+        }
+
+    def _list_documents_via_gsi(
+        self,
+        start_date_time: Optional[str] = None,
+        end_date_time: Optional[str] = None,
+        limit: Optional[int] = None,
+        exclusive_start_key: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """List documents using TypeDateIndex GSI for efficient querying."""
+        import boto3
+        from boto3.dynamodb.conditions import Key
+
+        table = boto3.resource("dynamodb").Table(self.client.table_name)
+
+        query_kwargs: Dict[str, Any] = {
+            "IndexName": "TypeDateIndex",
+            "Limit": limit or 50,
+            "ScanIndexForward": False,
+        }
+
+        if start_date_time and end_date_time:
+            query_kwargs["KeyConditionExpression"] = Key("ItemType").eq(
+                "document"
+            ) & Key("InitialEventTime").between(start_date_time, end_date_time)
+        elif start_date_time:
+            query_kwargs["KeyConditionExpression"] = Key("ItemType").eq(
+                "document"
+            ) & Key("InitialEventTime").gte(start_date_time)
+        elif end_date_time:
+            query_kwargs["KeyConditionExpression"] = Key("ItemType").eq(
+                "document"
+            ) & Key("InitialEventTime").lte(end_date_time)
+        else:
+            query_kwargs["KeyConditionExpression"] = Key("ItemType").eq("document")
+
+        if exclusive_start_key:
+            query_kwargs["ExclusiveStartKey"] = exclusive_start_key
+
+        response = table.query(**query_kwargs)
+
+        documents = []
+        for item in response.get("Items", []):
+            try:
+                documents.append(self._dynamodb_item_to_document(item))
+            except Exception as e:
+                logger.warning(f"Failed to convert GSI item to document: {e}")
 
         return {
             "Documents": documents,

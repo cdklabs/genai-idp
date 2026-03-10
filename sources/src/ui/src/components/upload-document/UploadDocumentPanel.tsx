@@ -18,7 +18,7 @@ import {
 import type { SelectProps } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 
-import uploadDocument from '../../graphql/queries/uploadDocument';
+import { uploadDocument } from '../../graphql/generated';
 
 import useConfigurationVersions from '../../hooks/use-configuration-versions';
 
@@ -100,7 +100,7 @@ const UploadDocumentPanel = (): React.JSX.Element => {
           console.log(`Using prefix: ${prefix || 'none'}`);
 
           const response = await client.graphql({
-            query: uploadDocument as unknown as string,
+            query: uploadDocument,
             variables: {
               fileName: file.name,
               contentType: file.type,
@@ -110,13 +110,10 @@ const UploadDocumentPanel = (): React.JSX.Element => {
             },
           });
 
-          const { presignedUrl, objectKey, usePostMethod } = (response as { data: Record<string, unknown> }).data.uploadDocument as {
-            presignedUrl: string;
-            objectKey: string;
-            usePostMethod: boolean;
-          };
+          const { presignedUrl, objectKey, usePostMethod } = response.data.uploadDocument;
+          const usePost = usePostMethod?.toLowerCase() === 'true';
 
-          if (!usePostMethod) {
+          if (!usePost) {
             throw new Error('Server returned PUT method which is not supported. Please update your backend code.');
           }
 

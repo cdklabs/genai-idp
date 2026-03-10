@@ -6,10 +6,7 @@ import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import { Modal, Box, SpaceBetween, Button, Spinner, Alert, Header } from '@cloudscape-design/components';
 
-import submitAgentQuery from '../../graphql/queries/submitAgentQuery';
-import getAgentJobStatus from '../../graphql/queries/getAgentJobStatus';
-import onAgentJobComplete from '../../graphql/subscriptions/onAgentJobComplete';
-import listAvailableAgents from '../../graphql/queries/listAvailableAgents';
+import { submitAgentQuery, getAgentJobStatus, onAgentJobComplete, listAvailableAgents } from '../../graphql/generated';
 import AgentResultDisplay from '../document-agents-layout/AgentResultDisplay';
 import AgentMessagesDisplay from '../document-agents-layout/AgentMessagesDisplay';
 
@@ -34,14 +31,6 @@ interface AgentInfo {
   [key: string]: unknown;
 }
 
-interface JobData {
-  jobId: string;
-  status: string;
-  result?: string | Record<string, unknown>;
-  agent_messages?: unknown;
-  error?: string;
-}
-
 interface TroubleshootModalProps {
   visible: boolean;
   onDismiss: () => void;
@@ -60,7 +49,7 @@ interface TroubleshootModalProps {
     | null;
 }
 
-interface GraphQLSubscription {
+interface Subscription {
   unsubscribe: () => void;
 }
 
@@ -80,53 +69,53 @@ const TroubleshootModal = ({
   const [agentMessages, setAgentMessages] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [subscription, setSubscription] = useState<GraphQLSubscription | null>(null);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [_availableAgents, setAvailableAgents] = useState<AgentInfo[]>([]);
 
   const query = `Troubleshoot ${documentItem?.objectKey} for failures or performance issues.`;
 
-  const subscribeToJobCompletion = (id: string): GraphQLSubscription | null => {
+  const subscribeToJobCompletion = (id: string): Subscription | null => {
     try {
       logger.debug('Subscribing to job completion for job ID:', id);
-      const sub = (
-        client.graphql({
-          query: onAgentJobComplete as unknown as string,
+      const sub = client
+        .graphql({
+          query: onAgentJobComplete,
           variables: { jobId: id },
-        }) as unknown as { subscribe: (handlers: Record<string, unknown>) => GraphQLSubscription }
-      ).subscribe({
-        next: async ({ value }: { value: { data?: { onAgentJobComplete?: unknown } } }) => {
-          const jobCompleted = value?.data?.onAgentJobComplete;
-          logger.debug('Job completion notification:', jobCompleted);
+        })
+        .subscribe({
+          next: async (message) => {
+            const jobCompleted = message.data?.onAgentJobComplete;
+            logger.debug('Job completion notification:', jobCompleted);
 
-          if (jobCompleted) {
-            try {
-              const jobResponse = await client.graphql({
-                query: getAgentJobStatus as unknown as string,
-                variables: { jobId: id },
-              });
+            if (jobCompleted) {
+              try {
+                const jobResponse = await client.graphql({
+                  query: getAgentJobStatus,
+                  variables: { jobId: id },
+                });
 
-              const job = (jobResponse as { data?: { getAgentJobStatus?: JobData } })?.data?.getAgentJobStatus;
-              if (job) {
-                setJobStatus(job.status);
-                setAgentMessages(job.agent_messages);
+                const job = jobResponse.data?.getAgentJobStatus;
+                if (job) {
+                  setJobStatus(job.status);
+                  setAgentMessages(job.agent_messages);
 
-                if (job.status === 'COMPLETED') {
-                  setJobResult(job.result);
-                } else if (job.status === 'FAILED') {
-                  setError(job.error || 'Job processing failed');
+                  if (job.status === 'COMPLETED') {
+                    setJobResult(job.result);
+                  } else if (job.status === 'FAILED') {
+                    setError(job.error || 'Job processing failed');
+                  }
                 }
+              } catch (fetchError) {
+                logger.error('Error fetching job details:', fetchError);
+                setError(`Failed to fetch job details: ${(fetchError as Error).message}`);
               }
-            } catch (fetchError) {
-              logger.error('Error fetching job details:', fetchError);
-              setError(`Failed to fetch job details: ${(fetchError as Error).message}`);
             }
-          }
-        },
-        error: (err: Error) => {
-          logger.error('Subscription error:', err);
-          setError(`Subscription error: ${err.message}`);
-        },
-      });
+          },
+          error: (err: Error) => {
+            logger.error('Subscription error:', err);
+            setError(`Subscription error: ${err.message}`);
+          },
+        });
 
       setSubscription(sub);
       return sub;
@@ -139,8 +128,8 @@ const TroubleshootModal = ({
 
   const checkAvailableAgents = async (): Promise<AgentInfo[]> => {
     try {
-      const response = await client.graphql({ query: listAvailableAgents as unknown as string });
-      const agents = ((response as { data?: { listAvailableAgents?: AgentInfo[] } })?.data?.listAvailableAgents || []) as AgentInfo[];
+      const response = await client.graphql({ query: listAvailableAgents });
+      const agents = (response.data?.listAvailableAgents || []) as AgentInfo[];
       setAvailableAgents(agents);
       logger.debug('Available agents:', agents);
       return agents;
@@ -174,7 +163,7 @@ const TroubleshootModal = ({
       logger.debug('Agent IDs:', ['Error-Analyzer-Agent']);
 
       const response = await client.graphql({
-        query: submitAgentQuery as unknown as string,
+        query: submitAgentQuery,
         variables: {
           query,
           agentIds: ['Error-Analyzer-Agent'],
@@ -183,7 +172,7 @@ const TroubleshootModal = ({
 
       logger.debug('Submit response:', response);
 
-      const job = (response as { data?: { submitAgentQuery?: { jobId: string; status: string } } })?.data?.submitAgentQuery;
+      const job = response.data?.submitAgentQuery;
       logger.debug('Job created:', job);
 
       if (!job) {
@@ -232,11 +221,11 @@ const TroubleshootModal = ({
         try {
           logger.debug('Polling job status for job ID:', jobId);
           const response = await client.graphql({
-            query: getAgentJobStatus as unknown as string,
+            query: getAgentJobStatus,
             variables: { jobId },
           });
 
-          const job = (response as { data?: { getAgentJobStatus?: JobData } })?.data?.getAgentJobStatus;
+          const job = response.data?.getAgentJobStatus;
           logger.debug('Polled job status:', job);
 
           if (job) {

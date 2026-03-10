@@ -5,7 +5,95 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
-## [0.4.15]
+## [0.5.1]
+
+### Added
+
+- **Scalable Document List and Test Executions** — Comprehensive redesign to eliminate UI and backend bottlenecks when working with thousands of documents. ([#203](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/203))
+  - **TypeDateIndex GSI on TrackingTable**: New DynamoDB Global Secondary Index (`ItemType` + `InitialEventTime`) enables efficient queries by item type (document, testrun, testset) sorted by time, replacing full table scans. Includes 20 projected attributes for list-view rendering without base table fetches.
+  - **GSI Attribute Backfill Mechanism**: Robust Step Functions state machine with parallel scan workers that automatically backfills `ItemType` and `HITLPendingReview` attributes on existing items during stack upgrades. Features timeout-safe continuation, idempotent conditional updates, and automatic trigger via CloudFormation Custom Resource.
+  - **GSI-Based Document List Resolver**: New `listDocuments` Lambda resolver queries the TypeDateIndex GSI with server-side pagination (`limit`/`nextToken`).
+  - **`getDocumentCount` API**: New efficient count query using GSI `Select: 'COUNT'` for accurate document totals without fetching data.
+  - **UI Document List Rewrite**: Eliminated the N+1 query pattern (shard queries → individual `getDocument` per document). Now uses a single paginated `listDocuments` GSI query for all time periods. First page renders immediately with incremental background loading of remaining pages.
+  - **Subscription Optimization**: `onUpdateDocument` events now use subscription data directly instead of triggering individual `getDocument` API calls, eliminating thousands of redundant requests during active processing.
+  - **GSI-Based Test Runs Query**: Replaced full table scan in `get_test_runs()` and `get_test_runs_by_date_range()` with GSI query + BatchGetItem pattern for efficient test run listing with all fields (including Context, ConfigVersion).
+  - **GSI-Based Test Sets Query**: Replaced full table scan in `get_test_sets()` with GSI query + BatchGetItem pattern, avoiding scanning the entire TrackingTable (which includes all documents) just to find ~10 test sets.
+  - **`ItemType` Written on All Creation Paths**: All document, test run, and test set creation paths (DynamoDB service, AppSync resolvers, test runners, dataset deployers) now write `ItemType` and `InitialEventTime` for immediate GSI indexing.
+  - **Improved Error Messages**: Document list errors now show the actual failure reason (e.g., Lambda throttling, timeout details) instead of generic "please try again" messages.
+
+- **GraphQL Type Generation & Unit Testing** — Replaced 60+ hand-written GraphQL query/mutation/subscription files with auto-generated types via `@graphql-codegen`, added typed AWSJSON parsers with unit tests (vitest + jsdom), and integrated a CI codegen-check to prevent type drift.
+
+- **Third-Party Model Support** — Added Meta Llama 4 Maverick 17B, Llama 4 Scout 17B, Google Gemma 3 27B IT, and NVIDIA Nemotron Nano 12B v2 VL as selectable models across all pipeline stages (OCR, Classification, Extraction, Assessment, Summarization, Evaluation, Discovery, Agents, Rule Validation). Includes per-token pricing configuration and EU region fallback mappings for Llama 4 models. ([#217](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/217))
+
+- **Load Test Config Version Support** — Added `--config-version` parameter to the `idp-cli load-test` command, enabling load tests to target a specific configuration version. Files uploaded during load tests now include `config-version` S3 metadata, consistent with the `process` command behavior.
+
+- **Deploy Failure Root Cause Analysis** — Enhanced `idp-cli deploy` failure reporting to recursively analyze nested stack events and identify actual root causes. Previously, failures in nested stacks showed only a generic "Embedded stack was not successfully created" message. Now displays a structured "Root Cause Analysis" section with the specific resource, type, and error message from the nested stack that caused the failure, along with cascade failure counts.
+
+- **MCP Server** — Added additional tool to MCP Server for retrieving results of the processed document from the IDP system.
+
+
+### Changed
+
+- **OCR Benchmark Config Optimization** — Optimized `config_library/unified/ocr-benchmark` configuration with targeted field descriptions, explicit model/prompt/OCR settings, and corrected date format (YYYY-MM-DD to match ground truth). Improved overall extraction accuracy from 51.5% to 75.2% on the full 293-document benchmark at equivalent cost (~$2.62). Classification remains 100% across all 9 document classes. ([#220](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/220))
+
+- **GraphQL Type Generation & Unit Testing** — Replaced 60+ hand-written GraphQL query/mutation/subscription files with auto-generated types via `@graphql-codegen`, added typed AWSJSON parsers with unit tests (vitest + jsdom), and integrated a CI codegen-check to prevent type drift.
+
+### Fixed
+
+- **AgentCore Gateway Manager** — Fixed the issue where gateway was not getting deleted once stack is deleted.
+
+- **Configuration Page Error Display** — Fixed `[object Object]` error message when configuration loading fails (e.g., due to Lambda throttling) by properly extracting error messages from Amplify GraphQL error responses.
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.1.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.1.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.5.1.yaml`
+
+## [0.5.0]
+
+### Added
+
+- **Unified Pattern** — Merged Pattern-1 (BDA) and Pattern-2 (Pipeline) into a single deployment. Switch between BDA and Pipeline processing modes at runtime using the `use_bda` configuration toggle — no redeployment needed. Use [Test Studio](./docs/test-studio.md) to compare accuracy and cost across both modes to find the optimal approach for your documents. See the [Migration Guide](./docs/migration-v04-to-v05.md) for upgrade instructions.
+
+- **Rule Validation for BDA mode** — Rule validation (business rule checking) is now available in both BDA and Pipeline modes. Previously it was Pipeline-only.
+
+- **Fake W-2 Tax Form Test Set Auto-Deployment** — New pre-deployed benchmark test set with 2,000 synthetically generated US W-2 tax form images and structured ground truth, sourced from HuggingFace (`singhsays/fake-w2-us-tax-form-dataset`, originally from Kaggle under CC0: Public Domain license). Features 45 ground truth fields per document covering employer info (EIN, name, address), employee info (SSN, name, address), federal wages/taxes (boxes 1-8), compensation codes (boxes 12a-d), checkboxes (box 13), and state/local taxes (boxes 15-20). Includes both clean and noisy image variants for testing OCR robustness. Ideal for benchmarking W-2 extraction accuracy, evaluating image quality impact on processing, and testing structured form data extraction at scale.
+
+- **AWS Profile Support for CLI** — Added optional `--profile` parameter to specify AWS credentials profile. Can be placed anywhere in the command. Automatically applies to all AWS SDK calls.
+
+- **Enhanced `status` CLI/MCP Command with Advanced Search, Filtering, and Analytics** — Added PK substring search (`--batch-id` now matches partial batch identifiers across multiple batches), `--object-status` filter for searching by processing status (COMPLETED, FAILED, etc.), `--get-time` flag for timing statistics (processing, queue, total time with min/max outlier tracking), `--include-metering` flag for Lambda GB-seconds usage and cost estimates, and `--show-details` flag for detailed document information. Introduces `TrackingTableSearcher` class for flexible DynamoDB tracking table queries. Fully backward compatible with existing usage.
+
+- **Added Replace/Merge sync modes for BDA synchronization** — Both "Sync from BDA" and "Sync to BDA" now support two modes: **Replace** (default) aligns the target to match the source exactly, removing items not in the source; **Merge** adds source items to the target without removing existing items. The UI modal now always shows a mode selection and ARN input (pre-filled for linked projects).
+
+
+### Deprecated
+
+- **Pattern-1 (BDA) and Pattern-2 (Pipeline) separate deployments** — Replaced by the Unified Pattern. Existing stacks are automatically upgraded. See the [Migration Guide](./docs/migration-v04-to-v05.md) for details.
+
+- **Pattern-3 (UDOP + Bedrock)** — Pattern-3 is no longer available as a deployment option. If you are currently using Pattern-3 with a SageMaker UDOP endpoint, do not upgrade to v0.5.x without first testing in a non-production environment. You can use the [Lambda Inference Hooks](./docs/lambda-hook-inference.md) feature (introduced in v0.4.15) to call your existing SageMaker UDOP endpoint from the unified pattern's classification step via a custom Lambda function.
+
+### Changed
+
+- **Switched `idp_sdk` pyproject.toml to auto-discovery** — Replaced explicit subpackage listing with `setuptools.packages.find` using `include = ["idp_sdk*"]` so new subpackages are automatically included without manual pyproject.toml updates.
+
+- **Resilient Test Set Deployment — Graceful Degradation on Download Failures** — All test set deployer Lambdas (RealKIE-FCC, OmniAI-OCR-Benchmark, DocSplit-Poly-Seq) now handle download failures gracefully instead of causing CloudFormation stack rollbacks. When a dataset source (HuggingFace) is unreachable or a download fails, the deployer creates a FAILED test set record in DynamoDB with a descriptive error message visible in the Test Studio UI, and sends `cfnresponse.SUCCESS` to CloudFormation so the stack deployment continues. Previously failed deployments are automatically retried on the next stack update. This ensures transient third-party service outages never block IDP infrastructure deployment.
+
+- **Replaced PyMuPDF (AGPL-3.0) with pypdfium2 (Apache-2.0/BSD-3-Clause) for PDF rendering** — Resolves license incompatibility with the project's MIT-0 license. pypdfium2 provides equivalent PDF-to-image rendering using PDFium engine. Page rendering is now performed sequentially before parallel OCR processing to ensure thread-safety.
+
+### Fixed
+
+- **Fixed "Sync from BDA" not removing IDP classes absent from BDA project** — Previously, "Sync from BDA" only added new classes from the BDA project without removing classes that weren't in BDA. Now defaults to "Replace" mode which fully aligns the config version's classes with the BDA project, removing classes not present in BDA. A new "Merge" mode is also available to preserve the legacy additive behavior.
+
+- **Fixed insufficient Lambda memory for Extraction, Assessment, and Evaluation functions in unified pattern template** — Increased MemorySize from 512 MB (Extraction, Assessment) and 1024 MB (Evaluation) to 4096 MB to match all other document processing Lambda functions, preventing potential out-of-memory errors during document processing. ([#205](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/205))
+
+- **Fixed DOCX processing to extract text from embedded images and correct page splitting** — DOCX files with embedded images (e.g., `<w:drawing>` elements) now have image content OCR'd and included in the extracted text instead of being silently skipped. Page splitting now uses DOCX metadata (explicit page breaks, image display dimensions from `wp:extent`, section properties) instead of inaccurate height estimates, producing correct page boundaries.
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.0.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.0.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.5.0.yaml`
+
+## [0.4.16]
 
 ### Added
 
@@ -25,12 +113,14 @@ SPDX-License-Identifier: MIT-0
 - **Added support for Claude Sonnet 4.6 model and Long Context (1M) variant**
 - **Included MCP tools `process`, `reprocess`, `status`, `search` for document processing**
 - **Added `process` and `reprocess` CLI commands for batch operations via command line**
-  - **Maintained `run-inference` and `rerun-inference` CLI commands with deprecation notices**
+- **Added external mcp client example `examples/external-mcp-client`**
+- **Maintained `run-inference` and `rerun-inference` CLI commands with deprecation notices**
 
 ### Fixed
 
 - **Fixed DynamoDB 400KB item size limit blocking configs with 45+ document classes** — Configuration data is now gzip-compressed before storing to DynamoDB, achieving 37-95x compression ratios. Supports 3,000+ document classes within the 400KB limit. Fully backward compatible with existing deployments. ([#200](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/200), [#201](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/201))
 - **Fixed Processing Flow chart using active stack config instead of the document's actual config version** for determining disabled steps (assessment, summarization, etc.)
+- **Fixed `idp_sdk` pip install from GitHub missing subpackages** — Non-editable pip installs of `idp_sdk` from GitHub were missing `core/`, `models/`, and `operations/` subpackages, causing `ModuleNotFoundError`. Fixed by explicitly declaring all subpackages in `pyproject.toml`. ([#196](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/196))
 
 ### Templates
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.16.yaml`

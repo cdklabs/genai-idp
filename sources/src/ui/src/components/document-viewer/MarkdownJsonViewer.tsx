@@ -9,8 +9,7 @@ import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import { Editor } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import getFileContents from '../../graphql/queries/getFileContents';
-import uploadDocument from '../../graphql/queries/uploadDocument';
+import { getFileContents, uploadDocument } from '../../graphql/generated';
 import MarkdownViewer from './MarkdownViewer';
 
 interface TextEditorViewProps {
@@ -267,13 +266,12 @@ const MarkdownJsonViewer = ({
       logger.info('Fetching content:', uriToFetch);
 
       const response = await client.graphql({
-        query: getFileContents as unknown as string,
+        query: getFileContents,
         variables: { s3Uri: uriToFetch },
       });
 
       // Handle the updated response structure
-      const result = (response as { data: { getFileContents: { content: string; contentType: string; isBinary: boolean } } }).data
-        .getFileContents;
+      const result = response.data.getFileContents;
       const fetchedContent = result.content;
       logger.debug('Received content type:', result.contentType);
       logger.debug('Binary content?', result.isBinary);
@@ -319,7 +317,7 @@ const MarkdownJsonViewer = ({
 
       // Get presigned URL
       const response = await client.graphql({
-        query: uploadDocument as unknown as string,
+        query: uploadDocument,
         variables: {
           fileName,
           contentType: 'application/json',
@@ -328,10 +326,10 @@ const MarkdownJsonViewer = ({
         },
       });
 
-      const { presignedUrl, usePostMethod } = (response as { data: { uploadDocument: { presignedUrl: string; usePostMethod: boolean } } })
-        .data.uploadDocument;
+      const { presignedUrl, usePostMethod } = response.data.uploadDocument;
+      const usePost = usePostMethod?.toLowerCase() === 'true';
 
-      if (!usePostMethod) {
+      if (!usePost) {
         throw new Error('Server returned PUT method which is not supported');
       }
 

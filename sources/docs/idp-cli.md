@@ -25,8 +25,8 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
 - [Commands Reference](#commands-reference)
   - [deploy](#deploy)
   - [delete](#delete)
-  - [process](#process)
-  - [reprocess](#reprocess)
+  - [process](#process--run-inference)
+  - [reprocess](#reprocess--rerun-inference)
   - [status](#status)
   - [download-results](#download-results)
   - [delete-documents](#delete-documents)
@@ -82,6 +82,31 @@ pip install -e ".[test]"
 
 ## Quick Start
 
+### Global Options
+
+The CLI supports an optional `--profile` parameter to specify which AWS credentials profile to use:
+
+```bash
+idp-cli --profile my-profile <command> [options]
+```
+
+- Can be placed anywhere in the command
+- Only affects that specific command execution
+- Automatically applies to all AWS SDK calls
+- If not specified, uses default AWS credentials
+
+**Examples:**
+```bash
+# Profile before command
+idp-cli --profile production deploy --stack-name my-stack ...
+
+# Profile after command
+idp-cli deploy --profile production --stack-name my-stack ...
+
+# Profile at the end
+idp-cli deploy --stack-name my-stack --profile production ...
+```
+
 ### Deploy a stack and process documents in 3 commands:
 
 ```bash
@@ -124,7 +149,7 @@ idp-cli deploy [OPTIONS]
 
 **Required for New Stacks:**
 - `--stack-name`: CloudFormation stack name
-- `--pattern`: IDP pattern architecture to deploy (`pattern-1`, `pattern-2`, or `pattern-3`)
+- `--pattern`: IDP pattern architecture to deploy (`pattern-1` or `pattern-2`)
 - `--admin-email`: Admin user email
 
 **Optional Parameters:**
@@ -630,7 +655,7 @@ https://github.com/user-attachments/assets/28deadbb-378b-42b7-a5e2-f929af9b0e41
 
 ### `status`
 
-Check status of a batch or single document.
+Check status of documents by batch ID, document ID, or search criteria.
 
 **Usage:**
 ```bash
@@ -638,40 +663,129 @@ idp-cli status [OPTIONS]
 ```
 
 **Document Source (choose ONE):**
-- `--batch-id`: Batch identifier (check all documents in batch)
+- `--batch-id`: Batch identifier or PK substring to search for (searches tracking table)
 - `--document-id`: Single document ID (check individual document)
 
-**Options:**
+**Optional Filters and Display:**
+- `--object-status`: Filter by status (COMPLETED, FAILED, QUEUED, RUNNING, PROCESSING)
+- `--show-details`: Show detailed document information in table format
+- `--get-time`: Calculate and display timing statistics (processing time, queue time, total time)
+- `--include-metering`: Include Lambda metering statistics (GB-seconds by stage) - requires `--get-time`
+
+**Other Options:**
 - `--stack-name` (required): CloudFormation stack name
 - `--wait`: Wait for all documents to complete
 - `--refresh-interval`: Seconds between status checks (default: 5)
 - `--format`: Output format - `table` (default) or `json`
 - `--region`: AWS region (optional)
 
+**How --batch-id Works:**
+
+The `--batch-id` option performs a PK substring search in the DynamoDB tracking table. This means:
+- It searches for all documents where the PK (Primary Key) contains your search string
+- You can search for exact batch IDs: `cli-batch-20251015-143000`
+- You can search for partial matches: `batch-123` finds all documents with "batch-123" in their path
+- You can search across multiple batches: `invoice` finds all documents with "invoice" in their name
+
 **Examples:**
 
 ```bash
-# Check batch status
+# Search for all documents in a batch (PK substring search)
 idp-cli status \
     --stack-name my-stack \
     --batch-id cli-batch-20251015-143000
+
+# Search for documents across batches with partial match
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123
+
+# Search for completed documents only
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123 \
+    --object-status COMPLETED
+
+# Search for failed documents with details
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123 \
+    --object-status FAILED \
+    --show-details
+
+# Search with timing statistics
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123 \
+    --object-status COMPLETED \
+    --get-time
+
+# Search with timing and Lambda metering data
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id test \
+    --object-status COMPLETED \
+    --get-time \
+    --include-metering
 
 # Check single document status
 idp-cli status \
     --stack-name my-stack \
     --document-id batch-123/invoice.pdf
 
-# Monitor single document until completion
+# Monitor documents until completion
 idp-cli status \
     --stack-name my-stack \
-    --document-id batch-123/invoice.pdf \
+    --batch-id batch-123 \
     --wait
 
 # Get JSON output for scripting
 idp-cli status \
     --stack-name my-stack \
-    --document-id batch-123/invoice.pdf \
+    --batch-id batch-123 \
     --format json
+```
+
+**Timing Statistics:**
+
+When using `--get-time`, the command calculates:
+- **Processing Time**: WorkflowStartTime → CompletionTime (actual processing duration)
+- **Queue Time**: QueuedTime → WorkflowStartTime (time waiting in queue)
+- **Total Time**: QueuedTime → CompletionTime (end-to-end duration)
+
+For each metric, you'll see:
+- Average, Median, Min, Max, Standard Deviation, Total
+- ObjectKey for min/max values (helps identify outliers)
+
+**Lambda Metering:**
+
+When using `--include-metering` with `--get-time`, you'll see GB-seconds usage by stage:
+- Assessment, OCR, Classification, Extraction, Summarization
+- Statistics: Average, Median, Min, Max, Std Dev, Total
+- Cost estimates based on AWS Lambda pricing ($0.0000166667 per GB-second)
+
+**Example Output with Timing:**
+
+```bash
+$ idp-cli status --stack-name my-stack --batch-id test-batch --object-status COMPLETED --get-time
+
+Searching for documents with PK containing 'test-batch'...
+✓ Found 25 matching documents
+
+Timing Statistics:
+  Valid documents: 25
+
+Processing Time (WorkflowStartTime → CompletionTime):
+┏━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Metric   ┃ Value       ┃ ObjectKey                    ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ Average  │ 45.23s      │                              │
+│ Median   │ 43.10s      │                              │
+│ Minimum  │ 32.45s      │ test-batch/small-doc.pdf     │
+│ Maximum  │ 78.90s      │ test-batch/large-doc.pdf     │
+│ Std Dev  │ 12.34s      │                              │
+│ Total    │ 18m 50.75s  │                              │
+└──────────┴─────────────┴──────────────────────────────┘
 ```
 
 **Programmatic Use:**
@@ -1512,6 +1626,7 @@ idp-cli load-test [OPTIONS]
 - `--duration`: Duration in minutes (default: 1)
 - `--schedule`: CSV schedule file (minute,count) - overrides --rate and --duration
 - `--dest-prefix`: Destination prefix in input bucket (default: load-test)
+- `--config-version`: Configuration version to use for processing (default: active version)
 - `--region`: AWS region (optional)
 
 **Examples:**
@@ -1528,6 +1643,9 @@ idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --sche
 
 # Use S3 source file
 idp-cli load-test --stack-name my-stack --source-file s3://my-bucket/test.pdf --rate 500
+
+# Load test with a specific config version
+idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 100 --config-version v2
 ```
 
 **Schedule File Format (CSV):**
@@ -1811,6 +1929,8 @@ Shows a table with version names, active status, creation/update timestamps, and
 
 Activate a configuration version in a deployed IDP stack.
 
+**Automatic BDA Sync:** If the configuration version has `use_bda` enabled, this command will automatically sync the configuration to BDA (Bedrock Data Automation) before activation. This ensures BDA blueprints are up-to-date and matches the UI behavior.
+
 **Usage:**
 ```bash
 idp-cli config-activate [OPTIONS]
@@ -1828,6 +1948,18 @@ idp-cli config-activate --stack-name my-stack --config-version v2
 
 # Activate default version
 idp-cli config-activate --stack-name my-stack --config-version default
+```
+
+**Behavior:**
+1. Validates the configuration version exists
+2. If `use_bda` is enabled in the configuration:
+   - Syncs IDP document classes to BDA blueprints
+   - Creates a new BDA project if none exists
+   - Updates BDA sync status
+3. Activates the configuration version
+4. All new document processing will use this configuration
+
+**Note:** If BDA sync fails (when `use_bda` is enabled), the activation will be aborted to prevent processing errors.
 ```
 
 **Notes:**

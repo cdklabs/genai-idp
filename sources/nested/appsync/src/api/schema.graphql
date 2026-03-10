@@ -92,6 +92,7 @@ type Document implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
   HITLReviewedBy: String
   HITLReviewedByEmail: String
   HITLReviewHistory: AWSJSON
+  ConfidenceAlertCount: Int
   ConfigVersion: String
   TraceId: String
 }
@@ -174,6 +175,9 @@ type ConfigurationVersion @aws_cognito_user_pools @aws_iam {
   createdAt: AWSDateTime
   updatedAt: AWSDateTime
   description: String
+  bdaProjectArn: String
+  bdaSyncStatus: String
+  bdaLastSyncedAt: String
 }
 
 type ConfigurationVersionsResponse @aws_cognito_user_pools @aws_iam {
@@ -194,6 +198,8 @@ type SyncBdaIdpResponse @aws_cognito_user_pools @aws_iam {
   message: String
   processedClasses: [String]
   direction: String
+  bdaProjectArn: String
+  bdaSyncStatus: String
   error: ConfigurationError
 }
 
@@ -301,6 +307,7 @@ input UpdateDocumentInput {
   HITLReviewedBy: String
   HITLReviewedByEmail: String
   HITLReviewHistory: AWSJSON
+  ConfidenceAlertCount: Int
   ConfigVersion: String
   TraceId: String
 }
@@ -580,7 +587,7 @@ type Mutation {
     @aws_cognito_user_pools
   deleteConfigVersion(versionName: String!): UpdateConfigurationResponse
     @aws_cognito_user_pools
-  syncBdaIdp(direction: String, versionName: String): SyncBdaIdpResponse @aws_cognito_user_pools
+  syncBdaIdp(direction: String, versionName: String, bdaProjectArn: String, saveArn: Boolean, syncMode: String): SyncBdaIdpResponse @aws_cognito_user_pools
   updatePricing(pricingConfig: AWSJSON!): UpdatePricingResponse
     @aws_cognito_user_pools
   restoreDefaultPricing: UpdatePricingResponse
@@ -656,12 +663,22 @@ type DocumentPage @aws_cognito_user_pools @aws_iam {
   nextToken: String
 }
 
+type DocumentCount @aws_cognito_user_pools @aws_iam {
+  count: Int!
+}
+
 type Query @aws_cognito_user_pools @aws_iam {
   getDocument(ObjectKey: ID!): Document
   listDocuments(
     startDateTime: AWSDateTime
     endDateTime: AWSDateTime
-  ): DocumentList
+    limit: Int
+    nextToken: String
+  ): DocumentPage
+  getDocumentCount(
+    startDateTime: AWSDateTime
+    endDateTime: AWSDateTime
+  ): DocumentCount
   listDocumentsDateHour(date: AWSDate, hour: Int): DocumentList
   listDocumentsDateShard(date: AWSDate, shard: Int): DocumentList
   listDocumentsByDateRange(
@@ -714,8 +731,6 @@ type Query @aws_cognito_user_pools @aws_iam {
   ): ConfigurationLibraryFileResponse @aws_cognito_user_pools
   # User Management
   listUsers: UserList @aws_cognito_user_pools
-  # HITL Pending Reviews
-  listPendingReviewDocuments: DocumentList @aws_cognito_user_pools
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {

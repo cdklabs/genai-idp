@@ -26,8 +26,7 @@ import generateS3PresignedUrl from '../common/generate-s3-presigned-url';
 import useAppContext from '../../contexts/app';
 import useSettingsContext from '../../contexts/settings';
 import { getFieldConfidenceInfo } from '../common/confidence-alerts-utils';
-import getFileContents from '../../graphql/queries/getFileContents';
-import uploadDocument from '../../graphql/queries/uploadDocument';
+import { getFileContents, uploadDocument } from '../../graphql/generated';
 import JSONEditorTab from './JSONEditorTab';
 import type { BoxProps } from '@cloudscape-design/components';
 import EditHistoryTab from './EditHistoryTab';
@@ -45,12 +44,6 @@ interface BoundingBoxDimensions {
   transformedOffsetY?: number;
 }
 
-type FileContentsResponse = {
-  data: { getFileContents: { isBinary: boolean; content: string } };
-};
-type UploadDocResponse = {
-  data: { uploadDocument: { presignedUrl: string; usePostMethod: boolean } };
-};
 
 const client = generateClient();
 
@@ -1990,10 +1983,10 @@ const VisualEditorModal = ({
         if (baselineUri && !baselineData) {
           try {
             const baselineResponse = await client.graphql({
-              query: getFileContents as unknown as string,
+              query: getFileContents,
               variables: { s3Uri: baselineUri },
             });
-            const baselineResult = (baselineResponse as FileContentsResponse).data.getFileContents;
+            const baselineResult = baselineResponse.data.getFileContents;
             if (!baselineResult.isBinary && baselineResult.content) {
               const parsed = JSON.parse(baselineResult.content);
               setBaselineData(parsed);
@@ -2009,7 +2002,7 @@ const VisualEditorModal = ({
         if (evalResultsUri && !evaluationResults) {
           try {
             const evalResponse = await client.graphql({
-              query: getFileContents as unknown as string,
+              query: getFileContents,
               variables: { s3Uri: evalResultsUri },
             });
             const evalResult = (evalResponse as { data: { getFileContents: { isBinary: boolean; content: string } } }).data.getFileContents;
@@ -2199,7 +2192,7 @@ const VisualEditorModal = ({
         const predictionFilename = outputFileKey.split('/').pop();
 
         const predictionUploadResponse = await client.graphql({
-          query: uploadDocument as unknown as string,
+          query: uploadDocument,
           variables: {
             fileName: predictionFilename,
             prefix: predictionPrefix,
@@ -2208,9 +2201,9 @@ const VisualEditorModal = ({
           },
         });
 
-        const predUploadData = (predictionUploadResponse as UploadDocResponse).data.uploadDocument;
+        const predUploadData = predictionUploadResponse.data.uploadDocument;
         const predictionPresignedUrl = predUploadData.presignedUrl;
-        const predictionUsePost = predUploadData.usePostMethod;
+        const predictionUsePost = predUploadData.usePostMethod?.toLowerCase() === 'true';
 
         // Upload the JSON data
         const predictionContent = JSON.stringify(dataToSave, null, 2);
@@ -2277,7 +2270,7 @@ const VisualEditorModal = ({
         const baselineFilename = outputFileKey.split('/').pop();
 
         const baselineUploadResponse = await client.graphql({
-          query: uploadDocument as unknown as string,
+          query: uploadDocument,
           variables: {
             fileName: baselineFilename,
             prefix: baselinePrefix,
@@ -2286,9 +2279,9 @@ const VisualEditorModal = ({
           },
         });
 
-        const baseUploadData = (baselineUploadResponse as UploadDocResponse).data.uploadDocument;
+        const baseUploadData = baselineUploadResponse.data.uploadDocument;
         const baselinePresignedUrl = baseUploadData.presignedUrl;
-        const baselineUsePost = baseUploadData.usePostMethod;
+        const baselineUsePost = baseUploadData.usePostMethod?.toLowerCase() === 'true';
 
         // Upload the JSON data
         const baselineContent = JSON.stringify(baselineToSave, null, 2);

@@ -3,6 +3,7 @@
 
 """Batch operations for IDP SDK."""
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 
@@ -24,6 +25,8 @@ from idp_sdk.models import (
     RerunStep,
     StopWorkflowsResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BatchOperation:
@@ -631,6 +634,289 @@ class BatchOperation:
             )
         except Exception as e:
             raise IDPProcessingError(f"Batch deletion failed: {e}") from e
+
+    def get_results(
+        self,
+        batch_id: str,
+        section_id: int = 1,
+        limit: int = 10,
+        next_token: Optional[str] = None,
+        stack_name: Optional[str] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Get extracted metadata and fields for all documents in a batch.
+
+        Args:
+            batch_id: Batch identifier
+            section_id: Section number within documents (default: 1)
+            limit: Maximum documents to return per page (default: 10)
+            next_token: Pagination token from previous request
+            stack_name: Optional stack name override
+            **kwargs: Additional parameters
+
+        Returns:
+            Dictionary with batch metadata and paginated documents
+        """
+        import base64
+        import json
+
+        from idp_sdk.core.batch_processor import BatchProcessor
+        from idp_sdk.core.progress_monitor import ProgressMonitor
+
+        name = self._client._require_stack(stack_name)
+        batch_processor = BatchProcessor(stack_name=name, region=self._client._region)
+        monitor = ProgressMonitor(
+            stack_name=name,
+            resources=batch_processor.resources,
+            region=self._client._region,
+        )
+
+        batch_info = batch_processor.get_batch_info(batch_id)
+        if not batch_info:
+            raise IDPResourceNotFoundError(f"Batch not found: {batch_id}")
+
+        document_ids = batch_info.get("document_ids", [])
+        total_in_batch = len(document_ids)
+
+        # Parse pagination token
+        offset = 0
+        if next_token:
+            try:
+                decoded = base64.b64decode(next_token).decode("utf-8")
+                offset = int(decoded)
+            except Exception:
+                offset = 0
+
+        # Get paginated document slice
+        page_docs = document_ids[offset : offset + limit]
+        has_more = offset + limit < total_in_batch
+
+        # Retrieve metadata for each document
+        import boto3
+
+        s3_client = boto3.client("s3", region_name=self._client._region)
+        output_bucket = batch_processor.resources.get("OutputBucket")
+
+        documents = []
+        for doc_id in page_docs:
+            try:
+                # Get status
+                status_data = monitor.get_batch_status([doc_id])
+                status = "UNKNOWN"
+                if status_data.get("completed"):
+                    status = "COMPLETED"
+                elif status_data.get("running"):
+                    status = "RUNNING"
+                elif status_data.get("queued"):
+                    status = "QUEUED"
+                elif status_data.get("failed"):
+                    status = "FAILED"
+
+                # Try to get results.json from S3
+                document_class = None
+                fields = None
+                confidence = None
+                page_count = None
+
+                if status == "COMPLETED":
+                    try:
+                        s3_key = f"{doc_id}/sections/{section_id}/result.json"
+                        response = s3_client.get_object(
+                            Bucket=output_bucket, Key=s3_key
+                        )
+                        result_data = json.loads(response["Body"].read())
+
+                        document_class = result_data.get("document_class", {}).get(
+                            "type"
+                        )
+                        inference = result_data.get("inference_result", {})
+                        fields = {
+                            k: v
+                            for k, v in inference.items()
+                            if k not in ["metadata", "explainability_info"]
+                        }
+
+                        # Extract confidence from explainability_info - nested structure
+                        explainability = result_data.get("explainability_info", [])
+                        if explainability:
+                            confidence = {}
+
+                            def extract_confidences(obj, target_dict):
+                                for key, val in obj.items():
+                                    if isinstance(val, dict):
+                                        if "confidence" in val:
+                                            target_dict[key] = val["confidence"]
+                                        else:
+                                            target_dict[key] = {}
+                                            extract_confidences(val, target_dict[key])
+
+                            for item in explainability:
+                                extract_confidences(item, confidence)
+
+                        page_count = len(
+                            result_data.get("split_document", {}).get(
+                                "page_indices", []
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not read results.json for {doc_id}: {e}")
+
+                documents.append(
+                    {
+                        "document_id": doc_id,
+                        "document_class": document_class,
+                        "fields": fields,
+                        "confidence": confidence,
+                        "page_count": page_count,
+                        "status": status,
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Error retrieving metadata for {doc_id}: {e}")
+                documents.append(
+                    {
+                        "document_id": doc_id,
+                        "document_class": None,
+                        "fields": None,
+                        "confidence": None,
+                        "page_count": None,
+                        "status": "ERROR",
+                    }
+                )
+
+        result = {
+            "batch_id": batch_id,
+            "section_id": section_id,
+            "count": len(documents),
+            "total_in_batch": total_in_batch,
+            "documents": documents,
+        }
+
+        # Add pagination token if more results exist
+        if has_more:
+            next_offset = offset + limit
+            result["next_token"] = base64.b64encode(
+                str(next_offset).encode("utf-8")
+            ).decode("utf-8")
+
+        return result
+
+    def get_confidence(
+        self,
+        batch_id: str,
+        section_id: int = 1,
+        limit: int = 10,
+        next_token: Optional[str] = None,
+        stack_name: Optional[str] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Get confidence scores and quality metrics for all documents in a batch.
+
+        Args:
+            batch_id: Batch identifier
+            section_id: Section number (default: 1)
+            limit: Maximum documents to return (default: 10)
+            next_token: Pagination token from previous request
+            stack_name: Optional stack name override
+            **kwargs: Additional parameters
+
+        Returns:
+            Dictionary with batch confidence data and paginated documents
+        """
+        import base64
+
+        from idp_sdk.core.assessment_analyzer import AssessmentAnalyzer
+        from idp_sdk.core.batch_processor import BatchProcessor
+        from idp_sdk.core.progress_monitor import ProgressMonitor
+
+        name = self._client._require_stack(stack_name)
+        batch_processor = BatchProcessor(stack_name=name, region=self._client._region)
+        analyzer = AssessmentAnalyzer(stack_name=name, region=self._client._region)
+        monitor = ProgressMonitor(
+            stack_name=name,
+            resources=batch_processor.resources,
+            region=self._client._region,
+        )
+
+        batch_info = batch_processor.get_batch_info(batch_id)
+        if not batch_info:
+            raise IDPResourceNotFoundError(f"Batch not found: {batch_id}")
+
+        document_ids = batch_info.get("document_ids", [])
+        total_in_batch = len(document_ids)
+
+        # Parse pagination token
+        offset = 0
+        if next_token:
+            try:
+                decoded = base64.b64decode(next_token).decode("utf-8")
+                offset = int(decoded)
+            except Exception:
+                offset = 0
+
+        # Get paginated document slice
+        page_docs = document_ids[offset : offset + limit]
+        has_more = offset + limit < total_in_batch
+
+        # Retrieve confidence scores for each document
+        documents = []
+
+        for doc_id in page_docs:
+            try:
+                confidence_data = analyzer.get_confidence(doc_id, section_id)
+                status_data = monitor.get_batch_status([doc_id])
+                status = "UNKNOWN"
+                if status_data.get("completed"):
+                    status = "COMPLETED"
+                elif status_data.get("running"):
+                    status = "RUNNING"
+                elif status_data.get("queued"):
+                    status = "QUEUED"
+                elif status_data.get("failed"):
+                    status = "FAILED"
+
+                attributes = confidence_data.get("attributes", {})
+                documents.append(
+                    {
+                        "document_id": doc_id,
+                        "attributes": attributes,
+                        "status": status,
+                    }
+                )
+            except FileNotFoundError:
+                documents.append(
+                    {
+                        "document_id": doc_id,
+                        "attributes": {},
+                        "status": "PROCESSING",
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Error retrieving confidence for {doc_id}: {e}")
+                documents.append(
+                    {
+                        "document_id": doc_id,
+                        "attributes": {},
+                        "status": "ERROR",
+                    }
+                )
+
+        result = {
+            "batch_id": batch_id,
+            "section_id": section_id,
+            "count": len(documents),
+            "total_in_batch": total_in_batch,
+            "documents": documents,
+        }
+
+        # Add pagination token if more results exist
+        if has_more:
+            next_offset = offset + limit
+            result["next_token"] = base64.b64encode(
+                str(next_offset).encode("utf-8")
+            ).decode("utf-8")
+
+        return result
 
     def stop_workflows(
         self,

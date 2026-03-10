@@ -36,7 +36,7 @@ const TestStudioLayout = (): React.JSX.Element => {
   const removeTestRun = ctx?.removeTestRun as (testRunId: string) => void;
   const location = useLocation();
   const [activeTabId, setActiveTabId] = useState('sets');
-  const [timePeriodHours, setTimePeriodHours] = useState(2);
+  const [timePeriodHours, setTimePeriodHours] = useState(336); // Default: 2 weeks
   const [selectedTestItems, setSelectedTestItems] = useState([]);
 
   // Handle URL tab parameter
