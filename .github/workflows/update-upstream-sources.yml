@@ -9,10 +9,12 @@ jobs:
   update_upstream_sources:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: none
       pull-requests: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -56,6 +58,9 @@ jobs:
             echo "changes=false" >> $GITHUB_OUTPUT
             echo "No changes detected"
           fi
+      - name: Delete existing PR branch
+        if: steps.check-changes.outputs.changes == 'true'
+        run: git push origin --delete update-upstream-sources || true
       - name: Create Pull Request
         id: create-pr
         if: steps.check-changes.outputs.changes == 'true'
