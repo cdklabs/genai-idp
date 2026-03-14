@@ -68,12 +68,16 @@ git add ${targetDir}
 
     this.workflow.addJob(UPDATE_JOB_ID, {
       permissions: {
-        contents: github.workflows.JobPermission.READ,
+        contents: github.workflows.JobPermission.WRITE,
         idToken: github.workflows.JobPermission.NONE,
         pullRequests: github.workflows.JobPermission.WRITE,
       },
       runsOn: ['ubuntu-latest'],
       steps: [
+        {
+          name: 'Checkout',
+          uses: 'actions/checkout@v5',
+        },
         ...project.renderWorkflowSetup(),
         {
           name: 'Update upstream sources',
@@ -91,6 +95,11 @@ git add ${targetDir}
             '  echo "No changes detected"',
             'fi',
           ].join('\n'),
+        },
+        {
+          name: 'Delete existing PR branch',
+          if: 'steps.check-changes.outputs.changes == \'true\'',
+          run: 'git push origin --delete update-upstream-sources || true',
         },
         {
           name: 'Create Pull Request',
