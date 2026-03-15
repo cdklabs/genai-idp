@@ -13,7 +13,7 @@ from pathlib import Path
 def run_command(cmd, cwd=None):
     """Run shell command and return result."""
     try:
-        result = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)
+        result = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True) # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true - command is hardcoded constant from config file, no user input possible
         if result.returncode != 0:
             print(f"Error running command: {cmd}")
             print(f"Error: {result.stderr}")

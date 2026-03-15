@@ -9,6 +9,7 @@ from .search import SearchTool
 from .batch_run import BatchRunTool
 from .batch_reprocess import BatchReprocessTool
 from .batch_status import BatchStatusTool
+from .batch_results import GetResultsTool
 
 # Tool registry
 TOOLS: Dict[str, Type[IDPTool]] = {
@@ -16,6 +17,7 @@ TOOLS: Dict[str, Type[IDPTool]] = {
     "process": BatchRunTool,
     "reprocess": BatchReprocessTool,
     "status": BatchStatusTool,
+    "get_results": GetResultsTool,
 }
 
 

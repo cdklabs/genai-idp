@@ -78,6 +78,68 @@ class BatchProcessor:
 
     def process_batch(
         self,
+        manifest_path: Optional[str] = None,
+        directory: Optional[str] = None,
+        s3_uri: Optional[str] = None,
+        file_pattern: str = "*.pdf",
+        recursive: bool = True,
+        output_prefix: str = "cli-batch",
+        batch_id: Optional[str] = None,
+        number_of_files: Optional[int] = None,
+        config_version: Optional[str] = None,
+        config_path: Optional[str] = None,
+        batch_prefix: Optional[str] = None,
+    ) -> Dict:
+        """
+        Universal entry point for batch processing - routes to appropriate method
+
+        Args:
+            manifest_path: Path to manifest file (CSV or JSON)
+            directory: Local directory containing documents
+            s3_uri: S3 URI to process
+            file_pattern: Pattern for directory/S3 scanning (default: *.pdf)
+            recursive: Include subdirectories (default: True)
+            output_prefix: Prefix for output organization
+            batch_id: Optional custom batch ID (auto-generated if not provided)
+            number_of_files: Limit number of files to process
+            config_version: Configuration version to use
+            config_path: Optional path to configuration YAML file
+            batch_prefix: Alias for output_prefix (for CLI compatibility)
+
+        Returns:
+            Dictionary with batch processing results
+        """
+        # Use batch_prefix if provided (CLI compatibility)
+        if batch_prefix is not None:
+            output_prefix = batch_prefix
+
+        # Store config_path for later use
+        if config_path is not None:
+            self.config_path = config_path
+
+        if manifest_path:
+            return self._process_from_manifest(
+                manifest_path, output_prefix, batch_id, number_of_files, config_version
+            )
+        elif directory:
+            return self.process_batch_from_directory(
+                directory,
+                file_pattern,
+                recursive,
+                output_prefix,
+                batch_id,
+                number_of_files,
+                config_version,
+            )
+        elif s3_uri:
+            return self.process_batch_from_s3_uri(
+                s3_uri, file_pattern, recursive, output_prefix, batch_id
+            )
+        else:
+            raise ValueError("Must specify one of: manifest_path, directory, or s3_uri")
+
+    def _process_from_manifest(
+        self,
         manifest_path: str,
         output_prefix: str = "cli-batch",
         batch_id: Optional[str] = None,
@@ -91,6 +153,8 @@ class BatchProcessor:
             manifest_path: Path to manifest file (CSV or JSON)
             output_prefix: Prefix for output organization
             batch_id: Optional custom batch ID (auto-generated if not provided)
+            number_of_files: Limit number of files to process
+            config_version: Configuration version to use
 
         Returns:
             Dictionary with batch processing results

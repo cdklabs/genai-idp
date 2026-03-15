@@ -52,15 +52,17 @@ const SignOutModal = ({ visible, setVisible }: SignOutModalProps): React.JSX.Ele
 
 const GenAIIDPTopNavigation = (): React.JSX.Element => {
   const { user } = useAppContext();
-  const { isAdmin, isReviewer, loading: roleLoading } = useUserRole();
-  const userId = ((user as Record<string, unknown>)?.username as string) || 'user';
+  const { isAdmin, isAuthor, isReviewer, isViewer, loading: roleLoading } = useUserRole();
+  const userId = user?.username || 'user';
   const [isSignOutModalVisible, setIsSignOutModalVisiblesetVisible] = useState(false);
 
   // Determine role display
   const getRoleDisplay = (): string => {
     if (roleLoading) return '';
     if (isAdmin) return 'Admin';
+    if (isAuthor) return 'Author';
     if (isReviewer) return 'Reviewer';
+    if (isViewer) return 'Viewer';
     return '';
   };
 
@@ -81,7 +83,7 @@ const GenAIIDPTopNavigation = (): React.JSX.Element => {
                 description: roleDisplay ? (
                   <SpaceBetween direction="horizontal" size="xs">
                     <span>{userId}</span>
-                    <Badge color={isAdmin ? 'blue' : 'grey'}>{roleDisplay}</Badge>
+                    <Badge color={isAdmin ? 'blue' : isAuthor ? 'green' : 'grey'}>{roleDisplay}</Badge>
                   </SpaceBetween>
                 ) : (
                   userId

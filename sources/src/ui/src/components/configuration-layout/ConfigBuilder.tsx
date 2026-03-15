@@ -415,7 +415,7 @@ interface ConfigBuilderProps {
   mergedConfig?: Record<string, unknown> | null;
   isCustomized?: ((key: string) => boolean) | null;
   onResetToDefault?: ((key: string) => void) | null;
-  onChange: (values: Record<string, unknown>) => void;
+  onChange?: (values: Record<string, unknown>) => void;
   extractionSchema?: Record<string, unknown> | unknown[] | null;
   currentVersionName?: string | null;
   onSchemaChange?: ((schema: unknown, isDirty: boolean) => void) | null;
@@ -609,7 +609,7 @@ const ConfigBuilder = ({
       // Only delete the property if it exists
       if (current && typeof current === 'object' && lastSegment in current) {
         delete current[lastSegment];
-        onChange(newValues);
+        onChange?.(newValues);
       }
       return;
     }
@@ -637,7 +637,7 @@ const ConfigBuilder = ({
 
       const [lastSegment] = segments.slice(-1);
       current[lastSegment] = value; // Preserve the empty array
-      onChange(newValues);
+      onChange?.(newValues);
       return;
     }
 
@@ -660,7 +660,7 @@ const ConfigBuilder = ({
 
     const [lastSegment] = segments.slice(-1);
     current[lastSegment] = value;
-    onChange(newValues);
+    onChange?.(newValues);
   };
 
   // Debug: Check if isCustomized function is properly passed
@@ -716,9 +716,16 @@ const ConfigBuilder = ({
           return null; // Hide field if we can't resolve the dependency
         }
       } else {
-        // Normal dependency resolution
+        // Normal dependency resolution: first try sibling (same parent), then fall back to top-level
         const parentPath = currentPath.substring(0, currentPath.lastIndexOf('.'));
-        dependencyPath = parentPath.length > 0 ? `${parentPath}.${dependencyField}` : dependencyField;
+        const siblingPath = parentPath.length > 0 ? `${parentPath}.${dependencyField}` : dependencyField;
+        // Check if the sibling path resolves to a value; if not, try top-level
+        if (getValueAtPath(formValues, siblingPath) !== undefined) {
+          dependencyPath = siblingPath;
+        } else {
+          // Fall back to top-level field (e.g., use_bda is at root, not inside assessment)
+          dependencyPath = dependencyField;
+        }
       }
 
       // Get the current value of the dependency field
@@ -794,7 +801,7 @@ const ConfigBuilder = ({
     return renderInputField(key, property, value, currentPath);
   }
 
-  function renderObjectField(key: string, property: SchemaProperty, path: string): React.JSX.Element {
+  function renderObjectField(key: string, property: SchemaProperty, path: string): React.JSX.Element | null {
     if (!property.properties) {
       return null;
     }
@@ -824,13 +831,15 @@ const ConfigBuilder = ({
     // For top-level objects with sectionLabel, we shouldn't add a container here
     // as it's already being added in renderTopLevelProperty
     if (property.sectionLabel && isTopLevel) {
-      return (
-        <SpaceBetween size="s">
-          {getSortedObjectProperties(property.properties).map(({ propKey, propSchema }) => {
-            return <ExtBox key={propKey}>{renderField(propKey, propSchema, fullPath)}</ExtBox>;
-          })}
-        </SpaceBetween>
-      );
+      // Pre-render fields and filter out nulls to avoid empty Box wrappers causing whitespace
+      const renderedFields = getSortedObjectProperties(property.properties)
+        .map(({ propKey, propSchema }) => {
+          const rendered = renderField(propKey, propSchema, fullPath);
+          return rendered ? <ExtBox key={propKey}>{rendered}</ExtBox> : null;
+        })
+        .filter(Boolean);
+
+      return <SpaceBetween size="s">{renderedFields}</SpaceBetween>;
     }
 
     // For nested objects with sectionLabel, use the same styling as list headers
@@ -1113,8 +1122,8 @@ const ConfigBuilder = ({
                         };
 
                         // Separate regular fields from special fields (lists, objects with dependencies)
-                        const regularProps = [];
-                        const specialProps = []; // For lists, objects with dependsOn, or objects with sectionLabel
+                        const regularProps: { propKey: string; propSchema: SchemaProperty }[] = [];
+                        const specialProps: { propKey: string; propSchema: SchemaProperty }[] = []; // For lists, objects with dependsOn, or objects with sectionLabel
 
                         // Identify and separate the fields, filtering out hidden ones
                         propEntries.forEach(({ propKey, prop: propSchema }: { propKey: string; prop: SchemaProperty }) => {
@@ -1144,9 +1153,16 @@ const ConfigBuilder = ({
                         const distributeFieldsToColumns = (
                           fields: { propKey: string; propSchema: SchemaProperty }[],
                           numColumns: number,
-                        ) => {
+                        ): {
+                          columns: { propKey: string; propSchema: SchemaProperty }[][];
+                          descriptionField: { propKey: string; propSchema: SchemaProperty } | undefined;
+                          actualColumnCount: number;
+                        } => {
                           // Create columns array
-                          const columns = Array.from({ length: numColumns }, () => []);
+                          const columns: { propKey: string; propSchema: SchemaProperty }[][] = Array.from(
+                            { length: numColumns },
+                            (): { propKey: string; propSchema: SchemaProperty }[] => [],
+                          );
 
                           // Special handling for description field - it should span full width if it exists
                           const descriptionField = fields.find(({ propKey }) => propKey === 'description');
@@ -1333,7 +1349,11 @@ const ConfigBuilder = ({
                 setShowNameAsDropdown(hasEnumForName);
 
                 // If it's a dropdown with enum values, set the default value to the first option
-                if (hasEnumForName && propertyDefinition.items.properties.name.enum.length > 0) {
+                if (
+                  hasEnumForName &&
+                  propertyDefinition?.items?.properties?.name?.enum &&
+                  propertyDefinition.items.properties.name.enum.length > 0
+                ) {
                   setNewItemName(propertyDefinition.items.properties.name.enum[0]);
                 }
               }}
@@ -1373,7 +1393,7 @@ const ConfigBuilder = ({
     // If this is an object type, it should be rendered as an object field, not an input field
     if (property.type === 'object') {
       console.log(`Redirecting object type ${key} to renderObjectField`); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
-      return renderObjectField(key, property, path.substring(0, path.lastIndexOf('.')) || '');
+      return renderObjectField(key, property, path.substring(0, path.lastIndexOf('.')) || '') ?? <></>;
     }
 
     let input;
@@ -1576,6 +1596,25 @@ const ConfigBuilder = ({
       property,
     );
 
+    // Check top-level dependsOn before rendering (hides entire sections when dependency not met)
+    if (property.dependsOn) {
+      const depField = property.dependsOn.field;
+      const depValues = Array.isArray(property.dependsOn.values) ? property.dependsOn.values : [property.dependsOn.value];
+      const currentValue = getValueAtPath(formValues, depField);
+      // Handle boolean comparison: normalize string "true"/"false" to actual booleans
+      let normalizedValue = currentValue;
+      if (typeof currentValue === 'string' && (currentValue === 'true' || currentValue === 'false')) {
+        normalizedValue = currentValue === 'true';
+      }
+      const normalizedDepValues = depValues.map((v) => {
+        if (typeof v === 'string' && (v === 'true' || v === 'false')) return v === 'true';
+        return v;
+      });
+      if (!normalizedDepValues.includes(normalizedValue)) {
+        return null;
+      }
+    }
+
     // If property should have a section container, wrap it
     if (shouldUseContainer(key, property)) {
       const sectionTitle = property.sectionLabel as string;
@@ -1620,7 +1659,7 @@ const ConfigBuilder = ({
                       value={versionDescription}
                       onChange={({ detail }) => onDescriptionChange?.(detail.value)}
                       placeholder="Enter a description for this configuration version..."
-                      invalid={versionDescription && versionDescription.length > 200}
+                      invalid={!!versionDescription && versionDescription.length > 200}
                     />
                   </FormField>
 
@@ -1697,7 +1736,7 @@ const ConfigBuilder = ({
                   label: newItemName || '',
                 }}
                 onChange={({ detail }) => {
-                  setNewItemName(detail.selectedOption.value);
+                  setNewItemName(detail.selectedOption.value ?? '');
                   setNameError('');
                 }}
                 options={

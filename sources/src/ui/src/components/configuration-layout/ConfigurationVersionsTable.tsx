@@ -24,6 +24,7 @@ interface ConfigurationVersionsTableProps {
   onActivateVersion?: (versionName: string) => void;
   onDeleteVersions?: (versionNames: string[]) => void;
   onImportAsNewVersion?: () => void;
+  isAdmin?: boolean;
 }
 
 const ConfigurationVersionsTable = ({
@@ -37,6 +38,7 @@ const ConfigurationVersionsTable = ({
   onActivateVersion,
   onDeleteVersions,
   onImportAsNewVersion,
+  isAdmin = false,
 }: ConfigurationVersionsTableProps): React.JSX.Element => {
   // Log the versions data to console for debugging
   console.log('ConfigurationVersionsTable - versions data:', versions);
@@ -70,7 +72,7 @@ const ConfigurationVersionsTable = ({
           title="Select/Deselect All"
         />
       ),
-      cell: (item) => (
+      cell: (item: ConfigVersion) => (
         <input
           type="checkbox"
           checked={selectedVersionsForCompare.includes(item.versionName)}
@@ -82,7 +84,7 @@ const ConfigurationVersionsTable = ({
     {
       id: 'versionName',
       header: 'Version Name',
-      cell: (item) => (
+      cell: (item: ConfigVersion) => (
         <Box
           fontWeight={item.versionName === currentlyOpenVersion ? 'bold' : 'normal'}
           color={item.isActive ? 'text-status-success' : item.versionName === currentlyOpenVersion ? 'text-status-info' : 'inherit'}
@@ -105,20 +107,20 @@ const ConfigurationVersionsTable = ({
     {
       id: 'description',
       header: 'Description',
-      cell: (item) => item.description || '-',
+      cell: (item: ConfigVersion) => item.description || '-',
       width: '25%',
     },
     {
       id: 'createdAt',
       header: 'Created',
-      cell: (item) => (item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'),
+      cell: (item: ConfigVersion) => (item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'),
       sortingField: 'createdAt',
       width: '25%',
     },
     {
       id: 'updatedAt',
       header: 'Updated',
-      cell: (item) => (item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-'),
+      cell: (item: ConfigVersion) => (item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-'),
       sortingField: 'updatedAt',
       width: '25%',
     },
@@ -128,7 +130,7 @@ const ConfigurationVersionsTable = ({
     pagination: { pageSize: 5 },
     sorting: {
       defaultState: {
-        sortingColumn: columnDefinitions.find((col) => col.header === 'Updated'),
+        sortingColumn: columnDefinitions.find((col) => col.header === 'Updated')!,
         isDescending: true,
       },
     },
@@ -197,9 +199,11 @@ const ConfigurationVersionsTable = ({
               >
                 Activate
               </Button>
-              <Button variant="normal" onClick={() => onImportAsNewVersion?.()} iconName="upload">
-                Import
-              </Button>
+              {isAdmin && (
+                <Button variant="normal" onClick={() => onImportAsNewVersion?.()} iconName="upload">
+                  Import
+                </Button>
+              )}
               <Button
                 variant="primary"
                 onClick={() => {

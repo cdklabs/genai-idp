@@ -85,6 +85,32 @@ class BatchStatusTool(IDPTool):
 
             return response
 
+        except ValueError as e:
+            # Handle NOT_FOUND validation error
+            if "NOT_FOUND" in str(e):
+                logger.info(f"Batch {batch_id} not yet tracked in system")
+                return {
+                    "success": True,
+                    "batch_id": batch_id,
+                    "status": {
+                        "total": 0,
+                        "completed": 0,
+                        "in_progress": 0,
+                        "failed": 0,
+                        "queued": 0
+                    },
+                    "progress": {
+                        "percentage": 0
+                    },
+                    "all_complete": False,
+                    "message": "Batch not yet tracked in system"
+                }
+            logger.error(f"Batch status failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "batch_id": batch_id
+            }
         except Exception as e:
             logger.error(f"Batch status failed: {e}", exc_info=True)
             return {
