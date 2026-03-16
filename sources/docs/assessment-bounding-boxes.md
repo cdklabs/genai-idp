@@ -1,3 +1,7 @@
+---
+title: "Bounding Box Integration in Assessment Service"
+---
+
 # Bounding Box Integration in Assessment Service
 
 This document describes the bounding box functionality integrated into the IDP Assessment Service, enabling spatial localization of extracted data fields within document images.

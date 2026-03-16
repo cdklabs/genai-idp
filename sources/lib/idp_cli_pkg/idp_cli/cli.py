@@ -133,6 +133,73 @@ def _build_from_local_code(from_code_dir: str, region: str, stack_name: str) -> 
     return template_path, None
 
 
+def _display_deployment_failure(deployer, stack_name: str, result: dict):
+    """
+    Display detailed failure analysis when a deployment fails.
+
+    Recursively collects failure events from main and nested stacks
+    to identify and display root causes.
+
+    Args:
+        deployer: StackDeployer instance
+        stack_name: Stack name
+        result: Deployment result dictionary
+    """
+    console.print(f"\n[red]✗ Stack {result['operation']} failed![/red]")
+    console.print(f"Status: {result.get('status')}")
+    console.print()
+
+    # Get detailed failure analysis
+    try:
+        analysis = deployer.get_deployment_failure_analysis(stack_name)
+        root_causes = analysis.get("root_causes", [])
+        all_failures = analysis.get("all_failures", [])
+
+        if root_causes:
+            console.print("[bold red]Root Cause Analysis:[/bold red]")
+            console.print("━" * 70)
+            for i, rc in enumerate(root_causes, 1):
+                stack_path = rc.get("stack_path", "")
+                resource = rc.get("resource", "Unknown")
+                resource_type = rc.get("resource_type", "")
+                reason = rc.get("reason", "Unknown")
+
+                # Build the location string
+                if stack_path:
+                    location = f"{stack_path} → {resource}"
+                else:
+                    location = resource
+
+                # Add resource type if available
+                type_hint = f" ({resource_type})" if resource_type else ""
+
+                console.print(f"  [red]✗[/red] {location}{type_hint}")
+                console.print(f"    [yellow]{reason}[/yellow]")
+                if i < len(root_causes):
+                    console.print()
+
+            console.print("━" * 70)
+
+            # Show count of cascade/other failures for context
+            cascade_count = sum(1 for f in all_failures if f.get("is_cascade"))
+            if cascade_count > 0:
+                console.print(
+                    f"[dim]  ({cascade_count} additional resource(s) cancelled due to the above failure(s))[/dim]"
+                )
+
+            console.print()
+        else:
+            # No root causes found - fall back to simple error
+            console.print(f"Error: {result.get('error', 'Unknown')}")
+            console.print()
+
+    except Exception as e:
+        # If analysis fails, fall back to simple error message
+        logger.debug(f"Failure analysis error: {e}")
+        console.print(f"Error: {result.get('error', 'Unknown')}")
+        console.print()
+
+
 # Region-specific template URLs
 TEMPLATE_URLS = {
     "us-west-2": "https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main.yaml",
@@ -142,7 +209,7 @@ TEMPLATE_URLS = {
 
 
 @click.group()
-@click.version_option(version="0.4.16")
+@click.version_option(version="0.5.2")
 def cli():
     """
     IDP CLI - Batch document processing for IDP Accelerator
@@ -152,17 +219,18 @@ def cli():
     - Batch document upload and processing
     - Progress monitoring with live updates
     - Status checking and reporting
+
+    Global Options:
+      --profile PROFILE    AWS profile name to use for credentials.
+                          Can be placed anywhere in the command.
+                          Example: idp-cli --profile my-profile run-inference ...
+                          Example: idp-cli run-inference --profile my-profile ...
     """
     pass
 
 
 @cli.command()
 @click.option("--stack-name", required=True, help="CloudFormation stack name")
-@click.option(
-    "--pattern",
-    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
-    help="IDP pattern to deploy (required for new stacks)",
-)
 @click.option(
     "--admin-email", help="Admin user email address (required for new stacks)"
 )
@@ -193,7 +261,6 @@ def cli():
     type=click.Choice(["true", "false"]),
     help="Enable Human-in-the-Loop (default: false)",
 )
-@click.option("--pattern-config", help="Pattern configuration preset")
 @click.option(
     "--custom-config",
     help="Path to local config file or S3 URI (e.g., ./config.yaml or s3://bucket/config.yaml)",
@@ -207,14 +274,12 @@ def cli():
 @click.option("--role-arn", help="CloudFormation service role ARN")
 def deploy(
     stack_name: str,
-    pattern: str,
     admin_email: str,
     from_code: Optional[str],
     template_url: str,
     max_concurrent: int,
     log_level: str,
     enable_hitl: str,
-    pattern_config: Optional[str],
     custom_config: Optional[str],
     parameters: Optional[str],
     wait: bool,
@@ -225,16 +290,16 @@ def deploy(
     """
     Deploy or update IDP stack from command line
     
-    For new stacks, --pattern and --admin-email are required.
+    For new stacks, --admin-email is required.
     For existing stacks, only specify parameters you want to update.
     
     Examples:
     
-      # Create new stack with Pattern 2
-      idp-cli deploy --stack-name my-idp --pattern pattern-2 --admin-email user@example.com
+      # Create new stack
+      idp-cli deploy --stack-name my-idp --admin-email user@example.com
       
-      # Deploy from local code (NEW!)
-      idp-cli deploy --stack-name my-idp --from-code . --pattern pattern-2 --admin-email user@example.com --wait
+      # Deploy from local code
+      idp-cli deploy --stack-name my-idp --from-code . --admin-email user@example.com --wait
       
       # Update existing stack with local config file
       idp-cli deploy --stack-name my-idp --custom-config ./my-config.yaml
@@ -246,7 +311,7 @@ def deploy(
       idp-cli deploy --stack-name my-idp --max-concurrent 200 --wait
       
       # Create with additional parameters
-      idp-cli deploy --stack-name my-idp --pattern pattern-2 \\
+      idp-cli deploy --stack-name my-idp \\
           --admin-email user@example.com \\
           --parameters "DataRetentionInDays=90,ErrorThreshold=5"
     """
@@ -343,9 +408,7 @@ def deploy(
                 )
                 console.print()
             else:
-                console.print(f"\n[red]✗ Stack {result['operation']} failed![/red]")
-                console.print(f"Status: {result.get('status')}")
-                console.print(f"Error: {result.get('error', 'Unknown')}")
+                _display_deployment_failure(deployer, stack_name, result)
                 sys.exit(1)
 
             return  # Exit after monitoring
@@ -358,21 +421,13 @@ def deploy(
             console.print(
                 f"[bold blue]Updating existing IDP stack: {stack_name}[/bold blue]"
             )
-            if pattern:
-                console.print(f"Pattern: {pattern}")
             if admin_email:
                 console.print(f"Admin Email: {admin_email}")
         else:
-            # New stack - require pattern and admin_email
+            # New stack - require admin_email
             console.print(
                 f"[bold blue]Creating new IDP stack: {stack_name}[/bold blue]"
             )
-
-            if not pattern:
-                console.print(
-                    "[red]✗ Error: --pattern is required when creating a new stack[/red]"
-                )
-                sys.exit(1)
 
             if not admin_email:
                 console.print(
@@ -380,7 +435,6 @@ def deploy(
                 )
                 sys.exit(1)
 
-            console.print(f"Pattern: {pattern}")
             console.print(f"Admin Email: {admin_email}")
 
         console.print()
@@ -396,12 +450,10 @@ def deploy(
         # Build parameters - only pass explicitly provided values
         # Convert Click defaults to None when not explicitly provided by user
         cfn_parameters = build_parameters(
-            pattern=pattern,
             admin_email=admin_email,
             max_concurrent=max_concurrent if max_concurrent != 100 else None,
             log_level=log_level if log_level != "INFO" else None,
             enable_hitl=enable_hitl if enable_hitl != "false" else None,
-            pattern_config=pattern_config,
             custom_config=custom_config,
             additional_params=additional_params,
             region=region,
@@ -485,9 +537,7 @@ def deploy(
                 )
                 console.print()
         else:
-            console.print(f"\n[red]✗ Stack {result['operation']} failed![/red]")
-            console.print(f"Status: {result.get('status')}")
-            console.print(f"Error: {result.get('error', 'Unknown')}")
+            _display_deployment_failure(deployer, stack_name, result)
             sys.exit(1)
 
     except FileNotFoundError as e:
@@ -1133,23 +1183,41 @@ def _process_impl(
             )
         else:
             # Handle manifest/directory/S3 processing
-            batch_result = processor.process_batch(
-                manifest_path=manifest,
-                directory=directory,
-                s3_uri=s3_uri,
-                batch_id=batch_id,
-                file_pattern=file_pattern,
-                recursive=recursive,
-                config_path=config,
-                batch_prefix=batch_prefix,
-                number_of_files=number_of_files,
-                config_version=config_version,
-            )
+            if manifest:
+                batch_result = processor.process_batch(
+                    manifest_path=manifest,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                    number_of_files=number_of_files,
+                    config_version=config_version,
+                )
+            elif directory:
+                batch_result = processor.process_batch_from_directory(
+                    dir_path=directory,
+                    file_pattern=file_pattern,
+                    recursive=recursive,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                    number_of_files=number_of_files,
+                    config_version=config_version,
+                )
+            elif s3_uri:
+                batch_result = processor.process_batch_from_s3_uri(
+                    s3_uri=s3_uri,
+                    file_pattern=file_pattern,
+                    recursive=recursive,
+                    output_prefix=batch_prefix,
+                    batch_id=batch_id,
+                )
+            else:
+                raise ValueError("No input source specified")
 
         # Show results
         console.print()
         console.print(f"[bold blue]Batch ID: {batch_result['batch_id']}[/bold blue]")
-        console.print(f"Documents queued: {batch_result['documents_queued']}")
+        console.print(
+            f"Documents queued: {batch_result.get('queued', batch_result.get('documents_queued', 0))}"
+        )
 
         if batch_result.get("uploaded", 0) > 0:
             console.print(f"Files uploaded: {batch_result['uploaded']}")
@@ -1161,7 +1229,10 @@ def _process_impl(
         console.print()
 
         # Monitor if requested
-        if monitor and batch_result["documents_queued"] > 0:
+        if (
+            monitor
+            and batch_result.get("queued", batch_result.get("documents_queued", 0)) > 0
+        ):
             _monitor_progress(
                 stack_name=stack_name,
                 batch_id=batch_result["batch_id"],
@@ -1677,8 +1748,12 @@ def _rerun_inference_impl(
 
 @cli.command()
 @click.option("--stack-name", required=True, help="CloudFormation stack name")
-@click.option("--batch-id", help="Batch identifier")
+@click.option("--batch-id", help="Batch identifier or PK substring to search for")
 @click.option("--document-id", help="Single document ID (alternative to --batch-id)")
+@click.option(
+    "--object-status",
+    help="Filter by object status (e.g., COMPLETED, FAILED, QUEUED, RUNNING)",
+)
 @click.option("--wait", is_flag=True, help="Wait for all documents to complete")
 @click.option(
     "--refresh-interval",
@@ -1693,38 +1768,74 @@ def _rerun_inference_impl(
     default="table",
     help="Output format: table (default) or json",
 )
+@click.option(
+    "--show-details",
+    is_flag=True,
+    help="Show detailed information about matching documents",
+)
+@click.option(
+    "--get-time",
+    is_flag=True,
+    help="Calculate and display timing statistics (processing time, queue time, etc.)",
+)
+@click.option(
+    "--include-metering",
+    is_flag=True,
+    help="Include Lambda metering statistics (GB-seconds by stage) when using --get-time",
+)
 @click.option("--region", help="AWS region (optional)")
 def status(
     stack_name: str,
     batch_id: Optional[str],
     document_id: Optional[str],
+    object_status: Optional[str],
     wait: bool,
     refresh_interval: int,
     output_format: str,
+    show_details: bool,
+    get_time: bool,
+    include_metering: bool,
     region: Optional[str],
 ):
     """
-    Check status of a batch or single document
+    Check status of documents by batch ID, document ID, or search criteria
 
     Specify ONE of:
-      --batch-id: Check status of all documents in a batch
+      --batch-id: Search for documents with PK containing this substring
       --document-id: Check status of a single document
+
+    Optional filters and display options:
+      --object-status: Filter by status (COMPLETED, FAILED, QUEUED, RUNNING)
+      --show-details: Show detailed document information
+      --get-time: Calculate timing statistics
+      --include-metering: Include Lambda metering data (requires --get-time)
 
     Examples:
 
-      # Check batch status
+      # Search for all documents in a batch (PK substring search)
       idp-cli status --stack-name my-stack --batch-id cli-batch-20250110-153045-abc12345
+
+      # Search for completed documents in a batch
+      idp-cli status --stack-name my-stack --batch-id batch-123 --object-status COMPLETED
+
+      # Search with timing statistics
+      idp-cli status --stack-name my-stack --batch-id batch-123 --object-status COMPLETED --get-time
+
+      # Search with timing and Lambda metering
+      idp-cli status --stack-name my-stack --batch-id test --object-status COMPLETED --get-time --include-metering
 
       # Check single document status
       idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf
 
-      # Monitor single document until completion
-      idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf --wait
+      # Monitor documents until completion
+      idp-cli status --stack-name my-stack --batch-id batch-123 --wait
 
       # Get JSON output for scripting
-      idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf --format json
+      idp-cli status --stack-name my-stack --batch-id batch-123 --format json
     """
     try:
+        from .search_tracking_table import TrackingTableSearcher
+
         # Validate mutually exclusive options
         if not batch_id and not document_id:
             console.print(
@@ -1743,17 +1854,105 @@ def status(
 
         # Get document IDs to monitor
         if batch_id:
-            # Get batch info
-            batch_info = processor.get_batch_info(batch_id)
-            if not batch_info:
-                console.print(f"[red]✗ Batch not found: {batch_id}[/red]")
+            # Use TrackingTableSearcher for PK substring search
+            searcher = TrackingTableSearcher(stack_name=stack_name, region=region)
+
+            # Default to searching all statuses if not specified
+            if object_status:
+                # Search with specific status filter
+                search_results = searcher.search_by_pk_and_status(
+                    pk=batch_id, object_status=object_status
+                )
+            else:
+                # Search across all statuses by doing multiple searches
+                # This ensures we get all documents matching the PK substring
+                all_statuses = [
+                    "COMPLETED",
+                    "FAILED",
+                    "QUEUED",
+                    "RUNNING",
+                    "PROCESSING",
+                ]
+                all_items = []
+
+                console.print(
+                    f"[yellow]Searching for documents with PK containing '{batch_id}'...[/yellow]"
+                )
+
+                for status in all_statuses:
+                    results = searcher.search_by_pk_and_status(
+                        pk=batch_id, object_status=status
+                    )
+                    if results.get("success") and results.get("items"):
+                        all_items.extend(results["items"])
+
+                search_results = {
+                    "success": True,
+                    "count": len(all_items),
+                    "items": all_items,
+                    "pk": batch_id,
+                    "object_status": "ALL",
+                }
+
+                console.print(
+                    f"[green]✓ Found {len(all_items)} matching documents[/green]"
+                )
+
+            if not search_results.get("success"):
+                console.print(
+                    f"[red]✗ Search failed: {search_results.get('error')}[/red]"
+                )
                 sys.exit(1)
-            document_ids = batch_info["document_ids"]
+
+            if search_results.get("count", 0) == 0:
+                msg = f"No documents found matching batch-id '{batch_id}'"
+                if object_status:
+                    msg += f" with status '{object_status}'"
+                console.print(f"[yellow]{msg}[/yellow]")
+                sys.exit(1)
+
+            # Extract document IDs from search results
+            document_ids = []
+            for item in search_results.get("items", []):
+                # Extract ObjectKey from DynamoDB format
+                object_key = item.get("ObjectKey", {}).get("S")
+                if object_key:
+                    document_ids.append(object_key)
+
             identifier = batch_id
+
+            # Display search results summary if not waiting
+            if not wait and not get_time:
+                console.print()
+                console.print(f"[bold blue]Search Results for: {batch_id}[/bold blue]")
+                if object_status:
+                    console.print(f"[dim]Status filter: {object_status}[/dim]")
+                console.print(f"[dim]Documents found: {len(document_ids)}[/dim]")
+                console.print()
+
+                # Show details if requested
+                if show_details:
+                    searcher.display_results(search_results, show_details=True)
+                    console.print()
+
         else:
             # Single document
             document_ids = [document_id]
             identifier = document_id
+
+        # Handle timing statistics display (only for batch-id searches)
+        if get_time and batch_id:
+            console.print()
+            timing_stats = searcher.calculate_timing_statistics(
+                search_results, include_metering=include_metering
+            )
+            searcher.display_timing_statistics(timing_stats)
+
+            # If not waiting, we're done
+            if not wait:
+                sys.exit(0)
+
+            console.print()
 
         if wait:
             # JSON format not compatible with live monitoring
@@ -2881,6 +3080,10 @@ def stop_workflows(
     default="load-test",
     help="Destination prefix in input bucket (default: load-test)",
 )
+@click.option(
+    "--config-version",
+    help="Configuration version to use for processing (default: active version)",
+)
 @click.option("--region", help="AWS region (optional)")
 def load_test(
     stack_name: str,
@@ -2889,6 +3092,7 @@ def load_test(
     duration: int,
     schedule: Optional[str],
     dest_prefix: str,
+    config_version: Optional[str],
     region: Optional[str],
 ):
     """
@@ -2911,6 +3115,9 @@ def load_test(
       # Use S3 source file
       idp-cli load-test --stack-name my-stack --source-file s3://my-bucket/test.pdf --rate 500
 
+      # Load test with a specific config version
+      idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 100 --config-version v2
+
     Schedule file format (CSV):
       minute,count
       1,100
@@ -2928,6 +3135,7 @@ def load_test(
                 source_file=source_file,
                 schedule_file=schedule,
                 dest_prefix=dest_prefix,
+                config_version=config_version,
             )
         else:
             # Run constant rate load test
@@ -2936,6 +3144,7 @@ def load_test(
                 rate=rate,
                 duration=duration,
                 dest_prefix=dest_prefix,
+                config_version=config_version,
             )
 
         if not result["success"]:
@@ -3123,12 +3332,6 @@ def remove_residual_resources_from_deleted_stacks(
     help="Feature set: 'min' (classification, extraction, classes), 'core' (adds ocr, assessment), 'all', or comma-separated list of sections",
 )
 @click.option(
-    "--pattern",
-    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
-    default="pattern-2",
-    help="Pattern to use for defaults (default: pattern-2)",
-)
-@click.option(
     "--output",
     "-o",
     type=click.Path(),
@@ -3146,7 +3349,6 @@ def remove_residual_resources_from_deleted_stacks(
 )
 def config_create(
     features: str,
-    pattern: str,
     output: Optional[str],
     include_prompts: bool,
     no_comments: bool,
@@ -3170,9 +3372,6 @@ def config_create(
       # Generate minimal config to stdout
       idp-cli config-create
 
-      # Generate minimal config for Pattern-1 (BDA)
-      idp-cli config-create --pattern pattern-1 --output config.yaml
-
       # Generate full config with all sections
       idp-cli config-create --features all --output full-config.yaml
 
@@ -3194,7 +3393,7 @@ def config_create(
         # Generate template
         yaml_content = generate_config_template(
             features=feature_list,
-            pattern=pattern,
+            pattern="pattern-2",
             include_prompts=include_prompts,
             include_comments=not no_comments,
         )
@@ -3240,12 +3439,6 @@ def config_create(
     help="Path to configuration file to validate",
 )
 @click.option(
-    "--pattern",
-    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
-    default="pattern-2",
-    help="Pattern to validate against (default: pattern-2)",
-)
-@click.option(
     "--show-merged",
     is_flag=True,
     help="Show the full merged configuration",
@@ -3257,7 +3450,6 @@ def config_create(
 )
 def config_validate(
     config_file: str,
-    pattern: str,
     show_merged: bool,
     strict: bool,
 ):
@@ -3275,9 +3467,6 @@ def config_validate(
       # Validate a config file
       idp-cli config-validate --config-file ./my-config.yaml
 
-      # Validate against Pattern-1 defaults
-      idp-cli config-validate --config-file ./config.yaml --pattern pattern-1
-
       # Show the full merged config
       idp-cli config-validate --config-file ./config.yaml --show-merged
 
@@ -3290,7 +3479,6 @@ def config_validate(
 
         # Load the user's config
         console.print(f"[bold blue]Validating: {config_file}[/bold blue]")
-        console.print(f"Pattern: {pattern}")
         console.print()
 
         try:
@@ -3334,7 +3522,7 @@ def config_validate(
             sys.exit(1)
 
         # Validate config
-        result = validate_config(user_config, pattern=pattern)
+        result = validate_config(user_config, pattern="pattern-2")
 
         if result["valid"]:
             console.print("[green]✓ Config merges with system defaults[/green]")
@@ -3407,11 +3595,6 @@ def config_validate(
     help="Validate config before uploading (default: validate)",
 )
 @click.option(
-    "--pattern",
-    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
-    help="Pattern for validation (auto-detected if not specified)",
-)
-@click.option(
     "--config-version",
     required=True,
     help="Configuration version to update (e.g., v1, v2). If version doesn't exist, it will be created.",
@@ -3425,7 +3608,6 @@ def config_upload(
     stack_name: str,
     config_file: str,
     validate: bool,
-    pattern: Optional[str],
     config_version: Optional[str],
     version_description: Optional[str],
     region: Optional[str],
@@ -3453,9 +3635,6 @@ def config_upload(
 
       # Skip validation (use with caution)
       idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-validate
-
-      # Explicit pattern for validation
-      idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --pattern pattern-2
     """
     try:
         import json
@@ -3500,8 +3679,6 @@ def config_upload(
                         detected_pattern = "pattern-1"
                     elif "Pattern2" in logical_id:
                         detected_pattern = "pattern-2"
-                    elif "Pattern3" in logical_id:
-                        detected_pattern = "pattern-3"
 
             if not config_table:
                 console.print("[red]✗ ConfigurationTable not found in stack[/red]")
@@ -3513,17 +3690,15 @@ def config_upload(
             console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
             sys.exit(1)
 
-        # Auto-detect pattern if not specified
-        if not pattern:
-            pattern = detected_pattern or "pattern-2"
-            console.print(f"[dim]Using pattern: {pattern}[/dim]")
+        # Auto-detect pattern for validation
+        validation_pattern = detected_pattern or "pattern-2"
 
         # Validate if requested
         if validate:
             try:
                 from idp_common.config.merge_utils import validate_config
 
-                result = validate_config(user_config, pattern=pattern)
+                result = validate_config(user_config, pattern=validation_pattern)
 
                 if result["valid"]:
                     console.print("[green]✓ Config validation passed[/green]")
@@ -3552,6 +3727,8 @@ def config_upload(
 
             # Set env var for ConfigurationManager to find the table
             os.environ["CONFIGURATION_TABLE_NAME"] = config_table
+            if region:
+                os.environ["AWS_DEFAULT_REGION"] = region
 
             manager = ConfigurationManager()
 
@@ -3597,8 +3774,18 @@ def config_upload(
             if success:
                 console.print("[green]✓ Configuration uploaded successfully[/green]")
                 console.print()
-                console.print("[bold]Configuration is now active![/bold]")
-                console.print("New documents will use this configuration immediately.")
+                if config_version:
+                    console.print(
+                        f"[bold]Configuration version '{config_version}' uploaded![/bold]"
+                    )
+                    console.print(
+                        "Use --config-version parameter to process documents with this version."
+                    )
+                else:
+                    console.print("[bold]Configuration is now active![/bold]")
+                    console.print(
+                        "New documents will use this configuration immediately."
+                    )
             else:
                 console.print("[red]✗ Failed to upload configuration[/red]")
                 sys.exit(1)
@@ -3635,11 +3822,6 @@ def config_upload(
     help="Output format: 'full' (complete config) or 'minimal' (only differences from defaults)",
 )
 @click.option(
-    "--pattern",
-    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
-    help="Pattern for minimal diff (auto-detected if not specified)",
-)
-@click.option(
     "--config-version",
     help="Configuration version to download (e.g., v1, v2). If not specified, downloads active version.",
 )
@@ -3648,7 +3830,6 @@ def config_download(
     stack_name: str,
     output: Optional[str],
     output_format: str,
-    pattern: Optional[str],
     config_version: Optional[str],
     region: Optional[str],
 ):
@@ -3726,25 +3907,17 @@ def config_download(
                 load_system_defaults,
             )
 
-            # Auto-detect pattern if not specified
-            if not pattern:
-                # Try to detect from config or stack
-                classification_method = config_data.get("classification", {}).get(
-                    "classificationMethod", ""
-                )
-                if classification_method == "bda":
-                    pattern = "pattern-1"
-                elif classification_method == "udop":
-                    pattern = "pattern-3"
-                else:
-                    pattern = "pattern-2"
-                console.print(f"[dim]Auto-detected pattern: {pattern}[/dim]")
-
-            defaults = load_system_defaults(pattern)
-            config_data = get_diff_dict(defaults, config_data)
-            console.print(
-                f"[dim]Showing only differences from {pattern} defaults[/dim]"
+            # Auto-detect pattern from config
+            classification_method = config_data.get("classification", {}).get(
+                "classificationMethod", ""
             )
+            diff_pattern = (
+                "pattern-1" if classification_method == "bda" else "pattern-2"
+            )
+
+            defaults = load_system_defaults(diff_pattern)
+            config_data = get_diff_dict(defaults, config_data)
+            console.print("[dim]Showing only differences from defaults[/dim]")
 
         # Convert to YAML
         yaml_content = yaml.dump(
@@ -3790,6 +3963,9 @@ def config_activate(
     Sets the specified configuration version as the active version.
     All new document processing will use this configuration.
 
+    If the configuration has use_bda enabled, it will automatically sync
+    to BDA before activation (matching UI behavior).
+
     Examples:
       # Activate a specific version
       idp-cli config-activate --stack-name my-stack --config-version v2
@@ -3826,11 +4002,13 @@ def config_activate(
 
         console.print(f"[dim]Using table: {config_table}[/dim]")
 
-        # Activate the version
+        # Check version and sync to BDA if needed
         try:
+            from idp_common.bda.bda_blueprint_service import BdaBlueprintService
             from idp_common.config.configuration_manager import ConfigurationManager
 
             os.environ["CONFIGURATION_TABLE_NAME"] = config_table
+            os.environ["STACK_NAME"] = stack_name
             manager = ConfigurationManager()
 
             # Check if version exists
@@ -3845,6 +4023,79 @@ def config_activate(
                     f"Use 'idp-cli config-download --stack-name {stack_name}' to see available versions"
                 )
                 return
+
+            # Check if BDA sync is needed (matching UI behavior)
+            use_bda = (
+                existing_config.use_bda
+                if hasattr(existing_config, "use_bda")
+                else False
+            )
+            if use_bda:
+                console.print(
+                    "[yellow]Configuration has use_bda enabled, syncing to BDA...[/yellow]"
+                )
+
+                try:
+                    # Get or create BDA project
+                    bda_project_arn = manager.get_bda_project_arn(config_version)
+                    bda_service = BdaBlueprintService(
+                        dataAutomationProjectArn=bda_project_arn
+                    )
+
+                    if not bda_project_arn:
+                        console.print(
+                            "[dim]No BDA project linked, creating new project...[/dim]"
+                        )
+                        bda_project_arn = bda_service.get_or_create_project_for_version(
+                            config_version
+                        )
+                        console.print(
+                            f"[dim]Created BDA project: {bda_project_arn}[/dim]"
+                        )
+
+                    # Sync IDP to BDA (matching UI resolver logic)
+                    bda_service.dataAutomationProjectArn = bda_project_arn
+                    result = bda_service.create_blueprints_from_custom_configuration(
+                        sync_direction="idp_to_bda",
+                        version=config_version,
+                        sync_mode="replace",
+                    )
+
+                    # Process results
+                    sync_failed = []
+                    sync_succeeded = []
+                    if isinstance(result, list):
+                        for item in result:
+                            if item.get("status") == "success":
+                                sync_succeeded.append(item.get("class"))
+                            else:
+                                sync_failed.append(item.get("class", "Unknown"))
+
+                    if len(sync_succeeded) == 0 and len(sync_failed) > 0:
+                        console.print(
+                            f"[red]✗ BDA sync failed for all {len(sync_failed)} classes[/red]"
+                        )
+                        console.print("[red]Activation aborted[/red]")
+                        return
+                    elif len(sync_failed) > 0:
+                        console.print(
+                            f"[yellow]⚠ Partial sync: {len(sync_succeeded)} succeeded, {len(sync_failed)} failed[/yellow]"
+                        )
+                        manager.set_bda_project_arn(
+                            config_version, bda_project_arn, "partial"
+                        )
+                    else:
+                        console.print(
+                            f"[green]✓ Successfully synced {len(sync_succeeded)} classes to BDA[/green]"
+                        )
+                        manager.set_bda_project_arn(
+                            config_version, bda_project_arn, "synced"
+                        )
+
+                except Exception as e:
+                    console.print(f"[red]✗ Failed to sync to BDA: {e}[/red]")
+                    console.print("[red]Activation aborted[/red]")
+                    return
 
             # Activate the version
             manager.activate_version(config_version)
@@ -4067,8 +4318,273 @@ def config_delete(
         sys.exit(1)
 
 
+@cli.command(name="discover")
+@click.option(
+    "--stack-name",
+    help="CloudFormation stack name (optional — if omitted, runs in local mode without saving to config)",
+)
+@click.option(
+    "--document",
+    "-d",
+    required=True,
+    multiple=True,
+    type=click.Path(exists=True),
+    help="Path to document file(s). Specify multiple times for batch: -d doc1.pdf -d doc2.pdf",
+)
+@click.option(
+    "--ground-truth",
+    "-g",
+    multiple=True,
+    type=click.Path(exists=True),
+    help="Path to JSON ground truth file(s). Auto-matched to documents by filename stem",
+)
+@click.option(
+    "--config-version",
+    help="Configuration version to save the discovered schema to (default: active version)",
+)
+@click.option("--region", help="AWS region (optional)")
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Output path: file (single doc or JSON array for batch) or directory (one file per schema)",
+)
+def discover(
+    stack_name: str,
+    document: tuple,
+    ground_truth: tuple,
+    config_version: Optional[str],
+    region: Optional[str],
+    output: Optional[str],
+):
+    """
+    Discover document class schema from sample document(s)
+
+    Analyzes document(s) using Amazon Bedrock to automatically generate
+    JSON Schema definitions for document classes.
+
+    Ground truth files (-g) are auto-matched to documents (-d) by filename
+    stem: invoice.pdf matches invoice.json. Unmatched documents run without
+    ground truth.
+
+    For --output (-o) in batch mode: if path is a directory, writes one
+    JSON file per schema; if path is a file, writes all schemas as a
+    JSON array.
+
+    Examples:
+
+      # Single document
+      idp-cli discover -d ./invoice.pdf
+
+      # With ground truth (matched by filename stem)
+      idp-cli discover -d ./invoice.pdf -g ./invoice.json
+
+      # Output to file
+      idp-cli discover -d ./form.pdf -o ./form-schema.json
+
+      # Batch with auto-matched ground truth
+      idp-cli discover -d ./invoice.pdf -d ./w2.pdf -g ./invoice.json -g ./w2.json
+
+      # Batch with output directory
+      idp-cli discover -d ./invoice.pdf -d ./w2.pdf -o ./schemas/
+
+      # Batch with output file (JSON array)
+      idp-cli discover -d ./invoice.pdf -d ./w2.pdf -o ./all-schemas.json
+
+      # Stack mode (saves to config)
+      idp-cli discover --stack-name my-stack -d ./invoice.pdf --config-version v2
+    """
+    import json
+    from pathlib import Path
+
+    try:
+        from idp_sdk import IDPClient
+
+        client = IDPClient(stack_name=stack_name, region=region)
+
+        # Build ground truth map: filename stem → gt path
+        gt_map = {}
+        for gt_path in ground_truth:
+            stem = Path(gt_path).stem
+            gt_map[stem] = gt_path
+
+        # Match ground truth to documents by filename stem
+        doc_gt_pairs = []
+        for doc_path in document:
+            doc_stem = Path(doc_path).stem
+            matched_gt = gt_map.pop(doc_stem, None)
+            doc_gt_pairs.append((doc_path, matched_gt))
+
+        # Warn about unmatched ground truth files
+        for gt_stem, gt_path in gt_map.items():
+            console.print(
+                f"[yellow]⚠ Ground truth '{gt_path}' did not match any document (stem: {gt_stem})[/yellow]"
+            )
+
+        # Header
+        is_batch = len(document) > 1
+        if is_batch:
+            console.print("[bold blue]IDP Discovery (batch)[/bold blue]")
+        else:
+            console.print("[bold blue]IDP Discovery[/bold blue]")
+        if stack_name:
+            console.print(f"Stack: {stack_name}")
+        console.print(f"Documents: {len(document)}")
+        gt_matched = sum(1 for _, gt in doc_gt_pairs if gt)
+        if gt_matched:
+            console.print(f"Ground truth matched: {gt_matched}/{len(document)}")
+        if config_version:
+            console.print(f"Config Version: {config_version}")
+        console.print()
+
+        # Process documents
+        succeeded = 0
+        failed = 0
+        all_schemas = []
+
+        for i, (doc_path, matched_gt) in enumerate(doc_gt_pairs, 1):
+            if is_batch:
+                gt_info = (
+                    f" [dim](with GT: {Path(matched_gt).name})[/dim]"
+                    if matched_gt
+                    else ""
+                )
+                console.print(
+                    f"[bold cyan]Processing {i}/{len(document)}: {doc_path}{gt_info}[/bold cyan]"
+                )
+            else:
+                console.print(f"Document: {doc_path}")
+                if matched_gt:
+                    console.print(f"Ground Truth: {matched_gt}")
+                console.print()
+
+            with console.status("[cyan]Analyzing with Amazon Bedrock...[/cyan]"):
+                result = client.discovery.run(
+                    document_path=doc_path,
+                    ground_truth_path=matched_gt,
+                    config_version=config_version,
+                )
+
+            if result.status == "SUCCESS":
+                doc_class = result.document_class or "Unknown"
+                if is_batch:
+                    console.print(f"  [green]✓ Discovered class: {doc_class}[/green]")
+                else:
+                    console.print("[green]✓ Discovery completed successfully[/green]")
+                    console.print()
+                    if result.document_class:
+                        console.print(
+                            f"[bold]Document Class:[/bold] {result.document_class}"
+                        )
+                    if result.json_schema:
+                        properties = result.json_schema.get("properties", {})
+                        console.print(
+                            f"[bold]Properties:[/bold] {len(properties)} top-level fields"
+                        )
+                        console.print()
+                        console.print("[bold]Generated JSON Schema:[/bold]")
+                        console.print(json.dumps(result.json_schema, indent=2))
+                        console.print()
+
+                if result.json_schema:
+                    all_schemas.append(result.json_schema)
+                succeeded += 1
+            else:
+                if is_batch:
+                    console.print(f"  [red]✗ Failed: {result.error}[/red]")
+                else:
+                    console.print("[red]✗ Discovery failed[/red]")
+                    if result.error:
+                        console.print(f"[red]Error: {result.error}[/red]")
+                failed += 1
+
+            if is_batch:
+                console.print()
+
+        # Write/print output
+        if not output and all_schemas and is_batch:
+            # No -o specified in batch mode → print schemas to stdout
+            console.print()
+            console.print("[bold]Discovered schemas:[/bold]")
+            if len(all_schemas) == 1:
+                console.print(json.dumps(all_schemas[0], indent=2))
+            else:
+                console.print(json.dumps(all_schemas, indent=2))
+            console.print()
+        elif output and all_schemas:
+            output_path = Path(output)
+            if len(all_schemas) == 1 and not output_path.is_dir():
+                # Single schema → write directly to file
+                with open(output, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(all_schemas[0], indent=2))
+                console.print(f"[green]✓ Schema written to: {output}[/green]")
+            elif output_path.is_dir() or (is_batch and not output_path.suffix):
+                # Directory mode → one file per schema
+                output_path.mkdir(parents=True, exist_ok=True)
+                for schema in all_schemas:
+                    class_name = (
+                        schema.get("$id")
+                        or schema.get("x-aws-idp-document-type")
+                        or "unknown"
+                    )
+                    file_path = output_path / f"{class_name}.json"
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(json.dumps(schema, indent=2))
+                    console.print(f"[green]✓ Schema written to: {file_path}[/green]")
+            else:
+                # File mode with multiple schemas → JSON array
+                with open(output, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(all_schemas, indent=2))
+                console.print(
+                    f"[green]✓ {len(all_schemas)} schemas written to: {output}[/green]"
+                )
+
+        # Summary
+        if is_batch:
+            console.print("[bold]Summary:[/bold]")
+            console.print(
+                f"  Total: {len(document)}, Succeeded: {succeeded}, Failed: {failed}"
+            )
+            console.print("[green]✓ Batch discovery complete[/green]")
+
+        if stack_name and config_version and succeeded > 0:
+            console.print(
+                f"[green]✓ Schema(s) saved to configuration"
+                f" (version: {config_version})[/green]"
+            )
+
+        if failed > 0:
+            sys.exit(1)
+
+    except FileNotFoundError as e:
+        console.print(f"[red]✗ File not found: {e}[/red]")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
 def main():
     """Main entry point for the CLI"""
+    # Parse --profile from anywhere in sys.argv before Click processes arguments
+    args = sys.argv[1:]  # Skip script name
+    profile = None
+
+    # Look for --profile in arguments
+    i = 0
+    while i < len(args):
+        if args[i] == "--profile" and i + 1 < len(args):
+            profile = args[i + 1]
+            # Remove --profile and its value from sys.argv
+            sys.argv.pop(i + 1)  # Remove profile value
+            sys.argv.pop(i + 1)  # Remove --profile (index shifts after first pop)
+            break
+        i += 1
+
+    if profile:
+        os.environ["AWS_DEFAULT_PROFILE"] = profile
+        console.print(f"[green]Using AWS profile: {profile}[/green]")
+
     cli()
 
 

@@ -727,22 +727,148 @@ class StackDeployer:
         return outputs
 
     def _get_stack_failure_reason(self, stack_name: str) -> str:
-        """Get failure reason from stack events"""
+        """Get failure reason from stack events (simple string for backward compatibility)"""
+        analysis = self.get_deployment_failure_analysis(stack_name)
+        root_causes = analysis.get("root_causes", [])
+        if root_causes:
+            # Return the first root cause as a simple string
+            rc = root_causes[0]
+            stack_path = rc.get("stack_path", "")
+            resource = rc.get("resource", "Unknown")
+            reason = rc.get("reason", "Unknown")
+            if stack_path:
+                return f"{stack_path} → {resource}: {reason}"
+            return f"{resource}: {reason}"
+
+        # Fallback to first failed event
+        all_failures = analysis.get("all_failures", [])
+        if all_failures:
+            f = all_failures[0]
+            return f"{f.get('resource', 'Unknown')}: {f.get('reason', 'Unknown')}"
+
+        return "Unknown failure reason"
+
+    def get_deployment_failure_analysis(self, stack_name: str, _depth: int = 0) -> Dict:
+        """
+        Analyze deployment failure by recursively collecting failed events
+        from the main stack and all nested stacks.
+
+        Args:
+            stack_name: Stack name or ARN
+            _depth: Internal recursion depth counter (max 5)
+
+        Returns:
+            Dictionary with:
+                - root_causes: List of actual root cause failures (actionable errors)
+                - all_failures: List of all failed events across all stacks
+                - stack_name: The top-level stack name
+        """
+        if _depth > 5:
+            return {"root_causes": [], "all_failures": [], "stack_name": stack_name}
+
+        all_failures = []
+
+        # Collect all FAILED events from this stack (paginated)
         try:
-            response = self.cfn.describe_stack_events(StackName=stack_name)
-            events = response.get("StackEvents", [])
+            paginator = self.cfn.get_paginator("describe_stack_events")
+            for page in paginator.paginate(StackName=stack_name):
+                for event in page.get("StackEvents", []):
+                    status = event.get("ResourceStatus", "")
+                    if "FAILED" not in status:
+                        continue
 
-            # Find first failed event
-            for event in events:
-                status = event.get("ResourceStatus", "")
-                if "FAILED" in status:
-                    reason = event.get("ResourceStatusReason", "Unknown")
-                    resource = event.get("LogicalResourceId", "Unknown")
-                    return f"{resource}: {reason}"
+                    reason = event.get("ResourceStatusReason", "")
+                    resource_id = event.get("LogicalResourceId", "Unknown")
+                    resource_type = event.get("ResourceType", "")
+                    physical_id = event.get("PhysicalResourceId", "")
 
-            return "Unknown failure reason"
+                    # Extract a short stack name for display
+                    display_stack = stack_name
+                    if "/" in str(stack_name):
+                        # ARN format: arn:aws:...:stack/name/guid
+                        try:
+                            display_stack = str(stack_name).split("/")[1]
+                        except IndexError:
+                            pass
+
+                    failure = {
+                        "resource": resource_id,
+                        "resource_type": resource_type,
+                        "reason": reason,
+                        "status": status,
+                        "physical_id": physical_id,
+                        "stack": display_stack,
+                        "stack_path": "",
+                        "is_nested_wrapper": False,
+                        "is_cascade": False,
+                    }
+
+                    # Identify cascade failures (not root causes)
+                    if reason and (
+                        "Resource creation cancelled" in reason
+                        or "resource creation Cancelled" in reason
+                        or "Resource update cancelled" in reason
+                    ):
+                        failure["is_cascade"] = True
+
+                    # Identify nested stack wrapper messages
+                    if (
+                        resource_type == "AWS::CloudFormation::Stack"
+                        and reason
+                        and (
+                            "was not successfully created" in reason
+                            or "was not successfully updated" in reason
+                        )
+                    ):
+                        failure["is_nested_wrapper"] = True
+
+                        # Recursively get failures from the nested stack
+                        if physical_id:
+                            nested_analysis = self.get_deployment_failure_analysis(
+                                physical_id, _depth=_depth + 1
+                            )
+                            # Prepend our stack path to nested failures
+                            for nested_failure in nested_analysis.get(
+                                "all_failures", []
+                            ):
+                                if nested_failure.get("stack_path"):
+                                    nested_failure["stack_path"] = (
+                                        f"{resource_id} → {nested_failure['stack_path']}"
+                                    )
+                                else:
+                                    nested_failure["stack_path"] = resource_id
+                            all_failures.extend(nested_analysis.get("all_failures", []))
+
+                    all_failures.append(failure)
+
         except Exception as e:
-            return str(e)
+            logger.warning(f"Error getting stack events for {stack_name}: {e}")
+            all_failures.append(
+                {
+                    "resource": "Unknown",
+                    "resource_type": "",
+                    "reason": f"Could not retrieve stack events: {e}",
+                    "status": "UNKNOWN",
+                    "physical_id": "",
+                    "stack": str(stack_name),
+                    "stack_path": "",
+                    "is_nested_wrapper": False,
+                    "is_cascade": False,
+                }
+            )
+
+        # Identify root causes: failures that are NOT cascades and NOT nested wrappers
+        root_causes = [
+            f
+            for f in all_failures
+            if not f["is_cascade"] and not f["is_nested_wrapper"]
+        ]
+
+        return {
+            "root_causes": root_causes,
+            "all_failures": all_failures,
+            "stack_name": stack_name,
+        }
 
     def get_stack_events(self, stack_name: str, limit: int = 20) -> List[Dict]:
         """
@@ -1289,11 +1415,9 @@ class StackDeployer:
             # Nested stacks - pattern requires hyphen after stack name
             f"/{stack_name}-PATTERN1STACK-",  # e.g., /IDPDocker-P1-PATTERN1STACK-ABC123/lambda/...
             f"/{stack_name}-PATTERN2STACK-",
-            f"/{stack_name}-PATTERN3STACK-",
             # CodeBuild projects - pattern requires hyphen after stack name
             f"/aws/codebuild/{stack_name}-PATTERN1STACK",  # Nested stack CodeBuild
             f"/aws/codebuild/{stack_name}-PATTERN2STACK",
-            f"/aws/codebuild/{stack_name}-PATTERN3STACK",
             f"/aws/codebuild/{stack_name}-webui-build",  # Main stack webui build
             # Glue crawlers - pattern requires hyphen after stack name
             f"/aws-glue/crawlers-role/{stack_name}-DocumentSectionsCrawlerRole",
@@ -2108,7 +2232,7 @@ def upload_local_config(
         file_path: Path to local config file
         region: AWS region
         stack_name: CloudFormation stack name (unused, kept for compatibility)
-        pattern: Pattern to use for defaults (pattern-1, pattern-2, pattern-3).
+        pattern: Pattern to use for defaults (pattern-1, pattern-2).
                  If not provided, attempts to auto-detect from config file.
         merge_with_defaults: If True, merge user config with system defaults
 
@@ -2140,8 +2264,6 @@ def upload_local_config(
                 )
                 if classification_method == "bda":
                     pattern = "pattern-1"
-                elif classification_method == "udop":
-                    pattern = "pattern-3"
                 else:
                     # Default to pattern-2 (most common)
                     pattern = "pattern-2"
@@ -2215,12 +2337,10 @@ def upload_local_config(
 
 
 def build_parameters(
-    pattern: Optional[str] = None,
     admin_email: Optional[str] = None,
     max_concurrent: Optional[int] = None,
     log_level: Optional[str] = None,
     enable_hitl: Optional[str] = None,
-    pattern_config: Optional[str] = None,
     custom_config: Optional[str] = None,
     additional_params: Optional[Dict[str, str]] = None,
     region: Optional[str] = None,
@@ -2237,12 +2357,10 @@ def build_parameters(
     - For new stacks: Creates a temporary bucket
 
     Args:
-        pattern: IDP pattern (pattern-1, pattern-2, pattern-3) - optional for updates
         admin_email: Admin user email - optional for updates
         max_concurrent: Maximum concurrent workflows - optional
         log_level: Logging level - optional
         enable_hitl: Enable HITL (true/false) - optional
-        pattern_config: Pattern configuration preset - optional
         custom_config: Custom configuration (local file path or S3 URI) - optional
         additional_params: Additional parameters as dict - optional
         region: AWS region (auto-detected if not provided)
@@ -2257,15 +2375,6 @@ def build_parameters(
     if admin_email is not None:
         parameters["AdminEmail"] = admin_email
 
-    if pattern is not None:
-        # Map pattern names to CloudFormation values
-        pattern_map = {
-            "pattern-1": "Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)",
-            "pattern-2": "Pattern2 - Packet processing with Textract and Bedrock",
-            "pattern-3": "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
-        }
-        parameters["IDPPattern"] = pattern_map.get(pattern, pattern)
-
     if max_concurrent is not None:
         parameters["MaxConcurrentWorkflows"] = str(max_concurrent)
 
@@ -2274,15 +2383,6 @@ def build_parameters(
 
     if enable_hitl is not None:
         parameters["EnableHITL"] = enable_hitl
-
-    # Add pattern-specific configuration (only if provided)
-    if pattern_config is not None:
-        if pattern == "pattern-1":
-            parameters["Pattern1Configuration"] = pattern_config
-        elif pattern == "pattern-2":
-            parameters["Pattern2Configuration"] = pattern_config
-        elif pattern == "pattern-3":
-            parameters["Pattern3Configuration"] = pattern_config
 
     # Handle custom config - support both local files and S3 URIs
     if custom_config:

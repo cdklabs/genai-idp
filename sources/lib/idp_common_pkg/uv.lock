@@ -1304,7 +1304,7 @@ agentic-extraction = [
     { name = "email-validator" },
     { name = "jsonpatch" },
     { name = "pandas" },
-    { name = "pymupdf" },
+    { name = "pypdfium2" },
     { name = "strands-agents", marker = "python_full_version >= '3.10'" },
     { name = "tabulate" },
 ]
@@ -1322,7 +1322,7 @@ all = [
     { name = "pandas" },
     { name = "pillow" },
     { name = "pyarrow" },
-    { name = "pymupdf" },
+    { name = "pypdfium2" },
     { name = "python-docx" },
     { name = "requests" },
     { name = "strands-agents", marker = "python_full_version >= '3.10'" },
@@ -1366,7 +1366,7 @@ ocr = [
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "pillow" },
-    { name = "pymupdf" },
+    { name = "pypdfium2" },
     { name = "python-docx" },
 ]
 reporting = [
@@ -1383,7 +1383,7 @@ test = [
     { name = "pandas" },
     { name = "pillow" },
     { name = "pyarrow" },
-    { name = "pymupdf" },
+    { name = "pypdfium2" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -1441,9 +1441,9 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'reporting'", specifier = "==20.0.0" },
     { name = "pyarrow", marker = "extra == 'test'", specifier = "==20.0.0" },
     { name = "pydantic", specifier = ">=2.12.0" },
-    { name = "pymupdf", marker = "extra == 'agentic-extraction'", specifier = ">=1.25.5" },
-    { name = "pymupdf", marker = "extra == 'all'", specifier = "==1.25.5" },
-    { name = "pymupdf", marker = "extra == 'ocr'", specifier = "==1.25.5" },
+    { name = "pypdfium2", marker = "extra == 'agentic-extraction'", specifier = ">=5.5.0" },
+    { name = "pypdfium2", marker = "extra == 'all'", specifier = ">=5.5.0" },
+    { name = "pypdfium2", marker = "extra == 'ocr'", specifier = ">=5.5.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.4.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=1.1.0" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=4.1.0" },
@@ -4344,11 +4344,11 @@ wheels = [
 
 [[package]]
 name = "webencodings"
-version = "0.5.1"
+version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0b/02/ae6ceac1baeda530866a85075641cec12989bd8d31af6d5ab4a3e8c92f47/webencodings-0.5.1.tar.gz", hash = "sha256:b36a1c245f2d304965eb4e0a82848379241dc04b865afcc4aab16748587e1923", size = 9721, upload-time = "2017-04-05T20:21:34.189Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/02/ae6ceac1baeda530866a85075641cec12989bd8d31af6d5ab4a3e8c92f47/webencodings-0.5.2.tar.gz", hash = "sha256:b36a1c245f2d304965eb4e0a82848379241dc04b865afcc4aab16748587e1923", size = 9721, upload-time = "2017-04-05T20:21:34.189Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/24/2a3e3df732393fed8b3ebf2ec078f05546de641fe1b667ee316ec1dcf3b7/webencodings-0.5.1-py2.py3-none-any.whl", hash = "sha256:a0af1213f3c2226497a97e2b3aa01a7e4bee4f403f95be16fc9acd2947514a78", size = 11774, upload-time = "2017-04-05T20:21:32.581Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/24/2a3e3df732393fed8b3ebf2ec078f05546de641fe1b667ee316ec1dcf3b7/webencodings-0.5.2-py2.py3-none-any.whl", hash = "sha256:a0af1213f3c2226497a97e2b3aa01a7e4bee4f403f95be16fc9acd2947514a78", size = 11774, upload-time = "2017-04-05T20:21:32.581Z" },
 ]
 
 [[package]]

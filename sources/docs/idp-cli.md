@@ -1,3 +1,7 @@
+---
+title: "IDP CLI - Command Line Interface for Batch Document Processing"
+---
+
 # IDP CLI - Command Line Interface for Batch Document Processing
 
 A command-line tool for batch document processing with the GenAI IDP Accelerator.
@@ -25,8 +29,8 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
 - [Commands Reference](#commands-reference)
   - [deploy](#deploy)
   - [delete](#delete)
-  - [process](#process)
-  - [reprocess](#reprocess)
+  - [process](#process--run-inference)
+  - [reprocess](#reprocess--rerun-inference)
   - [status](#status)
   - [download-results](#download-results)
   - [delete-documents](#delete-documents)
@@ -82,13 +86,37 @@ pip install -e ".[test]"
 
 ## Quick Start
 
+### Global Options
+
+The CLI supports an optional `--profile` parameter to specify which AWS credentials profile to use:
+
+```bash
+idp-cli --profile my-profile <command> [options]
+```
+
+- Can be placed anywhere in the command
+- Only affects that specific command execution
+- Automatically applies to all AWS SDK calls
+- If not specified, uses default AWS credentials
+
+**Examples:**
+```bash
+# Profile before command
+idp-cli --profile production deploy --stack-name my-stack ...
+
+# Profile after command
+idp-cli deploy --profile production --stack-name my-stack ...
+
+# Profile at the end
+idp-cli deploy --stack-name my-stack --profile production ...
+```
+
 ### Deploy a stack and process documents in 3 commands:
 
 ```bash
 # 1. Deploy stack (10-15 minutes)
 idp-cli deploy \
     --stack-name my-idp-stack \
-    --pattern pattern-2 \
     --admin-email your.email@example.com \
     --wait
 
@@ -124,7 +152,6 @@ idp-cli deploy [OPTIONS]
 
 **Required for New Stacks:**
 - `--stack-name`: CloudFormation stack name
-- `--pattern`: IDP pattern architecture to deploy (`pattern-1`, `pattern-2`, or `pattern-3`)
 - `--admin-email`: Admin user email
 
 **Optional Parameters:**
@@ -134,7 +161,6 @@ idp-cli deploy [OPTIONS]
 - `--max-concurrent`: Maximum concurrent workflows (default: 100)
 - `--log-level`: Logging level (`DEBUG`, `INFO`, `WARN`, `ERROR`) (default: INFO)
 - `--enable-hitl`: Enable Human-in-the-Loop (`true` or `false`)
-- `--pattern-config`: Pattern-specific configuration preset (optional, distinct from --pattern)
 - `--parameters`: Additional parameters as `key=value,key2=value2`
 - `--wait`: Wait for stack operation to complete
 - `--no-rollback`: Disable rollback on stack creation failure
@@ -149,7 +175,7 @@ If you run `deploy` on a stack that already has an operation in progress (CREATE
 
 ```bash
 # First run without --wait starts the deployment
-$ idp-cli deploy --stack-name my-stack --pattern pattern-2 --admin-email user@example.com
+$ idp-cli deploy --stack-name my-stack --admin-email user@example.com
 ✓ Stack CREATE initiated successfully!
 
 # Second run - automatically monitors the in-progress operation
@@ -172,7 +198,6 @@ Supported in-progress states: `CREATE_IN_PROGRESS`, `UPDATE_IN_PROGRESS`, `DELET
 # Create new stack
 idp-cli deploy \
     --stack-name my-idp \
-    --pattern pattern-2 \
     --admin-email user@example.com \
     --wait
 
@@ -192,7 +217,6 @@ idp-cli deploy \
 # Deploy with custom template URL (for regions not auto-supported)
 idp-cli deploy \
     --stack-name my-idp \
-    --pattern pattern-2 \
     --admin-email user@example.com \
     --template-url https://s3.eu-west-1.amazonaws.com/my-bucket/idp-main.yaml \
     --region eu-west-1 \
@@ -201,7 +225,6 @@ idp-cli deploy \
 # Deploy with CloudFormation service role and permissions boundary
 idp-cli deploy \
     --stack-name my-idp \
-    --pattern pattern-2 \
     --admin-email user@example.com \
     --role-arn arn:aws:iam::123456789012:role/IDP-Cloudformation-Service-Role \
     --parameters "PermissionsBoundaryArn=arn:aws:iam::123456789012:policy/MyPermissionsBoundary" \
@@ -211,7 +234,6 @@ idp-cli deploy \
 idp-cli deploy \
     --stack-name my-idp-dev \
     --from-code . \
-    --pattern pattern-2 \
     --admin-email user@example.com \
     --wait
 
@@ -224,7 +246,6 @@ idp-cli deploy \
 # Deploy with rollback disabled (useful for debugging failed deployments)
 idp-cli deploy \
     --stack-name my-idp \
-    --pattern pattern-2 \
     --admin-email user@example.com \
     --no-rollback \
     --wait
@@ -630,7 +651,7 @@ https://github.com/user-attachments/assets/28deadbb-378b-42b7-a5e2-f929af9b0e41
 
 ### `status`
 
-Check status of a batch or single document.
+Check status of documents by batch ID, document ID, or search criteria.
 
 **Usage:**
 ```bash
@@ -638,40 +659,129 @@ idp-cli status [OPTIONS]
 ```
 
 **Document Source (choose ONE):**
-- `--batch-id`: Batch identifier (check all documents in batch)
+- `--batch-id`: Batch identifier or PK substring to search for (searches tracking table)
 - `--document-id`: Single document ID (check individual document)
 
-**Options:**
+**Optional Filters and Display:**
+- `--object-status`: Filter by status (COMPLETED, FAILED, QUEUED, RUNNING, PROCESSING)
+- `--show-details`: Show detailed document information in table format
+- `--get-time`: Calculate and display timing statistics (processing time, queue time, total time)
+- `--include-metering`: Include Lambda metering statistics (GB-seconds by stage) - requires `--get-time`
+
+**Other Options:**
 - `--stack-name` (required): CloudFormation stack name
 - `--wait`: Wait for all documents to complete
 - `--refresh-interval`: Seconds between status checks (default: 5)
 - `--format`: Output format - `table` (default) or `json`
 - `--region`: AWS region (optional)
 
+**How --batch-id Works:**
+
+The `--batch-id` option performs a PK substring search in the DynamoDB tracking table. This means:
+- It searches for all documents where the PK (Primary Key) contains your search string
+- You can search for exact batch IDs: `cli-batch-20251015-143000`
+- You can search for partial matches: `batch-123` finds all documents with "batch-123" in their path
+- You can search across multiple batches: `invoice` finds all documents with "invoice" in their name
+
 **Examples:**
 
 ```bash
-# Check batch status
+# Search for all documents in a batch (PK substring search)
 idp-cli status \
     --stack-name my-stack \
     --batch-id cli-batch-20251015-143000
+
+# Search for documents across batches with partial match
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123
+
+# Search for completed documents only
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123 \
+    --object-status COMPLETED
+
+# Search for failed documents with details
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123 \
+    --object-status FAILED \
+    --show-details
+
+# Search with timing statistics
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123 \
+    --object-status COMPLETED \
+    --get-time
+
+# Search with timing and Lambda metering data
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id test \
+    --object-status COMPLETED \
+    --get-time \
+    --include-metering
 
 # Check single document status
 idp-cli status \
     --stack-name my-stack \
     --document-id batch-123/invoice.pdf
 
-# Monitor single document until completion
+# Monitor documents until completion
 idp-cli status \
     --stack-name my-stack \
-    --document-id batch-123/invoice.pdf \
+    --batch-id batch-123 \
     --wait
 
 # Get JSON output for scripting
 idp-cli status \
     --stack-name my-stack \
-    --document-id batch-123/invoice.pdf \
+    --batch-id batch-123 \
     --format json
+```
+
+**Timing Statistics:**
+
+When using `--get-time`, the command calculates:
+- **Processing Time**: WorkflowStartTime → CompletionTime (actual processing duration)
+- **Queue Time**: QueuedTime → WorkflowStartTime (time waiting in queue)
+- **Total Time**: QueuedTime → CompletionTime (end-to-end duration)
+
+For each metric, you'll see:
+- Average, Median, Min, Max, Standard Deviation, Total
+- ObjectKey for min/max values (helps identify outliers)
+
+**Lambda Metering:**
+
+When using `--include-metering` with `--get-time`, you'll see GB-seconds usage by stage:
+- Assessment, OCR, Classification, Extraction, Summarization
+- Statistics: Average, Median, Min, Max, Std Dev, Total
+- Cost estimates based on AWS Lambda pricing ($0.0000166667 per GB-second)
+
+**Example Output with Timing:**
+
+```bash
+$ idp-cli status --stack-name my-stack --batch-id test-batch --object-status COMPLETED --get-time
+
+Searching for documents with PK containing 'test-batch'...
+✓ Found 25 matching documents
+
+Timing Statistics:
+  Valid documents: 25
+
+Processing Time (WorkflowStartTime → CompletionTime):
+┏━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Metric   ┃ Value       ┃ ObjectKey                    ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ Average  │ 45.23s      │                              │
+│ Median   │ 43.10s      │                              │
+│ Minimum  │ 32.45s      │ test-batch/small-doc.pdf     │
+│ Maximum  │ 78.90s      │ test-batch/large-doc.pdf     │
+│ Std Dev  │ 12.34s      │                              │
+│ Total    │ 18m 50.75s  │                              │
+└──────────┴─────────────┴──────────────────────────────┘
 ```
 
 **Programmatic Use:**
@@ -1002,7 +1112,6 @@ Deploy an IDP stack if you haven't already:
 ```bash
 idp-cli deploy \
     --stack-name eval-testing \
-    --pattern pattern-2 \
     --admin-email your.email@example.com \
     --max-concurrent 50 \
     --wait
@@ -1512,6 +1621,7 @@ idp-cli load-test [OPTIONS]
 - `--duration`: Duration in minutes (default: 1)
 - `--schedule`: CSV schedule file (minute,count) - overrides --rate and --duration
 - `--dest-prefix`: Destination prefix in input bucket (default: load-test)
+- `--config-version`: Configuration version to use for processing (default: active version)
 - `--region`: AWS region (optional)
 
 **Examples:**
@@ -1528,6 +1638,9 @@ idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --sche
 
 # Use S3 source file
 idp-cli load-test --stack-name my-stack --source-file s3://my-bucket/test.pdf --rate 500
+
+# Load test with a specific config version
+idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 100 --config-version v2
 ```
 
 **Schedule File Format (CSV):**
@@ -1657,7 +1770,6 @@ idp-cli config-create [OPTIONS]
   - `core`: min + ocr, assessment
   - `all`: all sections with full defaults
   - Or comma-separated list: `"classification,extraction,summarization"`
-- `--pattern`: Pattern to use for defaults (default: `pattern-2`)
 - `--output`, `-o`: Output file path (default: stdout)
 - `--include-prompts`: Include full prompt templates (default: stripped for readability)
 - `--no-comments`: Omit explanatory header comments
@@ -1667,9 +1779,6 @@ idp-cli config-create [OPTIONS]
 ```bash
 # Generate minimal config to stdout
 idp-cli config-create
-
-# Generate minimal config for Pattern-1
-idp-cli config-create --pattern pattern-1 --output config.yaml
 
 # Generate full config with all sections
 idp-cli config-create --features all --output full-config.yaml
@@ -1691,7 +1800,6 @@ idp-cli config-validate [OPTIONS]
 
 **Options:**
 - `--custom-config` (required): Path to configuration file to validate
-- `--pattern`: Pattern to validate against (default: `pattern-2`)
 - `--show-merged`: Show the full merged configuration
 
 **Examples:**
@@ -1699,9 +1807,6 @@ idp-cli config-validate [OPTIONS]
 ```bash
 # Validate a config file
 idp-cli config-validate --custom-config ./my-config.yaml
-
-# Validate against Pattern-1 defaults
-idp-cli config-validate --custom-config ./config.yaml --pattern pattern-1
 
 # Show full merged config
 idp-cli config-validate --custom-config ./config.yaml --show-merged
@@ -1722,7 +1827,6 @@ idp-cli config-download [OPTIONS]
 - `--stack-name` (required): CloudFormation stack name
 - `--output`, `-o`: Output file path (default: stdout)
 - `--format`: Output format - `full` (default) or `minimal` (only differences from defaults)
-- `--pattern`: Pattern for minimal diff (auto-detected if not specified)
 - `--config-version`: Configuration version to download (e.g., v1, v2). If not specified, downloads active version
 - `--region`: AWS region (optional)
 
@@ -1757,7 +1861,6 @@ idp-cli config-upload [OPTIONS]
 - `--stack-name` (required): CloudFormation stack name
 - `--config-file`, `-f` (required): Path to configuration file (YAML or JSON)
 - `--validate/--no-validate`: Validate config before uploading (default: validate)
-- `--pattern`: Pattern for validation (auto-detected if not specified)
 - `--config-version`: Configuration version to update (e.g., v1, v2). If version doesn't exist, it will be created
 - `--version-description`: Description for the configuration version (used when creating new versions)
 - `--region`: AWS region (optional)
@@ -1776,9 +1879,6 @@ idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config
 
 # Skip validation (use with caution)
 idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-validate
-
-# Explicit pattern for validation
-idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --pattern pattern-2
 ```
 
 ---
@@ -1811,6 +1911,8 @@ Shows a table with version names, active status, creation/update timestamps, and
 
 Activate a configuration version in a deployed IDP stack.
 
+**Automatic BDA Sync:** If the configuration version has `use_bda` enabled, this command will automatically sync the configuration to BDA (Bedrock Data Automation) before activation. This ensures BDA blueprints are up-to-date and matches the UI behavior.
+
 **Usage:**
 ```bash
 idp-cli config-activate [OPTIONS]
@@ -1828,6 +1930,18 @@ idp-cli config-activate --stack-name my-stack --config-version v2
 
 # Activate default version
 idp-cli config-activate --stack-name my-stack --config-version default
+```
+
+**Behavior:**
+1. Validates the configuration version exists
+2. If `use_bda` is enabled in the configuration:
+   - Syncs IDP document classes to BDA blueprints
+   - Creates a new BDA project if none exists
+   - Updates BDA sync status
+3. Activates the configuration version
+4. All new document processing will use this configuration
+
+**Note:** If BDA sync fails (when `use_bda` is enabled), the activation will be aborted to prevent processing errors.
 ```
 
 **Notes:**
@@ -1882,6 +1996,55 @@ idp-cli config-delete --stack-name my-stack --config-version old-version --force
 For full details on configuration versioning, see [configuration-versions.md](configuration-versions.md).
 
 This uses the same mechanism as the Web UI configuration management system.
+
+---
+
+### `discover`
+
+Discover document class schemas from sample documents using Amazon Bedrock.
+
+**Two modes:**
+- **Stack-connected** (`--stack-name`): Uses stack's discovery config and saves schema to DynamoDB configuration
+- **Local** (no `--stack-name`): Uses system default Bedrock settings, prints schema to stdout without saving
+
+**Ground truth matching:** Ground truth files (`-g`) are auto-matched to documents (`-d`) by filename stem. For example, `invoice.pdf` matches `invoice.json`. Unmatched documents run without ground truth.
+
+**Output behavior:**
+- Single document: `-o` writes the schema to the specified file
+- Batch + `-o` is a directory (or has no extension): writes one `{class_name}.json` per schema
+- Batch + `-o` is a file: writes all schemas as a JSON array
+
+```bash
+# Single document (local mode — no stack needed)
+idp-cli discover -d ./invoice.pdf
+
+# With ground truth (matched by filename stem)
+idp-cli discover -d ./invoice.pdf -g ./invoice.json
+
+# Save schema to file
+idp-cli discover -d ./form.pdf -o ./form-schema.json
+
+# Batch with auto-matched ground truth
+idp-cli discover -d ./invoice.pdf -d ./w2.pdf -g ./invoice.json -g ./w2.json
+
+# Batch output to directory (one file per schema)
+idp-cli discover -d ./invoice.pdf -d ./w2.pdf -o ./schemas/
+
+# Batch output to single file (JSON array)
+idp-cli discover -d ./invoice.pdf -d ./w2.pdf -o ./all-schemas.json
+
+# Stack mode (saves to config)
+idp-cli discover --stack-name my-stack -d ./invoice.pdf --config-version v2
+```
+
+| Option | Description |
+|--------|-------------|
+| `--stack-name` | CloudFormation stack name (optional — omit for local mode) |
+| `-d, --document` | Path to document file (required, repeatable for batch) |
+| `-g, --ground-truth` | Path to JSON ground truth file(s) (repeatable, auto-matched by filename stem) |
+| `--config-version` | Config version to save to (stack mode only) |
+| `-o, --output` | Output path: file (single/JSON array) or directory (one file per schema) |
+| `--region` | AWS region |
 
 ---
 

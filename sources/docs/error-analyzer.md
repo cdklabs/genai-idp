@@ -1,3 +1,7 @@
+---
+title: "Error Analyzer (Troubleshooting Tool) - PREVIEW"
+---
+
 # Error Analyzer (Troubleshooting Tool) - PREVIEW
 
 ## Overview

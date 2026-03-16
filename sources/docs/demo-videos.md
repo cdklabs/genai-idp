@@ -1,3 +1,7 @@
+---
+title: "Demo Videos"
+---
+
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
@@ -15,6 +19,7 @@ This page contains all demonstration videos for the GenAI Intelligent Document P
 - [AI Agents & Analytics](#ai-agents--analytics)
 - [Configuration & Management](#configuration--management)
 - [Evaluation & Testing](#evaluation--testing)
+- [Rule Validation](#rule-validation)
 - [Integration & Extensions](#integration--extensions)
 
 ---
@@ -26,9 +31,9 @@ A scalable, serverless solution for automated document processing and informatio
 
 **Duration**: ~3 minutes
 
-TODO Placeholder - replace asset with new short demo video
 
-https://github.com/user-attachments/assets/272b543b-e506-48ce-acc1-361422d22322
+https://github.com/user-attachments/assets/fc2652b5-a9cc-42d7-9975-887c8320a2f5
+
 
 **Related Documentation**: [README.md](../README.md)
 
@@ -60,7 +65,7 @@ A comprehensive technical session demonstrating how AWS's GenAI Intelligent Docu
 
 **Replicate This Demo**: You can now run this exact healthcare demo yourself using the pre-configured sample and config files included in the repository:
 - **Sample Document**: [healthcare-multisection-package.pdf](../samples/healthcare-multisection-package.pdf)
-- **Configuration**: [Pattern-2 Healthcare Config](../config_library/pattern-2/healthcare-multisection-package/config.yaml)
+- **Configuration**: [Pattern-2 Healthcare Config](../config_library/unified/healthcare-multisection-package/config.yaml)
 
 These are the same files used in the video demonstration and can be deployed with the IDP CLI or web UI.
 
@@ -262,6 +267,17 @@ Using the pre-deployed RealKIE-FCC-Verified benchmark dataset with 75 invoice do
 https://github.com/user-attachments/assets/d952fd37-1bd0-437f-8f67-5a634e9422e0
 
 **Related Documentation**: [Test Studio - Pre-Deployed Test Sets](./test-studio.md#pre-deployed-test-sets)
+
+---
+
+## Rule Validation
+
+### Rule Validation Demo
+Automatically validate documents against business rules and compliance requirements using AI. Includes rule extraction from policy documents, configurable rule schemas, and detailed Pass/Fail reporting with supporting evidence.
+
+https://github.com/user-attachments/assets/5d115b90-ff52-4e17-ab70-d259efe5a183
+
+**Related Documentation**: [Rule Validation Documentation](./rule-validation.md)
 
 ---
 

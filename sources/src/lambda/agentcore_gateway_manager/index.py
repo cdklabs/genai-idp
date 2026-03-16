@@ -24,8 +24,12 @@ def handler(event, context):
         request_type = event['RequestType']
 
         if request_type == 'Delete':
-            delete_gateway(props, gateway_name)
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, physicalResourceId=gateway_name)
+            try:
+                delete_gateway(props, gateway_name)
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, physicalResourceId=gateway_name)
+            except Exception as e:
+                logger.error(f"Delete failed: {e}", exc_info=True)
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, physicalResourceId=gateway_name, reason=str(e))
             return
 
         # Create or Update
@@ -229,6 +233,32 @@ def create_gateway(props, gateway_name, client):
                             },
                             "required": ["batch_id"]
                         }
+                    },
+                    {
+                        "name": "get_results",
+                        "description": "Retrieve processing results and extracted metadata for all documents in a batch. Use this tool when users ask for batch results, metadata, extracted fields, or processing outcomes. Returns document classification, extracted fields with values, field-level confidence scores, page counts, and processing status for each document. Includes batch-level summary with average confidence and document class distribution. Supports pagination for large batches.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "batch_id": {
+                                    "type": "string",
+                                    "description": "Batch identifier (e.g., 'mcp-batch-20250124-143022'). Required to identify which batch to retrieve metadata from."
+                                },
+                                "section_id": {
+                                    "type": "integer",
+                                    "description": "Section number within documents (default: 1). Use for multi-section documents like healthcare packages. Section 1 contains primary extraction, sections 2+ contain additional document types within the same file."
+                                },
+                                "limit": {
+                                    "type": "integer",
+                                    "description": "Maximum documents to return per page (default: 10, max: 100). Use lower values for faster responses, higher values to retrieve more documents in one call."
+                                },
+                                "next_token": {
+                                    "type": "string",
+                                    "description": "Pagination token from previous request for retrieving next page of results. Omit for first page."
+                                }
+                            },
+                            "required": ["batch_id"]
+                        }
                     }
                 ]
             },
@@ -246,59 +276,56 @@ def create_gateway(props, gateway_name, client):
 
 def delete_gateway(props, gateway_name):
     """Delete AgentCore Gateway using toolkit"""
+    region = props['Region']
+    client = boto3.client("bedrock-agentcore-control", region_name=region)
+    
+    # Paginate through all gateways
+    all_gateways = []
+    paginator = client.get_paginator("list_gateways")
+    for page in paginator.paginate():
+        all_gateways.extend(page.get("items", []))
+    
+    items = [g for g in all_gateways if g.get("name") == gateway_name]
+    
+    if not items:
+        logger.info(f"Gateway {gateway_name} not found")
+        return
+    
+    gateway_id = items[0].get("gatewayId")
+    logger.info(f"Deleting gateway: {gateway_id}")
+    
+    # Delete all targets first (typically only one target per gateway)
+    response = client.list_gateway_targets(gatewayIdentifier=gateway_id)
+    targets = response.get("items", [])
+    logger.info(f"Found {len(targets)} targets to delete")
+    
+    deletion_errors = []
+    for target in targets:
+        target_id = target["targetId"]
+        logger.info(f"Deleting target: {target_id}")
+        try:
+            client.delete_gateway_target(gatewayIdentifier=gateway_id, targetId=target_id)
+            time.sleep(2)
+        except Exception as e:
+            error_msg = f"target {target_id}: {str(e)}"
+            logger.warning(f"Failed to delete {error_msg}")
+            deletion_errors.append(error_msg)
+    
+    # Wait for targets to be fully deleted
+    time.sleep(10)
+    
+    # Delete gateway
     try:
-        region = props['Region']
-        client = boto3.client(
-            "bedrock-agentcore-control",
-            region_name=region
-        )
-        name: str = gateway_name
-        gateway_id = None
-        kwargs: Dict[str, Any] = {"maxResults": 10}
-        resp = client.list_gateways(**kwargs)
-        items = [g for g in resp.get("items", []) if g.get("name") == name]
-
-        if len(items) > 0:
-            gateway_id = items[0].get("gatewayId")
-
-        if gateway_id:
-            logger.info(f"Attempting to delete gateway by ID: {gateway_id}")
-            # Step 1: List and delete all targets
-            logger.info("Finding targets for gateway: %s", gateway_id)
-            try:
-                response = client.list_gateway_targets(gatewayIdentifier=gateway_id)
-                # API returns targets in 'items' field
-                targets = response.get("items", [])
-                logger.info("Found %s targets to delete", len(targets))
-                for target in targets:
-                    target_id = target["targetId"]
-                    logger.info("Deleting target: %s", target_id)
-                    try:
-                        client.delete_gateway_target(gatewayIdentifier=gateway_id, targetId=target_id)
-                        logger.info("Target deletion initiated: %s", target_id)
-                        # Wait for deletion to complete
-                        time.sleep(5)
-                    except Exception as e:
-                        logger.warning("Error deleting target %s: %s", target_id, str(e))
-
-                # Verify all targets are deleted
-                logger.info("Verifying targets deletion...")
-                time.sleep(5)  # Additional wait
-                verify_response = client.list_gateway_targets(gatewayIdentifier=gateway_id)
-                remaining_targets = verify_response.get("items", [])
-                if remaining_targets:
-                    logger.warning("%s targets still remain", len(remaining_targets))
-                else:
-                    logger.info("All targets deleted")
-            except Exception as e:
-                logger.warning("Error managing targets: %s", str(e))
-
-            client.delete_gateway(gatewayIdentifier=gateway_id)
-            logger.info("Gateway deleted successfully using ID")
-
-        else:
-            logger.info("Gateway not found")
-
+        client.delete_gateway(gatewayIdentifier=gateway_id)
+        logger.info(f"Gateway deleted: {gateway_id}")
     except Exception as e:
-        logger.error(f"Gateway deletion failed: {e}")
+        error_msg = f"gateway: {str(e)}"
+        logger.warning(f"Failed to delete {error_msg}")
+        deletion_errors.append(error_msg)
+    
+    # Wait for gateway deletion to complete
+    time.sleep(5)
+    
+    if deletion_errors:
+        raise Exception(f"Partial deletion errors: {'; '.join(deletion_errors)}")
 

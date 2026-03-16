@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, Optional, cast
 
 import jsonschema
@@ -54,7 +55,13 @@ class ClassesDiscovery:
 
         return
 
-    def discovery_classes_with_document(self, input_bucket: str, input_prefix: str):
+    def discovery_classes_with_document(
+        self,
+        input_bucket: str,
+        input_prefix: str,
+        file_bytes: Optional[bytes] = None,
+        save_to_config: bool = True,
+    ):
         """
         Create blueprint for document discovery.
         Process document/image:
@@ -64,10 +71,13 @@ class ClassesDiscovery:
 
         Args:
             input_bucket: S3 bucket name
-            input_prefix: S3 prefix
+            input_prefix: S3 prefix (also used to determine file extension)
+            file_bytes: Optional document bytes. If provided, skips S3 read.
+            save_to_config: If True (default), saves schema to DynamoDB config.
+                If False, returns the schema without saving.
 
         Returns:
-            status of blueprint creation
+            dict with status and optionally the discovered schema
 
         Raises:
             Exception: If blueprint creation fails
@@ -77,7 +87,10 @@ class ClassesDiscovery:
         )
 
         try:
-            file_in_bytes = S3Util.get_bytes(bucket=input_bucket, key=input_prefix)
+            if file_bytes is not None:
+                file_in_bytes = file_bytes
+            else:
+                file_in_bytes = S3Util.get_bytes(bucket=input_bucket, key=input_prefix)
 
             # Extract labels
             file_extension = os.path.splitext(input_prefix)[1].lower()
@@ -98,11 +111,12 @@ class ClassesDiscovery:
             # No need to transform - it's already in the right format
             current_class = model_response
 
-            # Merge the new class with existing Default + Custom classes
-            # and save to Custom config
-            self._merge_and_save_class(current_class)
+            if save_to_config:
+                # Merge the new class with existing Default + Custom classes
+                # and save to Custom config
+                self._merge_and_save_class(current_class)
 
-            return {"status": "SUCCESS"}
+            return {"status": "SUCCESS", "schema": current_class}
 
         except Exception as e:
             logger.error(
@@ -112,18 +126,28 @@ class ClassesDiscovery:
             raise Exception(f"Failed to process document {input_prefix}: {str(e)}")
 
     def discovery_classes_with_document_and_ground_truth(
-        self, input_bucket: str, input_prefix: str, ground_truth_key: str
+        self,
+        input_bucket: str,
+        input_prefix: str,
+        ground_truth_key: str = "",
+        file_bytes: Optional[bytes] = None,
+        ground_truth_data: Optional[dict] = None,
+        save_to_config: bool = True,
     ):
         """
         Create optimized blueprint using ground truth data.
 
         Args:
             input_bucket: S3 bucket name
-            input_prefix: S3 prefix for document
-            ground_truth_s3_uri: S3 URI for JSON file with ground truth data
+            input_prefix: S3 prefix for document (also used to determine file extension)
+            ground_truth_key: S3 key for ground truth JSON file
+            file_bytes: Optional document bytes. If provided, skips S3 read.
+            ground_truth_data: Optional ground truth dict. If provided, skips S3 read for GT.
+            save_to_config: If True (default), saves schema to DynamoDB config.
+                If False, returns the schema without saving.
 
         Returns:
-            status of blueprint creation
+            dict with status and optionally the discovered schema
 
         Raises:
             Exception: If blueprint creation fails
@@ -133,10 +157,16 @@ class ClassesDiscovery:
         )
 
         try:
-            # Load ground truth data
-            ground_truth_data = self._load_ground_truth(input_bucket, ground_truth_key)
+            # Load ground truth data from S3 or use provided data
+            if ground_truth_data is None:
+                ground_truth_data = self._load_ground_truth(
+                    input_bucket, ground_truth_key
+                )
 
-            file_in_bytes = S3Util.get_bytes(bucket=input_bucket, key=input_prefix)
+            if file_bytes is not None:
+                file_in_bytes = file_bytes
+            else:
+                file_in_bytes = S3Util.get_bytes(bucket=input_bucket, key=input_prefix)
 
             file_extension = os.path.splitext(input_prefix)[1].lower()[1:]
 
@@ -151,11 +181,12 @@ class ClassesDiscovery:
             # No need to transform - it's already in the right format
             current_class = model_response
 
-            # Merge the new class with existing Default + Custom classes
-            # and save to Custom config
-            self._merge_and_save_class(current_class)
+            if save_to_config:
+                # Merge the new class with existing Default + Custom classes
+                # and save to Custom config
+                self._merge_and_save_class(current_class)
 
-            return {"status": "SUCCESS"}
+            return {"status": "SUCCESS", "schema": current_class}
 
         except Exception as e:
             logger.error(
@@ -166,18 +197,17 @@ class ClassesDiscovery:
 
     def _merge_and_save_class(self, new_class: Dict[str, Any]) -> None:
         """
-        Merge a new discovered class with existing Default + Custom classes and save to Custom.
+        Merge a new discovered class into the target version's configuration.
 
-        This method ensures that discovered classes are ADDITIVE to existing classes:
-        1. Read Default classes (base classes from deployment)
-        2. Read existing Custom classes (previous user customizations)
-        3. Build a merged list starting from Default, overriding with Custom
-        4. Add/update the new discovered class
-        5. Save the complete merged list to Custom
+        This method only adds/updates the discovered class within the target version's
+        own class list. It does NOT pull in classes from the default configuration version,
+        keeping the target version's classes exactly as the user curated them, plus the
+        newly discovered class.
 
-        This is necessary because the Default+Custom merge uses array replacement,
-        not array concatenation. By saving the complete class list to Custom,
-        we ensure no classes are lost during the merge.
+        Steps:
+        1. Read existing classes from the target version
+        2. Add/update the new discovered class (deduplicate by $id)
+        3. Save back to the target version
 
         Args:
             new_class: The newly discovered class schema to add/update
@@ -186,65 +216,44 @@ class ClassesDiscovery:
         new_class_id = new_class.get("$id") or new_class.get("x-aws-idp-document-type")
         logger.info(f"Merging discovered class: {new_class_id}")
 
-        # Step 1: Read Default classes (base classes from deployment)
-        default_config = self.config_manager.get_configuration("Config", "default")
-        default_classes: list = []
-        if (
-            default_config
-            and isinstance(default_config, IDPConfig)
-            and default_config.classes
-        ):
-            # Convert to list of dicts for easier manipulation
-            default_classes = [
-                cls
-                if isinstance(cls, dict)
-                else cls.model_dump()
-                if hasattr(cls, "model_dump")
-                else dict(cls)
-                for cls in default_config.classes
-            ]
-        logger.info(f"Found {len(default_classes)} classes in Default config")
-
-        # Step 2: Read existing Custom config (raw, no Pydantic defaults)
+        # Read existing config for the target version (raw, no Pydantic defaults)
         existing_custom = (
             self.config_manager.get_raw_configuration("Config", version=self.version)
             or {}
         )
         custom_classes = list(existing_custom.get("classes", []))
-        logger.info(f"Found {len(custom_classes)} classes in Custom config")
+        logger.info(
+            f"Found {len(custom_classes)} existing classes in version '{self.version}'"
+        )
 
-        # Step 3: Build merged class list - start with Default, override with Custom
-        # Use a dict keyed by class ID for efficient deduplication
-        merged_classes_by_id: Dict[str, Dict[str, Any]] = {}
-
-        # Add Default classes first
-        for cls in default_classes:
-            cls_id = cls.get("$id") or cls.get("x-aws-idp-document-type")
-            if cls_id:
-                merged_classes_by_id[cls_id] = cls
-
-        # Override/add Custom classes
+        # Build class list from existing version classes, deduplicating by ID
+        classes_by_id: Dict[str, Dict[str, Any]] = {}
         for cls in custom_classes:
             cls_id = cls.get("$id") or cls.get("x-aws-idp-document-type")
             if cls_id:
-                merged_classes_by_id[cls_id] = cls
+                classes_by_id[cls_id] = cls
 
-        # Step 4: Add/update the new discovered class
+        # Add/update the new discovered class
         if new_class_id:
-            merged_classes_by_id[new_class_id] = new_class
+            classes_by_id[new_class_id] = new_class
 
         # Convert back to list
-        merged_classes = list(merged_classes_by_id.values())
-        logger.info(f"Merged class list has {len(merged_classes)} classes")
+        merged_classes = list(classes_by_id.values())
+        logger.info(f"Saving {len(merged_classes)} classes to version '{self.version}'")
 
-        # Step 5: Save to Custom config
-        # The merged list will replace Default.classes during runtime merge,
-        # ensuring all classes (Default + Custom + new) are preserved
+        # Save to version config
         existing_custom["classes"] = merged_classes
         self.config_manager.save_raw_configuration(
             "Config", existing_custom, version=self.version
         )
-        logger.info(f"Saved {len(merged_classes)} classes to Custom config")
+
+    @staticmethod
+    def _extract_json(text: str) -> str:
+        """Strip markdown code fences from LLM response before JSON parsing."""
+        match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
+        if match:
+            return match.group(1)
+        return text
 
     def _validate_json_schema(self, schema: Dict[str, Any]) -> tuple[bool, str]:
         """
@@ -367,7 +376,7 @@ class ClassesDiscovery:
                 )
 
                 # Parse JSON response
-                schema = json.loads(content_text)
+                schema = json.loads(self._extract_json(content_text))
 
                 # Validate the schema
                 is_valid, error_msg = self._validate_json_schema(schema)
@@ -493,7 +502,7 @@ class ClassesDiscovery:
                 )
 
                 # Parse JSON response
-                schema = json.loads(content_text)
+                schema = json.loads(self._extract_json(content_text))
 
                 # Validate the schema
                 is_valid, error_msg = self._validate_json_schema(schema)
