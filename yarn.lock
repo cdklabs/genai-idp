@@ -777,10 +777,10 @@
   resolved "https://registry.yarnpkg.com/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz#75a2e8b51cb758a7553d6804a5932d7aace75c39"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
-"@cdklabs/generative-ai-cdk-constructs@0.1.314", "@cdklabs/generative-ai-cdk-constructs@^0.1.314":
-  version "0.1.314"
-  resolved "https://registry.yarnpkg.com/@cdklabs/generative-ai-cdk-constructs/-/generative-ai-cdk-constructs-0.1.314.tgz#4c9582dd2032abbce9abfb6fdc73cd60c3145258"
-  integrity sha512-dTixKX0jZoMr4jVPHuNOIRpiWndCOO2ttbGSZUD3T3juf/9Ex2rVEFxzFFsUEyLQcn4zmlADFaQHnHefncXv4Q==
+"@cdklabs/generative-ai-cdk-constructs@0.1.315", "@cdklabs/generative-ai-cdk-constructs@^0.1.315":
+  version "0.1.315"
+  resolved "https://registry.yarnpkg.com/@cdklabs/generative-ai-cdk-constructs/-/generative-ai-cdk-constructs-0.1.315.tgz#e567c281155171d62805d6b6e33f3d8c57278148"
+  integrity sha512-Xes5ws7ogEq4+4FGoyktX6MwLbFI90PC9gEcr4MP2Ghr9oXyNGV5DQIr4EPaR8qlU0SWikIFzxmGrOeWFJSOkQ==
   dependencies:
     "@aws-cdk/aws-lambda-python-alpha" "2.233.0-alpha.0"
     cdk-nag "^2.37.55"
