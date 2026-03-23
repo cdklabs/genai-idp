@@ -40,6 +40,9 @@ from .models import (
     AssessmentFieldGeometry,
     AssessmentGeometryResult,
     AssessmentMetrics,
+    # Discovery models
+    AutoDetectResult,
+    AutoDetectSection,
     # Batch models
     BatchDeletionResult,
     BatchDownloadResult,
@@ -51,10 +54,17 @@ from .models import (
     BatchResult,
     BatchStatus,
     # Config models
+    ConfigActivateResult,
     ConfigCreateResult,
+    ConfigDeleteResult,
     ConfigDownloadResult,
+    ConfigListResult,
+    ConfigSyncBdaResult,
     ConfigUploadResult,
     ConfigValidationResult,
+    ConfigVersionInfo,
+    DiscoveryBatchResult,
+    DiscoveryResult,
     # Document models
     DocumentDeletionResult,
     DocumentDownloadResult,
@@ -63,6 +73,8 @@ from .models import (
     DocumentMetadata,
     DocumentReprocessResult,
     DocumentRerunResult,
+    # Testing models
+    DocumentsAbortedResult,
     DocumentState,
     DocumentStatus,
     DocumentUploadResult,
@@ -70,11 +82,14 @@ from .models import (
     EvaluationBaselineListResult,
     EvaluationMetrics,
     EvaluationReport,
+    ExecutionsStoppedResult,
     # Manifest models
     LoadTestResult,
     ManifestDocument,
     ManifestResult,
     ManifestValidationResult,
+    # Stack models
+    OrphanedResourceCleanupResult,
     # Enums
     Pattern,
     RerunStep,
@@ -82,16 +97,14 @@ from .models import (
     SearchCitation,
     SearchDocumentReference,
     SearchResult,
-    # Stack models
     StackDeletionResult,
     StackDeploymentResult,
     StackResources,
     StackState,
-    # Testing models
     StopWorkflowsResult,
 )
 
-__version__ = "0.4.16"
+__version__ = "0.5.3"
 
 __all__ = [
     # Client
@@ -113,6 +126,7 @@ __all__ = [
     "StackDeploymentResult",
     "StackDeletionResult",
     "StackResources",
+    "OrphanedResourceCleanupResult",
     # Batch models
     "BatchResult",
     "BatchProcessResult",
@@ -152,11 +166,23 @@ __all__ = [
     "ConfigValidationResult",
     "ConfigDownloadResult",
     "ConfigUploadResult",
+    "ConfigActivateResult",
+    "ConfigVersionInfo",
+    "ConfigListResult",
+    "ConfigDeleteResult",
+    "ConfigSyncBdaResult",
+    # Discovery models
+    "DiscoveryResult",
+    "DiscoveryBatchResult",
+    "AutoDetectResult",
+    "AutoDetectSection",
     # Manifest models
     "ManifestDocument",
     "ManifestResult",
     "ManifestValidationResult",
     # Testing models
     "StopWorkflowsResult",
+    "ExecutionsStoppedResult",
+    "DocumentsAbortedResult",
     "LoadTestResult",
 ]

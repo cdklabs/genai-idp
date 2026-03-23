@@ -8,43 +8,19 @@ Handles IDP stack deployment and testing in AWS CodeBuild environment.
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import tempfile
+import time
 from datetime import datetime
 from textwrap import dedent
 
 import boto3
 
-# Configuration for patterns to deploy
-DEPLOY_PATTERNS = [
-    {
-        "name": "Pattern 1 - BDA",
-        "id": "pattern-1",
-        "suffix": "p1",
-        "sample_file": "lending_package.pdf",
-        "verify_string": "ANYTOWN, USA 12345",
-        "result_location": "pages/0/result.json",
-        "content_path": "pages.0.representation.markdown",
-    },
-    {
-        "name": "Pattern 2 - OCR + Bedrock",
-        "id": "pattern-2",
-        "suffix": "p2",
-        "sample_file": "lending_package.pdf",
-        "verify_string": "ANYTOWN, USA 12345",
-        "result_location": "pages/1/result.json",
-        "content_path": "text",
-    },
-    # {"name": "Pattern 3 - UDOP + Bedrock", "id": "pattern-3", "suffix": "p3", "sample_file": "rvl_cdip_package.pdf", "verify_string": "WESTERN DARK FIRED TOBACCO GROWERS", "result_location": "pages/1/result.json", "content_path": "text"},
-]
-
-
 def run_command(cmd, check=True):
     """Run shell command and return result"""
     print(f"Running: {cmd}")
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True) # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true - Reviewed: command input is controlled and sanitized
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)  # nosec B602 nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true - hardcoded commands, no user input
     if result.stdout:
         print(result.stdout)
     if result.stderr:
@@ -63,8 +39,8 @@ def get_env_var(name, default=None):
     return value
 
 
-def generate_stack_prefix():
-    """Generate unique stack prefix with timestamp including seconds"""
+def generate_stack_name():
+    """Generate unique stack name with timestamp including seconds"""
     timestamp = datetime.now().strftime("%m%d-%H%M%S")  # Format: MMDD-HHMMSS
     return f"idp-{timestamp}"
 
@@ -204,159 +180,193 @@ def cleanup_iam_resources(stack_name):
         print(f"[{stack_name}] ❌ Failed to cleanup IAM stack: {e}")
 
 
-def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_url, role_arn=None, permissions_boundary_arn=None):
-    """Deploy and test a specific IDP pattern"""
-    pattern_name = pattern_config["name"]
-    pattern_id = pattern_config["id"]
-    pattern_suffix = pattern_config["suffix"]
-    sample_file = pattern_config["sample_file"]
-    verify_string = pattern_config["verify_string"]
-    result_location = pattern_config["result_location"]
-    content_path = pattern_config["content_path"]
-
-    stack_name = f"{stack_prefix}-{pattern_suffix}"
-    batch_id = f"test-{pattern_suffix}"
-
-    print(f"[{pattern_name}] Starting deployment: {stack_name}")
+def deploy_and_test_stack(stack_name, admin_email, template_url):
+    """Deploy and test the unified IDP stack"""
+    print(f"Starting deployment: {stack_name}")
 
     try:
         # Step 0: Create IAM resources
-        print(f"[{pattern_name}] Step 0: Creating IAM resources...")
+        print("Step 0: Creating IAM resources...")
         role_arn, permissions_boundary_arn = create_iam_resources(stack_name)
-        
         if not role_arn or not permissions_boundary_arn:
             raise Exception("Failed to create required IAM resources")
         
         # Step 1: Deploy using template URL
-        print(f"[{pattern_name}] Step 1: Deploying stack...")
-        cmd = f"idp-cli deploy --stack-name {stack_name} --template-url {template_url} --pattern {pattern_id} --admin-email {admin_email} --wait"
-        
-        # Add role-arn and permissions boundary
+        print("Step 1: Deploying stack...")
+        cmd = f"idp-cli deploy --stack-name {stack_name} --template-url {template_url} --admin-email {admin_email} --wait"
         cmd += f" --role-arn {role_arn}"
         cmd += f" --parameters PermissionsBoundaryArn={permissions_boundary_arn}"
         
-        # Add role-arn if provided
-        if role_arn:
-            cmd += f" --role-arn {role_arn}"
-        
-        # Add permissions boundary if provided
-        if permissions_boundary_arn:
-            cmd += f" --parameters PermissionsBoundaryArn={permissions_boundary_arn}"
-        
         run_command(cmd)
-        print(f"[{pattern_name}] ✅ Deployment completed")
+        print(f"✅ Deployment completed")
 
         # Step 2: Test stack status
-        print(f"[{pattern_name}] Step 2: Verifying stack status...")
+        print(f"Step 2: Verifying stack status...")
         cmd = f"aws cloudformation describe-stacks --stack-name {stack_name} --query 'Stacks[0].StackStatus' --output text"
         result = run_command(cmd)
 
         if "COMPLETE" not in result.stdout:
-            print(f"[{pattern_name}] ❌ Stack status: {result.stdout.strip()}")
+            print(f"❌ Stack status: {result.stdout.strip()}")
             return {
                 "stack_name": stack_name,
-                "pattern_name": pattern_name,
                 "success": False,
                 "error": f"Stack deployment failed with status: {result.stdout.strip()}"
             }
 
-        print(f"[{pattern_name}] ✅ Stack is healthy")
+        print(f"✅ Stack is healthy")
 
-        # Step 3: Run inference test
-        print(f"[{pattern_name}] Step 3: Running inference test with {sample_file}...")
-        cmd = f"idp-cli run-inference --stack-name {stack_name} --dir samples --file-pattern {sample_file} --batch-id {batch_id} --monitor"
-        run_command(cmd)
-        print(f"[{pattern_name}] ✅ Inference completed")
+        # Step 3: Test with default config
+        print(f"Step 3: Testing with default config...")
+        batch_id = "test-default"
+        sample_file = "lending_package.pdf"
+        verify_string = "ANYTOWN, USA 12345"
+        result_location = "pages/1/result.json"
+        content_path = "text"
 
-        # Wait for results to propagate to S3
-        print(f"[{pattern_name}] Waiting 20 seconds for results to propagate...")
-        import time
-        time.sleep(20)
-
-        # Step 4: Download and verify results
-        print(f"[{pattern_name}] Step 4: Downloading results...")
-        results_dir = f"/tmp/results-{pattern_suffix}"
-
-        cmd = f"idp-cli download-results --stack-name {stack_name} --batch-id {batch_id} --output-dir {results_dir}"
-        run_command(cmd)
-
-        # Step 5: Verify result content
-        print(f"[{pattern_name}] Step 5: Verifying result content...")
-
-        # Find the result file at the specified location
-        cmd = f"find {results_dir} -path '*/{result_location}' | head -1"
-        result = run_command(cmd)
-        result_file = result.stdout.strip()
-
-        if not result_file:
-            print(f"[{pattern_name}] ❌ No result file found at {result_location}")
+        if not run_inference_test(stack_name, sample_file, batch_id, verify_string, result_location, content_path, None):
             return {
                 "stack_name": stack_name,
-                "pattern_name": pattern_name,
                 "success": False,
-                "error": f"No result file found at expected location: {result_location}"
+                "error": "Default config test failed"
             }
 
-        # Verify the result file contains expected content
+        # Step 4: Upload and test BDA config
+        print(f"Step 4: Testing with BDA mode...")
+        config_version = "test-bda"
+        config_path = "config_library/unified/lending-package-sample/config.yaml"
+        
+        # Create temporary BDA config by toggling use_bda flag
+        with open(config_path, 'r') as f:
+            config_content = f.read()
+        
+        # Toggle use_bda to true
+        bda_config_content = config_content.replace('use_bda: false', 'use_bda: true')
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tmp:
+            tmp.write(bda_config_content)
+            bda_config_path = tmp.name
+        
         try:
-            import json
-
-            with open(result_file, "r") as f:
-                result_json = json.load(f)
-
-            # Extract text content using the specified path
-            text_content = result_json
-            for key in content_path.split("."):
-                if key.isdigit():
-                    text_content = text_content[int(key)]
-                else:
-                    text_content = text_content[key]
-
-            # Verify expected string in content
-            if verify_string not in text_content:
-                print(
-                    f"[{pattern_name}] ❌ Text content does not contain expected string: '{verify_string}'"
-                )
-                print(
-                    f"[{pattern_name}] Actual text starts with: '{text_content[:100]}...'"
-                )
+            # Upload BDA config
+            print(f"Uploading BDA config (use_bda: true)")
+            cmd = f"idp-cli config-upload --stack-name {stack_name} --config-file {bda_config_path} --config-version {config_version}"
+            run_command(cmd)
+            
+            # Activate BDA config (triggers auto-sync)
+            print(f"Activating BDA config version: {config_version}")
+            cmd = f"idp-cli config-activate --stack-name {stack_name} --config-version {config_version}"
+            run_command(cmd)
+            print(f"✅ BDA config activated and synced")
+            
+            # Run inference with BDA config version
+            # BDA writes text to parsedResult.json
+            batch_id = "test-bda"
+            bda_result_location = "pages/1/parsedResult.json"
+            if not run_inference_test(stack_name, sample_file, batch_id, verify_string, bda_result_location, content_path, config_version):
                 return {
                     "stack_name": stack_name,
-                    "pattern_name": pattern_name,
                     "success": False,
-                    "error": f"Verification failed: Expected string '{verify_string}' not found in result"
+                    "error": "BDA config test failed"
                 }
+        finally:
+            # Clean up temp file
+            os.unlink(bda_config_path)
 
-            print(
-                f"[{pattern_name}] ✅ Found expected verification string: '{verify_string}'"
-            )
-            
-            success_result = {
+        # Step 5: Test rule validation
+        print(f"Step 5: Testing rule validation...")
+        config_version = "rule-validation"
+        config_path = "config_library/unified/rule-validation/config.yaml"
+        sample_file = "Prior-Auth-12345678.pdf"
+        sample_dir = "samples/rule-validation"
+        batch_id = "test-rules"
+        verify_string = "global_periods"
+        result_location = "rule_validation/sections/section_1_responses.json"
+        content_path = "responses.global_periods.0.rule_type"
+        
+        # Upload rule validation config
+        print(f"Uploading rule validation config from: {config_path}")
+        cmd = f"idp-cli config-upload --stack-name {stack_name} --config-file {config_path} --config-version {config_version}"
+        run_command(cmd)
+        
+        # Run inference test with rule validation
+        if not run_inference_test(stack_name, sample_file, batch_id, verify_string, result_location, content_path, config_version, sample_dir):
+            return {
                 "stack_name": stack_name,
-                "pattern_name": pattern_name,
-                "success": True,
-                "verification_string": verify_string
-            }
-
-        except Exception as e:
-            print(f"[{pattern_name}] ❌ Failed to validate result content: {e}")
-            success_result = {
-                "stack_name": stack_name,
-                "pattern_name": pattern_name,
                 "success": False,
-                "error": f"Result validation failed: {str(e)}"
+                "error": "Rule validation test failed"
             }
+
+        print(f"✅ All tests passed")
+        return {
+            "stack_name": stack_name,
+            "success": True,
+            "verification_string": verify_string
+        }
 
     except Exception as e:
-        print(f"[{pattern_name}] ❌ Testing failed: {e}")
-        success_result = {
+        print(f"❌ Testing failed: {e}")
+        return {
             "stack_name": stack_name,
-            "pattern_name": pattern_name,
             "success": False,
             "error": f"Deployment/testing failed: {str(e)}"
         }
 
-    return success_result
+
+def run_inference_test(stack_name, sample_file, batch_id, verify_string, result_location, content_path, config_version=None, sample_dir="samples"):
+    """Run inference test and verify results"""
+    try:
+        # Run inference
+        print(f"Running inference with batch-id: {batch_id}...")
+        cmd = f"idp-cli run-inference --stack-name {stack_name} --dir {sample_dir} --file-pattern {sample_file} --batch-id {batch_id} --monitor"
+        if config_version:
+            cmd += f" --config-version {config_version}"
+        run_command(cmd)
+        print(f"✅ Inference completed")
+
+        # Download results
+        print(f"Downloading results...")
+        result_dir = f"/tmp/result-{batch_id}"  # nosec B108 - isolated CodeBuild environment
+        cmd = f"idp-cli download-results --stack-name {stack_name} --batch-id {batch_id} --output-dir {result_dir}"
+        run_command(cmd)
+
+        # Verify result content
+        print(f"Verifying result content...")
+
+        # Find result file
+        cmd = f"find {result_dir} -path '*/{result_location}' | head -1"
+        result = run_command(cmd, check=False)
+        result_file = result.stdout.strip()
+
+        if not result_file:
+            cmd = f"find {result_dir} -name 'result.json' | head -10"
+            debug_result = run_command(cmd, check=False)
+            print(f"Found result.json files:")
+            print(debug_result.stdout)
+            print(f"❌ No result file found at {result_location}")
+            return False
+
+        # Verify content
+        with open(result_file, "r") as f:
+            result_json = json.load(f)
+
+        text_content = result_json
+        for key in content_path.split("."):
+            if key.isdigit():
+                text_content = text_content[int(key)]
+            else:
+                text_content = text_content[key]
+
+        if verify_string not in str(text_content):
+            print(f"❌ Text content does not contain expected string: '{verify_string}'")
+            print(f"Actual text starts with: '{str(text_content)[:100]}...'")
+            return False
+
+        print(f"✅ Found expected verification string: '{verify_string}'")
+        return True
+
+    except Exception as e:
+        print(f"❌ Inference test failed: {e}")
+        return False
 
 
 def get_codebuild_logs():
@@ -368,7 +378,6 @@ def get_codebuild_logs():
             return "CodeBuild logs not available (not running in CodeBuild)"
         
         # Wait for logs to propagate to CloudWatch
-        import time
         time.sleep(10)
         
         # Extract log group and stream from build ID
@@ -558,7 +567,7 @@ def get_cloudformation_logs(stack_name):
         return [{'error': f"Failed to retrieve CloudFormation logs: {str(e)}"}]
 
 
-def generate_deployment_summary(deployment_results, stack_prefix, template_url):
+def generate_deployment_summary(result, stack_name, template_url):
     """Generate deployment summary using Bedrock API with CodeBuild and CloudFormation logs"""
     try:
         # Get CodeBuild logs
@@ -569,47 +578,47 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         
         # Create prompt for Bedrock with structured analysis
         prompt = dedent(f"""
-        You are an AWS deployment analyst. Analyze deployment results and determine appropriate response.
+        You are an AWS deployment analyst. Analyze deployment result and determine appropriate response.
 
         Deployment Information:
-        - Stack Prefix: {stack_prefix}
+        - Stack Name: {stack_name}
         - Template URL: {template_url}
-        - Total Patterns: {len(deployment_results)}
 
-        Pattern Results (ANALYZE THIS FIRST):
-        {json.dumps(deployment_results, indent=2)}
+        Deployment Result (ANALYZE THIS FIRST):
+        {json.dumps(result, indent=2)}
 
-        CodeBuild Logs (may be interleaved due to parallel execution):
+        CodeBuild Logs:
         {deployment_logs}
 
-        STEP 1: Check Pattern Results for failure classification:
-        - If ALL patterns have "success": true → SUCCESS CASE
-        - If error contains "No result file found" or "verification failed" → SMOKE TEST FAILURE
+        STEP 1: Check Deployment Result for failure classification:
+        - If success: true → SUCCESS CASE
+        - If error contains "No result file found" or "verification failed" or "no rule_validation directory" → SMOKE TEST FAILURE
         - If error contains "deployment failed" or "CREATE_FAILED" or "timeout" → INFRASTRUCTURE FAILURE
 
         STEP 2: Respond based on classification:
 
-        FOR SUCCESS CASE (all patterns successful):
+        FOR SUCCESS CASE:
         🚀 DEPLOYMENT RESULTS
 
-        📋 Pattern Status:
-        • Pattern 1 - BDA: SUCCESS - Stack deployed and tested successfully
-        • Pattern 2 - OCR: SUCCESS - Stack deployed and tested successfully
+        📋 Stack Status: {stack_name} deployed successfully
+        
+        ✅ All Tests Passed:
+        • Test 1: Default config with text extraction
+        • Test 2: BDA mode config (use_bda: true) upload and inference
+        • Test 3: Rule validation config and processing
 
         FOR INFRASTRUCTURE FAILURE:
-        Respond ONLY with: "NEED_CF_LOGS: stack1,stack2" (list failed stack names)
+        Respond ONLY with: "NEED_CF_LOGS: {stack_name}"
 
         FOR SMOKE TEST FAILURE:
         🚀 DEPLOYMENT RESULTS
 
-        📋 Pattern Status:
-        • [Pattern Name]: FAILED - [specific failure reason from Pattern Results]
-        • [Pattern Name]: SUCCESS - Stack deployed and tested successfully
+        📋 Test Status: FAILED - [extract which test failed from error message]
 
         🔍 Root Cause Analysis:
-        • Extract specific error from Pattern Results
+        • Extract specific error from result
+        • Identify which test failed (default config, BDA mode, or rule validation)
         • Focus on post-deployment verification issues
-        • Identify timing, file path, or result validation problems
 
         💡 Fix Commands:
         • Provide specific commands to resolve verification issues
@@ -636,28 +645,23 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         if initial_summary.startswith("NEED_CF_LOGS"):
             print("🔍 Getting CloudFormation logs for detailed analysis...")
             # Get CloudFormation logs for failed stacks
-            cf_logs = {}
-            logs_retrieved = 0
+            logs = []
+            if not result["success"] and result.get("stack_name") and result["stack_name"] != "N/A":
+                print(f"📋 Getting CF logs for: {result['stack_name']}")
+                try:
+                    logs = get_cloudformation_logs(result["stack_name"])
+                    # Check if we got actual events or just error messages
+                    if logs and not (len(logs) == 1 and 'error' in logs[0]):
+                        print(f"✅ Retrieved {len(logs)} events for {result['stack_name']}")
+                    else:
+                        error_msg = logs[0].get('error', 'Unknown error') if logs else 'No logs returned'
+                        print(f"⚠️ Failed to get CF logs for {result['stack_name']}: {error_msg}")
+                        logs= [{"error": error_msg, "stack_name": result["stack_name"]}]
+                except Exception as e:
+                    print(f"⚠️ Exception getting CF logs for {result['stack_name']}: {e}")
+                    logs = [{"error": f"Exception: {str(e)}", "stack_name": result["stack_name"]}]
             
-            for result in deployment_results:
-                if not result["success"] and result.get("stack_name") and result["stack_name"] != "N/A":
-                    print(f"📋 Getting CF logs for: {result['stack_name']}")
-                    try:
-                        logs = get_cloudformation_logs(result["stack_name"])
-                        # Check if we got actual events or just error messages
-                        if logs and not (len(logs) == 1 and 'error' in logs[0]):
-                            cf_logs[result["stack_name"]] = logs
-                            logs_retrieved += 1
-                            print(f"✅ Retrieved {len(logs)} events for {result['stack_name']}")
-                        else:
-                            error_msg = logs[0].get('error', 'Unknown error') if logs else 'No logs returned'
-                            print(f"⚠️ Failed to get CF logs for {result['stack_name']}: {error_msg}")
-                            cf_logs[result["stack_name"]] = [{"error": error_msg, "stack_name": result["stack_name"]}]
-                    except Exception as e:
-                        print(f"⚠️ Exception getting CF logs for {result['stack_name']}: {e}")
-                        cf_logs[result["stack_name"]] = [{"error": f"Exception: {str(e)}", "stack_name": result["stack_name"]}]
-            
-            print(f"✅ Retrieved CF logs for {logs_retrieved}/{len(cf_logs)} stacks")
+            print(f"✅ Retrieved {len(logs)} CF logs for {stack_name}")
             
             # Always proceed with second Bedrock call, even with partial/error data
             print("🤖 Making second Bedrock call with available CF data...")
@@ -665,22 +669,22 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
             Analyze CloudFormation error events to determine root cause of deployment failures.
 
             Pattern Results:
-            {json.dumps(deployment_results, indent=2)}
+            {json.dumps(result, indent=2)}
 
             CloudFormation Error Events:
-            {json.dumps(cf_logs, indent=2)}
+            {json.dumps(logs, indent=2)}
 
-            IMPORTANT: Some stacks may have failed to retrieve logs (check for "error" fields).
-            For stacks with log retrieval errors, base analysis on the pattern results error messages.
+            IMPORTANT: Stack may have failed to retrieve logs (check for "error" fields).
+            For log retrieval errors, base analysis on the result error messages.
             
             Search through the events and find CREATE_FAILED events. Determine the root cause based on ResourceStatusReason.
-            If no events available due to log retrieval failures, analyze the pattern error messages for clues.
+            If no events available due to log retrieval failures, analyze the error messages for clues.
 
             Provide analysis in this format:
 
-            🚀 DEPLOYMENT RESULTS
+            🚀 DEPLOYMENT RESULT
 
-            📋 Pattern Status:
+            📋 Status:
             [Determine actual status from the data provided]
 
             🔍 CloudFormation Root Cause:
@@ -712,153 +716,84 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         
     except Exception as e:
         # Manual summary when Bedrock unavailable
-        successful = sum(1 for r in deployment_results if r["success"])
-        total = len(deployment_results)
-        
         return dedent(f"""
         DEPLOYMENT SUMMARY (MANUAL)
         
-        Successful Patterns: {successful}/{total}
-        
-        Pattern Results:
-        {chr(10).join(f"- {r['pattern_name']}: {'SUCCESS' if r['success'] else 'FAILED'}" for r in deployment_results)}
+        Deployment result {stack_name} : {'SUCCESS' if result['success'] else 'FAILED'}
         
         Error: Failed to generate AI analysis: {e}
         """)
 
-def cleanup_single_stack(stack_name, pattern_name):
-    """Clean up a single stack"""
-    print(f"[{pattern_name}] Cleaning up: {stack_name}")
+def cleanup_stack(result):
+    """Clean up stack"""
+    stack_name = result.get("stack_name")
+    print(f"🧹 Starting cleanup for stack: {stack_name}")
     try:
         # Check stack status first
-        result = run_command(f"aws cloudformation describe-stacks --stack-name {stack_name} --query 'Stacks[0].StackStatus' --output text", check=False)
-        stack_status = result.stdout.strip() if result.returncode == 0 else "NOT_FOUND"
+        cmd_result = run_command(f"aws cloudformation describe-stacks --stack-name {stack_name} --query 'Stacks[0].StackStatus' --output text", check=False)
+        stack_status = cmd_result.stdout.strip() if cmd_result.returncode == 0 else "NOT_FOUND"
         
-        print(f"[{pattern_name}] Stack status: {stack_status}")
+        print(f"[{stack_name}] stack status: {stack_status}")
         
         # Delete the stack and wait for completion (includes all cleanup via --force-delete-all)
-        print(f"[{pattern_name}] Attempting stack deletion...")
+        print(f"[{stack_name}] attempting stack deletion...")
         run_command(f"idp-cli delete --stack-name {stack_name} --force --empty-buckets --force-delete-all --wait", check=False)
         
-        print(f"[{pattern_name}] ✅ Cleanup completed")
+        print(f"[{stack_name}] ✅ Cleanup completed")
         
         # Clean up CodeBuild-specific IAM resources
         cleanup_iam_resources(stack_name)
-        
     except Exception as e:
-        print(f"[{pattern_name}] ⚠️ Cleanup failed: {e}")
-
-
-def cleanup_stacks(deployment_results):
-    """Clean up multiple stacks in parallel"""
-    stacks_to_cleanup = [
-        (result["stack_name"], result["pattern_name"])
-        for result in deployment_results
-        if result.get("stack_name") and result["stack_name"] != "N/A"
-    ]
-    
-    if not stacks_to_cleanup:
-        print("No stacks to cleanup")
-        return
-    
-    print(f"🧹 Starting parallel cleanup of {len(stacks_to_cleanup)} stacks...")
-    
-    with ThreadPoolExecutor(max_workers=len(stacks_to_cleanup)) as executor:
-        futures = [
-            executor.submit(cleanup_single_stack, stack_name, pattern_name)
-            for stack_name, pattern_name in stacks_to_cleanup
-        ]
-        
-        for future in as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                print(f"⚠️ Cleanup task failed: {e}")
+        print(f"⚠️ Cleanup task failed: {e}")
 
 def main():
     """Main execution function"""
     print("Starting CodeBuild deployment process...")
 
     admin_email = get_env_var("IDP_ADMIN_EMAIL", "tanimath@amazon.com")
-    stack_prefix = generate_stack_prefix()
+    stack_name = generate_stack_name()
 
-    print(f"Stack Prefix: {stack_prefix}")
+    print(f"Stack Name: {stack_name}")
     print(f"Admin Email: {admin_email}")
-    print(f"Patterns to deploy: {[p['name'] for p in DEPLOY_PATTERNS]}")
+
+    #initialize AI summary
+    ai_summary = ""
+    publish_success = False
+    stack_success = False
 
     # Step 1: Publish templates to S3
     try:
         template_url = publish_templates()
+        print(f"Publish script ran successfully template url {template_url}")
         publish_success = True
-        publish_error = None
     except Exception as e:
         print(f"❌ Publish failed: {e}")
-        template_url = "N/A - Publish failed"
-        publish_success = False
-        publish_error = str(e)
-
-    all_success = publish_success
-    deployment_results = []
-
-    # Step 2: Deploy and test patterns concurrently (only if publish succeeded)
+        ai_summary = generate_publish_failure_summary(str(e))
+    
+    
     if publish_success:
-        print("🚀 Starting concurrent deployment of all patterns...")
-        with ThreadPoolExecutor(max_workers=len(DEPLOY_PATTERNS)) as executor:
-            # Submit all deployment tasks (without cleanup)
-            future_to_pattern = {
-                executor.submit(
-                    deploy_and_test_pattern,
-                    stack_prefix,
-                    pattern_config,
-                    admin_email,
-                    template_url,
-                ): pattern_config
-                for pattern_config in DEPLOY_PATTERNS
-            }
+        # Step 2: Deploy and test patterns concurrently (only if publish succeeded)
+        print(f"🚀 Starting deployment for stack: {stack_name}")
+        try:
+            result = deploy_and_test_stack(stack_name, admin_email, template_url)
+            if not result["success"]:
+                print(f"[{stack_name}] ❌ Failed")
+            else:
+                stack_success = True
+                print(f"[{stack_name}] ✅ Success")
+        except Exception as e:
+            print(f"[{stack_name}] ❌ Exception: {e}")
+            # Add failed result for exception cases
+            result = {"stack_name": stack_name, "success": False, "error": str(e)}
+    
+        # Step 3: Generate deployment summary using Bedrock (but don't print yet)
+        try:
+            ai_summary = generate_deployment_summary(result, stack_name, template_url)
+        except Exception as e:
+            ai_summary = f"⚠️ Failed to generate deployment summary: {e}"
 
-            # Collect results as they complete
-            for future in as_completed(future_to_pattern):
-                pattern_config = future_to_pattern[future]
-                try:
-                    result = future.result()
-                    deployment_results.append(result)
-                    if not result["success"]:
-                        all_success = False
-                        print(f"[{pattern_config['name']}] ❌ Failed")
-                    else:
-                        print(f"[{pattern_config['name']}] ✅ Success")
-                        
-                except Exception as e:
-                    print(f"[{pattern_config['name']}] ❌ Exception: {e}")
-                    # Add failed result for exception cases
-                    deployment_results.append({
-                        "stack_name": f"{stack_prefix}-{pattern_config['suffix']}",
-                        "pattern_name": pattern_config['name'],
-                        "success": False,
-                        "error": str(e)
-                    })
-                    all_success = False
-    else:
-        # Add publish failure to results for AI analysis
-        deployment_results.append({
-            "stack_name": "N/A",
-            "pattern_name": "Template Publishing",
-            "success": False,
-            "error": "Failed to publish templates to S3"
-        })
-
-    # Step 3: Generate deployment summary using Bedrock (but don't print yet)
-    ai_summary = None
-    try:
-        if not publish_success:
-            ai_summary = generate_publish_failure_summary(publish_error)
-        else:
-            ai_summary = generate_deployment_summary(deployment_results, stack_prefix, template_url)
-    except Exception as e:
-        ai_summary = f"⚠️ Failed to generate deployment summary: {e}"
-
-    # Step 4: Cleanup stacks after analysis
-    cleanup_stacks(deployment_results)
+        # Step 4: clean up stack
+        cleanup_stack(result)
 
     # Step 5: Print AI analysis results at the end
     print("\n🤖 Generating deployment summary with Bedrock...")
@@ -866,11 +801,11 @@ def main():
         print(ai_summary)
 
     # Check final status after all cleanups are done
-    if all_success:
-        print("🎉 All pattern deployments completed successfully!")
+    if stack_success:
+        print(f"🎉 Stack: {stack_name} deployment completed successfully!")
         sys.exit(0)
     else:
-        print("💥 Some deployments failed!")
+        print(f"💥 Stack: {stack_name} deployment failed!")
         sys.exit(1)
 
 

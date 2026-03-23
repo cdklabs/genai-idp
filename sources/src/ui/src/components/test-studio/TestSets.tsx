@@ -19,15 +19,15 @@ import {
   Select,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
-import ADD_TEST_SET from '../../graphql/queries/addTestSet';
-import ADD_TEST_SET_FROM_UPLOAD from '../../graphql/queries/addTestSetFromUpload';
-import DELETE_TEST_SETS from '../../graphql/queries/deleteTestSets';
-import GET_TEST_SETS from '../../graphql/queries/getTestSets';
-import LIST_BUCKET_FILES from '../../graphql/queries/listBucketFiles';
-import VALIDATE_TEST_FILE_NAME from '../../graphql/queries/checkTestSetFiles';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type GqlResult = { data: Record<string, any> };
+import {
+  addTestSet,
+  addTestSetFromUpload,
+  deleteTestSets,
+  getTestSets,
+  listBucketFiles,
+  validateTestFileName,
+} from '../../graphql/generated';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 const client = generateClient();
 
@@ -42,12 +42,12 @@ const BUCKET_OPTIONS: SelectProps.Option[] = [
 interface TestSetItem {
   id: string;
   name: string;
-  description?: string;
+  description?: string | null;
   filePattern?: string | null;
-  fileCount: number | null;
-  status: string;
+  fileCount?: number | null;
+  status?: string | null;
   createdAt: string;
-  error?: string;
+  error?: string | null;
 }
 
 const TestSets = (): React.JSX.Element => {
@@ -79,23 +79,24 @@ const TestSets = (): React.JSX.Element => {
   const loadTestSets = async () => {
     try {
       console.log('TestSets: Loading test sets...');
-      const result = (await client.graphql({ query: GET_TEST_SETS })) as GqlResult;
+      const result = await client.graphql({ query: getTestSets });
       console.log('TestSets: GraphQL result:', result);
       const backendTestSets = result.data.getTestSets || [];
 
       // Upsert: merge backend data with existing UI state, deduplicating by id
       setTestSets((prevTestSets) => {
-        const backendIds = new Set(backendTestSets.map((ts) => ts.id));
+        const nonNullBackendTestSets = backendTestSets.filter((ts): ts is NonNullable<typeof ts> => ts !== null);
+        const backendIds = new Set(nonNullBackendTestSets.map((ts) => ts.id));
 
         // Keep UI test sets that don't exist in backend (active processing)
         const uiOnlyTestSets = prevTestSets.filter((ts) => !backendIds.has(ts.id) && ts.status !== 'COMPLETED' && ts.status !== 'FAILED');
 
         // Combine backend test sets (always win) with UI-only active test sets
-        return [...backendTestSets, ...uiOnlyTestSets];
+        return [...nonNullBackendTestSets, ...uiOnlyTestSets];
       });
     } catch (err) {
       console.error('TestSets: Failed to load test sets:', err);
-      setError(`Failed to load test sets: ${err.message || 'Unknown error'}`);
+      setError(`Failed to load test sets: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -155,20 +156,20 @@ const TestSets = (): React.JSX.Element => {
 
     setLoading(true);
     try {
-      const result = (await client.graphql({
-        query: LIST_BUCKET_FILES,
+      const result = await client.graphql({
+        query: listBucketFiles,
         variables: {
-          bucketType: selectedBucket.value,
+          bucketType: selectedBucket.value ?? '',
           filePattern: filePattern.trim(),
         },
-      })) as GqlResult;
+      });
 
-      const files = result.data.listBucketFiles || [];
+      const files = (result.data.listBucketFiles || []).filter((f): f is string => f !== null);
       setMatchingFiles(files);
       setFileCount(files.length);
       setShowFilesModal(true);
     } catch (err) {
-      const errorMessage = err.message || err.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      const errorMessage = getErrorMessage(err);
       setError(`Failed to check files: ${errorMessage}`);
     } finally {
       setLoading(false);
@@ -202,12 +203,12 @@ const TestSets = (): React.JSX.Element => {
       return;
     }
 
-    // 2. Backend validation using VALIDATE_TEST_FILE_NAME
+    // 2. Backend validation using validateTestFileName
     try {
-      const validationResult = (await client.graphql({
-        query: VALIDATE_TEST_FILE_NAME,
+      const validationResult = await client.graphql({
+        query: validateTestFileName,
         variables: { fileName: newTestSetName.trim() },
-      })) as GqlResult;
+      });
 
       const validation = validationResult.data.validateTestFileName;
       if (validation && validation.exists) {
@@ -225,23 +226,23 @@ const TestSets = (): React.JSX.Element => {
       }
     } catch (err) {
       console.error('Error validating test set name:', err);
-      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      const errorMessage = getErrorMessage(err);
       setError(`Failed to validate test set name: ${errorMessage}`);
       return;
     }
 
     setLoading(true);
     try {
-      const result = (await client.graphql({
-        query: ADD_TEST_SET,
+      const result = await client.graphql({
+        query: addTestSet,
         variables: {
           name: newTestSetName.trim(),
           description: newTestSetDescription.trim(),
           filePattern: filePattern.trim(),
-          bucketType: selectedBucket.value,
+          bucketType: selectedBucket.value ?? '',
           fileCount,
         },
-      })) as GqlResult;
+      });
 
       console.log('GraphQL result:', result);
       const newTestSet = result.data.addTestSet;
@@ -275,7 +276,7 @@ const TestSets = (): React.JSX.Element => {
       }
     } catch (err) {
       console.error('Error adding test set:', err);
-      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      const errorMessage = getErrorMessage(err);
       setError(`Failed to add test set: ${errorMessage}`);
     } finally {
       setLoading(false);
@@ -300,10 +301,10 @@ const TestSets = (): React.JSX.Element => {
     }
 
     try {
-      const validationResult = (await client.graphql({
-        query: VALIDATE_TEST_FILE_NAME,
+      const validationResult = await client.graphql({
+        query: validateTestFileName,
         variables: { fileName: newTestSetName.trim() },
-      })) as GqlResult;
+      });
 
       const validation = validationResult.data.validateTestFileName;
       if (validation && validation.exists) {
@@ -321,7 +322,7 @@ const TestSets = (): React.JSX.Element => {
       }
     } catch (err) {
       console.error('Error validating test set name:', err);
-      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      const errorMessage = getErrorMessage(err);
       setError(`Failed to validate test set name: ${errorMessage}`);
       return;
     }
@@ -333,8 +334,8 @@ const TestSets = (): React.JSX.Element => {
 
     setLoading(true);
     try {
-      const result = (await client.graphql({
-        query: ADD_TEST_SET_FROM_UPLOAD,
+      const result = await client.graphql({
+        query: addTestSetFromUpload,
         variables: {
           input: {
             fileName: zipFile.name,
@@ -342,7 +343,7 @@ const TestSets = (): React.JSX.Element => {
             description: newTestSetDescription.trim(),
           },
         },
-      })) as GqlResult;
+      });
 
       const response = result.data.addTestSetFromUpload;
 
@@ -367,7 +368,7 @@ const TestSets = (): React.JSX.Element => {
         throw new Error(`Upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
       }
 
-      const newTestSet = {
+      const newTestSet: TestSetItem = {
         id: response.testSetId,
         name: newTestSetName.trim(),
         description: newTestSetDescription.trim(),
@@ -402,7 +403,7 @@ const TestSets = (): React.JSX.Element => {
       }
     } catch (err) {
       console.error('Error creating test set:', err);
-      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      const errorMessage = getErrorMessage(err);
       setError(`Failed to create test set: ${errorMessage}`);
     } finally {
       setLoading(false);
@@ -415,11 +416,11 @@ const TestSets = (): React.JSX.Element => {
     setWarningMessage('');
     setSuccessMessage('');
     try {
-      const result = (await client.graphql({ query: GET_TEST_SETS })) as GqlResult;
-      setTestSets(result.data.getTestSets || []);
+      const result = await client.graphql({ query: getTestSets });
+      setTestSets((result.data.getTestSets || []).filter((ts): ts is NonNullable<typeof ts> => ts !== null));
     } catch (err) {
       console.error('Error refreshing test sets:', err);
-      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      const errorMessage = getErrorMessage(err);
       setError(`Failed to refresh test sets: ${errorMessage}`);
     } finally {
       setRefreshing(false);
@@ -433,7 +434,7 @@ const TestSets = (): React.JSX.Element => {
     setLoading(true);
     try {
       await client.graphql({
-        query: DELETE_TEST_SETS,
+        query: deleteTestSets,
         variables: { testSetIds },
       });
       setTestSets(testSets.filter((testSet) => !testSetIds.includes(testSet.id)));
@@ -442,7 +443,7 @@ const TestSets = (): React.JSX.Element => {
       setError('');
     } catch (err) {
       console.error('Error deleting test sets:', err);
-      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      const errorMessage = getErrorMessage(err);
       setError(`Failed to delete test sets: ${errorMessage}`);
     } finally {
       setLoading(false);
@@ -458,36 +459,36 @@ const TestSets = (): React.JSX.Element => {
     {
       id: 'name',
       header: 'Test Set Name',
-      cell: (item) => item.name,
+      cell: (item: TestSetItem) => item.name,
       sortingField: 'name',
     },
     {
       id: 'id',
       header: 'Test Set ID',
-      cell: (item) => item.id,
+      cell: (item: TestSetItem) => item.id,
       sortingField: 'id',
     },
     {
       id: 'description',
       header: 'Description',
-      cell: (item) => item.description || '-',
+      cell: (item: TestSetItem) => item.description || '-',
       width: 200,
       minWidth: 120,
     },
     {
       id: 'filePattern',
       header: 'File Pattern',
-      cell: (item) => item.filePattern,
+      cell: (item: TestSetItem) => item.filePattern,
     },
     {
       id: 'fileCount',
       header: 'Files',
-      cell: (item) => item.fileCount,
+      cell: (item: TestSetItem) => item.fileCount,
     },
     {
       id: 'status',
       header: 'Status',
-      cell: (item) => {
+      cell: (item: TestSetItem) => {
         const status = item.status || '-';
 
         if (status === 'FAILED' && item.error) {
@@ -521,7 +522,7 @@ const TestSets = (): React.JSX.Element => {
     {
       id: 'createdAt',
       header: 'Created',
-      cell: (item) => new Date(item.createdAt).toLocaleDateString(),
+      cell: (item: TestSetItem) => new Date(item.createdAt).toLocaleDateString(),
       sortingField: 'createdAt',
     },
   ];
@@ -644,7 +645,7 @@ const TestSets = (): React.JSX.Element => {
                 setWarningMessage('');
               }}
               placeholder="e.g., lending-package-v1"
-              invalid={newTestSetName && !validateTestSetName(newTestSetName)}
+              invalid={!!newTestSetName && !validateTestSetName(newTestSetName)}
             />
           </FormField>
 
@@ -659,7 +660,7 @@ const TestSets = (): React.JSX.Element => {
               value={newTestSetDescription}
               onChange={({ detail }) => setNewTestSetDescription(detail.value)}
               placeholder="Test set description"
-              invalid={newTestSetDescription && !validateDescription(newTestSetDescription)}
+              invalid={!!newTestSetDescription && !validateDescription(newTestSetDescription)}
             />
           </FormField>
 
@@ -826,7 +827,7 @@ const TestSets = (): React.JSX.Element => {
               value={newTestSetDescription}
               onChange={({ detail }) => setNewTestSetDescription(detail.value)}
               placeholder="Test set description"
-              invalid={newTestSetDescription && !validateDescription(newTestSetDescription)}
+              invalid={!!newTestSetDescription && !validateDescription(newTestSetDescription)}
             />
           </FormField>
 
@@ -877,7 +878,7 @@ const TestSets = (): React.JSX.Element => {
               type="file"
               accept=".zip"
               onChange={async (e) => {
-                const file = e.target.files[0];
+                const file = e.target.files?.[0];
                 if (file) {
                   setZipFile(file);
 
@@ -900,10 +901,10 @@ const TestSets = (): React.JSX.Element => {
 
                   // Check if test set already exists
                   try {
-                    const validationResult = (await client.graphql({
-                      query: VALIDATE_TEST_FILE_NAME,
+                    const validationResult = await client.graphql({
+                      query: validateTestFileName,
                       variables: { fileName },
-                    })) as GqlResult;
+                    });
 
                     const validation = validationResult.data.validateTestFileName;
                     if (validation && validation.exists) {
@@ -913,7 +914,7 @@ const TestSets = (): React.JSX.Element => {
                     }
                   } catch (err) {
                     console.error('Error validating test set name:', err);
-                    const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+                    const errorMessage = getErrorMessage(err);
                     setError(`Failed to validate test set name: ${errorMessage}`);
                     setNewTestSetName('');
                     return;

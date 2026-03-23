@@ -117,7 +117,7 @@ def async_exponential_backoff_retry[T, **P](
                     if error_code not in retryable_errors or attempt == max_retries - 1:
                         raise
 
-                    jitter_value = random.uniform(-jitter, jitter)
+                    jitter_value = random.uniform(-jitter, jitter)  # nosec B311 - retry jitter
                     sleep_time = max(0.1, delay * (1 + jitter_value))
                     logger.warning(
                         f"{error_code}:{e.response.get('Error', {}).get('Message', '')} encountered in {func.__name__}. Retrying in {sleep_time:.2f} seconds. "
@@ -143,7 +143,7 @@ def async_exponential_backoff_retry[T, **P](
                     ) and attempt < max_retries - 1:
                         # Log and retry
                         log_bedrock_invocation_error(e, attempt + 1)
-                        jitter_value = random.uniform(-jitter, jitter)
+                        jitter_value = random.uniform(-jitter, jitter)  # nosec B311 - retry jitter
                         sleep_time = max(0.1, delay * (1 + jitter_value))
                         logger.warning(
                             f"{exception_name}: {exception_str} encountered in {func.__name__}. "
@@ -278,7 +278,7 @@ def exponential_backoff_retry[T, **P](
                     ):
                         raise
 
-                    jitter_value = random.uniform(-jitter, jitter)
+                    jitter_value = random.uniform(-jitter, jitter)  # nosec B311 - retry jitter
                     sleep_time = max(0.1, delay * (1 + jitter_value))
                     logger.warning(
                         f"{error_code}:{e.response.get('Error', {}).get('Message', '')} encountered in {func.__name__}. Retrying in {sleep_time:.2f} seconds. "

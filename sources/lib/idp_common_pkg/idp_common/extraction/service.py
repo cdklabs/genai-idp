@@ -29,7 +29,7 @@ from idp_common.utils.few_shot_example_builder import (
     build_few_shot_extraction_examples_content,
 )
 
-# Conditional import for agentic extraction (requires Python 3.10+ dependencies)
+# Conditional import for agentic extraction (requires Python 3.12+ dependencies)
 try:
     from idp_common.extraction.agentic_idp import structured_output
     from idp_common.schema import create_pydantic_model_from_json_schema
@@ -924,7 +924,7 @@ class ExtractionService:
         if self.config.extraction.agentic.enabled:
             if not AGENTIC_AVAILABLE:
                 raise ImportError(
-                    "Agentic extraction requires Python 3.10+ and strands-agents dependencies. "
+                    "Agentic extraction requires Python 3.12+ and strands-agents dependencies. "
                     "Install with: pip install 'idp_common[agents]' or use agentic=False"
                 )
 

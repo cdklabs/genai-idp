@@ -1012,6 +1012,10 @@ class DiscoveryConfig(BaseModel):
         default_factory=DiscoveryModelConfig,
         description="Configuration for discovery with ground truth",
     )
+    auto_split: DiscoveryModelConfig = Field(
+        default_factory=DiscoveryModelConfig,
+        description="Configuration for auto-detecting document section boundaries in multi-page packages",
+    )
 
 
 # Known deprecated fields that should be logged when encountered
@@ -1025,6 +1029,13 @@ IDP_CONFIG_DEPRECATED_FIELDS = {
     "output_bucket",
     "textract_page_tracker",
     "summary",
+    "processing_mode",  # Renamed to use_bda (bool) in Phase 1
+    # DynamoDB storage metadata fields (not part of IDPConfig model)
+    "BdaProjectArn",
+    "BdaSyncStatus",
+    "BdaLastSyncedAt",
+    "_config_format",
+    "_config_storage",
 }
 
 
@@ -1071,6 +1082,24 @@ class IDPConfig(BaseModel):
 
     config_type: Literal["Config"] = Field(
         default="Config", description="Configuration type"
+    )
+
+    use_bda: bool = Field(
+        default=False,
+        description="Use Bedrock Data Automation (BDA) for document processing. "
+        "When true, BDA handles OCR, classification, and extraction as a single managed service. "
+        "When false (default), uses the step-by-step pipeline with configurable OCR, classification, "
+        "extraction, and assessment stages.",
+    )
+
+    managed: bool = Field(
+        default=False,
+        description="Stack-managed configuration that is overwritten on stack updates.",
+    )
+
+    test_set: Optional[str] = Field(
+        default=None,
+        description="Associated test set name (documentation/reference only).",
     )
 
     notes: Optional[str] = Field(default=None, description="Configuration notes")
@@ -1268,10 +1297,16 @@ class ConfigurationRecord(BaseModel):
         # Stringify values (preserve booleans, convert numbers to strings)
         stringified = self._stringify_values(config_dict)
 
+        # Map managed field to PascalCase DynamoDB convention (before spreading into item)
+        managed_value = stringified.pop("managed", None)
+
         configuration_type = f"{self.configuration_type}#{self.version}" if self.version else self.configuration_type
 
         # Build DynamoDB item
         item = {"Configuration": configuration_type, **stringified}
+
+        if managed_value is not None:
+            item["Managed"] = managed_value
 
         # Add ConfigurationRecord level fields
         if self.is_active is not None:
@@ -1327,8 +1362,18 @@ class ConfigurationRecord(BaseModel):
             version = ""
 
         # Remove DynamoDB keys and metadata
-        config_data = {k: v for k, v in item.items() 
-                      if k not in ("Configuration", "IsActive", "CreatedAt", "UpdatedAt", "Description")}
+        # Remove DynamoDB partition key, record metadata, and storage metadata fields
+        # These are not part of the config data model
+        _DYNAMODB_NON_CONFIG_FIELDS = {
+            "Configuration", "IsActive", "CreatedAt", "UpdatedAt", "Description",
+            "BdaProjectArn", "BdaSyncStatus", "BdaLastSyncedAt", "Managed",
+            "_config_format", "_config_storage",
+        }
+        config_data = {k: v for k, v in item.items() if k not in _DYNAMODB_NON_CONFIG_FIELDS}
+
+        # Map PascalCase DynamoDB field back to lowercase Pydantic field
+        if "Managed" in item:
+            config_data["managed"] = item["Managed"]
 
         # Set config_type discriminator directly from DynamoDB Configuration key
         # DynamoDB keys match Pydantic discriminators exactly:

@@ -97,7 +97,7 @@ def handler(event, context):
                     table = dynamodb_resource.Table(tracking_table)
                     table.update_item(
                         Key={"PK": f"doc#{object_key}", "SK": "none"},
-                        UpdateExpression="SET HITLStatus = :status, HITLReviewedBy = :reviewedBy, HITLReviewedByEmail = :reviewedByEmail, HITLCompleted = :completed",
+                        UpdateExpression="SET HITLStatus = :status, HITLReviewedBy = :reviewedBy, HITLReviewedByEmail = :reviewedByEmail, HITLCompleted = :completed REMOVE HITLPendingReview",
                         ExpressionAttributeValues={
                             ":status": "Review Completed",
                             ":reviewedBy": username,

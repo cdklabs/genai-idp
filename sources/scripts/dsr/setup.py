@@ -13,7 +13,7 @@ from pathlib import Path
 def run_command(cmd, cwd=None):
     """Run shell command and return result."""
     try:
-        result = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)
+        result = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)  # nosec B602 nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true - hardcoded commands, no user input
         if result.returncode != 0:
             print(f"Error running command: {cmd}")
             print(f"Error: {result.stderr}")
@@ -184,10 +184,12 @@ def main():
     print("Configuring DSR...")
     print("Please follow the prompts to configure DSR with your AWS settings.")
     
-    # Use os.system for interactive command
-    import os
-    result = os.system(f"cd {dsr_dir} && ./dsr config")
-    if result != 0:
+    result = subprocess.run(
+        ["./dsr", "config"],
+        cwd=dsr_dir,
+        check=False
+    )
+    if result.returncode != 0:
         print("DSR configuration failed")
         sys.exit(1)
     

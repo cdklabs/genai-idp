@@ -775,7 +775,7 @@ def _get_specific_document_sections_table_info(
         else:
             info += "No configuration-specific columns defined.\n"
 
-        info += f"""
+        info += f"""  # nosec B608 - AI agent prompt template with example SQL, not executed
 
 ### Sample Queries for {table_name}:
 ```sql

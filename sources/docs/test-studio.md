@@ -1,3 +1,7 @@
+---
+title: "Test Studio"
+---
+
 # Test Studio
 
 The Test Studio provides a comprehensive interface for managing test sets, running tests, and analyzing results directly from the web UI.
@@ -13,13 +17,14 @@ https://github.com/user-attachments/assets/7c5adf30-8d5c-4292-93b0-0149506322c7
 
 ## Pre-Deployed Test Sets
 
-The accelerator automatically deploys **three benchmark datasets** from HuggingFace as ready-to-use test sets during stack deployment:
+The accelerator automatically deploys **four benchmark datasets** from HuggingFace as ready-to-use test sets during stack deployment:
 
 1. **RealKIE-FCC-Verified**: 75 FCC invoice documents
 2. **OmniAI-OCR-Benchmark**: 293 diverse document images across 9 formats
 3. **DocSplit-Poly-Seq**: 500 multi-page packets with 13 document types
+4. **Fake-W2-Tax-Forms**: 2,000 synthetic US W-2 tax form images with 45-field ground truth
 
-All datasets are deployed automatically with zero manual steps required.
+All datasets are deployed automatically with zero manual steps required. Each test set has a corresponding **managed configuration version** (e.g., `fake-w2`, `docsplit`) that is auto-selected in Test Studio when the test set is chosen. See [Configuration — Managed Configuration Versions](configuration.md#managed-configuration-versions) for details.
 
 ---
 
@@ -53,7 +58,7 @@ During stack deployment, the system automatically:
 
 #### Corresponding Config
 
-Use with: `config_library/pattern-2/realkie-fcc-verified/config.yaml`
+Use with: `config_library/unified/realkie-fcc-verified/config.yaml`
 
 ---
 
@@ -97,7 +102,7 @@ During stack deployment, the system automatically:
 
 #### Corresponding Config
 
-Use with: `config_library/pattern-2/ocr-benchmark/config.yaml`
+Use with: `config_library/unified/ocr-benchmark/config.yaml`
 
 ---
 
@@ -134,6 +139,7 @@ All test sets are immediately available after stack deployment:
    - "RealKIE-FCC-Verified" for invoice extraction testing
    - "OmniAI-OCR-Benchmark" for multi-format document testing
    - "DocSplit-Poly-Seq" for document splitting and classification testing
+   - "Fake-W2-Tax-Forms" for W-2 tax form extraction testing
 3. Enter a description in the **Context** field
 4. Click **Run Test** to start processing
 5. Monitor progress and view results when complete
@@ -214,7 +220,7 @@ During stack deployment, the system automatically:
 
 #### Corresponding Config
 
-Use with: `config_library/pattern-2/rvl-cdip/config.yaml` or `config_library/pattern-3/rvl-cdip/config.yaml`
+Use with: `config_library/unified/rvl-cdip/config.yaml`
 
 #### Evaluation Metrics
 
@@ -231,9 +237,73 @@ This test set enables evaluation of:
 
 ---
 
+### Fake-W2-Tax-Forms
+
+**HuggingFace Source**: https://huggingface.co/datasets/singhsays/fake-w2-us-tax-form-dataset
+**Original Source**: https://www.kaggle.com/datasets/mcvishnu1/fake-w2-us-tax-form-dataset (CC0: Public Domain)
+
+This dataset contains 2,000 synthetically generated US W-2 tax form images with comprehensive structured ground truth. The forms contain fake data (names, IDs, addresses, financial figures) with only real city, state, and zip codes used.
+
+#### Dataset Splits
+
+| Split | Count | Description |
+|-------|-------|-------------|
+| Train | 1,800 | Training set images |
+| Test | 100 | Test set images |
+| Validation | 100 | Validation set images |
+
+#### Ground Truth Fields (45 per document)
+
+Each document includes structured ground truth in `gt_parse` JSON format covering all standard W-2 boxes:
+
+| Category | Fields | Examples |
+|----------|--------|----------|
+| **Employer Info** | EIN, name, street address, city/state/zip | `box_b_employer_identification_number`, `box_c_employer_name` |
+| **Employee Info** | SSN, name, street address, city/state/zip | `box_a_employee_ssn`, `box_e_employee_name` |
+| **Control** | Control number | `box_d_control_number` |
+| **Federal Wages** | Wages, SS wages, Medicare wages, SS tips, allocated tips | `box_1_wages`, `box_3_social_security_wages`, `box_5_medicare_wages` |
+| **Federal Taxes** | Federal tax, SS tax, Medicare tax | `box_2_federal_tax_withheld`, `box_4_social_security_tax_withheld` |
+| **Benefits** | Dependent care, nonqualified plans | `box_10_dependent_care_benefits`, `box_11_nonqualified_plans` |
+| **Codes (12a-d)** | Code letter + value (4 entries) | `box_12a_code`, `box_12a_value` |
+| **Checkboxes (13)** | Statutory employee, retirement plan, third-party sick pay | `box_13_statutary_employee`, `box_13_retirement_plan` |
+| **State/Local (×2)** | State, state ID, state wages, state tax, local wages, local tax, locality | `box_15_1_state`, `box_16_1_state_wages`, `box_20_1_locality` |
+
+#### Deployment Details
+
+During stack deployment, the system automatically:
+
+1. **Downloads Parquet Files** from HuggingFace (all 3 splits: train, test, validation)
+2. **Extracts Images** from parquet `image` column (JPG format, 612×792px)
+3. **Uploads Images** to `s3://TestSetBucket/fake-w2/input/`
+4. **Converts Ground Truth** from `gt_parse` JSON to accelerator `inference_result` format
+5. **Uploads Baselines** to `s3://TestSetBucket/fake-w2/baseline/`
+6. **Registers Test Set** in DynamoDB with metadata
+
+#### Key Features
+
+- **Comprehensive Ground Truth**: 45 structured fields per document covering all W-2 boxes
+- **Large Scale**: 2,000 documents enable statistically significant benchmarking
+- **Synthetic = No PII**: Fake data eliminates privacy concerns for testing and sharing
+- **Multiple Data Types**: Mix of string identifiers (SSN, EIN), monetary values (wages, taxes), codes, and checkboxes
+- **Dual State/Local Entries**: Each form includes two state/local tax jurisdictions for array extraction testing
+- **CC0 License**: Public domain — no attribution or redistribution restrictions
+
+#### Corresponding Config
+
+Use with: `config_library/unified/fake-w2/config.yaml`
+
+**Fake-W2-Tax-Forms** is ideal for:
+- Benchmarking W-2 tax form extraction accuracy at scale
+- Evaluating numeric precision on monetary fields (wages, taxes)
+- Testing structured form data extraction with nested/repeating sections
+- Assessing image quality impact on OCR and extraction accuracy
+- Comparing model performance across 2,000 documents for statistical significance
+
+---
+
 ### Common Features
 
-Both datasets share these deployment characteristics:
+All datasets share these deployment characteristics:
 **OmniAI-OCR-Benchmark** is ideal for:
 - Testing classification across diverse document types
 - Evaluating extraction on complex nested schemas
@@ -415,6 +485,7 @@ For full details on configuration versioning, see [configuration-versions.md](co
   - **Test run metadata**: Configuration version, duration, context, file counts
   - **Overall accuracy and confidence metrics**
   - **Accuracy breakdown** (precision, recall, F1-score, false alarm rate, false discovery rate)
+  - **Field-Level Metrics**: Per-field extraction performance table with columns: Field Name, Accuracy, Precision, Recall, TP, FP, TN, FN
   - **Average Document Split Classification Metrics**:
     - Page Level Accuracy (average across documents)
     - Split Accuracy Without Order (average across documents)
@@ -425,3 +496,55 @@ For full details on configuration versioning, see [configuration-versions.md](co
 - Side-by-side test comparison with all metrics including configuration versions
 - Export capabilities (JSON/CSV downloads include all metrics)
 - Integrated delete operations
+
+### Bulk Aggregation with Stickler
+
+Test Studio uses Stickler's `BulkStructuredModelEvaluator` for accurate metric aggregation across multiple documents:
+
+**How It Works:**
+1. **Individual Evaluation**: Each document is evaluated with `include_confusion_matrix=True` to capture detailed field-level metrics
+2. **Storage**: Raw Stickler comparison results are stored in S3 at `{doc_path}/evaluation/results.json` under the `stickler_comparison_result` field
+3. **Aggregation**: When viewing test results, the system:
+   - Scans DynamoDB for all documents in the test run (PK pattern: `doc#{test_run_id}*`)
+   - Loads evaluation results from S3
+   - Extracts `stickler_comparison_result` from each document
+   - Uses `aggregate_from_comparisons()` to compute aggregate metrics
+4. **Fallback**: Athena-based aggregation remains available for backward compatibility with older data
+
+**Benefits:**
+- **More Accurate**: Uses Stickler's confusion matrix for precise field-level metrics
+- **Consistent**: Same evaluation engine for single documents and bulk aggregation
+- **Efficient**: No Athena queries needed for new data
+- **Cost Effective**: Reduces Athena query costs
+
+### Field-Level Metrics
+
+Test results include detailed per-field extraction performance metrics displayed in an interactive table:
+
+**Displayed Columns:**
+1. **Field Name**: The name of the extracted field
+2. **Accuracy**: `(TP + TN) / (TP + FP + TN + FN)` - Overall correctness
+3. **Precision**: `TP / (TP + FP)` - Accuracy of positive predictions
+4. **Recall**: `TP / (TP + FN)` - Coverage of actual positives
+5. **TP** (True Positives): Correctly extracted values
+6. **FP** (False Positives): Incorrectly extracted values
+7. **TN** (True Negatives): Correctly identified as absent
+8. **FN** (False Negatives): Missed extractions
+
+**Features:**
+- **Searchable**: Filter fields by name to quickly find specific metrics
+- **Sortable**: Click any column header to sort by that metric
+- **Expandable Section**: Collapsed by default to keep results view clean
+- **Paginated**: 10 fields per page for easy navigation
+- **Resizable Columns**: Adjust column widths as needed
+
+**How It Works:**
+- Backend stores confusion matrix values (TP, FP, TN, FN) from Stickler aggregation
+- UI calculates Accuracy, Precision, and Recall on-the-fly from these values
+- Metrics displayed with 3 decimal precision (e.g., 0.850)
+
+**Use Cases:**
+- Identify which fields have low extraction accuracy
+- Compare field-level performance across test runs
+- Prioritize prompt engineering efforts on problematic fields
+- Track improvement in specific fields after configuration changes

@@ -20,10 +20,10 @@ exclude = [
 
 [project]
 name = "idp_common"
-version = "0.4.16"
+version = "0.5.3"
 description = "Common utilities for GenAI IDP Accelerator patterns"
 authors = [{ name = "AWS", email = "noreply@amazon.com" }]
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.12,<3.14"
 dependencies = [
   "boto3==1.42.0",      # Core dependency for AWS services
   "jsonschema>=4.25.1",
@@ -51,12 +51,15 @@ dev = [
 ]
 
 # Image handling dependencies
-image = ["Pillow==11.2.1"]
+image = [
+  "Pillow==12.1.1",
+  "pypdfium2>=5.5.0",  # PDF page extraction for discovery multi-section support
+]
 
 # OCR module dependencies
 ocr = [
-  "Pillow==11.2.1",
-  "PyMuPDF==1.25.5",
+  "Pillow==12.1.1",
+  "pypdfium2>=5.5.0",
   "amazon-textract-textractor[pandas]==1.9.2",
   "numpy==1.26.4",
   "pandas==2.2.3",
@@ -66,17 +69,17 @@ ocr = [
 
 # Classification module dependencies
 classification = [
-  "Pillow==11.2.1", # For image handling
+  "Pillow==12.1.1", # For image handling
 ]
 
 # Extraction module dependencies
 extraction = [
-  "Pillow==11.2.1",  # For image handling
+  "Pillow==12.1.1",  # For image handling
 ]
 
 # Assessment module dependencies
 assessment = [
-  "Pillow==11.2.1",               # For image handling
+  "Pillow==12.1.1",               # For image handling
   "aws-lambda-powertools>=3.2.0", # Structured logging and observability
 ]
 
@@ -106,7 +109,7 @@ appsync = ["requests==2.32.4"]
 # Agents module dependencies
 agents = [
   "strands-agents==1.14.0; python_version>='3.10'",
-  "strands-agents-tools==0.2.13; python_version>='3.10'",
+  "strands-agents-tools==0.2.22; python_version>='3.10'",
   "bedrock-agentcore>=0.1.1; python_version>='3.10'",    # Specifically for the code interpreter tool
 ]
 
@@ -114,7 +117,7 @@ agents = [
 code_intel = [
     "requests==2.32.4",
     "strands-agents==1.14.0",
-    "strands-agents-tools==0.2.13",
+    "strands-agents-tools==0.2.22",
     "bedrock-agentcore>=0.1.1",
     "PyYAML>=6.0.0",
     "pathspec>=0.11.0",
@@ -139,7 +142,7 @@ test = [
   "openpyxl==3.1.5",
   "python-docx==1.2.0",
   "moto[s3]==5.1.8",                # For mocking AWS services in tests
-  "Pillow==11.2.1",                 # Required for image processing in assessment tests
+  "Pillow==12.1.1",                 # Required for image processing in assessment tests
   "rich>=13.0.0",                   # Required for publish tests
   "idp_common[agentic-extraction]", # Required for agentic_idp tests
   # "s3fs==2023.12.2",  # Required for criteria validation tests - disabled till we fix package dependencies
@@ -162,8 +165,8 @@ test = [
 all = [
   "stickler-eval==0.1.4",
   "genson==1.3.0",
-  "Pillow==11.2.1",
-  "PyMuPDF==1.25.5",
+  "Pillow==12.1.1",
+  "pypdfium2>=5.5.0",
   "amazon-textract-textractor[pandas]==1.9.2",
   "munkres>=1.1.4",
   "numpy==1.26.4",
@@ -173,7 +176,7 @@ all = [
   "openpyxl==3.1.5",
   "python-docx==1.2.0",
   "strands-agents==1.14.0; python_version>='3.10'",
-  "strands-agents-tools==0.2.13; python_version>='3.10'",
+  "strands-agents-tools==0.2.22; python_version>='3.10'",
   "bedrock-agentcore>=0.1.1; python_version>='3.10'",
   # "s3fs==2023.12.2" - - disabled till we fix package dependencies
 ]
@@ -181,7 +184,7 @@ agentic-extraction = [
   "jsonpatch==1.33",
   "strands-agents==1.14.0 ; python_full_version >= '3.10'",
   "pandas>=2.2.3",
-  "pymupdf==1.25.5",  # Pinned to 1.25.5 - has pre-built ARM64 wheels, 1.26.x requires compilation
+  "pypdfium2>=5.5.0",  # Apache-2.0 OR BSD-3-Clause licensed (replaces AGPL-licensed PyMuPDF)
   "email-validator>=2.3.0",
   "tabulate>=0.9.0",
   "aws-lambda-powertools>=3.2.0",                          # Structured logging and observability

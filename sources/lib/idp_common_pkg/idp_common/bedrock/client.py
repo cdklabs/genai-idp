@@ -1480,7 +1480,7 @@ class BedrockClient:
         backoff_seconds = min(self.max_backoff, self.initial_backoff * (2**retry_count))
 
         # Add jitter (random value between 0 and 1 second)
-        jitter = random.random()
+        jitter = random.random()  # nosec B311 - retry jitter
 
         return backoff_seconds + jitter
 

@@ -1,3 +1,7 @@
+---
+title: "Enhanced Evaluation Reporting (sticker-eval v0.1.4+)"
+---
+
 # Enhanced Evaluation Reporting (sticker-eval v0.1.4+)
 
 This document describes the enhanced evaluation reporting features available in IDP v0.4.9+ using sticker-eval v0.1.4.
