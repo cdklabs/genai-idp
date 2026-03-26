@@ -136,7 +136,7 @@
     "constructs": "^10.5.1"
   },
   "dependencies": {
-    "yaml": "^2.8.0"
+    "yaml": "^2.8.3"
   },
   "bundledDependencies": [
     "yaml"
