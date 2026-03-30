@@ -29,6 +29,10 @@ Conditions:
 Resources:
   BedrockProxyFunction:
     Type: AWS::Serverless::Function
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values (model ID and log level)"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for sample Lambda hook function - errors handled by IDP pipeline"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency - sample function for demonstration purposes"
     Properties:
       FunctionName: GENAIIDP-bedrock-proxy
       Runtime: python3.12

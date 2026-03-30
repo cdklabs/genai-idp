@@ -29,9 +29,12 @@ from idp_common.utils.few_shot_example_builder import (
     build_few_shot_extraction_examples_content,
 )
 
-# Conditional import for agentic extraction (requires Python 3.10+ dependencies)
+# Conditional import for agentic extraction (requires Python 3.12+ dependencies)
 try:
-    from idp_common.extraction.agentic_idp import structured_output
+    from idp_common.extraction.agentic_idp import (
+        concurrent_structured_output_async,
+        structured_output,
+    )
     from idp_common.schema import create_pydantic_model_from_json_schema
 
     AGENTIC_AVAILABLE = True
@@ -116,6 +119,10 @@ class ExtractionService:
         self._class_schema: dict[str, Any] = {}
         self._page_images: list[bytes] = []
         self._image_uris: list[str] = []
+        # Optional checkpoint callback for incremental saves during agentic extraction.
+        # When set, called after each successful extraction_tool or apply_json_patches
+        # invocation with the current extraction dict, enabling resume on Lambda timeout.
+        self._checkpoint_callback: Any | None = None
 
         # Get model_id from config for logging (type-safe access with fallback)
         model_id = (
@@ -886,6 +893,7 @@ class ExtractionService:
         content: list[dict[str, Any]],
         system_prompt: str,
         section_info: SectionInfo,
+        checkpoint_data: dict[str, Any] | None = None,
     ) -> ExtractionResult:
         """
         Invoke Bedrock model (agentic or standard) and parse response.
@@ -924,7 +932,7 @@ class ExtractionService:
         if self.config.extraction.agentic.enabled:
             if not AGENTIC_AVAILABLE:
                 raise ImportError(
-                    "Agentic extraction requires Python 3.10+ and strands-agents dependencies. "
+                    "Agentic extraction requires Python 3.12+ and strands-agents dependencies. "
                     "Install with: pip install 'idp_common[agents]' or use agentic=False"
                 )
 
@@ -949,14 +957,71 @@ class ExtractionService:
             logger.info("Using Agentic extraction")
             logger.debug(f"Using input: {str(message_prompt)}")
 
-            structured_data, response_with_metering = structured_output(
-                model_id=model_id,
-                data_format=dynamic_model,
-                prompt=message_prompt,
-                page_images=self._page_images,
-                config=self.config,
-                context="Extraction",
-            )
+            # Convert checkpoint data for resume-on-timeout
+            existing_data_model = None
+            checkpoint_buffer = None
+            if checkpoint_data:
+                # Check if this is a buffer checkpoint (from intermediate_extraction)
+                checkpoint_source = checkpoint_data.pop(
+                    "_checkpoint_source", "current_extraction"
+                )
+                if checkpoint_source == "intermediate_extraction":
+                    # Buffer checkpoint — load into agent's intermediate_extraction state
+                    checkpoint_buffer = checkpoint_data
+                    logger.info(
+                        "Resuming agentic extraction from buffer checkpoint "
+                        "(intermediate_extraction)"
+                    )
+                else:
+                    # Validated extraction checkpoint — load as existing_data
+                    try:
+                        existing_data_model = dynamic_model(**checkpoint_data)
+                        logger.info("Resuming agentic extraction from checkpoint data")
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to validate checkpoint data, starting fresh: {e}"
+                        )
+                        existing_data_model = None
+
+            # Use concurrent batch extraction if configured and enough pages
+            num_batches = self.config.extraction.agentic.max_concurrent_batches
+            if (
+                num_batches > 1
+                and self._page_images
+                and len(self._page_images) >= num_batches
+                and not existing_data_model  # Don't use concurrent mode for resume
+                and not checkpoint_buffer
+            ):
+                import asyncio as _asyncio
+
+                logger.info(
+                    f"Using concurrent batch extraction with {num_batches} batches "
+                    f"for {len(self._page_images)} pages"
+                )
+                structured_data, response_with_metering = _asyncio.run(
+                    concurrent_structured_output_async(
+                        model_id=model_id,
+                        data_format=dynamic_model,
+                        prompt=message_prompt,
+                        page_images=self._page_images,
+                        num_batches=num_batches,
+                        config=self.config,
+                        context="Extraction",
+                        checkpoint_callback=self._checkpoint_callback,
+                    )
+                )
+            else:
+                structured_data, response_with_metering = structured_output(
+                    model_id=model_id,
+                    data_format=dynamic_model,
+                    prompt=message_prompt,
+                    existing_data=existing_data_model,
+                    page_images=self._page_images,
+                    config=self.config,
+                    context="Extraction",
+                    checkpoint_callback=self._checkpoint_callback,
+                    checkpoint_buffer_data=checkpoint_buffer,
+                )
 
             extracted_fields = structured_data.model_dump(mode="json")
             metering = response_with_metering["metering"]
@@ -1088,13 +1153,21 @@ class ExtractionService:
             f"Total extraction time for section {section_id}: {t3 - t0:.2f} seconds"
         )
 
-    def process_document_section(self, document: Document, section_id: str) -> Document:
+    def process_document_section(
+        self,
+        document: Document,
+        section_id: str,
+        checkpoint_data: dict[str, Any] | None = None,
+    ) -> Document:
         """
         Process a single section from a Document object.
 
         Args:
             document: Document object containing section to process
             section_id: ID of the section to process
+            checkpoint_data: Optional partial extraction data from a previous
+                timed-out invocation.  When provided the agentic agent will
+                resume from this state instead of starting from scratch.
 
         Returns:
             Document: Updated Document object with extraction results for the section
@@ -1147,8 +1220,10 @@ class ExtractionService:
                 document, page_images
             )
 
-            # Invoke model
-            result = self._invoke_extraction_model(content, system_prompt, section_info)
+            # Invoke model (pass checkpoint_data for agentic resume-on-timeout)
+            result = self._invoke_extraction_model(
+                content, system_prompt, section_info, checkpoint_data=checkpoint_data
+            )
 
             # Save results
             self._save_results(document, section, result, section_info, section_id, t0)

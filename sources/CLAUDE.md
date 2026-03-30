@@ -24,14 +24,12 @@ python3 publish.py idp-1234567890 idp us-east-1
 # With verbose output for debugging build failures
 python3 publish.py idp-1234567890 idp us-east-1 --verbose
 
-# Legacy build script
-./publish.sh <cfn_bucket_basename> <cfn_prefix> <region>
 ```
 
 The build process:
-- Checks system dependencies (AWS CLI, SAM CLI, Docker, Python 3.11+, Node.js 22.12+)
+- Checks system dependencies (AWS CLI, SAM CLI, Docker, Python 3.12+, Node.js 22.12+)
 - Builds CloudFormation templates and assets using SAM
-- Pattern-2 functions are built as container images; Pattern-1 and Pattern-3 use ZIP-based Lambdas
+- All pattern functions are built within the unified pattern directory
 - Uploads artifacts to S3 bucket named `<cfn_bucket_basename>-<region>`
 
 ### Code Quality & Linting
@@ -91,8 +89,10 @@ pytest -m "integration"
 The IDP CLI is used for programmatic deployment and batch processing:
 
 ```bash
-# Install CLI
+# Install all packages into current Python environment
 make setup
+# Or create an isolated .venv first
+make setup-venv
 
 # Deploy a new stack
 idp-cli deploy \
@@ -106,7 +106,7 @@ idp-cli deploy \
 idp-cli deploy \
     --stack-name my-idp-stack \
     --pattern pattern-2 \
-    --custom-config ./config_library/pattern-2/bank-statement-sample/config.yaml \
+    --custom-config ./config_library/unified/bank-statement-sample/config.yaml \
     --wait
 
 # Process documents in batch
@@ -125,7 +125,7 @@ idp-cli download-results \
 ### Local Lambda Testing
 
 ```bash
-cd patterns/pattern-2/
+cd patterns/unified/
 sam build
 sam local invoke OCRFunction -e ../../testing/OCRFunction-event.json --env-vars ../../testing/env.json
 ```
@@ -153,31 +153,26 @@ The solution uses a modular architecture with the main template (`template.yaml`
 - Authentication (Cognito User Pool, Identity Pool)
 - AppSync GraphQL API (for UI-backend communication)
 
-**Pattern Stacks** (`patterns/pattern-*/template.yaml`) - Pattern-specific resources:
-- Step Functions State Machine
-- Pattern-specific Lambda Functions (OCR, Classification, Extraction)
-- Pattern-specific CloudWatch Dashboard
-- Model Endpoints and Configurations
+**Unified Pattern Stack** (`patterns/unified/template.yaml`) - Processing resources:
+- Step Functions State Machine (BDA branch + Pipeline branch + shared tail)
+- Lambda Functions (OCR, Classification, Extraction, Assessment, Summarization, Evaluation, etc.)
+- CloudWatch Dashboard
 
-### Processing Patterns
+### Processing Modes
 
-1. **Pattern 1: Bedrock Data Automation (BDA)**
+The unified architecture supports two processing modes, controlled by the `use_bda` configuration flag:
+
+1. **BDA Mode** (formerly Pattern 1)
    - Uses AWS Bedrock Data Automation for end-to-end processing
    - Handles packet or media documents with integrated OCR, classification, and extraction
-   - Location: `patterns/pattern-1/`
 
-2. **Pattern 2: Textract + Bedrock**
+2. **Pipeline Mode** (formerly Pattern 2)
    - OCR with Amazon Textract
    - Classification with Bedrock (page-level or holistic)
    - Extraction with Bedrock
    - Supports few-shot examples
-   - Location: `patterns/pattern-2/`
 
-3. **Pattern 3: Textract + UDOP + Bedrock**
-   - OCR with Amazon Textract
-   - Classification with UDOP model on SageMaker
-   - Extraction with Bedrock
-   - Location: `patterns/pattern-3/`
+> **Note**: The separate `patterns/pattern-1/`, `patterns/pattern-2/`, and `patterns/pattern-3/` directories have been removed. All processing is now in `patterns/unified/`. See [pattern-1.md](docs/pattern-1.md) and [pattern-2.md](docs/pattern-2.md) for historical reference.
 
 ### Document Processing Flow
 

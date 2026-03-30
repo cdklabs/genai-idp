@@ -92,6 +92,7 @@ type Document implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
   HITLReviewedBy: String
   HITLReviewedByEmail: String
   HITLReviewHistory: AWSJSON
+  ConfidenceAlertCount: Int
   ConfigVersion: String
   TraceId: String
 }
@@ -142,6 +143,7 @@ type User @aws_cognito_user_pools {
   persona: String!
   status: String
   createdAt: AWSDateTime
+  allowedConfigVersions: [String]
 }
 
 type UserList @aws_cognito_user_pools {
@@ -174,6 +176,10 @@ type ConfigurationVersion @aws_cognito_user_pools @aws_iam {
   createdAt: AWSDateTime
   updatedAt: AWSDateTime
   description: String
+  managed: Boolean
+  bdaProjectArn: String
+  bdaSyncStatus: String
+  bdaLastSyncedAt: String
 }
 
 type ConfigurationVersionsResponse @aws_cognito_user_pools @aws_iam {
@@ -194,6 +200,8 @@ type SyncBdaIdpResponse @aws_cognito_user_pools @aws_iam {
   message: String
   processedClasses: [String]
   direction: String
+  bdaProjectArn: String
+  bdaSyncStatus: String
   error: ConfigurationError
 }
 
@@ -244,6 +252,9 @@ type DiscoveryJobListItem @aws_cognito_user_pools @aws_iam {
   updatedAt: String
   errorMessage: String
   version: String
+  discoveredClassName: String
+  statusMessage: String
+  pageRange: String
 }
 
 input CreateDocumentInput {
@@ -301,6 +312,7 @@ input UpdateDocumentInput {
   HITLReviewedBy: String
   HITLReviewedByEmail: String
   HITLReviewHistory: AWSJSON
+  ConfidenceAlertCount: Int
   ConfigVersion: String
   TraceId: String
 }
@@ -412,6 +424,8 @@ type DiscoveryJob @aws_cognito_user_pools @aws_iam {
   jobId: ID!
   status: String!
   errorMessage: String
+  discoveredClassName: String
+  statusMessage: String
 }
 
 type Agent @aws_cognito_user_pools @aws_iam {
@@ -460,6 +474,8 @@ type TestRun @aws_cognito_user_pools @aws_iam {
   weightedOverallScores: AWSJSON
   averageConfidence: Float
   accuracyBreakdown: AWSJSON
+  confusionMatrix: AWSJSON
+  fieldMetrics: AWSJSON
   splitClassificationMetrics: AWSJSON
   totalCost: Float
   costBreakdown: AWSJSON
@@ -566,49 +582,26 @@ type MessageContent {
   text: String
 }
 
+# =============================================================================
+# RBAC: Role-Based Access Control via @aws_auth(cognito_groups: [...])
+#
+# Roles (Cognito Groups):
+#   Admin    - Full access to all operations
+#   Author   - Read + write (documents, configuration, tests, discovery)
+#   Reviewer - HITL review operations + limited document list
+#   Viewer   - Read-only access to documents, config, agent chat
+#
+# Backend (IAM) operations: createDocument, updateDocument, updateDocumentStatus,
+#   updateDocumentSection, updateAgentJobStatus, updateDiscoveryJobStatus
+#   These are only callable by backend Lambda functions via IAM auth.
+# =============================================================================
+
 type Mutation {
+  # Backend-only operations (IAM auth - called by Step Functions / Lambda)
   createDocument(input: CreateDocumentInput!): CreateDocumentOutput @aws_iam
   updateDocument(input: UpdateDocumentInput!): Document @aws_iam
-  # Lightweight status-only update for minimal DynamoDB WCU usage during processing
   updateDocumentStatus(input: UpdateDocumentStatusInput!): Document @aws_iam
-  # Atomic section-level update for parallel Map operations (extraction/assessment)
   updateDocumentSection(input: UpdateDocumentSectionInput!): Document @aws_iam
-  deleteDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
-  updateConfiguration(versionName: String!, customConfig: AWSJSON!, description: String): UpdateConfigurationResponse
-    @aws_cognito_user_pools
-  setActiveVersion(versionName: String!): UpdateConfigurationResponse
-    @aws_cognito_user_pools
-  deleteConfigVersion(versionName: String!): UpdateConfigurationResponse
-    @aws_cognito_user_pools
-  syncBdaIdp(direction: String, versionName: String): SyncBdaIdpResponse @aws_cognito_user_pools
-  updatePricing(pricingConfig: AWSJSON!): UpdatePricingResponse
-    @aws_cognito_user_pools
-  restoreDefaultPricing: UpdatePricingResponse
-    @aws_cognito_user_pools
-  uploadDocument(
-    fileName: String!
-    contentType: String
-    prefix: String
-    bucket: String
-    version: String
-  ): PresignedUrlResponse! @aws_cognito_user_pools
-  uploadDiscoveryDocument(
-    fileName: String!
-    contentType: String
-    prefix: String
-    bucket: String
-    groundTruthFileName: String
-    version: String
-  ): DisPresignedUrlResponse! @aws_cognito_user_pools
-  copyToBaseline(objectKey: String!): CopyToBaselineResponse!
-    @aws_cognito_user_pools
-  reprocessDocument(objectKeys: [String!]!, version: String): Boolean! @aws_cognito_user_pools
-  abortWorkflow(objectKeys: [String!]!): AbortWorkflowResponse! @aws_cognito_user_pools
-  processChanges(
-    objectKey: String!
-    modifiedSections: [ModifiedSectionInput!]!
-    modifiedPages: [ModifiedPageInput!]
-  ): ProcessChangesResponse! @aws_cognito_user_pools
   updateAgentJobStatus(
     jobId: ID!
     status: String!
@@ -619,36 +612,118 @@ type Mutation {
     jobId: ID!
     status: String!
     errorMessage: String
+    discoveredClassName: String
+    statusMessage: String
   ): DiscoveryJob @aws_iam
-  deleteAgentJob(jobId: ID!): Boolean @aws_cognito_user_pools
+
+  # Admin-only operations
+  deleteConfigVersion(versionName: String!): UpdateConfigurationResponse
+    @aws_auth(cognito_groups: ["Admin"])
+  createUser(email: String!, persona: String!, allowedConfigVersions: [String]): User
+    @aws_auth(cognito_groups: ["Admin"])
+  updateUser(userId: ID!, allowedConfigVersions: [String]): User
+    @aws_auth(cognito_groups: ["Admin"])
+  deleteUser(userId: ID!): Boolean
+    @aws_auth(cognito_groups: ["Admin"])
+
+  # Admin + Author operations
+  deleteDocument(objectKeys: [String!]!): Boolean!
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  updateConfiguration(versionName: String!, customConfig: AWSJSON!, description: String): UpdateConfigurationResponse
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  setActiveVersion(versionName: String!): UpdateConfigurationResponse
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  syncBdaIdp(direction: String, versionName: String, bdaProjectArn: String, saveArn: Boolean, syncMode: String): SyncBdaIdpResponse
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  updatePricing(pricingConfig: AWSJSON!): UpdatePricingResponse
+    @aws_auth(cognito_groups: ["Admin"])
+  restoreDefaultPricing: UpdatePricingResponse
+    @aws_auth(cognito_groups: ["Admin"])
+  uploadDocument(
+    fileName: String!
+    contentType: String
+    prefix: String
+    bucket: String
+    version: String
+  ): PresignedUrlResponse!
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  deleteDiscoveryJob(jobId: ID!): Boolean!
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  uploadDiscoveryDocument(
+    fileName: String!
+    contentType: String
+    prefix: String
+    bucket: String
+    groundTruthFileName: String
+    version: String
+    pageRanges: [String]
+    pageLabels: [String]
+  ): DisPresignedUrlResponse!
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  autoDetectSections(
+    documentKey: String!
+    bucket: String!
+    version: String
+  ): String
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  copyToBaseline(objectKey: String!): CopyToBaselineResponse!
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  reprocessDocument(objectKeys: [String!]!, version: String): Boolean!
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  abortWorkflow(objectKeys: [String!]!): AbortWorkflowResponse!
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  startTestRun(input: TestRunInput!): TestRun
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  deleteTests(testRunIds: [String!]!): Boolean!
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  addTestSet(name: String!, description: String, filePattern: String!, bucketType: String!, fileCount: Int!): TestSet
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  addTestSetFromUpload(input: TestSetUploadInput!): TestSetUploadResponse
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  deleteTestSets(testSetIds: [String!]!): Boolean!
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+
+  # Admin + Reviewer operations (HITL review workflow)
+  processChanges(
+    objectKey: String!
+    modifiedSections: [ModifiedSectionInput!]!
+    modifiedPages: [ModifiedPageInput!]
+  ): ProcessChangesResponse!
+    @aws_auth(cognito_groups: ["Admin", "Reviewer"])
+  completeSectionReview(objectKey: String!, sectionId: String!, editedData: AWSJSON): Document
+    @aws_auth(cognito_groups: ["Admin", "Reviewer"])
+  skipAllSectionsReview(objectKey: String!): Document
+    @aws_auth(cognito_groups: ["Admin", "Reviewer"])
+  claimReview(objectKey: String!): Document
+    @aws_auth(cognito_groups: ["Admin", "Reviewer"])
+  releaseReview(objectKey: String!): Document
+    @aws_auth(cognito_groups: ["Admin", "Reviewer"])
+
+  # Agent Chat operations (all authenticated Cognito users + IAM for backend)
+  # Note: Reviewer exclusion from Agent Chat is enforced at the QUERY level —
+  # all supporting queries (listChatSessions, getChatMessages, listAvailableAgents)
+  # have @aws_auth directives excluding Reviewer. The mutations use @aws_cognito_user_pools
+  # because @aws_auth + @aws_iam is not supported on the same field in AppSync.
   sendAgentChatMessage(
     prompt: String!
     sessionId: String
     method: String
     enableCodeIntelligence: Boolean
     toolMetadata: ToolMetadataInput
-  ): AgentChatMessage @aws_cognito_user_pools @aws_iam
-
+  ): AgentChatMessage
+    @aws_cognito_user_pools
+    @aws_iam
   updateAgentChatMessage(sessionId: ID!, content: String!): AgentChatMessage
     @aws_cognito_user_pools
     @aws_iam
-  deleteChatSession(sessionId: ID!): Boolean @aws_cognito_user_pools @aws_iam
+  deleteChatSession(sessionId: ID!): Boolean
+    @aws_cognito_user_pools
+    @aws_iam
   updateChatSessionTitle(sessionId: ID!, title: String!): ChatSession
     @aws_cognito_user_pools
     @aws_iam
-  startTestRun(input: TestRunInput!): TestRun @aws_cognito_user_pools
-  deleteTests(testRunIds: [String!]!): Boolean! @aws_cognito_user_pools
-  addTestSet(name: String!, description: String, filePattern: String!, bucketType: String!, fileCount: Int!): TestSet @aws_cognito_user_pools
-  addTestSetFromUpload(input: TestSetUploadInput!): TestSetUploadResponse @aws_cognito_user_pools
-  deleteTestSets(testSetIds: [String!]!): Boolean! @aws_cognito_user_pools
-  # User Management
-  createUser(email: String!, persona: String!): User @aws_cognito_user_pools
-  deleteUser(userId: ID!): Boolean @aws_cognito_user_pools
-  # HITL Section Review
-  completeSectionReview(objectKey: String!, sectionId: String!, editedData: AWSJSON): Document @aws_cognito_user_pools
-  skipAllSectionsReview(objectKey: String!): Document @aws_cognito_user_pools
-  claimReview(objectKey: String!): Document @aws_cognito_user_pools
-  releaseReview(objectKey: String!): Document @aws_cognito_user_pools
+  deleteAgentJob(jobId: ID!): Boolean
+    @aws_cognito_user_pools
 }
 
 type DocumentPage @aws_cognito_user_pools @aws_iam {
@@ -656,12 +731,28 @@ type DocumentPage @aws_cognito_user_pools @aws_iam {
   nextToken: String
 }
 
+type DocumentCount @aws_cognito_user_pools @aws_iam {
+  count: Int!
+}
+
+# RBAC for Queries:
+# Most queries are open to all authenticated users, with server-side filtering in Lambda resolvers
+# (e.g., reviewer document filtering, config-version scoping). Feature-specific queries that should
+# not be accessible to Reviewer role are restricted via @aws_auth directives at the field level.
+# Document queries remain open to all roles (filtering is done server-side in resolvers).
 type Query @aws_cognito_user_pools @aws_iam {
+  # Document queries - all authenticated users (reviewer filtering done in resolver)
   getDocument(ObjectKey: ID!): Document
   listDocuments(
     startDateTime: AWSDateTime
     endDateTime: AWSDateTime
-  ): DocumentList
+    limit: Int
+    nextToken: String
+  ): DocumentPage
+  getDocumentCount(
+    startDateTime: AWSDateTime
+    endDateTime: AWSDateTime
+  ): DocumentCount
   listDocumentsDateHour(date: AWSDate, hour: Int): DocumentList
   listDocumentsDateShard(date: AWSDate, shard: Int): DocumentList
   listDocumentsByDateRange(
@@ -671,11 +762,29 @@ type Query @aws_cognito_user_pools @aws_iam {
     nextToken: String
   ): DocumentPage
   getFileContents(s3Uri: String!): FileContentsResponse
+  getStepFunctionExecution(executionArn: String!): StepFunctionExecutionResponse
+
+  # Configuration & pricing queries - Admin, Author, Viewer (not Reviewer)
   getConfigVersions: ConfigurationVersionsResponse
+    @aws_auth(cognito_groups: ["Admin", "Author", "Viewer"])
   getConfigVersion(versionName: String!): ConfigurationResponse
+    @aws_auth(cognito_groups: ["Admin", "Author", "Viewer"])
   getPricing: PricingResponse
-  calculateCapacity(input: String!): CapacityResult @aws_cognito_user_pools
-  listDiscoveryJobs: DiscoveryJobList
+    @aws_auth(cognito_groups: ["Admin", "Author", "Viewer"])
+  calculateCapacity(input: String!): CapacityResult
+    @aws_auth(cognito_groups: ["Admin", "Author", "Viewer"])
+
+  # Agent Chat & Code Explorer queries
+  # Note: These need both Cognito and IAM auth (for return type resolution).
+  # AppSync does not support @aws_auth(cognito_groups:[...]) + @aws_iam on the same field.
+  # Reviewer exclusion is enforced by UI navigation (Agent Chat hidden for Reviewer)
+  # and session scoping (users only see their own sessions).
+  listAvailableAgents: [Agent] @aws_cognito_user_pools @aws_iam
+  getAgentChatMessages(sessionId: ID!): [AgentChatMessage] @aws_cognito_user_pools @aws_iam
+  listChatSessions(limit: Int, nextToken: String): ChatSessionConnection @aws_cognito_user_pools @aws_iam
+  getChatMessages(sessionId: ID!): [AgentChatMessage] @aws_cognito_user_pools @aws_iam
+
+  # Knowledge base & document chat queries
   queryKnowledgeBase(input: String!, sessionId: String): String
   chatWithDocument(
     s3Uri: String!
@@ -683,39 +792,48 @@ type Query @aws_cognito_user_pools @aws_iam {
     history: AWSJSON!
     modelId: String!
   ): String
-  getStepFunctionExecution(executionArn: String!): StepFunctionExecutionResponse
-  listAvailableAgents: [Agent] @aws_cognito_user_pools @aws_iam
+
+  # Discovery queries - Admin, Author only
+  listDiscoveryJobs: DiscoveryJobList
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+
+  # Agent query system - Admin, Author, Viewer (not Reviewer)
   submitAgentQuery(query: String!, agentIds: [String!]!): AgentJob
-    @aws_cognito_user_pools
-  getAgentJobStatus(jobId: ID!): AgentJob @aws_cognito_user_pools
+    @aws_auth(cognito_groups: ["Admin", "Author", "Viewer"])
+  getAgentJobStatus(jobId: ID!): AgentJob
+    @aws_auth(cognito_groups: ["Admin", "Author", "Viewer"])
   listAgentJobs(limit: Int, nextToken: String): AgentJobConnection
-    @aws_cognito_user_pools
-  getAgentChatMessages(sessionId: ID!): [AgentChatMessage]
-    @aws_cognito_user_pools
-    @aws_iam
-  listChatSessions(limit: Int, nextToken: String): ChatSessionConnection
-    @aws_cognito_user_pools
-    @aws_iam
-  getChatMessages(sessionId: ID!): [AgentChatMessage]
-    @aws_cognito_user_pools
-    @aws_iam
-  getTestRun(testRunId: String!): TestRun @aws_cognito_user_pools
-  getTestRuns(timePeriodHours: Int, startDateTime: AWSDateTime, endDateTime: AWSDateTime): [TestRun] @aws_cognito_user_pools
-  getTestRunStatus(testRunId: String!): TestRunStatus @aws_cognito_user_pools
-  compareTestRuns(testRunIds: [String!]!): TestRunComparison @aws_cognito_user_pools
-  getTestSets: [TestSet] @aws_cognito_user_pools
-  listBucketFiles(bucketType: String!, filePattern: String!): [String] @aws_cognito_user_pools
-  validateTestFileName(fileName: String!): TestSetValidationResponse @aws_cognito_user_pools
-  listConfigurationLibrary(pattern: String!): ConfigurationLibraryResponse @aws_cognito_user_pools
+    @aws_auth(cognito_groups: ["Admin", "Author", "Viewer"])
+
+  # Test Studio queries - Admin, Author only
+  getTestRun(testRunId: String!): TestRun
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  getTestRuns(timePeriodHours: Int, startDateTime: AWSDateTime, endDateTime: AWSDateTime): [TestRun]
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  getTestRunStatus(testRunId: String!): TestRunStatus
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  compareTestRuns(testRunIds: [String!]!): TestRunComparison
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  getTestSets: [TestSet]
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  listBucketFiles(bucketType: String!, filePattern: String!): [String]
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+  validateTestFileName(fileName: String!): TestSetValidationResponse
+    @aws_auth(cognito_groups: ["Admin", "Author"])
+
+  # Configuration Library queries - Admin, Author, Viewer (not Reviewer)
+  listConfigurationLibrary(pattern: String!): ConfigurationLibraryResponse
+    @aws_auth(cognito_groups: ["Admin", "Author", "Viewer"])
   getConfigurationLibraryFile(
     pattern: String!
     configName: String!
     fileName: String!
-  ): ConfigurationLibraryFileResponse @aws_cognito_user_pools
-  # User Management
+  ): ConfigurationLibraryFileResponse
+    @aws_auth(cognito_groups: ["Admin", "Author", "Viewer"])
+
+  # User Management queries
   listUsers: UserList @aws_cognito_user_pools
-  # HITL Pending Reviews
-  listPendingReviewDocuments: DocumentList @aws_cognito_user_pools
+  getMyProfile: User @aws_cognito_user_pools
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {

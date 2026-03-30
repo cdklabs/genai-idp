@@ -263,6 +263,53 @@ def create_view_image_tool(page_images: list[bytes]) -> Any:
     return view_image
 
 
+# Module-level checkpoint callback storage.
+# Set before agent invocation, read by tools after each state update.
+# This avoids storing a non-JSON-serializable callable in AgentState.
+_active_checkpoint_callback: Any | None = None
+
+
+def _invoke_checkpoint_callback(agent: Agent) -> None:
+    """
+    Invoke the active checkpoint callback if one is set.
+
+    Called after each successful update to current_extraction or
+    intermediate_extraction to persist intermediate results for
+    resume-on-timeout scenarios.
+
+    Saves whichever state has data: prefers current_extraction (validated),
+    falls back to intermediate_extraction (buffer/unvalidated).
+
+    The callback is stored at module level (not in agent state) because
+    Strands AgentState requires all values to be JSON-serializable, and
+    Python callables are not.
+
+    Args:
+        agent: The Strands agent whose extraction state to checkpoint
+    """
+    global _active_checkpoint_callback
+    callback = _active_checkpoint_callback
+    if not callback:
+        return
+
+    # Prefer validated extraction; fall back to buffer data
+    data = agent.state.get("current_extraction")
+    source = "current_extraction"
+    if not data:
+        data = agent.state.get("intermediate_extraction")
+        source = "intermediate_extraction"
+    if not data:
+        return
+
+    try:
+        callback({"source": source, "data": data})
+    except Exception as e:
+        logger.warning(
+            "Checkpoint save failed, continuing extraction",
+            extra={"error": str(e)},
+        )
+
+
 def create_dynamic_extraction_tool_and_patch_tool(model_class: type[TargetModel]):
     """
     Create a dynamic tool function that extracts data according to a Pydantic model.
@@ -299,6 +346,8 @@ def create_dynamic_extraction_tool_and_patch_tool(model_class: type[TargetModel]
             "Successfully stored extraction in state",
             extra={"extraction": extraction_dict},
         )
+        # Save checkpoint after successful extraction
+        _invoke_checkpoint_callback(agent)
         return "Extraction succeeded, the data format is correct"
 
     @tool
@@ -325,6 +374,8 @@ def create_dynamic_extraction_tool_and_patch_tool(model_class: type[TargetModel]
             key="current_extraction",
             value=validated_patched_data.model_dump(mode="json"),
         )
+        # Save checkpoint after successful patch
+        _invoke_checkpoint_callback(agent)
 
         return {
             "status": "success",
@@ -336,6 +387,8 @@ def create_dynamic_extraction_tool_and_patch_tool(model_class: type[TargetModel]
         valid_extraction = model_class(**agent.state.get("intermediate_extraction"))
 
         agent.state.set("current_extraction", valid_extraction.model_dump(mode="json"))
+        # Save checkpoint after buffer→extraction promotion
+        _invoke_checkpoint_callback(agent)
 
         return f"Successfully made the existing extraction the same as the buffer data {str(valid_extraction.model_dump(mode='json'))[:100]}..."
 
@@ -498,6 +551,9 @@ def patch_buffer_data(patches: list[dict[str, Any]], agent: Agent) -> str:
     agent.state.set("intermediate_extraction", patched_data)
 
     logger.info(f"Current length of buffer data {len(patched_data)} ")
+
+    # Save checkpoint after buffer patch (critical for resume-on-timeout)
+    _invoke_checkpoint_callback(agent)
 
     return f"Successfully patched {str(patched_data)[100:]}...."
 
@@ -821,11 +877,30 @@ def _prepare_prompt_content(
                 )
             )
 
-    # Add existing data context if provided
+    # Add existing data context if provided (checkpoint resume scenario)
     if existing_data:
+        existing_dict = existing_data.model_dump(mode="json")
+        # Count items for a helpful summary without sending the full data in the prompt
+        # (the full data is already loaded into agent.state["current_extraction"])
+        item_counts = []
+        for key, value in existing_dict.items():
+            if isinstance(value, list):
+                item_counts.append(f"{len(value)} {key}")
+            elif value is not None:
+                item_counts.append(key)
+        items_summary = ", ".join(item_counts) if item_counts else "partial data"
+
         prompt_content.append(
             ContentBlock(
-                text=f"Please update the existing data using the extraction tool or patches. Existing data: {existing_data.model_dump(mode='json')}"
+                text=(
+                    f"IMPORTANT - RESUME FROM CHECKPOINT: Your extraction state already contains "
+                    f"previously extracted data ({items_summary}). This data is already loaded "
+                    f"in your current_extraction state. Do NOT call extraction_tool again — that "
+                    f"would overwrite the existing data. Instead, use view_existing_extraction to "
+                    f"review what's already extracted, then use apply_json_patches to ADD only the "
+                    f"remaining items that are not yet extracted. Focus on the pages/rows that come "
+                    f"AFTER the already-extracted data."
+                )
             )
         )
 
@@ -928,6 +1003,162 @@ async def _invoke_agent_for_extraction(
     return response, None
 
 
+async def _run_batch_agent(
+    batch_index: int,
+    total_batches: int,
+    page_start: int,
+    page_end: int,
+    total_pages: int,
+    model_id: str,
+    data_format: type[TargetModel],
+    prompt: str | Message | Image.Image,
+    page_images: list[bytes] | None,
+    config: IDPConfig,
+    context: str,
+    max_retries: int,
+    connect_timeout: float,
+    read_timeout: float,
+    max_tokens: int | None,
+    checkpoint_callback: Any | None,
+) -> tuple[TargetModel, BedrockInvokeModelResponse]:
+    """Run a single batch agent for a page range, with instructions to extract only its assigned pages."""
+    # Build a custom instruction telling this agent its page assignment
+    batch_instruction = (
+        f"You are batch {batch_index + 1} of {total_batches}. "
+        f"Extract data ONLY from pages {page_start + 1} to {page_end} "
+        f"(out of {total_pages} total pages). "
+        f"Ignore content from other pages."
+    )
+    return await structured_output_async(
+        model_id=model_id,
+        data_format=data_format,
+        prompt=prompt,
+        page_images=page_images,
+        config=config,
+        context=context,
+        max_retries=max_retries,
+        connect_timeout=connect_timeout,
+        read_timeout=read_timeout,
+        max_tokens=max_tokens,
+        custom_instruction=batch_instruction,
+        checkpoint_callback=checkpoint_callback,
+    )
+
+
+async def concurrent_structured_output_async(
+    model_id: str,
+    data_format: type[TargetModel],
+    prompt: str | Message | Image.Image,
+    page_images: list[bytes],
+    num_batches: int,
+    config: IDPConfig = IDPConfig(),
+    context: str = "Extraction",
+    max_retries: int = 7,
+    connect_timeout: float = 10.0,
+    read_timeout: float = 300.0,
+    max_tokens: int | None = None,
+    checkpoint_callback: Any | None = None,
+) -> tuple[TargetModel, BedrockInvokeModelResponse]:
+    """
+    Run multiple extraction agents concurrently on different page ranges.
+
+    Splits the document's pages into N batches, runs N agents in parallel
+    (each seeing ALL images but instructed to extract only its assigned pages),
+    then merges results by concatenating list fields and taking the last
+    non-None value for scalar fields.
+
+    Args:
+        num_batches: Number of concurrent agents to run (2-10)
+        Other args: Same as structured_output_async
+
+    Returns:
+        Merged (data_format instance, metering response)
+    """
+    total_pages = len(page_images)
+    # Calculate page ranges for each batch
+    pages_per_batch = max(1, total_pages // num_batches)
+    batch_ranges = []
+    for i in range(num_batches):
+        start = i * pages_per_batch
+        end = (
+            min((i + 1) * pages_per_batch, total_pages)
+            if i < num_batches - 1
+            else total_pages
+        )
+        if start < total_pages:
+            batch_ranges.append((start, end))
+
+    logger.info(
+        "Starting concurrent batch extraction",
+        extra={
+            "num_batches": len(batch_ranges),
+            "total_pages": total_pages,
+            "batch_ranges": [(s, e) for s, e in batch_ranges],
+        },
+    )
+
+    # Run all batches concurrently
+    tasks = [
+        _run_batch_agent(
+            batch_index=i,
+            total_batches=len(batch_ranges),
+            page_start=start,
+            page_end=end,
+            total_pages=total_pages,
+            model_id=model_id,
+            data_format=data_format,
+            prompt=prompt,
+            page_images=page_images,
+            config=config,
+            context=context,
+            max_retries=max_retries,
+            connect_timeout=connect_timeout,
+            read_timeout=read_timeout,
+            max_tokens=max_tokens,
+            checkpoint_callback=checkpoint_callback,
+        )
+        for i, (start, end) in enumerate(batch_ranges)
+    ]
+    results = await asyncio.gather(*tasks)
+
+    # Merge results: concatenate list fields, take last non-None for scalars
+    merged_dict: dict[str, Any] = {}
+    merged_metering: dict[str, Any] = {}
+    for result_data, result_response in results:
+        result_dict = result_data.model_dump(mode="json")
+        for key, value in result_dict.items():
+            if isinstance(value, list):
+                merged_dict.setdefault(key, []).extend(value)
+            elif value is not None:
+                merged_dict[key] = value
+        # Accumulate metering
+        for mk, mv in result_response.get("metering", {}).items():
+            if mk not in merged_metering:
+                merged_metering[mk] = dict(mv)
+            else:
+                for tk, tv in mv.items():
+                    merged_metering[mk][tk] = merged_metering[mk].get(tk, 0) + (tv or 0)
+
+    merged_result = data_format(**merged_dict)
+    # Count merged items for logging
+    total_items = sum(len(v) for v in merged_dict.values() if isinstance(v, list))
+    logger.info(
+        "Concurrent batch extraction complete",
+        extra={"total_items": total_items, "batches_completed": len(results)},
+    )
+
+    return merged_result, BedrockInvokeModelResponse(
+        response=BedrockResponse(
+            output=BedrockOutput(
+                message=BedrockMessage(
+                    role="assistant", content=[BedrockMessageContent(text="merged")]
+                )
+            )
+        ),
+        metering=merged_metering,
+    )
+
+
 async def structured_output_async(
     model_id: str,
     data_format: type[TargetModel],
@@ -942,6 +1173,8 @@ async def structured_output_async(
     connect_timeout: float = 10.0,
     read_timeout: float = 300.0,
     max_tokens: int | None = None,
+    checkpoint_callback: Any | None = None,
+    checkpoint_buffer_data: dict[str, Any] | None = None,
 ) -> tuple[TargetModel, BedrockInvokeModelResponse]:
     """
     Extract structured data using Strands agents with tool-based validation.
@@ -1082,6 +1315,12 @@ async def structured_output_async(
         temperature=config.extraction.temperature, top_p=config.extraction.top_p
     )
 
+    # Set the module-level checkpoint callback so tools can invoke it.
+    # Stored at module level (not in agent state) because AgentState
+    # requires all values to be JSON-serializable.
+    global _active_checkpoint_callback
+    _active_checkpoint_callback = checkpoint_callback
+
     agent = Agent(
         model=BedrockModel(
             **model_config,
@@ -1103,6 +1342,36 @@ async def structured_output_async(
     )
     if existing_data:
         agent.state.set("current_extraction", existing_data.model_dump(mode="json"))
+
+    # Load buffer checkpoint into agent's intermediate_extraction state
+    if checkpoint_buffer_data:
+        agent.state.set("intermediate_extraction", checkpoint_buffer_data)
+        # Count items for resume prompt
+        buffer_counts = []
+        for key, value in checkpoint_buffer_data.items():
+            if isinstance(value, list):
+                buffer_counts.append(f"{len(value)} {key}")
+        buffer_summary = (
+            ", ".join(buffer_counts) if buffer_counts else "partial buffer data"
+        )
+        # Add resume instruction to prompt
+        prompt_content.insert(
+            -2,
+            ContentBlock(
+                text=(
+                    f"IMPORTANT - RESUME FROM BUFFER CHECKPOINT: Your intermediate_extraction "
+                    f"buffer already contains previously extracted data ({buffer_summary}). "
+                    f"This data is already loaded in your buffer state. Use view_buffer_data_stats "
+                    f"to check progress, then continue adding remaining items with patch_buffer_data. "
+                    f"When all items are extracted, use make_buffer_data_final_extraction to finalize. "
+                    f"Do NOT start over — continue from where the buffer left off."
+                )
+            ),
+        )
+        logger.info(
+            "Loaded buffer checkpoint into agent state",
+            extra={"buffer_summary": buffer_summary},
+        )
 
     response, result = await _invoke_agent_for_extraction(
         agent=agent,
@@ -1242,6 +1511,8 @@ def structured_output(
     max_retries: int = 7,
     connect_timeout: float = 10.0,
     read_timeout: float = 300.0,
+    checkpoint_callback: Any | None = None,
+    checkpoint_buffer_data: dict[str, Any] | None = None,
 ) -> tuple[BaseModel, BedrockInvokeModelResponse]:
     """
     Synchronous version of structured_output_async.
@@ -1328,6 +1599,8 @@ def structured_output(
                         connect_timeout=connect_timeout,
                         read_timeout=read_timeout,
                         page_images=page_images,
+                        checkpoint_callback=checkpoint_callback,
+                        checkpoint_buffer_data=checkpoint_buffer_data,
                     )
                 )
             except Exception as e:
@@ -1360,6 +1633,8 @@ def structured_output(
                 connect_timeout=connect_timeout,
                 read_timeout=read_timeout,
                 page_images=page_images,
+                checkpoint_callback=checkpoint_callback,
+                checkpoint_buffer_data=checkpoint_buffer_data,
             )
         )
 

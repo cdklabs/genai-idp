@@ -31,6 +31,13 @@ scratch/
 node_modules/
 package-lock.json
 
+# Docs site (Astro Starlight) - build artifacts and symlinks
+docs-site/.astro/
+docs-site/dist/
+docs-site/src/content/docs/*.md
+docs-site/src/content/images
+docs-site/public/images
+
 # Type checking
 pyrightconfig.temp.json
 .pyright/

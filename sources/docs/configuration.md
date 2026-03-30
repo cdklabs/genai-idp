@@ -1,3 +1,7 @@
+---
+title: "Configuration and Customization"
+---
+
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
@@ -11,7 +15,7 @@ The GenAIIDP solution provides multiple configuration approaches to customize do
 
 The web interface allows real-time configuration updates without stack redeployment:
 
-- **Document Classes**: Define and modify document categories and their descriptions (using JSON Schema format)
+- **Document Classes**: Define and modify document categories and their descriptions (using JSON Schema format). Choose from **35+ pre-built standard classes** (Invoice, Receipt, W-2, Bank Statement, etc.) or create custom classes from scratch.
 - **Extraction Attributes**: Configure fields to extract for each document class (defined as JSON Schema properties)
 - **Few Shot Examples**: Upload and configure example documents to improve accuracy (supported in Pattern 2)
 - **Model Selection**: Choose between available Bedrock models for classification and extraction
@@ -30,6 +34,17 @@ Key capabilities:
 - **Compare** versions side-by-side to see differences (exportable as CSV/JSON)
 - **Track** which version was used for each processed document and test run
 - **Select** a specific version when uploading documents, running tests, or using the CLI
+
+#### Managed Configuration Versions
+
+The stack automatically deploys **managed configuration versions** for each pre-deployed test set (`fake-w2`, `docsplit`, `ocr-benchmark`, `realkie-fcc-verified`). These are marked with `managed: true` and have the following behavior:
+
+- **Overwritten on stack updates** — always reflect the latest defaults shipped with the solution
+- **Save disabled** — the Save button is disabled and an info banner explains the config is stack-managed
+- **Delete disabled** — managed versions cannot be deleted in the UI or via the API
+- **Editable copies** — use "Save as Version" to create a custom, editable copy
+- **Not importable** — managed configs are stored separately (`config_library/managed_config/`) and do not appear in the configuration import browser
+- **Test Studio integration** — when a test set is selected, the matching managed config version is auto-selected
 
 For comprehensive documentation, see [configuration-versions.md](configuration-versions.md).
 
@@ -103,9 +118,8 @@ The GenAI IDP Accelerator uses a **system defaults** architecture where configur
 ### How It Works
 
 1. **System defaults** are loaded first from `lib/idp_common_pkg/idp_common/config/system_defaults/`:
-   - `pattern-1.yaml` - BDA pattern defaults
-   - `pattern-2.yaml` - Bedrock LLM pattern defaults
-   - `pattern-3.yaml` - UDOP pattern defaults
+   - `pattern-1.yaml` - BDA mode defaults (used when `use_bda: true`)
+   - `pattern-2.yaml` - Pipeline mode defaults (used when `use_bda: false`)
 
 2. **User configurations** are merged on top, overriding only the specified values
 
@@ -267,34 +281,27 @@ Key parameters that can be configured during CloudFormation deployment:
 - `ExecutionTimeThresholdMs`: Maximum acceptable execution time before alerting (default: 30000 ms)
 - `LogLevel`: Set logging level (DEBUG, INFO, WARN, ERROR)
 - `WAFAllowedIPv4Ranges`: IP restrictions for web UI access (default: allow all)
-- `CloudFrontPriceClass`: Set CloudFront price class for UI distribution
-- `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access
+- `CloudFrontPriceClass`: Set CloudFront price class for UI distribution (CloudFront hosting only)
+- `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access (CloudFront hosting only)
+- `WebUIHosting`: Select hosting mode — `CloudFront` (default) or `ALB` for VPC-based hosting (see [ALB Hosting](./alb-hosting.md))
 - `CustomConfigPath`: Optional S3 URI to a custom configuration file that overrides pattern presets. Leave blank to use selected pattern configuration. Example: s3://my-bucket/custom-config/config.yaml
 
 ### Integration and Tracing Parameters
 - `EnableXRayTracing`: Enable X-Ray tracing for Lambda functions and Step Functions (default: true). Provides distributed tracing capabilities for debugging and performance analysis.
-- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-integration.md](mcp-integration.md) for details.
+- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-server.md](mcp-server.md) for details.
 - `EnableECRImageScanning`: Enable automatic vulnerability scanning for Lambda container images in ECR for Patterns 1-3 (default: false). Recommended for production deployments but may impact deployment reliability. See [troubleshooting.md](troubleshooting.md) for guidance.
 
 ### Pattern Selection
 - `IDPPattern`: Select processing pattern:
-  - Pattern1: Packet or Media processing with Bedrock Data Automation (BDA)
-  - Pattern2: Packet processing with Textract and Bedrock
-  - Pattern3: Packet processing with Textract, SageMaker(UDOP), and Bedrock
+  - Unified: Supports both BDA and Pipeline processing modes via `use_bda` flag
 
 ### Pattern-Specific Parameters
-- **Pattern 1 (BDA)**
-  - `Pattern1BDAProjectArn`: Optional existing Bedrock Data Automation project ARN
-  - `Pattern1Configuration`: Configuration preset to use
+- **Configuration Preset**: `ConfigurationPreset` — Select from available presets (lending-package-sample, bank-statement-sample, etc.)
+- **Custom Model ARNs**: Optional custom fine-tuned classification/extraction model ARNs
 
-- **Pattern 2 (Textract + Bedrock)**
-  - `Pattern2Configuration`: Configuration preset (default, few_shot_example_with_multimodal_page_classification, medical_records_summarization)
-  - `Pattern2CustomClassificationModelARN`: Optional custom fine-tuned classification model (Coming Soon)
-  - `Pattern2CustomExtractionModelARN`: Optional custom fine-tuned extraction model (Coming Soon)
+> **Note**: The processing mode (BDA vs Pipeline) is controlled by the `use_bda` flag in the configuration, not by deployment parameters. See the [architecture docs](./architecture.md) for details.
 
 - **Pattern 3 (Textract + UDOP + Bedrock)**
-  - `Pattern3UDOPModelArtifactPath`: S3 path for UDOP model artifact
-  - `Pattern3Configuration`: Configuration preset to use
 
 ### Optional Features
 - `EvaluationBaselineBucketName`: Optional existing bucket for ground truth data
@@ -304,7 +311,7 @@ Key parameters that can be configured during CloudFormation deployment:
 - `BedrockGuardrailId`: Optional Bedrock Guardrail ID to apply
 - `BedrockGuardrailVersion`: Version of Bedrock Guardrail to use
 
-For details on specific patterns, see [pattern-1.md](pattern-1.md), [pattern-2.md](pattern-2.md), and [pattern-3.md](pattern-3.md).
+For details on processing modes, see [architecture.md](architecture.md). For legacy pattern-specific references, see [pattern-1.md](pattern-1.md) (BDA) and [pattern-2.md](pattern-2.md) (Pipeline).
 
 ## High Volume Processing
 

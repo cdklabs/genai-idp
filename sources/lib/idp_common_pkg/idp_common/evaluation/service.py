@@ -1117,6 +1117,7 @@ class EvaluationService:
             document_class=section.classification,
             attributes=attribute_results,
             metrics=metrics,
+            stickler_comparison_result=stickler_result,  # Store raw result for bulk aggregation
         )
 
     def _remove_none_values(self, data: Any) -> Any:
@@ -1488,10 +1489,13 @@ class EvaluationService:
             expected_instance = ModelClass(**coerced_expected)
             actual_instance = ModelClass(**coerced_actual)
 
-            # Compare using Stickler with field_comparisons enabled (sticker-eval v0.1.4+)
+            # Compare using Stickler with field_comparisons and confusion_matrix enabled
             stickler_result = expected_instance.compare_with(
                 actual_instance,
                 document_field_comparisons=True,  # Enable detailed field-by-field comparison
+                document_non_matches=True,  # Enable non-match documentation
+                include_confusion_matrix=True,  # Enable confusion matrix for bulk aggregation
+                add_derived_metrics=True,  # Enable per-field precision/recall/F1
             )
 
             logger.debug(

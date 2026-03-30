@@ -19,7 +19,6 @@ Directory structure:
     ├── LICENSE
     ├── Makefile
     ├── NOTICE
-    ├── publish.sh
     ├── ruff.toml
     ├── template.yaml
     ├── VERSION

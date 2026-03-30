@@ -7,6 +7,7 @@ import { AppLayout, Flashbar } from '@cloudscape-design/components';
 import { ConsoleLogger } from 'aws-amplify/utils';
 
 import { DocumentsContext } from '../../contexts/documents';
+import { Document } from '../../types/documents';
 
 import useNotifications from '../../hooks/use-notifications';
 import useSplitPanel from '../../hooks/use-split-panel';
@@ -43,13 +44,13 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
 
   const notifications = useNotifications();
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [selectedItems, setSelectedItems] = useState([]);
+  const [selectedItems, setSelectedItems] = useState<Document[]>([]);
 
   const getInitialPeriodsToLoad = () => {
     // default to 2 hours - half of one (4hr) shard period
     let periods = 0.5;
     try {
-      const periodsFromStorage = Math.abs(JSON.parse(localStorage.getItem(PERIODS_TO_LOAD_STORAGE_KEY)));
+      const periodsFromStorage = Math.abs(JSON.parse(localStorage.getItem(PERIODS_TO_LOAD_STORAGE_KEY) ?? '0'));
       // prettier-ignore
       if (
         !Number.isFinite(periodsFromStorage)
@@ -73,6 +74,7 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
     documents,
     getDocumentDetailsFromIds,
     isDocumentsListLoading,
+    hasListBeenLoaded,
     periodsToLoad,
     setIsDocumentsListLoading,
     setPeriodsToLoad,
@@ -91,6 +93,7 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
     documents,
     getDocumentDetailsFromIds,
     isDocumentsListLoading,
+    hasListBeenLoaded,
     selectedItems,
     setIsDocumentsListLoading,
     setPeriodsToLoad,
@@ -110,8 +113,8 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
       <AppLayout
         headerSelector="#top-navigation"
         navigation={<Navigation />}
-        navigationOpen={navigationOpen as boolean}
-        onNavigationChange={({ detail }) => (setNavigationOpen as (open: boolean) => void)(detail.open)}
+        navigationOpen={navigationOpen}
+        onNavigationChange={({ detail }) => setNavigationOpen(detail.open)}
         breadcrumbs={<Breadcrumbs />}
         notifications={<Flashbar items={notifications as import('@cloudscape-design/components').FlashbarProps.MessageDefinition[]} />}
         tools={<ToolsPanel />}

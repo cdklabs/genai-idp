@@ -25,17 +25,63 @@ dynamodb = boto3.resource('dynamodb')
 
 def handler(event, context):
     """
-    Generates a presigned POST URL for S3 uploads and manages discovery job tracking.
-    
-    Args:
-        event (dict): The event data from AppSync
-        context (object): Lambda context
-    
-    Returns:
-        dict: A dictionary containing the presigned URL data and object key
+    Handles discovery-related GraphQL mutations:
+    - uploadDiscoveryDocument: presigned URL + job creation
+    - autoDetectSections: LLM-based section boundary detection
     """
     logger.info(f"Received event: {json.dumps(event)}")
-    
+
+    # Route based on which GraphQL field is being resolved
+    field_name = event.get('info', {}).get('fieldName', 'uploadDiscoveryDocument')
+    if field_name == 'autoDetectSections':
+        return handle_auto_detect_sections(event, context)
+
+    return handle_upload_discovery_document(event, context)
+
+
+def handle_auto_detect_sections(event, context):
+    """
+    Use ClassesDiscovery to auto-detect document section boundaries.
+    Reads config from the selected version, sends PDF to Bedrock via idp_common.
+    """
+    from idp_common.discovery.classes_discovery import ClassesDiscovery
+
+    arguments = event.get('arguments', {})
+    document_key = arguments.get('documentKey')
+    bucket = arguments.get('bucket')
+    version = arguments.get('version')
+
+    if not document_key or not bucket:
+        raise ValueError("documentKey and bucket are required")
+
+    logger.info(f"Auto-detecting sections for s3://{bucket}/{document_key}, version={version}")
+
+    try:
+        # Use ClassesDiscovery which reads config from DynamoDB (selected version)
+        discovery = ClassesDiscovery(
+            input_bucket=bucket,
+            input_prefix=document_key,
+            region=os.environ.get('AWS_REGION'),
+            version=version,
+        )
+
+        sections = discovery.auto_detect_sections(
+            input_bucket=bucket,
+            input_prefix=document_key,
+        )
+
+        logger.info(f"Auto-detected {len(sections)} sections")
+        return json.dumps(sections)
+
+    except Exception as e:
+        logger.error(f"Error auto-detecting sections: {str(e)}")
+        raise
+
+
+def handle_upload_discovery_document(event, context):
+    """
+    Generates a presigned POST URL for S3 uploads and manages discovery job tracking.
+    """
     try:
         # Extract variables from the event
         arguments = event.get('arguments', {})
@@ -44,6 +90,8 @@ def handler(event, context):
         prefix = arguments.get('prefix', '')
         ground_truth_file_name = arguments.get('groundTruthFileName')
         version = arguments.get('version')
+        page_ranges = arguments.get('pageRanges') or []
+        page_labels = arguments.get('pageLabels') or []
 
         if not file_name:
             raise ValueError("fileName is required")
@@ -66,10 +114,16 @@ def handler(event, context):
             response['groundTruthObjectKey'] = gt_object_key
             response['groundTruthPresignedUrl'] = json.dumps(gt_presigned_post)
 
-        #generate unique job id
-        job_id = str(uuid.uuid4())
-
-        create_discovery_job(job_id, object_key, gt_object_key, version)
+        # Create discovery jobs — one per page range, or one for the whole document
+        if page_ranges and len(page_ranges) > 0:
+            logger.info(f"Creating {len(page_ranges)} discovery jobs for page ranges: {page_ranges}")
+            for i, page_range in enumerate(page_ranges):
+                job_id = str(uuid.uuid4())
+                page_label = page_labels[i] if i < len(page_labels) else None
+                create_discovery_job(job_id, object_key, gt_object_key, version, page_range=page_range, class_name_hint=page_label)
+        else:
+            job_id = str(uuid.uuid4())
+            create_discovery_job(job_id, object_key, gt_object_key, version)
 
         # Return the presigned POST data and object key
         return response
@@ -106,7 +160,7 @@ def create_s3_signed_post_url(bucket_name, content_type, file_name, file_type, p
     return object_key, presigned_post
 
 
-def create_discovery_job(job_id, document_key, ground_truth_key, version):
+def create_discovery_job(job_id, document_key, ground_truth_key, version, page_range=None, class_name_hint=None):
     """
     Create a new discovery job entry in DynamoDB.
     
@@ -115,6 +169,7 @@ def create_discovery_job(job_id, document_key, ground_truth_key, version):
         document_key (str): S3 key for the document file
         ground_truth_key (str): S3 key for the ground truth file
         version (str): Configuration version to use
+        page_range (str, optional): Page range string (e.g., "1-3") for multi-section discovery
     """
     try:
         table_name = os.environ.get('DISCOVERY_TRACKING_TABLE')
@@ -146,17 +201,20 @@ def create_discovery_job(job_id, document_key, ground_truth_key, version):
             
         if version:
             item['version'] = version
+
+        if page_range:
+            item['pageRange'] = page_range
         
         table.put_item(Item=item)
-        logger.info(f"Created discovery job: {job_id}")
+        logger.info(f"Created discovery job: {job_id}" + (f" (pages {page_range})" if page_range else ""))
         
-        send_discovery_message(job_id, document_key, ground_truth_key, version)
+        send_discovery_message(job_id, document_key, ground_truth_key, version, page_range=page_range, class_name_hint=class_name_hint)
         
     except Exception as e:
         logger.error(f"Error creating discovery job: {str(e)}")
         # Don't fail the upload if job tracking fails
 
-def send_discovery_message(job_id, document_key, ground_truth_key, version):
+def send_discovery_message(job_id, document_key, ground_truth_key, version, page_range=None, class_name_hint=None):
     """
     Send a message to the discovery processing queue.
     
@@ -165,6 +223,7 @@ def send_discovery_message(job_id, document_key, ground_truth_key, version):
         document_key (str): S3 key for the document file
         ground_truth_key (str): S3 key for the ground truth file
         version (str): Configuration version to use
+        page_range (str, optional): Page range string (e.g., "1-3") for multi-section discovery
     """
     try:
         queue_url = os.environ.get('DISCOVERY_QUEUE_URL')
@@ -180,6 +239,12 @@ def send_discovery_message(job_id, document_key, ground_truth_key, version):
             'version': version,
             'timestamp': datetime.now().isoformat()
         }
+
+        if page_range:
+            message['pageRange'] = page_range
+
+        if class_name_hint:
+            message['classNameHint'] = class_name_hint
         
         sqs_client.send_message(
             QueueUrl=queue_url,

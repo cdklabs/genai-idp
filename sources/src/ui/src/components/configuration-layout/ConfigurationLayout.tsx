@@ -18,8 +18,9 @@ import {
   RadioGroup,
   ExpandableSection,
   Icon,
+  Badge,
 } from '@cloudscape-design/components';
-import Editor from '@monaco-editor/react';
+import Editor, { type OnMount } from '@monaco-editor/react';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import yaml from 'js-yaml';
 import ReactMarkdown from 'react-markdown';
@@ -28,12 +29,14 @@ import { ConsoleLogger } from 'aws-amplify/utils';
 import useConfiguration from '../../hooks/use-configuration';
 import useConfigurationVersions from '../../hooks/use-configuration-versions';
 import useConfigurationLibrary from '../../hooks/use-configuration-library';
+import useUserRole from '../../hooks/use-user-role';
 import useSettingsContext from '../../contexts/settings';
 import ConfigBuilder from './ConfigBuilder';
 import ConfigurationVersionsTable from './ConfigurationVersionsTable';
 import ConfigurationComparison from './ConfigurationComparison';
 import { deepMerge } from '../../utils/configUtils';
-import syncBdaIdpMutation from '../../graphql/queries/syncBdaIdp';
+import { syncBdaIdp } from '../../graphql/generated';
+import { parseConfigurationData } from '../../graphql/awsjson-parsers';
 
 const client = generateClient();
 const logger = new ConsoleLogger('ConfigurationLayout');
@@ -77,10 +80,11 @@ const normalizeBooleans = (
     }
 
     if (value && typeof value === 'object' && !Array.isArray(value) && propertySchema?.properties) {
-      const normalized = { ...value };
+      const normalized: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+      const props = propertySchema.properties;
       Object.keys(normalized).forEach((key) => {
-        if (propertySchema.properties[key]) {
-          normalized[key] = normalizeValue(normalized[key], propertySchema.properties[key]);
+        if (props[key]) {
+          normalized[key] = normalizeValue(normalized[key], props[key]);
         }
       });
       return normalized;
@@ -95,9 +99,10 @@ const normalizeBooleans = (
 
   const normalized = { ...obj };
   if (schema.properties) {
+    const schemaProps = schema.properties;
     Object.keys(normalized).forEach((key) => {
-      if (schema.properties[key]) {
-        normalized[key] = normalizeValue(normalized[key], schema.properties[key]);
+      if (schemaProps[key]) {
+        normalized[key] = normalizeValue(normalized[key], schemaProps[key]);
       }
     });
   }
@@ -164,10 +169,17 @@ const ConfigurationLayout = (): React.JSX.Element => {
     saveAsNewVersion,
   } = useConfigurationVersions();
 
-  // Get active version name
+  // Get user role for scope and permissions
+  const { isAdmin, canWrite } = useUserRole();
+
+  // Get active version name — prefer first scoped version over system active
   const activeVersionName = useMemo(() => {
-    const activeVersion = versions.find((v) => v.isActive);
-    return activeVersion?.versionName || 'default';
+    if (versions.length > 0) {
+      // If versions are scope-filtered, prefer the first one (or the active one if in scope)
+      const activeVersion = versions.find((v) => v.isActive);
+      return activeVersion?.versionName || versions[0].versionName;
+    }
+    return 'default';
   }, [versions]);
 
   // Version description state
@@ -248,7 +260,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
         // Parse schema if it's a string
         if (typeof rawConfig.schema === 'string') {
-          schemaObj = JSON.parse(rawConfig.schema);
+          schemaObj = parseConfigurationData(rawConfig.schema);
         }
 
         // Unwrap nested Schema object if present
@@ -258,12 +270,12 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
         // Parse default config if it's a string
         if (typeof rawConfig.default === 'string') {
-          defaultObj = JSON.parse(rawConfig.default);
+          defaultObj = parseConfigurationData(rawConfig.default);
         }
 
         // Parse custom config if it's a string
         if (typeof rawConfig.custom === 'string' && rawConfig.custom) {
-          customObj = JSON.parse(rawConfig.custom);
+          customObj = parseConfigurationData(rawConfig.custom);
         } else if (!rawConfig.custom) {
           customObj = {};
         }
@@ -273,7 +285,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
         const normalizedCustomObj = normalizeBooleans(customObj as Record<string, unknown>, schemaObj as ConfigSchema);
 
         // Return merged config (same as fetchConfiguration)
-        return deepMerge(normalizedDefaultObj, normalizedCustomObj);
+        return deepMerge(normalizedDefaultObj ?? {}, normalizedCustomObj);
       });
 
       const configs = await Promise.all(configPromises);
@@ -304,13 +316,14 @@ const ConfigurationLayout = (): React.JSX.Element => {
       return;
     }
 
-    // Check if Pattern 1 and show confirmation for auto-sync to BDA (unless skipping)
-    if (isPattern1 && !skipSyncConfirmation) {
+    // Check if BDA-enabled pattern and show confirmation for auto-sync to BDA (unless skipping)
+    if ((isPattern1 || mergedConfig?.use_bda) && !skipSyncConfirmation) {
+      setActivateVersionTarget(versionName);
       setShowActivateVersionConfirmModal(true);
       return;
     }
 
-    // Direct activation for non-Pattern 1 or when skipping confirmation
+    // Direct activation for non-BDA or when skipping confirmation
     await performActivateVersion(versionName);
   };
 
@@ -455,9 +468,16 @@ const ConfigurationLayout = (): React.JSX.Element => {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [showSyncToBdaConfirmModal, setShowSyncToBdaConfirmModal] = useState(false);
   const [showActivateVersionConfirmModal, setShowActivateVersionConfirmModal] = useState(false);
+  const [activateVersionTarget, setActivateVersionTarget] = useState<string | null>(null); // Track which version to activate
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const editorRef = useRef<any>(null);
+  // BDA project selection modal state
+  const [bdaSyncMode, setBdaSyncMode] = useState<string>('create'); // 'linked', 'create', or 'existing'
+  const [bdaProjectArnInput, setBdaProjectArnInput] = useState('');
+  const [showSyncFromBdaModal, setShowSyncFromBdaModal] = useState(false);
+  const [syncFromBdaArnInput, setSyncFromBdaArnInput] = useState('');
+  const [syncFromBdaMode, setSyncFromBdaMode] = useState<string>('replace'); // 'replace' or 'merge'
+
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
 
   // Compute whether there are unsaved changes by comparing formValues with mergedConfig
   const hasUnsavedChanges = useMemo(() => {
@@ -508,12 +528,16 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
   // Hooks for configuration library
   const { listConfigurations, getFile } = useConfigurationLibrary();
-  const settingsContext = useSettingsContext() as Record<string, unknown> | null;
-  const settings = settingsContext?.settings as Record<string, unknown> | undefined;
+  const { settings } = useSettingsContext();
 
   // Helper function to map IDPPattern to directory name
   const getPatternDirectory = (idpPattern: string | undefined): string | null => {
     if (!idpPattern) return null;
+
+    // Handle "Unified" pattern
+    if (idpPattern.toLowerCase().includes('unified')) {
+      return 'unified';
+    }
 
     // Extract pattern number from string like "Pattern1 - Description" or "Pattern2 - Description"
     const match = idpPattern.match(/Pattern(\d+)/i);
@@ -537,8 +561,8 @@ const ConfigurationLayout = (): React.JSX.Element => {
   // Helper function to check if Pattern-1 is selected
   const isPattern1 = (settings?.IDPPattern as string | undefined)?.includes('Pattern1');
 
-  // Helper function to check if Pattern-2 is selected (for Rule Schema feature)
-  const isPattern2 = (settings?.IDPPattern as string | undefined)?.includes('Pattern2');
+  // Rule Schema/Validation is available in all modes (Unified, Pattern2, etc.) - only excluded for Pattern1-only
+  const showRuleSchema = !isPattern1;
 
   // Initialize form values from merged config
   useEffect(() => {
@@ -583,7 +607,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
   // Process schema to convert custom types to standard JSON Schema format
   const processSchema = (inputSchema: Record<string, unknown>): Record<string, unknown> | null => {
     try {
-      const processedSchema = {
+      const processedSchema: { type: string; properties: Record<string, Record<string, unknown>>; required: unknown } = {
         type: 'object',
         properties: {},
         required: inputSchema.required || [],
@@ -628,8 +652,9 @@ const ConfigurationLayout = (): React.JSX.Element => {
                   itemProps[itemKey] = itemProp;
                 }
               });
-              processedSchema.properties[key].items.properties = itemProps;
-              processedSchema.properties[key].items.required = (items as Record<string, unknown>).required || [];
+              (processedSchema.properties[key].items as Record<string, unknown>).properties = itemProps;
+              (processedSchema.properties[key].items as Record<string, unknown>).required =
+                (items as Record<string, unknown>).required || [];
             }
           } else if (prop.type === 'number' || prop.type === 'integer') {
             // For number types, we'll use a more flexible approach
@@ -670,7 +695,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
       if (!parsedYaml) return [{ message: 'Empty or invalid YAML content' }];
 
       // Perform schema validation manually
-      const errors = [];
+      const errors: { message: string }[] = [];
 
       // Check required fields
       if (schema.required) {
@@ -707,7 +732,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
               errors.push({ message: `Field '${key}' must be a number or a string` });
             } else {
               // Try to convert to number for constraint validation
-              let numValue;
+              let numValue: number | undefined;
               let isValidNumber = false;
 
               if (typeof value === 'number') {
@@ -720,7 +745,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
               }
 
               // Only check constraints if it's a valid number
-              if (isValidNumber) {
+              if (isValidNumber && numValue !== undefined) {
                 if (prop.minimum !== undefined && numValue < Number(prop.minimum)) {
                   errors.push({ message: `Field '${key}' must be at least ${prop.minimum}` });
                 }
@@ -786,7 +811,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                             });
                           } else {
                             // Try to convert to number for constraint validation
-                            let numValue;
+                            let numValue: number | undefined;
                             let isValidNumber = false;
 
                             if (typeof itemValue === 'number') {
@@ -799,12 +824,22 @@ const ConfigurationLayout = (): React.JSX.Element => {
                             }
 
                             // Only check constraints if it's a valid number
-                            if (isValidNumber && itemProp.minimum !== undefined && numValue < itemProp.minimum) {
+                            if (
+                              isValidNumber &&
+                              numValue !== undefined &&
+                              itemProp.minimum !== undefined &&
+                              numValue < Number(itemProp.minimum)
+                            ) {
                               errors.push({
                                 message: `Field '${itemKey}' in item ${index} of '${key}' must be ` + `at least ${itemProp.minimum}`,
                               });
                             }
-                            if (isValidNumber && itemProp.maximum !== undefined && numValue > itemProp.maximum) {
+                            if (
+                              isValidNumber &&
+                              numValue !== undefined &&
+                              itemProp.maximum !== undefined &&
+                              numValue > Number(itemProp.maximum)
+                            ) {
                               errors.push({
                                 message: `Field '${itemKey}' in item ${index} of '${key}' must be ` + `at most ${itemProp.maximum}`,
                               });
@@ -825,7 +860,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                       });
                     } else {
                       // Try to convert to number for constraint validation
-                      let numValue;
+                      let numValue: number | undefined;
                       let isValidNumber = false;
 
                       if (typeof item === 'number') {
@@ -840,6 +875,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                       // Only check constraints if it's a valid number
                       if (
                         isValidNumber &&
+                        numValue !== undefined &&
                         (propItems as Record<string, unknown>).minimum !== undefined &&
                         numValue < Number((propItems as Record<string, unknown>).minimum)
                       ) {
@@ -849,6 +885,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                       }
                       if (
                         isValidNumber &&
+                        numValue !== undefined &&
                         (propItems as Record<string, unknown>).maximum !== undefined &&
                         numValue > Number((propItems as Record<string, unknown>).maximum)
                       ) {
@@ -869,7 +906,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
             } else if (prop.properties) {
               // Validate nested object properties
               Object.entries(prop.properties).forEach(([nestedKey]) => {
-                const nestedValue = value[nestedKey];
+                const nestedValue = (value as Record<string, unknown>)[nestedKey];
 
                 // Check if required
                 if (prop.required && (prop.required as string[]).includes(nestedKey) && nestedValue === undefined) {
@@ -892,8 +929,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleEditorDidMount = (editor: any, monaco: any): void => {
+  const handleEditorDidMount: OnMount = (editor, monaco): void => {
     editorRef.current = editor;
 
     // Set up JSON schema validation if schema is available
@@ -938,9 +974,9 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
   // Handle changes in the JSON editor
   const handleJsonEditorChange = (value: string | undefined): void => {
-    setJsonContent(value);
+    setJsonContent(value ?? '');
     try {
-      const parsedValue = JSON.parse(value);
+      const parsedValue = JSON.parse(value ?? '');
       setFormValues(parsedValue);
 
       // Update YAML when JSON changes
@@ -959,9 +995,9 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
   // Handle changes in the YAML editor
   const handleYamlEditorChange = (value: string | undefined): void => {
-    setYamlContent(value);
+    setYamlContent(value ?? '');
     try {
-      const parsedValue = yaml.load(value);
+      const parsedValue = yaml.load(value ?? '') as Record<string, unknown>;
       setFormValues(parsedValue);
 
       // Update JSON when YAML changes
@@ -974,7 +1010,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
       // Validate YAML against schema
       if (schema) {
-        const schemaErrors = validateYamlContent(value);
+        const schemaErrors = validateYamlContent(value ?? '');
         setValidationErrors(schemaErrors);
       } else {
         setValidationErrors([]);
@@ -1022,10 +1058,14 @@ const ConfigurationLayout = (): React.JSX.Element => {
     try {
       // Simpler approach: Just compare the current form values with default values
       // and only include differences in our version config
-      const customConfigToSave = {};
+      const customConfigToSave: Record<string, unknown> = {};
 
       // Helper function to compare values - returns a new object
-      const compareWithDefault = (current, defaultObj, path = '') => {
+      const compareWithDefault = (
+        current: Record<string, unknown>,
+        defaultObj: Record<string, unknown>,
+        path = '',
+      ): Record<string, unknown> => {
         // Add debugging for granular assessment
         if (path.includes('granular')) {
           console.log(`DEBUG: compareWithDefault called with path '${path}':`, {
@@ -1128,7 +1168,11 @@ const ConfigurationLayout = (): React.JSX.Element => {
             }
             // If key exists in both, compare recursively
             else if (key in defaultObj && key in current) {
-              const nestedResults = compareWithDefault(current[key], defaultObj[key], newPath);
+              const nestedResults = compareWithDefault(
+                current[key] as Record<string, unknown>,
+                defaultObj[key] as Record<string, unknown>,
+                newPath,
+              );
 
               // Add debugging for granular assessment
               if (newPath.includes('granular')) {
@@ -1206,7 +1250,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
           granularInFormValues: (formValues?.assessment as Record<string, unknown> | undefined)?.granular,
           granularInMergedConfig: (mergedConfig?.assessment as Record<string, unknown> | undefined)?.granular,
         });
-        const differences = compareWithDefault(formValues, mergedConfig);
+        const differences = compareWithDefault(formValues, mergedConfig ?? {});
         console.log('DEBUG: Differences found by compareWithDefault:', differences);
 
         // Flatten path results into a proper object structure - revised to avoid ESLint errors
@@ -1226,9 +1270,9 @@ const ConfigurationLayout = (): React.JSX.Element => {
                 const arrayPath = path.split('[')[0];
                 if (!Object.prototype.hasOwnProperty.call(newResult, arrayPath)) {
                   // Find the array in formValues
-                  const arrayValue = path.split('.').reduce((acc, part) => {
+                  const arrayValue = path.split('.').reduce<Record<string, unknown> | undefined>((acc, part) => {
                     if (!acc) return undefined;
-                    return acc[part.replace(/\[\d+\]$/, '')];
+                    return acc[part.replace(/\[\d+\]$/, '')] as Record<string, unknown> | undefined;
                   }, formValues);
 
                   if (arrayValue) {
@@ -1241,29 +1285,29 @@ const ConfigurationLayout = (): React.JSX.Element => {
                 const parts = path.split('.');
 
                 // Build an object to merge
-                const objectToMerge = {};
-                let current = objectToMerge;
+                const objectToMerge: Record<string, unknown> = {};
+                let current: Record<string, unknown> = objectToMerge;
 
                 // Build nested structure without modifying existing objects
                 for (let i = 0; i < parts.length - 1; i += 1) {
                   // Use += 1 instead of ++
                   current[parts[i]] = {};
-                  current = current[parts[i]]; // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop - Index from controlled array iteration
+                  current = current[parts[i]] as Record<string, unknown>; // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop - Index from controlled array iteration
                 }
 
                 // Set the value at the final path - IMPORTANT: preserve boolean false values!
                 current[parts[parts.length - 1]] = value;
 
                 // Deep merge this into result
-                const deepMergeNested = (target, source) => {
+                const deepMergeNested = (target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> => {
                   const output = { ...target };
 
                   Object.keys(source).forEach((key) => {
                     if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
                       if (target[key] && typeof target[key] === 'object') {
-                        output[key] = deepMergeNested(target[key], source[key]);
+                        output[key] = deepMergeNested(target[key] as Record<string, unknown>, source[key] as Record<string, unknown>);
                       } else {
-                        output[key] = { ...source[key] };
+                        output[key] = { ...(source[key] as Record<string, unknown>) };
                       }
                     } else {
                       // CRITICAL FIX: Always set the value, including boolean false
@@ -1420,13 +1464,13 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
   const formatJson = () => {
     if (editorRef.current && viewMode === 'json') {
-      editorRef.current.getAction('editor.action.formatDocument').run();
+      editorRef.current.getAction('editor.action.formatDocument')?.run();
     }
   };
 
   const formatYaml = () => {
     if (editorRef.current && viewMode === 'yaml') {
-      editorRef.current.getAction('editor.action.formatDocument').run();
+      editorRef.current.getAction('editor.action.formatDocument')?.run();
 
       // Re-validate after formatting
       setTimeout(() => {
@@ -1464,31 +1508,37 @@ const ConfigurationLayout = (): React.JSX.Element => {
     }
   };
 
-  // Handler for BDA/IDP sync
-  // Handler for BDA/IDP sync with direction support
-  const handleSyncBdaIdp = async (direction = 'bidirectional'): Promise<void> => {
+  // Handler for BDA/IDP sync with direction support and optional BDA project ARN
+  const handleSyncBdaIdp = async (direction = 'bidirectional', bdaProjectArn?: string, syncMode = 'replace'): Promise<void> => {
     setSyncingDirection(direction);
     setSyncSuccess(false);
     setSyncSuccessMessage('');
     setSyncError(null);
 
     try {
-      logger.debug(`Starting BDA/IDP sync with direction: ${direction}...`);
+      logger.debug(`Starting BDA/IDP sync with direction: ${direction}, mode: ${syncMode}, bdaProjectArn: ${bdaProjectArn || 'auto'}...`);
+
+      // Build variables - always pass saveArn: true to persist the project ARN
+      const variables: Record<string, unknown> = {
+        versionName: currentVersionName,
+        direction,
+        syncMode,
+        saveArn: true,
+      };
+      if (bdaProjectArn) {
+        variables.bdaProjectArn = bdaProjectArn;
+      }
 
       const result = await client.graphql({
-        query: syncBdaIdpMutation as unknown as string,
-        variables: {
-          versionName: currentVersionName,
-          direction,
-        },
+        query: syncBdaIdp,
+        variables,
       });
 
       logger.debug('Sync API response:', result);
 
-      const resultData = (result as unknown as Record<string, Record<string, unknown>>).data;
-      const response = (resultData.syncBdaIdp || {}) as Record<string, unknown>;
+      const response = result.data.syncBdaIdp;
 
-      if (response.success) {
+      if (response?.success) {
         setSyncSuccess(true);
         const directionLabel =
           (
@@ -1501,11 +1551,11 @@ const ConfigurationLayout = (): React.JSX.Element => {
         setSyncSuccessMessage(String(response.message || `Document classes have been synchronized ${directionLabel}.`));
 
         // If there are partial failures, also show the error details
-        const syncErr = response.error as Record<string, unknown> | undefined;
+        const syncErr = response.error;
         if (syncErr && syncErr.type === 'PARTIAL_SYNC_ERROR') {
           // Show both success and error for partial failures
           setTimeout(() => {
-            setSyncError(syncErr.message as string);
+            setSyncError(syncErr.message ?? null);
           }, 100); // Small delay to show success first
         }
 
@@ -1514,8 +1564,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
         // Only auto-dismiss if there are no warnings in the message
         // Warnings indicate BDA limitations that users should read
-        const hasWarnings =
-          (response.message as string | undefined)?.includes('WARNING') || (response.warnings as unknown[] | undefined)?.length > 0;
+        const hasWarnings = response.message?.includes('WARNING');
         if (!hasWarnings) {
           setTimeout(() => {
             setSyncSuccess(false);
@@ -1523,21 +1572,8 @@ const ConfigurationLayout = (): React.JSX.Element => {
           }, 5000);
         }
         logger.debug('BDA/IDP sync completed successfully');
-
-        // If this was sync to BDA, activate the version (skip confirmation to prevent circular call)
-        if (direction === 'idp_to_bda') {
-          try {
-            await handleActivateVersion(currentVersionName, true); // Skip confirmation
-            logger.debug(`Activated version ${currentVersionName} after sync to BDA`);
-          } catch (activateErr) {
-            logger.error('Failed to activate version after sync:', activateErr);
-            // Don't fail the sync, just log the error
-          }
-        }
       } else {
-        const errorMsg = String(
-          (response.error as Record<string, unknown> | undefined)?.message || response.message || 'Sync operation failed',
-        );
+        const errorMsg = String(response?.error?.message || response?.message || 'Sync operation failed');
         setSyncError(errorMsg);
         logger.error('Sync failed:', errorMsg);
       }
@@ -1581,14 +1617,14 @@ const ConfigurationLayout = (): React.JSX.Element => {
   };
 
   const handleImport = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         setImportError(null);
-        const content = e.target.result as string;
+        const content = e.target?.result as string;
 
         const importedConfig = file.name.endsWith('.yaml') || file.name.endsWith('.yml') ? yaml.load(content) : JSON.parse(content);
 
@@ -1627,7 +1663,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
     if (pendingImportSource.type === 'file') {
       baseName = pendingImportSource.name.replace(/\.(json|yaml|yml)$/, '');
     } else {
-      baseName = pendingImportSource.name.split('/').pop();
+      baseName = pendingImportSource.name.split('/').pop() ?? pendingImportSource.name;
     }
 
     // Set up for new version creation with migration
@@ -1654,7 +1690,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
   // Handler for local file import
   const handleLocalFileImport = () => {
-    document.getElementById('import-file').click();
+    document.getElementById('import-file')?.click();
   };
 
   // Handler for library import
@@ -1687,6 +1723,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
     if (config.hasReadme) {
       // Fetch and show README
       const patternDir = getPatternDirectory(settings?.IDPPattern as string | undefined);
+      if (!patternDir) return;
       const file = await getFile(patternDir, config.name, 'README.md');
 
       if (file) {
@@ -1710,13 +1747,18 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
     try {
       const patternDir = getPatternDirectory(settings?.IDPPattern as string | undefined);
+      if (!patternDir) {
+        setImportError('Pattern not configured in settings');
+        return;
+      }
 
       // Use the detected file type from the config object
       const fileName = config.configFileType === 'json' ? 'config.json' : 'config.yaml';
+      logger.debug('Importing from library:', { patternDir, configName: config.name, fileName });
       const file = await getFile(patternDir, config.name, fileName);
 
       if (!file) {
-        setImportError('Failed to load configuration file');
+        setImportError(`Failed to load configuration file: ${patternDir}/${config.name}/${fileName}`);
         return;
       }
 
@@ -1733,7 +1775,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
           // Set imported config for new version creation
           setImportedConfigForNewVersion(importedConfig);
           setImportSource('library');
-          const baseName = config.name.split('/').pop();
+          const baseName = config.name.split('/').pop() ?? config.name;
           setNewVersionName(baseName);
           setNewVersionDescription('');
         }
@@ -1810,6 +1852,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
           onActivateVersion={handleActivateVersion}
           onDeleteVersions={handleDeleteVersions}
           onImportAsNewVersion={handleImportAsNewVersion}
+          isAdmin={isAdmin}
         />
       </ExpandableSection>
 
@@ -2077,7 +2120,12 @@ const ConfigurationLayout = (): React.JSX.Element => {
               >
                 Go Back
               </Button>
-              <Button variant="primary" onClick={() => importFromLibrary(selectedLibraryConfig)}>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  if (selectedLibraryConfig) importFromLibrary(selectedLibraryConfig);
+                }}
+              >
                 Import This Configuration
               </Button>
             </SpaceBetween>
@@ -2121,41 +2169,92 @@ const ConfigurationLayout = (): React.JSX.Element => {
                 <Button variant="normal" onClick={() => fetchConfiguration(currentVersionName)} loading={refreshing} iconName="refresh">
                   Refresh
                 </Button>
-                {isPattern1 && (
+                {Boolean(isPattern1 || mergedConfig?.use_bda || formValues?.use_bda) && (
                   <>
-                    <Button variant="normal" onClick={() => handleSyncBdaIdp('bda_to_idp')} loading={syncingDirection === 'bda_to_idp'}>
-                      Sync from BDA
-                    </Button>
-                    <Button variant="normal" onClick={() => setShowSyncToBdaConfirmModal(true)} loading={syncingDirection === 'idp_to_bda'}>
-                      Sync to BDA
-                    </Button>
+                    <span title={hasUnsavedChanges ? 'Save your changes first' : undefined}>
+                      <Button
+                        variant="normal"
+                        onClick={() => {
+                          setSyncFromBdaArnInput('');
+                          setSyncFromBdaMode('replace');
+                          setShowSyncFromBdaModal(true);
+                        }}
+                        loading={syncingDirection === 'bda_to_idp'}
+                        disabled={hasUnsavedChanges}
+                      >
+                        Sync from BDA
+                      </Button>
+                    </span>
+                    <span title={hasUnsavedChanges ? 'Save your changes first' : undefined}>
+                      <Button
+                        variant="normal"
+                        onClick={() => {
+                          setBdaSyncMode(currentVersion?.bdaProjectArn ? 'linked' : 'create');
+                          setShowSyncToBdaConfirmModal(true);
+                        }}
+                        loading={syncingDirection === 'idp_to_bda'}
+                        disabled={hasUnsavedChanges}
+                      >
+                        Sync to BDA
+                      </Button>
+                    </span>
                   </>
                 )}
-                <Button variant="normal" onClick={() => setShowResetModal(true)} disabled={currentVersionName === 'default'}>
-                  Restore default (All)
-                </Button>
-                {/* Disable Save as default when already on default version */}
-                <Button variant="normal" onClick={() => setShowSaveAsDefaultModal(true)} disabled={currentVersionName === 'default'}>
-                  Save as default
-                </Button>
-                <Button variant="normal" onClick={() => setShowSaveAsVersionModal(true)} disabled={validationErrors.length > 0}>
-                  Save as Version
-                </Button>
-                {/* Disable Save changes when on default version */}
-                <Button
-                  variant="primary"
-                  onClick={() => handleSave(false)}
-                  loading={isSaving}
-                  disabled={!hasUnsavedChanges || validationErrors.length > 0 || currentVersionName === 'default'}
-                >
-                  Save changes
-                </Button>
+                {canWrite && (
+                  <Button variant="normal" onClick={() => setShowResetModal(true)} disabled={currentVersionName === 'default'}>
+                    Restore default (All)
+                  </Button>
+                )}
+                {/* Save as default - Admin only */}
+                {isAdmin && (
+                  <Button variant="normal" onClick={() => setShowSaveAsDefaultModal(true)} disabled={currentVersionName === 'default'}>
+                    Save as default
+                  </Button>
+                )}
+                {isAdmin && (
+                  <Button
+                    variant="normal"
+                    onClick={() => {
+                      setSaveAsVersionName(`copy-of-${currentVersionName}`);
+                      setSaveAsVersionDescription(currentVersion?.description ? `Copy of ${currentVersion.description}` : '');
+                      setShowSaveAsVersionModal(true);
+                    }}
+                    disabled={validationErrors.length > 0}
+                  >
+                    Save as Version
+                  </Button>
+                )}
+                {/* Save changes - hidden for read-only users, disabled on default or managed versions */}
+                {canWrite && (
+                  <Button
+                    variant="primary"
+                    onClick={() => handleSave(false)}
+                    loading={isSaving}
+                    disabled={
+                      !hasUnsavedChanges ||
+                      validationErrors.length > 0 ||
+                      currentVersionName === 'default' ||
+                      currentVersion?.managed === true
+                    }
+                  >
+                    Save changes
+                  </Button>
+                )}
               </SpaceBetween>
             }
           >
-            Configuration:{' '}
-            {selectedVersion || (activeVersionName && currentVersion?.isActive ? `${activeVersionName} (Active)` : activeVersionName)}
-            {currentVersion?.description ? ` - ${currentVersion.description}` : ''}
+            <SpaceBetween direction="horizontal" size="xs">
+              <span>
+                Configuration: {selectedVersion || activeVersionName}
+                {currentVersion?.description ? ` - ${currentVersion.description}` : ''}
+              </span>
+              {currentVersion?.managed || currentVersionName === 'default' ? (
+                <Badge color="blue">Managed</Badge>
+              ) : (
+                <Badge color="grey">Custom</Badge>
+              )}
+              {currentVersion?.isActive && <Badge color="green">Active</Badge>}
+            </SpaceBetween>
           </Header>
         }
       >
@@ -2166,6 +2265,30 @@ const ConfigurationLayout = (): React.JSX.Element => {
                 <Spinner size="normal" />
                 <Box margin={{ left: 's' }}>Refreshing data from server</Box>
               </Box>
+            </Alert>
+          )}
+
+          {(currentVersion?.managed === true || currentVersionName === 'default') && (
+            <Alert
+              type="warning"
+              header="Read-only — Stack-managed configuration"
+              action={
+                isAdmin ? (
+                  <Button
+                    variant="normal"
+                    onClick={() => {
+                      setSaveAsVersionName(`copy-of-${currentVersionName}`);
+                      setSaveAsVersionDescription(currentVersion?.description ? `Copy of ${currentVersion.description}` : '');
+                      setShowSaveAsVersionModal(true);
+                    }}
+                  >
+                    Save as Version
+                  </Button>
+                ) : undefined
+              }
+            >
+              This configuration is managed by the stack and cannot be saved directly. It will be overwritten on stack updates. Use{' '}
+              <strong>Save as Version</strong> to create an editable copy.
             </Alert>
           )}
 
@@ -2184,6 +2307,12 @@ const ConfigurationLayout = (): React.JSX.Element => {
           {saveError && (
             <Alert type="error" dismissible onDismiss={() => setSaveError(null)} header="Error saving configuration">
               {saveError}
+            </Alert>
+          )}
+
+          {importError && !importedConfigForNewVersion && (
+            <Alert type="error" dismissible onDismiss={() => setImportError(null)} header="Import Error">
+              {importError}
             </Alert>
           )}
 
@@ -2236,6 +2365,49 @@ const ConfigurationLayout = (): React.JSX.Element => {
             </Alert>
           )}
 
+          {/* BDA Project Status Banner */}
+          {Boolean(isPattern1 || mergedConfig?.use_bda || formValues?.use_bda) && currentVersion && (
+            <>
+              {currentVersion.bdaProjectArn ? (
+                <Alert
+                  type={currentVersion.bdaSyncStatus === 'needs-sync' ? 'warning' : 'info'}
+                  header={currentVersion.bdaSyncStatus === 'needs-sync' ? 'BDA Project Linked — Sync Required' : 'BDA Project Linked'}
+                >
+                  BDA project:{' '}
+                  <Box variant="code" display="inline" fontSize="body-s">
+                    {currentVersion.bdaProjectArn as string}
+                  </Box>
+                  {currentVersion.bdaSyncStatus === 'needs-sync' ? (
+                    <>
+                      <br />
+                      <br />
+                      Configuration and BDA project blueprints may be out of sync. Use <strong>Sync to BDA</strong> to push your
+                      configuration classes as BDA blueprints, or <strong>Sync from BDA</strong> to import existing project blueprints as
+                      configuration classes.
+                    </>
+                  ) : (
+                    <>
+                      {currentVersion.bdaSyncStatus && (
+                        <>
+                          {' '}
+                          &mdash; Status: <strong>{currentVersion.bdaSyncStatus as string}</strong>
+                        </>
+                      )}
+                      {currentVersion.bdaLastSyncedAt && (
+                        <> &mdash; Last synced: {new Date(currentVersion.bdaLastSyncedAt as string).toLocaleString()}</>
+                      )}
+                    </>
+                  )}
+                </Alert>
+              ) : (
+                <Alert type="warning" header="BDA Enabled — No Project Linked">
+                  BDA is enabled but no BDA project is linked to this version. Use <strong>Sync to BDA</strong> to create or link a project,
+                  or <strong>Sync from BDA</strong> to import blueprints from an existing project.
+                </Alert>
+              )}
+            </>
+          )}
+
           {hasUnsavedChanges && currentVersionName !== 'default' && (
             <Alert
               type="info"
@@ -2261,13 +2433,13 @@ const ConfigurationLayout = (): React.JSX.Element => {
                   defaultConfig={defaultConfig}
                   mergedConfig={mergedConfig}
                   isCustomized={isCustomized}
-                  onResetToDefault={currentVersionName === 'default' ? null : resetToDefault}
-                  onChange={handleFormChange}
+                  onResetToDefault={!canWrite || currentVersionName === 'default' ? null : resetToDefault}
+                  onChange={canWrite ? handleFormChange : undefined}
                   extractionSchema={extractionSchema}
                   currentVersionName={currentVersionName}
                   activeTabId={configBuilderActiveTab}
                   onTabChange={setConfigBuilderActiveTab}
-                  showRuleSchema={isPattern2}
+                  showRuleSchema={showRuleSchema}
                   versionDescription={versionDescription}
                   onDescriptionChange={setVersionDescription}
                   onSchemaChange={(schemaData: unknown, isDirty: boolean) => {
@@ -2343,7 +2515,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                 height="70vh"
                 defaultLanguage="json"
                 value={jsonContent}
-                onChange={handleJsonEditorChange}
+                onChange={canWrite ? handleJsonEditorChange : undefined}
                 onMount={handleEditorDidMount}
                 options={{
                   minimap: { enabled: false },
@@ -2355,6 +2527,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                   lineNumbers: 'on',
                   renderLineHighlight: 'all',
                   tabSize: 2,
+                  readOnly: !canWrite,
                 }}
               />
             )}
@@ -2365,7 +2538,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                   height="70vh"
                   defaultLanguage="yaml"
                   value={yamlContent}
-                  onChange={handleYamlEditorChange}
+                  onChange={canWrite ? handleYamlEditorChange : undefined}
                   onMount={handleEditorDidMount}
                   options={{
                     minimap: { enabled: false },
@@ -2377,6 +2550,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                     lineNumbers: 'on',
                     renderLineHighlight: 'all',
                     tabSize: 2,
+                    readOnly: !canWrite,
                   }}
                 />
               </Box>
@@ -2416,7 +2590,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                   !newVersionName.trim() ||
                   newVersionName.length > 50 ||
                   !/^[a-zA-Z0-9_-]+$/.test(newVersionName) ||
-                  (newVersionDescription && newVersionDescription.length > 200)
+                  !!(newVersionDescription && newVersionDescription.length > 200)
                 }
               >
                 Create Version
@@ -2450,7 +2624,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
               value={newVersionName}
               onChange={({ detail }) => setNewVersionName(detail.value)}
               placeholder="Version name"
-              invalid={newVersionName && (newVersionName.length > 50 || !/^[a-zA-Z0-9_-]+$/.test(newVersionName))}
+              invalid={!!newVersionName && (newVersionName.length > 50 || !/^[a-zA-Z0-9_-]+$/.test(newVersionName))}
             />
           </FormField>
           <FormField
@@ -2461,7 +2635,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
               value={newVersionDescription}
               onChange={({ detail }) => setNewVersionDescription(detail.value)}
               placeholder="Optional description"
-              invalid={newVersionDescription && newVersionDescription.length > 200}
+              invalid={!!newVersionDescription && newVersionDescription.length > 200}
             />
           </FormField>
         </SpaceBetween>
@@ -2482,24 +2656,46 @@ const ConfigurationLayout = (): React.JSX.Element => {
         {showCompareModal && compareData && <ConfigurationComparison versions={compareData.versions} configs={compareData.configs} />}
       </Modal>
 
-      {/* Sync to BDA Confirmation Modal */}
+      {/* Sync to BDA Project Selection Modal */}
       <Modal
         visible={showSyncToBdaConfirmModal}
-        onDismiss={() => setShowSyncToBdaConfirmModal(false)}
-        header="Confirm Sync to BDA"
+        onDismiss={() => {
+          setShowSyncToBdaConfirmModal(false);
+          setBdaSyncMode(currentVersion?.bdaProjectArn ? 'linked' : 'create');
+          setBdaProjectArnInput('');
+        }}
+        header="Sync to BDA"
         footer={
           <Box float="right">
             <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowSyncToBdaConfirmModal(false)}>
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowSyncToBdaConfirmModal(false);
+                  setBdaSyncMode(currentVersion?.bdaProjectArn ? 'linked' : 'create');
+                  setBdaProjectArnInput('');
+                }}
+              >
                 Cancel
               </Button>
               <Button
                 variant="primary"
                 onClick={() => {
                   setShowSyncToBdaConfirmModal(false);
-                  handleSyncBdaIdp('idp_to_bda');
+                  let arnToUse: string;
+                  if (bdaSyncMode === 'linked') {
+                    arnToUse = currentVersion?.bdaProjectArn as string;
+                  } else if (bdaSyncMode === 'existing') {
+                    arnToUse = bdaProjectArnInput.trim();
+                  } else {
+                    arnToUse = 'CREATE_NEW';
+                  }
+                  handleSyncBdaIdp('idp_to_bda', arnToUse);
+                  setBdaSyncMode(currentVersion?.bdaProjectArn ? 'linked' : 'create');
+                  setBdaProjectArnInput('');
                 }}
                 loading={syncingDirection === 'idp_to_bda'}
+                disabled={bdaSyncMode === 'existing' && !bdaProjectArnInput.trim()}
               >
                 Confirm Sync
               </Button>
@@ -2508,34 +2704,185 @@ const ConfigurationLayout = (): React.JSX.Element => {
         }
       >
         <SpaceBetween size="m">
-          <Alert type="warning">
-            This will sync your IDP document classes to BDA blueprints and set <strong>{currentVersionName}</strong> as the active
-            configuration version.
+          <Alert type="info">
+            This will sync your IDP document classes as BDA blueprints for version <strong>{currentVersionName}</strong>.
           </Alert>
+          <FormField label="BDA Project" description="Choose how to sync your configuration to BDA.">
+            <RadioGroup
+              value={bdaSyncMode}
+              onChange={({ detail }) => {
+                setBdaSyncMode(detail.value);
+                // If switching to existing and there's already a linked ARN, pre-fill it
+                if (detail.value === 'existing' && currentVersion?.bdaProjectArn && !bdaProjectArnInput) {
+                  setBdaProjectArnInput(currentVersion.bdaProjectArn as string);
+                }
+              }}
+              items={[
+                {
+                  value: 'linked',
+                  label: 'Sync to linked project',
+                  description: currentVersion?.bdaProjectArn
+                    ? `Update blueprints in the linked project: ${currentVersion.bdaProjectArn}`
+                    : 'No BDA project is linked to this version.',
+                  disabled: !currentVersion?.bdaProjectArn,
+                },
+                {
+                  value: 'create',
+                  label: 'Create a new BDA project',
+                  description: 'A new BDA project will be automatically created for this config version.',
+                },
+                {
+                  value: 'existing',
+                  label: 'Use a different BDA project',
+                  description: 'Enter the ARN of an existing BDA project to sync to.',
+                },
+              ]}
+            />
+          </FormField>
+          {bdaSyncMode === 'existing' && (
+            <FormField
+              label="BDA Project ARN"
+              description="Enter the ARN of the existing BDA Data Automation project."
+              errorText={bdaProjectArnInput && !bdaProjectArnInput.startsWith('arn:aws') ? 'ARN must start with arn:aws' : ''}
+            >
+              <Input
+                value={bdaProjectArnInput}
+                onChange={({ detail }) => setBdaProjectArnInput(detail.value)}
+                placeholder="arn:aws:bedrock:us-east-1:123456789012:data-automation-project/..."
+              />
+            </FormField>
+          )}
         </SpaceBetween>
       </Modal>
 
-      {/* Activate Version Confirmation Modal */}
+      {/* Sync from BDA — Choose mode and optionally provide ARN */}
+      <Modal
+        visible={showSyncFromBdaModal}
+        onDismiss={() => {
+          setShowSyncFromBdaModal(false);
+          setSyncFromBdaArnInput('');
+          setSyncFromBdaMode('replace');
+        }}
+        header="Sync from BDA"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowSyncFromBdaModal(false);
+                  setSyncFromBdaArnInput('');
+                  setSyncFromBdaMode('replace');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setShowSyncFromBdaModal(false);
+                  const arnToUse = syncFromBdaArnInput.trim() || (currentVersion?.bdaProjectArn as string) || '';
+                  handleSyncBdaIdp('bda_to_idp', arnToUse, syncFromBdaMode);
+                  setSyncFromBdaArnInput('');
+                  setSyncFromBdaMode('replace');
+                }}
+                loading={syncingDirection === 'bda_to_idp'}
+                disabled={!currentVersion?.bdaProjectArn && (!syncFromBdaArnInput.trim() || !syncFromBdaArnInput.startsWith('arn:aws'))}
+              >
+                Sync from BDA
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          {syncFromBdaMode === 'replace' && (
+            <Alert type="warning">
+              <strong>Replace</strong> mode will remove all document classes in this config version that are not in the BDA project.
+            </Alert>
+          )}
+          <FormField label="Sync Mode" description="Choose how BDA blueprints are applied to your config version.">
+            <RadioGroup
+              value={syncFromBdaMode}
+              onChange={({ detail }) => setSyncFromBdaMode(detail.value)}
+              items={[
+                {
+                  value: 'replace',
+                  label: 'Replace',
+                  description: 'Align config version with BDA project. Classes not in BDA will be removed.',
+                },
+                {
+                  value: 'merge',
+                  label: 'Merge',
+                  description: 'Import BDA blueprints into config version. Existing classes will be kept.',
+                },
+              ]}
+            />
+          </FormField>
+          {!currentVersion?.bdaProjectArn && (
+            <Box>
+              No BDA project is currently linked to this config version. Enter the ARN of the BDA project to import blueprints from. The
+              project will be linked to this version for future syncs.
+            </Box>
+          )}
+          {Boolean(currentVersion?.bdaProjectArn) && (
+            <Box>
+              Syncing from linked project:{' '}
+              <Box variant="code" display="inline" fontSize="body-s">
+                {currentVersion?.bdaProjectArn as string}
+              </Box>
+              . You can enter a different ARN below to override.
+            </Box>
+          )}
+          <FormField
+            label="BDA Project ARN"
+            description={
+              currentVersion?.bdaProjectArn
+                ? 'Optional — leave empty to use the linked project.'
+                : 'Enter the ARN of the BDA Data Automation project to sync from.'
+            }
+            errorText={syncFromBdaArnInput && !syncFromBdaArnInput.startsWith('arn:aws') ? 'ARN must start with arn:aws' : ''}
+          >
+            <Input
+              value={syncFromBdaArnInput}
+              onChange={({ detail }) => setSyncFromBdaArnInput(detail.value)}
+              placeholder="arn:aws:bedrock:us-east-1:123456789012:data-automation-project/..."
+            />
+          </FormField>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Activate Version Confirmation Modal (with BDA sync) */}
       <Modal
         visible={showActivateVersionConfirmModal}
-        onDismiss={() => setShowActivateVersionConfirmModal(false)}
+        onDismiss={() => {
+          setShowActivateVersionConfirmModal(false);
+          setActivateVersionTarget(null);
+        }}
         header="Confirm Activate Version"
         footer={
           <Box float="right">
             <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowActivateVersionConfirmModal(false)}>
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowActivateVersionConfirmModal(false);
+                  setActivateVersionTarget(null);
+                }}
+              >
                 Cancel
               </Button>
               <Button
                 variant="primary"
                 onClick={() => {
                   setShowActivateVersionConfirmModal(false);
-                  if (selectedVersionsForCompare[0]) {
-                    performSyncThenActivate(selectedVersionsForCompare[0]);
+                  if (activateVersionTarget) {
+                    performSyncThenActivate(activateVersionTarget);
                   }
+                  setActivateVersionTarget(null);
                 }}
                 loading={syncingDirection === 'idp_to_bda'}
-                disabled={!selectedVersionsForCompare[0]}
+                disabled={!activateVersionTarget}
               >
                 Confirm Activate
               </Button>
@@ -2545,10 +2892,10 @@ const ConfigurationLayout = (): React.JSX.Element => {
       >
         <SpaceBetween size="m">
           <Alert type="warning">
-            {selectedVersionsForCompare[0] ? (
+            {activateVersionTarget ? (
               <>
-                Activating version <strong>{selectedVersionsForCompare[0]}</strong> will first sync your IDP document classes to BDA
-                blueprints, then set it as the active configuration version.
+                Activating version <strong>{activateVersionTarget}</strong> will first sync your IDP document classes to BDA blueprints,
+                then set it as the active configuration version.
               </>
             ) : (
               <>No version selected. Please select a version to activate.</>

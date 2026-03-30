@@ -52,10 +52,13 @@ mutation UpdateDocument($input: UpdateDocumentInput!) {
         EvaluationReportUri
         EvaluationStatus
         SummaryReportUri
+        RuleValidationResultUri
         ExpiresAfter
         HITLStatus
         HITLReviewURL
+        ConfidenceAlertCount
         TraceId
+        ConfigVersion
     }
 }
 """
@@ -97,6 +100,7 @@ query GetDocument($objectKey: ID!) {
         EvaluationReportUri
         EvaluationStatus
         SummaryReportUri
+        RuleValidationResultUri
         ExpiresAfter
         HITLStatus
         HITLReviewURL
