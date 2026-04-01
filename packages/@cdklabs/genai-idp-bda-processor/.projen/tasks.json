@@ -48,21 +48,6 @@
       "name": "bundle",
       "steps": [
         {
-          "spawn": "bundle:lambda:bda_completion_function"
-        },
-        {
-          "spawn": "bundle:lambda:bda_invoke_function"
-        },
-        {
-          "spawn": "bundle:lambda:evaluation_function"
-        },
-        {
-          "spawn": "bundle:lambda:processresults_function"
-        },
-        {
-          "spawn": "bundle:lambda:summarization_function"
-        },
-        {
           "spawn": "bundle:config:lending-package-sample"
         },
         {
@@ -151,61 +136,6 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/config_library/pattern-1/rvl-cdip/config.yaml assets/configs/rvl-cdip/."
-        }
-      ]
-    },
-    "bundle:lambda:bda_completion_function": {
-      "name": "bundle:lambda:bda_completion_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/bda_completion_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/bda_completion_function/* assets/lambdas/bda_completion_function/."
-        }
-      ]
-    },
-    "bundle:lambda:bda_invoke_function": {
-      "name": "bundle:lambda:bda_invoke_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/bda_invoke_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/bda_invoke_function/* assets/lambdas/bda_invoke_function/."
-        }
-      ]
-    },
-    "bundle:lambda:evaluation_function": {
-      "name": "bundle:lambda:evaluation_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/evaluation_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/evaluation_function/* assets/lambdas/evaluation_function/."
-        }
-      ]
-    },
-    "bundle:lambda:processresults_function": {
-      "name": "bundle:lambda:processresults_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/processresults_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/processresults_function/* assets/lambdas/processresults_function/."
-        }
-      ]
-    },
-    "bundle:lambda:summarization_function": {
-      "name": "bundle:lambda:summarization_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/summarization_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-1/src/summarization_function/* assets/lambdas/summarization_function/."
         }
       ]
     },

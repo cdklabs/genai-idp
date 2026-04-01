@@ -16,4 +16,5 @@ export * from "./upload-resolver-function";
 export * from "./test-set-resolver-function";
 export * from "./test-results-resolver-function";
 export * from "./agent-chat-resolver-function";
-export * from "./error-analyzer-resolver-function";
+export * from "./list-documents-gsi-resolver-function";
+export * from "./list-documents-range-resolver-function";

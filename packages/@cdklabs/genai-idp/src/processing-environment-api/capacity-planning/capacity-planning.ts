@@ -158,9 +158,9 @@ export class CapacityPlanning
       },
     );
 
-    // Create resolver for calculateCapacity mutation
+    // Create resolver for calculateCapacity query (upstream schema defines this as Query, not Mutation)
     capacityPlanningDataSource.createResolver("CalculateCapacityResolver", {
-      typeName: "Mutation",
+      typeName: "Query",
       fieldName: "calculateCapacity",
     });
   }

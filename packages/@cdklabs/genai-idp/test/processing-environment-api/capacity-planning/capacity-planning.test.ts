@@ -176,7 +176,7 @@ describe("CapacityPlanning", () => {
       const template = Template.fromStack(stack);
 
       template.hasResourceProperties("AWS::AppSync::Resolver", {
-        TypeName: "Mutation",
+        TypeName: "Query",
         FieldName: "calculateCapacity",
       });
     });

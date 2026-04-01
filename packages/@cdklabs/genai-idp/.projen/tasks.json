@@ -63,6 +63,9 @@
           "spawn": "bundle:handler:agentcore_gateway_manager"
         },
         {
+          "spawn": "bundle:handler:backfill_gsi_attributes"
+        },
+        {
           "spawn": "bundle:handler:calculate_capacity"
         },
         {
@@ -108,6 +111,9 @@
           "spawn": "bundle:handler:queue_sender"
         },
         {
+          "spawn": "bundle:handler:read_previous_idp_pattern"
+        },
+        {
           "spawn": "bundle:handler:save_reporting_data"
         },
         {
@@ -133,6 +139,9 @@
         },
         {
           "spawn": "bundle:handler:user_sync"
+        },
+        {
+          "spawn": "bundle:handler:w2_dataset_deployer"
         },
         {
           "spawn": "bundle:handler:workflow_tracker"
@@ -186,6 +195,9 @@
           "spawn": "bundle:handler:list_available_agents"
         },
         {
+          "spawn": "bundle:handler:list_documents_gsi_resolver"
+        },
+        {
           "spawn": "bundle:handler:list_documents_range_resolver"
         },
         {
@@ -220,6 +232,15 @@
         },
         {
           "spawn": "bundle:system-defaults"
+        },
+        {
+          "spawn": "bundle:unified:lambdas"
+        },
+        {
+          "spawn": "bundle:unified:statemachine"
+        },
+        {
+          "spawn": "bundle:unified:schema"
         }
       ]
     },
@@ -308,6 +329,17 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/src/lambda/agentcore_gateway_manager/ assets/lambdas/agentcore_gateway_manager/."
+        }
+      ]
+    },
+    "bundle:handler:backfill_gsi_attributes": {
+      "name": "bundle:handler:backfill_gsi_attributes",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/backfill_gsi_attributes"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/backfill_gsi_attributes/ assets/lambdas/backfill_gsi_attributes/."
         }
       ]
     },
@@ -564,6 +596,17 @@
         }
       ]
     },
+    "bundle:handler:list_documents_gsi_resolver": {
+      "name": "bundle:handler:list_documents_gsi_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/list_documents_gsi_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/nested/appsync/src/lambda/list_documents_gsi_resolver/ assets/lambdas/list_documents_gsi_resolver/."
+        }
+      ]
+    },
     "bundle:handler:list_documents_range_resolver": {
       "name": "bundle:handler:list_documents_range_resolver",
       "steps": [
@@ -649,6 +692,17 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/src/lambda/queue_sender/ assets/lambdas/queue_sender/."
+        }
+      ]
+    },
+    "bundle:handler:read_previous_idp_pattern": {
+      "name": "bundle:handler:read_previous_idp_pattern",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/read_previous_idp_pattern"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/read_previous_idp_pattern/ assets/lambdas/read_previous_idp_pattern/."
         }
       ]
     },
@@ -817,6 +871,17 @@
         }
       ]
     },
+    "bundle:handler:w2_dataset_deployer": {
+      "name": "bundle:handler:w2_dataset_deployer",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/w2_dataset_deployer"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/w2_dataset_deployer/ assets/lambdas/w2_dataset_deployer/."
+        }
+      ]
+    },
     "bundle:handler:workflow_tracker": {
       "name": "bundle:handler:workflow_tracker",
       "steps": [
@@ -847,6 +912,39 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/lib/idp_common_pkg/idp_common/config/system_defaults/*.yaml assets/system_defaults/."
+        }
+      ]
+    },
+    "bundle:unified:lambdas": {
+      "name": "bundle:unified:lambdas",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/unified"
+        },
+        {
+          "exec": "rsync -av ../../../sources/patterns/unified/src/ assets/lambdas/unified/"
+        }
+      ]
+    },
+    "bundle:unified:schema": {
+      "name": "bundle:unified:schema",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/schemas/unified"
+        },
+        {
+          "exec": "cp ../../../schemas/unified/schema.json assets/schemas/unified/schema.json"
+        }
+      ]
+    },
+    "bundle:unified:statemachine": {
+      "name": "bundle:unified:statemachine",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/statemachine/unified"
+        },
+        {
+          "exec": "rsync -av ../../../sources/patterns/unified/statemachine/ assets/statemachine/unified/"
         }
       ]
     },

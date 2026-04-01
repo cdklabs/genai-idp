@@ -167,6 +167,30 @@ genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:system-defaults`, {
   ]
 }));
 
+// Bundle unified pattern Lambda functions
+genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:unified:lambdas`, {
+  steps: [
+    { exec: `mkdir -p assets/lambdas/unified` },
+    { exec: `rsync -av ../../../sources/patterns/unified/src/ assets/lambdas/unified/` }
+  ]
+}));
+
+// Bundle unified pattern state machine
+genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:unified:statemachine`, {
+  steps: [
+    { exec: `mkdir -p assets/statemachine/unified` },
+    { exec: `rsync -av ../../../sources/patterns/unified/statemachine/ assets/statemachine/unified/` }
+  ]
+}));
+
+// Bundle unified pattern configuration schema
+genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:unified:schema`, {
+  steps: [
+    { exec: `mkdir -p assets/schemas/unified` },
+    { exec: `cp ../../../schemas/unified/schema.json assets/schemas/unified/schema.json` }
+  ]
+}));
+
 buildPackages.exec(`yarn workspace ${genaiIdp.name} build`);
 
 const idpPattern1 = new AwsCdkTypeScriptWorkspace({
@@ -198,16 +222,19 @@ const idpPattern1 = new AwsCdkTypeScriptWorkspace({
 });
 
 // Bundle lambdas for Pattern 1 (BDA Processor) - read dynamically
+// Guard: pattern-1 sources removed in v0.5.2 (consolidated into unified pattern)
 const pattern1LambdasDir = 'sources/patterns/pattern-1/src';
-fs.readdirSync(pattern1LambdasDir).forEach((lambdaName) => {
-  const lambdaSrcDir = path.join('../../../', pattern1LambdasDir, lambdaName);
-  idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:lambda:${lambdaName}`, {
-    steps: [
-      { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-      { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
-    ]
-  }));
-});
+if (fs.existsSync(pattern1LambdasDir)) {
+  fs.readdirSync(pattern1LambdasDir).forEach((lambdaName) => {
+    const lambdaSrcDir = path.join('../../../', pattern1LambdasDir, lambdaName);
+    idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:lambda:${lambdaName}`, {
+      steps: [
+        { exec: `mkdir -p assets/lambdas/${lambdaName}` },
+        { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
+      ]
+    }));
+  });
+}
 
 const pattern1_configs = [
   "lending-package-sample",
@@ -273,16 +300,19 @@ const idpPattern2 = new AwsCdkTypeScriptWorkspace({
 });
 
 // Bundle lambdas for Pattern 2 (Bedrock LLM Processor) - read dynamically
+// Guard: pattern-2 sources removed in v0.5.2 (consolidated into unified pattern)
 const pattern2LambdasDir = 'sources/patterns/pattern-2/src';
-fs.readdirSync(pattern2LambdasDir).forEach((lambdaName) => {
-  const lambdaSrcDir = path.join('../../../', pattern2LambdasDir, lambdaName);
-  idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:lambda:${lambdaName}`, {
-    steps: [
-      { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-      { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
-    ]
-  }));
-});
+if (fs.existsSync(pattern2LambdasDir)) {
+  fs.readdirSync(pattern2LambdasDir).forEach((lambdaName) => {
+    const lambdaSrcDir = path.join('../../../', pattern2LambdasDir, lambdaName);
+    idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:lambda:${lambdaName}`, {
+      steps: [
+        { exec: `mkdir -p assets/lambdas/${lambdaName}` },
+        { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
+      ]
+    }));
+  });
+}
 
 const pattern2_configs = [
   "bank-statement-sample",
@@ -358,16 +388,19 @@ const p3PreCompileTask = idpPattern3.tasks.tryFind("pre-compile") ?? idpPattern3
 p3PreCompileTask.spawn(p3BundleTask);
 
 // Bundle lambdas for Pattern 3 (SageMaker UDOP Processor) - read dynamically
+// Guard: pattern-3 sources removed in v0.5.2 (consolidated into unified pattern)
 const pattern3LambdasDir = 'sources/patterns/pattern-3/src';
-fs.readdirSync(pattern3LambdasDir).forEach((lambdaName) => {
-  const lambdaSrcDir = path.join('../../../', pattern3LambdasDir, lambdaName);
-  p3BundleTask.spawn(idpPattern3.addTask(`bundle:lambda:${lambdaName}`, {
-    steps: [
-      { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-      { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
-    ]
-  }));
-});
+if (fs.existsSync(pattern3LambdasDir)) {
+  fs.readdirSync(pattern3LambdasDir).forEach((lambdaName) => {
+    const lambdaSrcDir = path.join('../../../', pattern3LambdasDir, lambdaName);
+    p3BundleTask.spawn(idpPattern3.addTask(`bundle:lambda:${lambdaName}`, {
+      steps: [
+        { exec: `mkdir -p assets/lambdas/${lambdaName}` },
+        { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
+      ]
+    }));
+  });
+}
 
 const pattern3_configs = [
   { source: "rvl-cdip", target: "rvl-cdip-package-sample" }

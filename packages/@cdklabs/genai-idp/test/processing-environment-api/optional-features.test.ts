@@ -336,8 +336,8 @@ describe("ProcessingEnvironmentApi - Optional Features", () => {
       });
 
       // Verify Lambda functions are created for all features
-      // Base API has 5 functions + 1 for evaluation + 1 for progress monitor = 7
-      template.resourceCountIs("AWS::Lambda::Function", 7);
+      // Base API has 7 functions (5 original + 2 GSI Lambdas) + 1 for evaluation + 1 for progress monitor = 9
+      template.resourceCountIs("AWS::Lambda::Function", 9);
     });
 
     test("public methods can be called after construction", () => {
