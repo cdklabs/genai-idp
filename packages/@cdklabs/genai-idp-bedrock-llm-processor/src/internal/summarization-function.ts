@@ -13,12 +13,12 @@ import {
   ITrackingTable,
   LogLevel,
 } from "@cdklabs/genai-idp";
+import { IInvokable } from "../invokable";
 import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { IKey } from "aws-cdk-lib/aws-kms";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
-import * as lambda from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
@@ -74,10 +74,12 @@ export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
   readonly encryptionKey?: IKey;
 
   /**
-   * Optional Bedrock model to use for summarization.
-   * The AI model that will generate document summaries.
+   * The inference provider for summarization.
+   * Can be a Bedrock model or a custom Lambda function (LambdaHook).
+   *
+   * @default - No inference provider
    */
-  readonly summarizationModel?: bedrock.IBedrockInvokable;
+  readonly inferenceProvider?: IInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to summarization model interactions.
@@ -91,15 +93,6 @@ export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
-
-  /**
-   * Optional Lambda function for custom summarization inference via LambdaHook.
-   * When provided, this function is granted invoke permissions so the summarization
-   * function can call it at runtime when model is 'LambdaHook'.
-   *
-   * @default - No custom inference function
-   */
-  readonly lambdaHookFunction?: lambda.IFunction;
 }
 
 /**
@@ -173,11 +166,8 @@ export class SummarizationFunction extends PythonFunction {
     props.outputBucket.grantReadWrite(this);
     props.workingBucket.grantReadWrite(this);
     props.configurationTable.grantReadWriteData(this);
-    props.summarizationModel?.grantInvoke(this);
+    props.inferenceProvider?.grantInvoke(this);
     props.summarizationGuardrail?.grantApply(this);
-
-    // Grant LambdaHook invoke permission if provided
-    props.lambdaHookFunction?.grantInvoke(this);
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

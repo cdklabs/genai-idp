@@ -13,6 +13,7 @@ import {
   ITrackingTable,
   LogLevel,
 } from "@cdklabs/genai-idp";
+import { IInvokable } from "../invokable";
 import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
@@ -74,12 +75,12 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
   readonly encryptionKey?: IKey;
 
   /**
-   * The Bedrock model to use for extraction.
-   * The AI model that will extract information from documents.
+   * The inference provider for extraction.
+   * Can be a Bedrock model or a custom Lambda function (LambdaHook).
    *
-   * @default - No Bedrock model; requires lambdaHookFunction when not provided
+   * @default - No inference provider
    */
-  readonly extractionModel?: bedrock.IBedrockInvokable;
+  readonly inferenceProvider?: IInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to extraction model interactions.
@@ -100,15 +101,6 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
-
-  /**
-   * Optional Lambda function for custom extraction inference via LambdaHook.
-   * When provided, this function is granted invoke permissions so the extraction
-   * function can call it at runtime when model is 'LambdaHook'.
-   *
-   * @default - No custom inference function
-   */
-  readonly lambdaHookFunction?: lambda.IFunction;
 }
 
 /**
@@ -189,16 +181,13 @@ export class ExtractionFunction extends PythonFunction {
     Metric.grantPutMetricData(this);
     props.trackingTable.grantReadWriteData(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
-    props.extractionModel?.grantInvoke(this);
+    props.inferenceProvider?.grantInvoke(this);
     props.extractionGuardrail?.grantApply(this);
 
     // Grant invoke permissions to custom prompt generator if provided
     if (props.customPromptGenerator) {
       props.customPromptGenerator.grantInvoke(this);
     }
-
-    // Grant LambdaHook invoke permission if provided
-    props.lambdaHookFunction?.grantInvoke(this);
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

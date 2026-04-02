@@ -13,11 +13,11 @@ import {
   ITrackingTable,
   LogLevel,
 } from "@cdklabs/genai-idp";
+import { IInvokable } from "../invokable";
 import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
-import * as lambda from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
@@ -67,10 +67,12 @@ export interface AssessmentFunctionProps extends IdpPythonFunctionOptions {
   readonly workingBucket: IBucket;
 
   /**
-   * The Bedrock model to use for assessment.
-   * The AI model that will assess information from documents.
+   * The inference provider for assessment.
+   * Can be a Bedrock model or a custom Lambda function (LambdaHook).
+   *
+   * @default - No inference provider
    */
-  readonly assessmentModel?: bedrock.IBedrockInvokable;
+  readonly inferenceProvider?: IInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to assessment model interactions.
@@ -87,15 +89,6 @@ export interface AssessmentFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
-
-  /**
-   * Optional Lambda function for custom assessment inference via LambdaHook.
-   * When provided, this function is granted invoke permissions so the assessment
-   * function can call it at runtime when model is 'LambdaHook'.
-   *
-   * @default - No custom inference function
-   */
-  readonly lambdaHookFunction?: lambda.IFunction;
 }
 
 /**
@@ -175,11 +168,8 @@ export class AssessmentFunction extends PythonFunction {
     Metric.grantPutMetricData(this);
     props.configurationTable.grantReadWriteData(this);
     props.trackingTable.grantReadWriteData(this);
-    props.assessmentModel?.grantInvoke(this);
+    props.inferenceProvider?.grantInvoke(this);
     props.assessmentGuardrail?.grantApply(this);
-
-    // Grant LambdaHook invoke permission if provided
-    props.lambdaHookFunction?.grantInvoke(this);
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

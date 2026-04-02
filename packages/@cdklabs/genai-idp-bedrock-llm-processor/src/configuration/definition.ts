@@ -4,7 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import path from "path";
-import { IBedrockInvokable as IInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
+import { IBedrockInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import {
   ConfigurationDefinition,
   ConfigurationDefinitionLoader,
@@ -15,6 +15,7 @@ import {
 import { Arn, ArnFormat } from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { ClassificationMethod } from "../classification-method";
+import { IInvokable, Invokable } from "../invokable";
 
 /**
  * Options for configuring the Bedrock LLM processor configuration definition.
@@ -24,7 +25,7 @@ export interface BedrockLlmProcessorConfigurationDefinitionOptions {
   /**
    * Optional model for the classification stage.
    */
-  readonly classificationModel?: IInvokable;
+  readonly classificationModel?: IBedrockInvokable;
   /**
    * Optional classification method to use for document categorization.
    * Determines how documents are analyzed and categorized before extraction.
@@ -34,28 +35,28 @@ export interface BedrockLlmProcessorConfigurationDefinitionOptions {
   /**
    * Optional model for the extraction stage.
    */
-  readonly extractionModel?: IInvokable;
+  readonly extractionModel?: IBedrockInvokable;
 
   /**
    * Optional model for the evaluation stage.
    */
-  readonly evaluationModel?: IInvokable;
+  readonly evaluationModel?: IBedrockInvokable;
 
   /**
    * Optional model for the summarization stage.
    */
-  readonly summarizationModel?: IInvokable;
+  readonly summarizationModel?: IBedrockInvokable;
 
   /**
    * Optional model for the assessment stage.
    */
-  readonly assessmentModel?: IInvokable;
+  readonly assessmentModel?: IBedrockInvokable;
 
   /**
    * Optional model for the OCR stage when using Bedrock-based OCR.
    * Only used when the OCR backend is set to 'bedrock' in the configuration.
    */
-  readonly ocrModel?: IInvokable;
+  readonly ocrModel?: IBedrockInvokable;
 
   /**
    * Optional custom prompt generator Lambda function.
@@ -122,14 +123,13 @@ export interface BedrockLlmProcessorConfigurationDefinitionOptions {
 
 export interface IBedrockLlmProcessorConfigurationDefinition extends IConfigurationDefinition {
   /**
-   * The invokable model used for document classification.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * Determines document types and categories based on content analysis,
-   * enabling targeted extraction strategies for different document types.
+   * The inference provider used for document classification.
+   * Can be a Bedrock model wrapped via Invokable.fromModel() or a Lambda function
+   * wrapped via Invokable.fromFunction() (LambdaHook pattern).
    *
    * @default - as defined in the definition file
    */
-  readonly classificationModel: IInvokable;
+  readonly classificationInferenceProvider?: IInvokable;
 
   /**
    * The method used for document classification.
@@ -141,24 +141,22 @@ export interface IBedrockLlmProcessorConfigurationDefinition extends IConfigurat
   readonly classificationMethod: ClassificationMethod;
 
   /**
-   * The invokable model used for information extraction.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * Extracts structured data from documents based on defined schemas,
-   * transforming unstructured content into structured information.
+   * The inference provider used for information extraction.
+   * Can be a Bedrock model wrapped via Invokable.fromModel() or a Lambda function
+   * wrapped via Invokable.fromFunction() (LambdaHook pattern).
    *
    * @default - as defined in the definition file
    */
-  readonly extractionModel: IInvokable;
+  readonly extractionInferenceProvider?: IInvokable;
 
   /**
-   * Optional invokable model used for document summarization.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * When provided, enables automatic generation of document summaries
-   * that capture key information from processed documents.
+   * Optional inference provider used for document summarization.
+   * Can be a Bedrock model wrapped via Invokable.fromModel() or a Lambda function
+   * wrapped via Invokable.fromFunction() (LambdaHook pattern).
    *
    * @default - as defined in the definition file
    */
-  readonly summarizationModel?: IInvokable;
+  readonly summarizationInferenceProvider?: IInvokable;
 
   /**
    * Optional invokable model used for evaluating extraction results.
@@ -168,27 +166,26 @@ export interface IBedrockLlmProcessorConfigurationDefinition extends IConfigurat
    *
    * @default - as defined in the definition file
    */
-  readonly evaluationModel?: IInvokable;
+  readonly evaluationModel?: IBedrockInvokable;
 
   /**
-   * Optional invokable model used for evaluating assessment results.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * Used to assess the quality and accuracy of extracted information by
-   * comparing assessment results against expected values.
+   * Optional inference provider used for assessment.
+   * Can be a Bedrock model wrapped via Invokable.fromModel() or a Lambda function
+   * wrapped via Invokable.fromFunction() (LambdaHook pattern).
    *
    * @default - as defined in the definition file
    */
-  readonly assessmentModel?: IInvokable;
+  readonly assessmentInferenceProvider?: IInvokable;
 
   /**
-   * Optional invokable model used for OCR when using Bedrock-based OCR.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
+   * Optional inference provider used for OCR when using Bedrock-based OCR.
+   * Can be a Bedrock model wrapped via Invokable.fromModel() or a Lambda function
+   * wrapped via Invokable.fromFunction() (LambdaHook pattern).
    * Only used when the OCR backend is set to 'bedrock' in the configuration.
-   * Provides vision-based text extraction capabilities for document processing.
    *
    * @default - as defined in the definition file
    */
-  readonly ocrModel?: IInvokable;
+  readonly ocrInferenceProvider?: IInvokable;
 
   /**
    * OCR backend to use for text extraction.
@@ -207,46 +204,6 @@ export interface IBedrockLlmProcessorConfigurationDefinition extends IConfigurat
    * @default - undefined
    */
   readonly customPromptGenerator?: lambda.IFunction;
-
-  /**
-   * Optional Lambda function for custom OCR inference via LambdaHook.
-   * When set, the OCR stage invokes this function instead of a Bedrock model.
-   *
-   * @default - undefined
-   */
-  readonly ocrFunction?: lambda.IFunction;
-
-  /**
-   * Optional Lambda function for custom classification inference via LambdaHook.
-   * When set, the classification stage invokes this function instead of a Bedrock model.
-   *
-   * @default - undefined
-   */
-  readonly classificationFunction?: lambda.IFunction;
-
-  /**
-   * Optional Lambda function for custom extraction inference via LambdaHook.
-   * When set, the extraction stage invokes this function instead of a Bedrock model.
-   *
-   * @default - undefined
-   */
-  readonly extractionFunction?: lambda.IFunction;
-
-  /**
-   * Optional Lambda function for custom assessment inference via LambdaHook.
-   * When set, the assessment stage invokes this function instead of a Bedrock model.
-   *
-   * @default - undefined
-   */
-  readonly assessmentFunction?: lambda.IFunction;
-
-  /**
-   * Optional Lambda function for custom summarization inference via LambdaHook.
-   * When set, the summarization stage invokes this function instead of a Bedrock model.
-   *
-   * @default - undefined
-   */
-  readonly summarizationFunction?: lambda.IFunction;
 }
 
 /**
@@ -707,21 +664,16 @@ export class BedrockLlmProcessorConfigurationDefinition {
     filePath: string,
     options?: BedrockLlmProcessorConfigurationDefinitionOptions,
   ): IBedrockLlmProcessorConfigurationDefinition {
-    let _classificationInvokable: IInvokable;
+    let _classificationInferenceProvider: IInvokable | undefined;
     let _classificationMethod: ClassificationMethod;
-    let _extractionInvokable: IInvokable;
-    let _summarizationInvokable: IInvokable | undefined;
-    let _assessmentInvokable: IInvokable | undefined;
-    let _evaluationInvokable: IInvokable | undefined;
-    let _ocrInvokable: IInvokable | undefined;
+    let _extractionInferenceProvider: IInvokable | undefined;
+    let _summarizationInferenceProvider: IInvokable | undefined;
+    let _assessmentInferenceProvider: IInvokable | undefined;
+    let _evaluationInvokable: IBedrockInvokable | undefined;
+    let _ocrInferenceProvider: IInvokable | undefined;
     let _ocrBackend: "textract" | "bedrock";
     let _customPromptGenerator: lambda.IFunction | undefined;
     let _customPromptLambdaArn: string | undefined;
-    let _ocrFunction: lambda.IFunction | undefined;
-    let _classificationFunction: lambda.IFunction | undefined;
-    let _extractionFunction: lambda.IFunction | undefined;
-    let _assessmentFunction: lambda.IFunction | undefined;
-    let _summarizationFunction: lambda.IFunction | undefined;
 
     // Load user config from file
     const userConfig = ConfigurationDefinitionLoader.fromFile(filePath);
@@ -737,17 +689,17 @@ export class BedrockLlmProcessorConfigurationDefinition {
           flatPath: "assessment.model",
           transform: (modelName?: string) => {
             if (options?.assessmentFunction) {
-              _assessmentFunction = options.assessmentFunction;
+              _assessmentInferenceProvider = Invokable.fromFunction(options.assessmentFunction);
               return "LambdaHook";
             } else if (options?.assessmentModel) {
-              _assessmentInvokable = options.assessmentModel;
+              _assessmentInferenceProvider = Invokable.fromModel(options.assessmentModel);
               return Arn.split(
                 options.assessmentModel.invokableArn,
                 ArnFormat.SLASH_RESOURCE_NAME,
               ).resourceName;
             } else {
               if (modelName) {
-                _assessmentInvokable = modelNameToInvokable(modelName);
+                _assessmentInferenceProvider = Invokable.fromModel(modelNameToInvokable(modelName));
               }
               return modelName;
             }
@@ -757,17 +709,17 @@ export class BedrockLlmProcessorConfigurationDefinition {
           flatPath: "summarization.model",
           transform: (modelName?: string) => {
             if (options?.summarizationFunction) {
-              _summarizationFunction = options.summarizationFunction;
+              _summarizationInferenceProvider = Invokable.fromFunction(options.summarizationFunction);
               return "LambdaHook";
             } else if (options?.summarizationModel) {
-              _summarizationInvokable = options?.summarizationModel;
+              _summarizationInferenceProvider = Invokable.fromModel(options?.summarizationModel);
               return Arn.split(
                 options?.summarizationModel.invokableArn,
                 ArnFormat.SLASH_RESOURCE_NAME,
               ).resourceName;
             } else {
               if (modelName) {
-                _summarizationInvokable = modelNameToInvokable(modelName);
+                _summarizationInferenceProvider = Invokable.fromModel(modelNameToInvokable(modelName));
               }
               return modelName;
             }
@@ -777,17 +729,17 @@ export class BedrockLlmProcessorConfigurationDefinition {
           flatPath: "classification.model",
           transform: (modelName?: string) => {
             if (options?.classificationFunction) {
-              _classificationFunction = options.classificationFunction;
+              _classificationInferenceProvider = Invokable.fromFunction(options.classificationFunction);
               return "LambdaHook";
             } else if (options?.classificationModel) {
-              _classificationInvokable = options.classificationModel;
+              _classificationInferenceProvider = Invokable.fromModel(options.classificationModel);
               return Arn.split(
                 options?.classificationModel.invokableArn,
                 ArnFormat.SLASH_RESOURCE_NAME,
               ).resourceName;
             } else {
               if (modelName) {
-                _classificationInvokable = modelNameToInvokable(modelName);
+                _classificationInferenceProvider = Invokable.fromModel(modelNameToInvokable(modelName));
               }
               return modelName;
             }
@@ -810,17 +762,17 @@ export class BedrockLlmProcessorConfigurationDefinition {
           flatPath: "extraction.model",
           transform: (modelName?: string) => {
             if (options?.extractionFunction) {
-              _extractionFunction = options.extractionFunction;
+              _extractionInferenceProvider = Invokable.fromFunction(options.extractionFunction);
               return "LambdaHook";
             } else if (options?.extractionModel) {
-              _extractionInvokable = options.extractionModel;
+              _extractionInferenceProvider = Invokable.fromModel(options.extractionModel);
               return Arn.split(
                 options.extractionModel.invokableArn,
                 ArnFormat.SLASH_RESOURCE_NAME,
               ).resourceName;
             } else {
               if (modelName) {
-                _extractionInvokable = modelNameToInvokable(modelName);
+                _extractionInferenceProvider = Invokable.fromModel(modelNameToInvokable(modelName));
               }
               return modelName;
             }
@@ -854,10 +806,10 @@ export class BedrockLlmProcessorConfigurationDefinition {
           flatPath: "ocr.model_id",
           transform: (modelName?: string) => {
             if (options?.ocrFunction) {
-              _ocrFunction = options.ocrFunction;
+              _ocrInferenceProvider = Invokable.fromFunction(options.ocrFunction);
               return "LambdaHook";
             } else if (options?.ocrModel) {
-              _ocrInvokable = options.ocrModel;
+              _ocrInferenceProvider = Invokable.fromModel(options.ocrModel);
               return Arn.split(
                 options.ocrModel.invokableArn,
                 ArnFormat.SLASH_RESOURCE_NAME,
@@ -865,7 +817,7 @@ export class BedrockLlmProcessorConfigurationDefinition {
             } else {
               // Only create Bedrock model if backend is set to "bedrock"
               if (_ocrBackend === "bedrock" && modelName) {
-                _ocrInvokable = modelNameToInvokable(modelName);
+                _ocrInferenceProvider = Invokable.fromModel(modelNameToInvokable(modelName));
               }
               return modelName;
             }
@@ -936,19 +888,14 @@ export class BedrockLlmProcessorConfigurationDefinition {
 
     class LoadedDefinition implements IBedrockLlmProcessorConfigurationDefinition {
       public readonly classificationMethod = _classificationMethod;
-      public readonly extractionModel = _extractionInvokable;
-      public readonly summarizationModel = _summarizationInvokable;
+      public readonly classificationInferenceProvider = _classificationInferenceProvider;
+      public readonly extractionInferenceProvider = _extractionInferenceProvider;
+      public readonly summarizationInferenceProvider = _summarizationInferenceProvider;
       public readonly evaluationModel = _evaluationInvokable;
-      public readonly classificationModel = _classificationInvokable;
-      public readonly assessmentModel = _assessmentInvokable;
-      public readonly ocrModel = _ocrInvokable;
+      public readonly assessmentInferenceProvider = _assessmentInferenceProvider;
+      public readonly ocrInferenceProvider = _ocrInferenceProvider;
       public readonly ocrBackend = _ocrBackend;
       public readonly customPromptGenerator = _customPromptGenerator;
-      public readonly ocrFunction = _ocrFunction;
-      public readonly classificationFunction = _classificationFunction;
-      public readonly extractionFunction = _extractionFunction;
-      public readonly assessmentFunction = _assessmentFunction;
-      public readonly summarizationFunction = _summarizationFunction;
 
       raw(): { [key: string]: any } {
         return def.raw();

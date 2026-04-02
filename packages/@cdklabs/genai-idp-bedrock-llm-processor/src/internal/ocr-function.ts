@@ -4,7 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import path from "path";
-import { IGuardrail, IBedrockInvokable as IInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
+import { IGuardrail } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import {
   IdpPythonFunctionOptions,
@@ -13,11 +13,12 @@ import {
   ITrackingTable,
   LogLevel,
 } from "@cdklabs/genai-idp";
+import { IInvokable } from "../invokable";
 import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
-import { IFunction, Runtime } from "aws-cdk-lib/aws-lambda";
+import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
@@ -82,14 +83,12 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
   readonly ocrBackend?: "textract" | "bedrock" | "none";
 
   /**
-   * Optional invokable model used for OCR when using Bedrock-based OCR.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * Only used when the OCR backend is set to 'bedrock' in the configuration.
-   * Provides vision-based text extraction capabilities for document processing.
+   * The inference provider for OCR.
+   * Can be a Bedrock model or a custom Lambda function (LambdaHook).
    *
-   * @default - No specific model permissions granted, uses general Bedrock permissions
+   * @default - No inference provider
    */
-  readonly ocrModel?: IInvokable;
+  readonly inferenceProvider?: IInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to OCR model interactions.
@@ -106,15 +105,6 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
-
-  /**
-   * Optional Lambda function for custom OCR inference via LambdaHook.
-   * When provided, this function is granted invoke permissions so the OCR
-   * function can call it at runtime when model_id is 'LambdaHook'.
-   *
-   * @default - No custom inference function
-   */
-  readonly lambdaHookFunction?: IFunction;
 }
 
 /**
@@ -198,9 +188,7 @@ export class OcrFunction extends PythonFunction {
 
     const ocrBackend = props.ocrBackend || "textract";
 
-    if (ocrBackend === "bedrock" && props.ocrModel) {
-      props.ocrModel.grantInvoke(this);
-    } else if (ocrBackend === "textract") {
+    if (ocrBackend === "textract") {
       // Textract Policy
       this.addToRolePolicy(
         new PolicyStatement({
@@ -211,8 +199,7 @@ export class OcrFunction extends PythonFunction {
     }
     // No permissions needed for "none" backend
 
-    // Grant LambdaHook invoke permission if provided
-    props.lambdaHookFunction?.grantInvoke(this);
+    props.inferenceProvider?.grantInvoke(this);
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);
