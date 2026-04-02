@@ -4,7 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import path from "path";
-import { IBedrockInvokable as IInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
+import { IGuardrail, IBedrockInvokable as IInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import {
   IdpPythonFunctionOptions,
@@ -17,7 +17,7 @@ import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
-import { Runtime } from "aws-cdk-lib/aws-lambda";
+import { IFunction, Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
@@ -98,7 +98,7 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
    *
    * @default - No guardrail is applied
    */
-  readonly ocrGuardrail?: import("@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock").IGuardrail;
+  readonly ocrGuardrail?: IGuardrail;
 
   /**
    * Optional ProcessingEnvironmentApi for progress notifications.
@@ -106,6 +106,15 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * Optional Lambda function for custom OCR inference via LambdaHook.
+   * When provided, this function is granted invoke permissions so the OCR
+   * function can call it at runtime when model_id is 'LambdaHook'.
+   *
+   * @default - No custom inference function
+   */
+  readonly lambdaHookFunction?: IFunction;
 }
 
 /**
@@ -201,6 +210,9 @@ export class OcrFunction extends PythonFunction {
       );
     }
     // No permissions needed for "none" backend
+
+    // Grant LambdaHook invoke permission if provided
+    props.lambdaHookFunction?.grantInvoke(this);
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

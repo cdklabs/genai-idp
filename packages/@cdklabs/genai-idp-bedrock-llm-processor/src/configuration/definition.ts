@@ -63,6 +63,61 @@ export interface BedrockLlmProcessorConfigurationDefinitionOptions {
    * at `extraction.custom_prompt_lambda_arn`.
    */
   readonly customPromptGeneratorFunction?: lambda.IFunction;
+
+  /**
+   * Optional Lambda function for custom OCR inference.
+   * When provided, the function ARN is injected into the configuration as
+   * `ocr.model_lambda_hook_arn` and the OCR model is set to `LambdaHook`.
+   * The function receives a Converse API-compatible payload and must return
+   * a Converse API-compatible response.
+   *
+   * @default - No custom OCR function; uses Bedrock or Textract
+   */
+  readonly ocrFunction?: lambda.IFunction;
+
+  /**
+   * Optional Lambda function for custom classification inference.
+   * When provided, the function ARN is injected into the configuration as
+   * `classification.model_lambda_hook_arn` and the classification model is set to `LambdaHook`.
+   * The function receives a Converse API-compatible payload and must return
+   * a Converse API-compatible response.
+   *
+   * @default - No custom classification function; uses Bedrock model
+   */
+  readonly classificationFunction?: lambda.IFunction;
+
+  /**
+   * Optional Lambda function for custom extraction inference.
+   * When provided, the function ARN is injected into the configuration as
+   * `extraction.model_lambda_hook_arn` and the extraction model is set to `LambdaHook`.
+   * The function receives a Converse API-compatible payload and must return
+   * a Converse API-compatible response.
+   *
+   * @default - No custom extraction function; uses Bedrock model
+   */
+  readonly extractionFunction?: lambda.IFunction;
+
+  /**
+   * Optional Lambda function for custom assessment inference.
+   * When provided, the function ARN is injected into the configuration as
+   * `assessment.model_lambda_hook_arn` and the assessment model is set to `LambdaHook`.
+   * The function receives a Converse API-compatible payload and must return
+   * a Converse API-compatible response.
+   *
+   * @default - No custom assessment function; uses Bedrock model
+   */
+  readonly assessmentFunction?: lambda.IFunction;
+
+  /**
+   * Optional Lambda function for custom summarization inference.
+   * When provided, the function ARN is injected into the configuration as
+   * `summarization.model_lambda_hook_arn` and the summarization model is set to `LambdaHook`.
+   * The function receives a Converse API-compatible payload and must return
+   * a Converse API-compatible response.
+   *
+   * @default - No custom summarization function; uses Bedrock model
+   */
+  readonly summarizationFunction?: lambda.IFunction;
 }
 
 export interface IBedrockLlmProcessorConfigurationDefinition extends IConfigurationDefinition {
@@ -152,6 +207,46 @@ export interface IBedrockLlmProcessorConfigurationDefinition extends IConfigurat
    * @default - undefined
    */
   readonly customPromptGenerator?: lambda.IFunction;
+
+  /**
+   * Optional Lambda function for custom OCR inference via LambdaHook.
+   * When set, the OCR stage invokes this function instead of a Bedrock model.
+   *
+   * @default - undefined
+   */
+  readonly ocrFunction?: lambda.IFunction;
+
+  /**
+   * Optional Lambda function for custom classification inference via LambdaHook.
+   * When set, the classification stage invokes this function instead of a Bedrock model.
+   *
+   * @default - undefined
+   */
+  readonly classificationFunction?: lambda.IFunction;
+
+  /**
+   * Optional Lambda function for custom extraction inference via LambdaHook.
+   * When set, the extraction stage invokes this function instead of a Bedrock model.
+   *
+   * @default - undefined
+   */
+  readonly extractionFunction?: lambda.IFunction;
+
+  /**
+   * Optional Lambda function for custom assessment inference via LambdaHook.
+   * When set, the assessment stage invokes this function instead of a Bedrock model.
+   *
+   * @default - undefined
+   */
+  readonly assessmentFunction?: lambda.IFunction;
+
+  /**
+   * Optional Lambda function for custom summarization inference via LambdaHook.
+   * When set, the summarization stage invokes this function instead of a Bedrock model.
+   *
+   * @default - undefined
+   */
+  readonly summarizationFunction?: lambda.IFunction;
 }
 
 /**
@@ -622,6 +717,11 @@ export class BedrockLlmProcessorConfigurationDefinition {
     let _ocrBackend: "textract" | "bedrock";
     let _customPromptGenerator: lambda.IFunction | undefined;
     let _customPromptLambdaArn: string | undefined;
+    let _ocrFunction: lambda.IFunction | undefined;
+    let _classificationFunction: lambda.IFunction | undefined;
+    let _extractionFunction: lambda.IFunction | undefined;
+    let _assessmentFunction: lambda.IFunction | undefined;
+    let _summarizationFunction: lambda.IFunction | undefined;
 
     // Load user config from file
     const userConfig = ConfigurationDefinitionLoader.fromFile(filePath);
@@ -636,7 +736,10 @@ export class BedrockLlmProcessorConfigurationDefinition {
         {
           flatPath: "assessment.model",
           transform: (modelName?: string) => {
-            if (options?.assessmentModel) {
+            if (options?.assessmentFunction) {
+              _assessmentFunction = options.assessmentFunction;
+              return "LambdaHook";
+            } else if (options?.assessmentModel) {
               _assessmentInvokable = options.assessmentModel;
               return Arn.split(
                 options.assessmentModel.invokableArn,
@@ -653,7 +756,10 @@ export class BedrockLlmProcessorConfigurationDefinition {
         {
           flatPath: "summarization.model",
           transform: (modelName?: string) => {
-            if (options?.summarizationModel) {
+            if (options?.summarizationFunction) {
+              _summarizationFunction = options.summarizationFunction;
+              return "LambdaHook";
+            } else if (options?.summarizationModel) {
               _summarizationInvokable = options?.summarizationModel;
               return Arn.split(
                 options?.summarizationModel.invokableArn,
@@ -670,7 +776,10 @@ export class BedrockLlmProcessorConfigurationDefinition {
         {
           flatPath: "classification.model",
           transform: (modelName?: string) => {
-            if (options?.classificationModel) {
+            if (options?.classificationFunction) {
+              _classificationFunction = options.classificationFunction;
+              return "LambdaHook";
+            } else if (options?.classificationModel) {
               _classificationInvokable = options.classificationModel;
               return Arn.split(
                 options?.classificationModel.invokableArn,
@@ -700,7 +809,10 @@ export class BedrockLlmProcessorConfigurationDefinition {
         {
           flatPath: "extraction.model",
           transform: (modelName?: string) => {
-            if (options?.extractionModel) {
+            if (options?.extractionFunction) {
+              _extractionFunction = options.extractionFunction;
+              return "LambdaHook";
+            } else if (options?.extractionModel) {
               _extractionInvokable = options.extractionModel;
               return Arn.split(
                 options.extractionModel.invokableArn,
@@ -741,7 +853,10 @@ export class BedrockLlmProcessorConfigurationDefinition {
         {
           flatPath: "ocr.model_id",
           transform: (modelName?: string) => {
-            if (options?.ocrModel) {
+            if (options?.ocrFunction) {
+              _ocrFunction = options.ocrFunction;
+              return "LambdaHook";
+            } else if (options?.ocrModel) {
               _ocrInvokable = options.ocrModel;
               return Arn.split(
                 options.ocrModel.invokableArn,
@@ -754,6 +869,51 @@ export class BedrockLlmProcessorConfigurationDefinition {
               }
               return modelName;
             }
+          },
+        },
+        {
+          flatPath: "ocr.model_lambda_hook_arn",
+          transform: (configValue?: string) => {
+            if (options?.ocrFunction) {
+              return options.ocrFunction.functionArn;
+            }
+            return configValue;
+          },
+        },
+        {
+          flatPath: "classification.model_lambda_hook_arn",
+          transform: (configValue?: string) => {
+            if (options?.classificationFunction) {
+              return options.classificationFunction.functionArn;
+            }
+            return configValue;
+          },
+        },
+        {
+          flatPath: "extraction.model_lambda_hook_arn",
+          transform: (configValue?: string) => {
+            if (options?.extractionFunction) {
+              return options.extractionFunction.functionArn;
+            }
+            return configValue;
+          },
+        },
+        {
+          flatPath: "assessment.model_lambda_hook_arn",
+          transform: (configValue?: string) => {
+            if (options?.assessmentFunction) {
+              return options.assessmentFunction.functionArn;
+            }
+            return configValue;
+          },
+        },
+        {
+          flatPath: "summarization.model_lambda_hook_arn",
+          transform: (configValue?: string) => {
+            if (options?.summarizationFunction) {
+              return options.summarizationFunction.functionArn;
+            }
+            return configValue;
           },
         },
         {
@@ -784,6 +944,11 @@ export class BedrockLlmProcessorConfigurationDefinition {
       public readonly ocrModel = _ocrInvokable;
       public readonly ocrBackend = _ocrBackend;
       public readonly customPromptGenerator = _customPromptGenerator;
+      public readonly ocrFunction = _ocrFunction;
+      public readonly classificationFunction = _classificationFunction;
+      public readonly extractionFunction = _extractionFunction;
+      public readonly assessmentFunction = _assessmentFunction;
+      public readonly summarizationFunction = _summarizationFunction;
 
       raw(): { [key: string]: any } {
         return def.raw();

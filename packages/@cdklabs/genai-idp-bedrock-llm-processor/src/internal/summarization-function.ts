@@ -18,6 +18,7 @@ import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { IKey } from "aws-cdk-lib/aws-kms";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
@@ -90,6 +91,15 @@ export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * Optional Lambda function for custom summarization inference via LambdaHook.
+   * When provided, this function is granted invoke permissions so the summarization
+   * function can call it at runtime when model is 'LambdaHook'.
+   *
+   * @default - No custom inference function
+   */
+  readonly lambdaHookFunction?: lambda.IFunction;
 }
 
 /**
@@ -165,6 +175,9 @@ export class SummarizationFunction extends PythonFunction {
     props.configurationTable.grantReadWriteData(this);
     props.summarizationModel?.grantInvoke(this);
     props.summarizationGuardrail?.grantApply(this);
+
+    // Grant LambdaHook invoke permission if provided
+    props.lambdaHookFunction?.grantInvoke(this);
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

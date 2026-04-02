@@ -18,6 +18,7 @@ import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { IKey } from "aws-cdk-lib/aws-kms";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
@@ -84,8 +85,10 @@ export interface ClassificationFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The Bedrock model to use for classification.
    * The AI model that will classify document pages.
+   *
+   * @default - No Bedrock model; requires lambdaHookFunction when not provided
    */
-  readonly classificationModel: bedrock.IBedrockInvokable;
+  readonly classificationModel?: bedrock.IBedrockInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to classification model interactions.
@@ -99,6 +102,15 @@ export interface ClassificationFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * Optional Lambda function for custom classification inference via LambdaHook.
+   * When provided, this function is granted invoke permissions so the classification
+   * function can call it at runtime when model is 'LambdaHook'.
+   *
+   * @default - No custom inference function
+   */
+  readonly lambdaHookFunction?: lambda.IFunction;
 }
 
 /**
@@ -184,8 +196,11 @@ export class ClassificationFunction extends PythonFunction {
     Metric.grantPutMetricData(this);
     props.configurationTable.grantReadWriteData(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
-    props.classificationModel.grantInvoke(this);
+    props.classificationModel?.grantInvoke(this);
     props.classificationGuardrail?.grantApply(this);
+
+    // Grant LambdaHook invoke permission if provided
+    props.lambdaHookFunction?.grantInvoke(this);
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

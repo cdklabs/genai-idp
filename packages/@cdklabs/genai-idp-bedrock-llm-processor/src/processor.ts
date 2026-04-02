@@ -274,6 +274,7 @@ export class BedrockLlmProcessor
       ocrBackend: renderedConfiguration.ocrBackend,
       ocrModel: renderedConfiguration.ocrModel,
       ocrGuardrail: props.ocrGuardrail,
+      lambdaHookFunction: renderedConfiguration.ocrFunction,
       api: this.environment.api,
       logGroup: new logs.LogGroup(this, "OCRFunctionLogGroup", {
         encryptionKey: this.environment.encryptionKey,
@@ -298,6 +299,7 @@ export class BedrockLlmProcessor
         encryptionKey: this.environment.encryptionKey,
         classificationModel: renderedConfiguration.classificationModel,
         classificationGuardrail: props.classificationGuardrail,
+        lambdaHookFunction: renderedConfiguration.classificationFunction,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "ClassificationFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
@@ -323,6 +325,7 @@ export class BedrockLlmProcessor
         extractionModel: renderedConfiguration.extractionModel,
         extractionGuardrail: props.extractionGuardrail,
         customPromptGenerator: renderedConfiguration.customPromptGenerator,
+        lambdaHookFunction: renderedConfiguration.extractionFunction,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "ExtractionFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
@@ -346,6 +349,7 @@ export class BedrockLlmProcessor
         workingBucket: this.environment.workingBucket,
         assessmentModel: renderedConfiguration.assessmentModel,
         assessmentGuardrail: props.assessmentGuardrail,
+        lambdaHookFunction: renderedConfiguration.assessmentFunction,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "AssessmentFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,
@@ -392,6 +396,7 @@ export class BedrockLlmProcessor
         encryptionKey: this.environment.encryptionKey,
         summarizationModel: renderedConfiguration.summarizationModel,
         summarizationGuardrail: props.summarizationGuardrail,
+        lambdaHookFunction: renderedConfiguration.summarizationFunction,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "SummarizationFunctionLogGroup", {
           encryptionKey: this.environment.encryptionKey,

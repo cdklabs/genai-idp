@@ -17,6 +17,7 @@ import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
@@ -86,6 +87,15 @@ export interface AssessmentFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * Optional Lambda function for custom assessment inference via LambdaHook.
+   * When provided, this function is granted invoke permissions so the assessment
+   * function can call it at runtime when model is 'LambdaHook'.
+   *
+   * @default - No custom inference function
+   */
+  readonly lambdaHookFunction?: lambda.IFunction;
 }
 
 /**
@@ -167,6 +177,9 @@ export class AssessmentFunction extends PythonFunction {
     props.trackingTable.grantReadWriteData(this);
     props.assessmentModel?.grantInvoke(this);
     props.assessmentGuardrail?.grantApply(this);
+
+    // Grant LambdaHook invoke permission if provided
+    props.lambdaHookFunction?.grantInvoke(this);
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

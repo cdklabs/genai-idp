@@ -76,8 +76,10 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The Bedrock model to use for extraction.
    * The AI model that will extract information from documents.
+   *
+   * @default - No Bedrock model; requires lambdaHookFunction when not provided
    */
-  readonly extractionModel: bedrock.IBedrockInvokable;
+  readonly extractionModel?: bedrock.IBedrockInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to extraction model interactions.
@@ -98,6 +100,15 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
    * and notify clients about processing progress.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * Optional Lambda function for custom extraction inference via LambdaHook.
+   * When provided, this function is granted invoke permissions so the extraction
+   * function can call it at runtime when model is 'LambdaHook'.
+   *
+   * @default - No custom inference function
+   */
+  readonly lambdaHookFunction?: lambda.IFunction;
 }
 
 /**
@@ -178,13 +189,16 @@ export class ExtractionFunction extends PythonFunction {
     Metric.grantPutMetricData(this);
     props.trackingTable.grantReadWriteData(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
-    props.extractionModel.grantInvoke(this);
+    props.extractionModel?.grantInvoke(this);
     props.extractionGuardrail?.grantApply(this);
 
     // Grant invoke permissions to custom prompt generator if provided
     if (props.customPromptGenerator) {
       props.customPromptGenerator.grantInvoke(this);
     }
+
+    // Grant LambdaHook invoke permission if provided
+    props.lambdaHookFunction?.grantInvoke(this);
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);
