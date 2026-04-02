@@ -17,14 +17,14 @@
   },
   "devDependencies": {
     "@types/node": "^18",
-    "cdklabs-projen-project-types": "^0.3.2",
+    "cdklabs-projen-project-types": "^0.3.17",
     "constructs": "^10.0.0",
-    "projen": "^0.99.17",
+    "projen": "^0.99.27",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@mrgrain/jsii-struct-builder": "^0.7.63"
+    "@mrgrain/jsii-struct-builder": "^0.7.64"
   },
   "main": "lib/index.js",
   "license": "Apache-2.0",

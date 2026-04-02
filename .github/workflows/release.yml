@@ -58,7 +58,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp
       - name: "@cdklabs/genai-idp: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7
         with:
           name: cdklabs-genai-idp_build-artifact
           path: packages/@cdklabs/genai-idp/dist
@@ -70,7 +70,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp-bda-processor
       - name: "@cdklabs/genai-idp-bda-processor: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: packages/@cdklabs/genai-idp-bda-processor/dist
@@ -82,7 +82,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp-bedrock-llm-processor
       - name: "@cdklabs/genai-idp-bedrock-llm-processor: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: packages/@cdklabs/genai-idp-bedrock-llm-processor/dist
@@ -94,7 +94,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp-sagemaker-udop-processor
       - name: "@cdklabs/genai-idp-sagemaker-udop-processor: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: packages/@cdklabs/genai-idp-sagemaker-udop-processor/dist
@@ -115,7 +115,7 @@ jobs:
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp_build-artifact
           path: dist
@@ -140,7 +140,7 @@ jobs:
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp_build-artifact
           path: dist
@@ -171,7 +171,7 @@ jobs:
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp_build-artifact
           path: dist
@@ -199,7 +199,7 @@ jobs:
         with:
           dotnet-version: 6.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp_build-artifact
           path: dist
@@ -227,7 +227,7 @@ jobs:
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
@@ -252,7 +252,7 @@ jobs:
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
@@ -283,7 +283,7 @@ jobs:
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
@@ -311,7 +311,7 @@ jobs:
         with:
           dotnet-version: 6.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
@@ -339,7 +339,7 @@ jobs:
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
@@ -364,7 +364,7 @@ jobs:
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
@@ -395,7 +395,7 @@ jobs:
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
@@ -423,7 +423,7 @@ jobs:
         with:
           dotnet-version: 6.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
@@ -451,7 +451,7 @@ jobs:
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
@@ -476,7 +476,7 @@ jobs:
         with:
           node-version: lts/*
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
@@ -507,7 +507,7 @@ jobs:
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
@@ -535,7 +535,7 @@ jobs:
         with:
           dotnet-version: 6.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
