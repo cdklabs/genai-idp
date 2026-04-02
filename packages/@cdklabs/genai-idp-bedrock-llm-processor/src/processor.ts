@@ -296,7 +296,8 @@ export class BedrockLlmProcessor
         outputBucket: this.environment.outputBucket,
         workingBucket: this.environment.workingBucket,
         encryptionKey: this.environment.encryptionKey,
-        inferenceProvider: renderedConfiguration.classificationInferenceProvider,
+        inferenceProvider:
+          renderedConfiguration.classificationInferenceProvider,
         classificationGuardrail: props.classificationGuardrail,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "ClassificationFunctionLogGroup", {

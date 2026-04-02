@@ -645,9 +645,10 @@ compares extraction results against known correct values.
 
 ### BedrockLlmProcessorConfigurationDefinitionOptions <a name="BedrockLlmProcessorConfigurationDefinitionOptions" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions"></a>
 
-Options for configuring the Bedrock LLM processor configuration definition.
+Options for configuring the Bedrock LLM processor configuration definition. Allows customization of classification, extraction, evaluation, summarization, and OCR stages.
 
-Allows customization of classification, extraction, evaluation, summarization, and OCR stages.
+Use `Invokable.fromModel()` to wrap a Bedrock model or `Invokable.fromFunction()` to wrap
+a Lambda function implementing the LambdaHook contract.
 
 #### Initializer <a name="Initializer" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.Initializer"></a>
 
@@ -661,26 +662,44 @@ const bedrockLlmProcessorConfigurationDefinitionOptions: BedrockLlmProcessorConf
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.assessmentModel">assessmentModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the assessment stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.assessmentInvokable">assessmentInvokable</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a></code> | Optional inference provider for the assessment stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationInvokable">classificationInvokable</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a></code> | Optional inference provider for the classification stage. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationMethod">classificationMethod</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.ClassificationMethod">ClassificationMethod</a></code> | Optional classification method to use for document categorization. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationModel">classificationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the classification stage. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.customPromptGeneratorFunction">customPromptGeneratorFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Optional custom prompt generator Lambda function. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the evaluation stage. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.extractionModel">extractionModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the extraction stage. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.ocrModel">ocrModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the OCR stage when using Bedrock-based OCR. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional model for the summarization stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.extractionInvokable">extractionInvokable</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a></code> | Optional inference provider for the extraction stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.ocrInvokable">ocrInvokable</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a></code> | Optional inference provider for the OCR stage. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.summarizationInvokable">summarizationInvokable</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a></code> | Optional inference provider for the summarization stage. |
 
 ---
 
-##### `assessmentModel`<sup>Optional</sup> <a name="assessmentModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.assessmentModel"></a>
+##### `assessmentInvokable`<sup>Optional</sup> <a name="assessmentInvokable" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.assessmentInvokable"></a>
 
 ```typescript
-public readonly assessmentModel: IBedrockInvokable;
+public readonly assessmentInvokable: Invokable;
 ```
 
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a>
+- *Default:* as defined in the configuration file
 
-Optional model for the assessment stage.
+Optional inference provider for the assessment stage.
+
+Use `Invokable.fromModel()` for a Bedrock model or `Invokable.fromFunction()` for a LambdaHook.
+
+---
+
+##### `classificationInvokable`<sup>Optional</sup> <a name="classificationInvokable" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationInvokable"></a>
+
+```typescript
+public readonly classificationInvokable: Invokable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a>
+- *Default:* as defined in the configuration file
+
+Optional inference provider for the classification stage.
+
+Use `Invokable.fromModel()` for a Bedrock model or `Invokable.fromFunction()` for a LambdaHook.
 
 ---
 
@@ -695,18 +714,6 @@ public readonly classificationMethod: ClassificationMethod;
 Optional classification method to use for document categorization.
 
 Determines how documents are analyzed and categorized before extraction.
-
----
-
-##### `classificationModel`<sup>Optional</sup> <a name="classificationModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.classificationModel"></a>
-
-```typescript
-public readonly classificationModel: IBedrockInvokable;
-```
-
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
-
-Optional model for the classification stage.
 
 ---
 
@@ -735,43 +742,52 @@ public readonly evaluationModel: IBedrockInvokable;
 
 Optional model for the evaluation stage.
 
----
-
-##### `extractionModel`<sup>Optional</sup> <a name="extractionModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.extractionModel"></a>
-
-```typescript
-public readonly extractionModel: IBedrockInvokable;
-```
-
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
-
-Optional model for the extraction stage.
+Evaluation does not support LambdaHook — only Bedrock models.
 
 ---
 
-##### `ocrModel`<sup>Optional</sup> <a name="ocrModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.ocrModel"></a>
+##### `extractionInvokable`<sup>Optional</sup> <a name="extractionInvokable" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.extractionInvokable"></a>
 
 ```typescript
-public readonly ocrModel: IBedrockInvokable;
+public readonly extractionInvokable: Invokable;
 ```
 
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a>
+- *Default:* as defined in the configuration file
 
-Optional model for the OCR stage when using Bedrock-based OCR.
+Optional inference provider for the extraction stage.
 
-Only used when the OCR backend is set to 'bedrock' in the configuration.
+Use `Invokable.fromModel()` for a Bedrock model or `Invokable.fromFunction()` for a LambdaHook.
 
 ---
 
-##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.summarizationModel"></a>
+##### `ocrInvokable`<sup>Optional</sup> <a name="ocrInvokable" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.ocrInvokable"></a>
 
 ```typescript
-public readonly summarizationModel: IBedrockInvokable;
+public readonly ocrInvokable: Invokable;
 ```
 
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a>
+- *Default:* as defined in the configuration file
 
-Optional model for the summarization stage.
+Optional inference provider for the OCR stage.
+
+Use `Invokable.fromModel()` for a Bedrock model or `Invokable.fromFunction()` for a LambdaHook.
+
+---
+
+##### `summarizationInvokable`<sup>Optional</sup> <a name="summarizationInvokable" id="@cdklabs/genai-idp-bedrock-llm-processor.BedrockLlmProcessorConfigurationDefinitionOptions.property.summarizationInvokable"></a>
+
+```typescript
+public readonly summarizationInvokable: Invokable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a>
+- *Default:* as defined in the configuration file
+
+Optional inference provider for the summarization stage.
+
+Use `Invokable.fromModel()` for a Bedrock model or `Invokable.fromFunction()` for a LambdaHook.
 
 ---
 
@@ -1986,6 +2002,94 @@ The Bedrock LLM document processor to apply the schema to.
 
 
 
+### Invokable <a name="Invokable" id="@cdklabs/genai-idp-bedrock-llm-processor.Invokable"></a>
+
+- *Implements:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a>
+
+Unified wrapper for Bedrock models and Lambda functions that implements IInvokable.
+
+Use the static factory methods to create instances:
+
+*Example*
+
+```typescript
+// From a Bedrock model
+const provider = Invokable.fromModel(model);
+
+// From a Lambda function (LambdaHook)
+const provider = Invokable.fromFunction(fn);
+```
+
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable.grantInvoke">grantInvoke</a></code> | Grant the given identity permissions to invoke this resource. |
+
+---
+
+##### `grantInvoke` <a name="grantInvoke" id="@cdklabs/genai-idp-bedrock-llm-processor.Invokable.grantInvoke"></a>
+
+```typescript
+public grantInvoke(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke this resource.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bedrock-llm-processor.Invokable.grantInvoke.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+---
+
+#### Static Functions <a name="Static Functions" id="Static Functions"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable.fromFunction">fromFunction</a></code> | Create an Invokable from a Lambda function (LambdaHook pattern). |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable.fromModel">fromModel</a></code> | Create an Invokable from a Bedrock model or inference profile. |
+
+---
+
+##### `fromFunction` <a name="fromFunction" id="@cdklabs/genai-idp-bedrock-llm-processor.Invokable.fromFunction"></a>
+
+```typescript
+import { Invokable } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+Invokable.fromFunction(fn: IFunction)
+```
+
+Create an Invokable from a Lambda function (LambdaHook pattern).
+
+###### `fn`<sup>Required</sup> <a name="fn" id="@cdklabs/genai-idp-bedrock-llm-processor.Invokable.fromFunction.parameter.fn"></a>
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+The Lambda function that implements the Converse API-compatible contract.
+
+---
+
+##### `fromModel` <a name="fromModel" id="@cdklabs/genai-idp-bedrock-llm-processor.Invokable.fromModel"></a>
+
+```typescript
+import { Invokable } from '@cdklabs/genai-idp-bedrock-llm-processor'
+
+Invokable.fromModel(model: IBedrockInvokable)
+```
+
+Create an Invokable from a Bedrock model or inference profile.
+
+###### `model`<sup>Required</sup> <a name="model" id="@cdklabs/genai-idp-bedrock-llm-processor.Invokable.fromModel.parameter.model"></a>
+
+- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
+
+The Bedrock invokable model.
+
+---
+
+
+
 ## Protocols <a name="Protocols" id="Protocols"></a>
 
 ### IBedrockLlmProcessor <a name="IBedrockLlmProcessor" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessor"></a>
@@ -2139,14 +2243,14 @@ The Bedrock LLM document processor to apply to.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationMethod">classificationMethod</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.ClassificationMethod">ClassificationMethod</a></code> | The method used for document classification. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationModel">classificationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model used for document classification. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.extractionModel">extractionModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | The invokable model used for information extraction. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrBackend">ocrBackend</a></code> | <code>string</code> | OCR backend to use for text extraction. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.assessmentModel">assessmentModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating assessment results. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.assessmentInferenceProvider">assessmentInferenceProvider</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a></code> | Optional inference provider used for assessment. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationInferenceProvider">classificationInferenceProvider</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a></code> | The inference provider used for document classification. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.customPromptGenerator">customPromptGenerator</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Optional custom prompt generator Lambda function. |
 | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.evaluationModel">evaluationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for evaluating extraction results. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrModel">ocrModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for OCR when using Bedrock-based OCR. |
-| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.summarizationModel">summarizationModel</a></code> | <code>@aws-cdk/aws-bedrock-alpha.IBedrockInvokable</code> | Optional invokable model used for document summarization. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.extractionInferenceProvider">extractionInferenceProvider</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a></code> | The inference provider used for information extraction. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrInferenceProvider">ocrInferenceProvider</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a></code> | Optional inference provider used for OCR when using Bedrock-based OCR. |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.summarizationInferenceProvider">summarizationInferenceProvider</a></code> | <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a></code> | Optional inference provider used for document summarization. |
 
 ---
 
@@ -2166,40 +2270,6 @@ Different methods offer varying levels of accuracy and performance.
 
 ---
 
-##### `classificationModel`<sup>Required</sup> <a name="classificationModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationModel"></a>
-
-```typescript
-public readonly classificationModel: IBedrockInvokable;
-```
-
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
-- *Default:* as defined in the definition file
-
-The invokable model used for document classification.
-
-Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-Determines document types and categories based on content analysis,
-enabling targeted extraction strategies for different document types.
-
----
-
-##### `extractionModel`<sup>Required</sup> <a name="extractionModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.extractionModel"></a>
-
-```typescript
-public readonly extractionModel: IBedrockInvokable;
-```
-
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
-- *Default:* as defined in the definition file
-
-The invokable model used for information extraction.
-
-Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-Extracts structured data from documents based on defined schemas,
-transforming unstructured content into structured information.
-
----
-
 ##### `ocrBackend`<sup>Required</sup> <a name="ocrBackend" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrBackend"></a>
 
 ```typescript
@@ -2215,20 +2285,35 @@ Determines whether to use Amazon Textract or Bedrock for OCR processing.
 
 ---
 
-##### `assessmentModel`<sup>Optional</sup> <a name="assessmentModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.assessmentModel"></a>
+##### `assessmentInferenceProvider`<sup>Optional</sup> <a name="assessmentInferenceProvider" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.assessmentInferenceProvider"></a>
 
 ```typescript
-public readonly assessmentModel: IBedrockInvokable;
+public readonly assessmentInferenceProvider: IInvokable;
 ```
 
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a>
 - *Default:* as defined in the definition file
 
-Optional invokable model used for evaluating assessment results.
+Optional inference provider used for assessment.
 
-Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-Used to assess the quality and accuracy of extracted information by
-comparing assessment results against expected values.
+Can be a Bedrock model wrapped via Invokable.fromModel() or a Lambda function
+wrapped via Invokable.fromFunction() (LambdaHook pattern).
+
+---
+
+##### `classificationInferenceProvider`<sup>Optional</sup> <a name="classificationInferenceProvider" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.classificationInferenceProvider"></a>
+
+```typescript
+public readonly classificationInferenceProvider: IInvokable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a>
+- *Default:* as defined in the definition file
+
+The inference provider used for document classification.
+
+Can be a Bedrock model wrapped via Invokable.fromModel() or a Lambda function
+wrapped via Invokable.fromFunction() (LambdaHook pattern).
 
 ---
 
@@ -2266,37 +2351,52 @@ comparing extraction results against expected values.
 
 ---
 
-##### `ocrModel`<sup>Optional</sup> <a name="ocrModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrModel"></a>
+##### `extractionInferenceProvider`<sup>Optional</sup> <a name="extractionInferenceProvider" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.extractionInferenceProvider"></a>
 
 ```typescript
-public readonly ocrModel: IBedrockInvokable;
+public readonly extractionInferenceProvider: IInvokable;
 ```
 
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a>
 - *Default:* as defined in the definition file
 
-Optional invokable model used for OCR when using Bedrock-based OCR.
+The inference provider used for information extraction.
 
-Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-Only used when the OCR backend is set to 'bedrock' in the configuration.
-Provides vision-based text extraction capabilities for document processing.
+Can be a Bedrock model wrapped via Invokable.fromModel() or a Lambda function
+wrapped via Invokable.fromFunction() (LambdaHook pattern).
 
 ---
 
-##### `summarizationModel`<sup>Optional</sup> <a name="summarizationModel" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.summarizationModel"></a>
+##### `ocrInferenceProvider`<sup>Optional</sup> <a name="ocrInferenceProvider" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.ocrInferenceProvider"></a>
 
 ```typescript
-public readonly summarizationModel: IBedrockInvokable;
+public readonly ocrInferenceProvider: IInvokable;
 ```
 
-- *Type:* @aws-cdk/aws-bedrock-alpha.IBedrockInvokable
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a>
 - *Default:* as defined in the definition file
 
-Optional invokable model used for document summarization.
+Optional inference provider used for OCR when using Bedrock-based OCR.
 
-Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-When provided, enables automatic generation of document summaries
-that capture key information from processed documents.
+Can be a Bedrock model wrapped via Invokable.fromModel() or a Lambda function
+wrapped via Invokable.fromFunction() (LambdaHook pattern).
+Only used when the OCR backend is set to 'bedrock' in the configuration.
+
+---
+
+##### `summarizationInferenceProvider`<sup>Optional</sup> <a name="summarizationInferenceProvider" id="@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessorConfigurationDefinition.property.summarizationInferenceProvider"></a>
+
+```typescript
+public readonly summarizationInferenceProvider: IInvokable;
+```
+
+- *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a>
+- *Default:* as defined in the definition file
+
+Optional inference provider used for document summarization.
+
+Can be a Bedrock model wrapped via Invokable.fromModel() or a Lambda function
+wrapped via Invokable.fromFunction() (LambdaHook pattern).
 
 ---
 
@@ -2331,6 +2431,40 @@ This method applies the schema definition to the processor's configuration table
 - *Type:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.IBedrockLlmProcessor">IBedrockLlmProcessor</a>
 
 The Bedrock LLM document processor to apply the schema to.
+
+---
+
+
+### IInvokable <a name="IInvokable" id="@cdklabs/genai-idp-bedrock-llm-processor.IInvokable"></a>
+
+- *Implemented By:* <a href="#@cdklabs/genai-idp-bedrock-llm-processor.Invokable">Invokable</a>, <a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable">IInvokable</a>
+
+Unified interface for any resource that can serve as an inference backend.
+
+Abstracts over Bedrock models and Lambda functions so that processing stage
+constructs can grant invoke permissions without knowing the underlying type.
+
+#### Methods <a name="Methods" id="Methods"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#@cdklabs/genai-idp-bedrock-llm-processor.IInvokable.grantInvoke">grantInvoke</a></code> | Grant the given identity permissions to invoke this resource. |
+
+---
+
+##### `grantInvoke` <a name="grantInvoke" id="@cdklabs/genai-idp-bedrock-llm-processor.IInvokable.grantInvoke"></a>
+
+```typescript
+public grantInvoke(grantee: IGrantable): Grant
+```
+
+Grant the given identity permissions to invoke this resource.
+
+###### `grantee`<sup>Required</sup> <a name="grantee" id="@cdklabs/genai-idp-bedrock-llm-processor.IInvokable.grantInvoke.parameter.grantee"></a>
+
+- *Type:* aws-cdk-lib.aws_iam.IGrantable
+
+The principal to grant invoke permissions to.
 
 ---
 

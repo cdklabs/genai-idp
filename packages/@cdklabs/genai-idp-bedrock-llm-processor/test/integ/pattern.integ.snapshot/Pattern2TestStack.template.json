@@ -736,7 +736,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "1aa56f3d2bddfc51b8fe93fffdc462435d302c47610122cadacf53d5b8c7ea4e.zip"
+     "S3Key": "82acf4fe418eff17b6cc33ee25862a8bc4b63f5411fac0672ffd450ed8dab801.zip"
     },
     "Environment": {
      "Variables": {
@@ -1427,7 +1427,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "ccc028508f3f9f349632fc29822736233bfbf78a05138984881e09ace8527d3e.zip"
+     "S3Key": "1349df9b73a5b1af6c14c69df4bf3985ff425a625d0a69df5ec9c6ee0855761b.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only)"
    },
@@ -1444,7 +1444,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "366659cebffafde37da2f1949843800cb63265b260c774cf5470caf31cd359f6.zip"
+     "S3Key": "47d5474ab53f2c304da8dd4bc63b35c9f3ea7b7d60b2509d23079f4be966c9ce.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service"
    },
@@ -1528,8 +1528,9 @@
         },
         "model_id": {
          "type": "string",
-         "description": "Bedrock model ID (only used if backend is 'bedrock')",
+         "description": "Bedrock model ID (only used if backend is 'bedrock'). Select 'LambdaHook' to use a custom Lambda function for inference.",
          "enum": [
+          "LambdaHook",
           "us.amazon.nova-lite-v1:0",
           "us.amazon.nova-pro-v1:0",
           "us.amazon.nova-premier-v1:0",
@@ -1547,11 +1548,21 @@
           "value": "bedrock"
          }
         },
+        "model_lambda_hook_arn": {
+         "type": "string",
+         "description": "Lambda function ARN for custom inference (used when model_id is 'LambdaHook'). Function name must start with GENAIIDP-.",
+         "default": "",
+         "order": 3,
+         "dependsOn": {
+          "field": "model_id",
+          "value": "LambdaHook"
+         }
+        },
         "system_prompt": {
          "type": "string",
          "description": "System prompt for Bedrock OCR (only used if backend is 'bedrock')",
          "default": "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible.",
-         "order": 3,
+         "order": 4,
          "dependsOn": {
           "field": "backend",
           "value": "bedrock"
@@ -1561,7 +1572,7 @@
          "type": "string",
          "description": "Task prompt for Bedrock OCR (only used if backend is 'bedrock')",
          "default": "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting.",
-         "order": 4,
+         "order": 5,
          "dependsOn": {
           "field": "backend",
           "value": "bedrock"
@@ -1572,7 +1583,7 @@
          "listLabel": "Textract Features",
          "itemLabel": "Feature",
          "description": "Textract features (only used if backend is 'textract')",
-         "order": 5,
+         "order": 6,
          "dependsOn": {
           "field": "backend",
           "values": [
@@ -1934,8 +1945,9 @@
         },
         "model": {
          "type": "string",
-         "description": "Model identifier",
+         "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
          "enum": [
+          "LambdaHook",
           "us.amazon.nova-lite-v1:0",
           "us.amazon.nova-pro-v1:0",
           "us.amazon.nova-premier-v1:0",
@@ -1949,6 +1961,16 @@
          ],
          "order": 1
         },
+        "model_lambda_hook_arn": {
+         "type": "string",
+         "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+         "default": "",
+         "order": 2,
+         "dependsOn": {
+          "field": "model",
+          "value": "LambdaHook"
+         }
+        },
         "classificationMethod": {
          "type": "string",
          "description": "Classification methodology to use",
@@ -1956,7 +1978,7 @@
           "multimodalPageLevelClassification",
           "textbasedHolisticClassification"
          ],
-         "order": 2
+         "order": 3
         },
         "maxPagesForClassification": {
          "type": "string",
@@ -1969,40 +1991,40 @@
           "5",
           "10"
          ],
-         "order": 3
+         "order": 4
         },
         "temperature": {
          "type": "number",
          "minimum": 0,
          "maximum": 1,
          "description": "Sampling temperature",
-         "order": 4
+         "order": 5
         },
         "top_k": {
          "type": "integer",
          "minimum": 1,
          "description": "Sampling Top K",
-         "order": 5
+         "order": 6
         },
         "top_p": {
          "type": "number",
          "description": "Sampling Top P",
-         "order": 6
+         "order": 7
         },
         "max_tokens": {
          "type": "number",
          "description": "Max tokens",
-         "order": 7
+         "order": 8
         },
         "system_prompt": {
          "type": "string",
          "description": "System prompt",
-         "order": 8
+         "order": 9
         },
         "task_prompt": {
          "type": "string",
          "description": "Task prompt - include placeholders {CLASS_NAMES_AND_DESCRIPTIONS} (replaced with the class names and descriptions for all specified classes), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and for multi-modal classification {DOCUMENT_IMAGE} (replaced by the page image attachment). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-         "order": 9
+         "order": 10
         }
        }
       },
@@ -2047,8 +2069,9 @@
         },
         "model": {
          "type": "string",
-         "description": "Model identifier",
+         "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
          "enum": [
+          "LambdaHook",
           "us.amazon.nova-lite-v1:0",
           "us.amazon.nova-pro-v1:0",
           "us.amazon.nova-premier-v1:0",
@@ -2062,38 +2085,48 @@
          ],
          "order": 1
         },
+        "model_lambda_hook_arn": {
+         "type": "string",
+         "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+         "default": "",
+         "order": 2,
+         "dependsOn": {
+          "field": "model",
+          "value": "LambdaHook"
+         }
+        },
         "temperature": {
          "type": "number",
          "minimum": 0,
          "maximum": 1,
          "description": "Sampling temperature",
-         "order": 2
+         "order": 3
         },
         "top_k": {
          "type": "integer",
          "minimum": 1,
          "description": "Sampling Top K",
-         "order": 3
+         "order": 4
         },
         "top_p": {
          "type": "number",
          "description": "Sampling Top P",
-         "order": 4
+         "order": 5
         },
         "max_tokens": {
          "type": "number",
          "description": "Max tokens",
-         "order": 5
+         "order": 6
         },
         "system_prompt": {
          "type": "string",
          "description": "System prompt",
-         "order": 6
+         "order": 7
         },
         "task_prompt": {
          "type": "string",
          "description": "Task prompt - supports placeholders {DOCUMENT_CLASS} (replaced with the detected class label), {ATTRIBUTE_NAMES_AND_DESCRIPTIONS} (replaced with the attribute names and descriptions for the detected class), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and {DOCUMENT_IMAGE} (replaced by the page image attachments for each page). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-         "order": 7
+         "order": 8
         }
        }
       },
@@ -2183,8 +2216,9 @@
         },
         "model": {
          "type": "string",
-         "description": "Bedrock model ID",
+         "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
          "enum": [
+          "LambdaHook",
           "us.amazon.nova-lite-v1:0",
           "us.amazon.nova-pro-v1:0",
           "us.amazon.nova-premier-v1:0",
@@ -2198,37 +2232,47 @@
          ],
          "order": 3
         },
+        "model_lambda_hook_arn": {
+         "type": "string",
+         "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+         "default": "",
+         "order": 4,
+         "dependsOn": {
+          "field": "model",
+          "value": "LambdaHook"
+         }
+        },
         "temperature": {
          "type": "number",
          "description": "Sampling temperature",
-         "order": 4
+         "order": 5
         },
         "top_k": {
          "type": "number",
          "description": "Sampling Top K",
-         "order": 5
+         "order": 6
         },
         "top_p": {
          "type": "number",
          "description": "Sampling Top P",
-         "order": 6
+         "order": 7
         },
         "max_tokens": {
          "type": "number",
          "description": "Max tokens",
-         "order": 7
+         "order": 8
         },
         "system_prompt": {
          "type": "string",
          "format": "textarea",
          "description": "System prompt",
-         "order": 8
+         "order": 9
         },
         "task_prompt": {
          "type": "string",
          "format": "textarea",
          "description": "Task prompt - supports placeholders {DOCUMENT_TEXT} (markdown text), {OCR_TEXT_CONFIDENCE} (OCR text blocks with confidence), {DOCUMENT_CLASS}, {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}, {EXTRACTION_RESULTS}, {GRANULAR_CONTEXT} and {DOCUMENT_IMAGE}. Use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-         "order": 9
+         "order": 10
         }
        }
       },
@@ -2239,8 +2283,9 @@
        "properties": {
         "model": {
          "type": "string",
-         "description": "Bedrock model ID",
+         "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
          "enum": [
+          "LambdaHook",
           "us.amazon.nova-lite-v1:0",
           "us.amazon.nova-pro-v1:0",
           "us.amazon.nova-premier-v1:0",
@@ -2254,37 +2299,47 @@
          ],
          "order": 1
         },
+        "model_lambda_hook_arn": {
+         "type": "string",
+         "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+         "default": "",
+         "order": 2,
+         "dependsOn": {
+          "field": "model",
+          "value": "LambdaHook"
+         }
+        },
         "temperature": {
          "type": "number",
          "description": "Sampling temperature",
-         "order": 2
+         "order": 3
         },
         "top_k": {
          "type": "number",
          "description": "Sampling Top K",
-         "order": 3
+         "order": 4
         },
         "top_p": {
          "type": "number",
          "description": "Sampling Top P",
-         "order": 4
+         "order": 5
         },
         "max_tokens": {
          "type": "number",
          "description": "Max tokens",
-         "order": 5
+         "order": 6
         },
         "system_prompt": {
          "type": "string",
          "format": "textarea",
          "description": "System prompt",
-         "order": 6
+         "order": 7
         },
         "task_prompt": {
          "type": "string",
          "format": "textarea",
          "description": "Task prompt - supports parameter {DOCUMENT_TEXT}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-         "order": 7
+         "order": 8
         }
        }
       },
@@ -2562,7 +2617,7 @@
      ],
      "ocr": {
       "backend": "bedrock",
-      "model_id": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "model_id": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
       "system_prompt": "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible.",
       "task_prompt": "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting.",
       "features": [
@@ -2587,7 +2642,7 @@
        "target_height": 1268,
        "target_width": 951
       },
-      "model": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "model": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
       "temperature": 0,
       "top_p": 0.1,
       "max_tokens": 4096,
@@ -2604,7 +2659,7 @@
        "target_width": 951,
        "target_height": 1268
       },
-      "model": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "model": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
       "temperature": 0,
       "top_p": 0.1,
       "max_tokens": 10000,
@@ -2693,22 +2748,23 @@
        "model_id": "us.amazon.nova-pro-v1:0",
        "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Use provided ground truth data as reference to optimize field extraction and ensure consistency with expected document structure and field definitions.",
        "max_tokens": "10000",
-       "top_p": "0.0",
-       "temperature": "0.0",
-       "user_prompt": "This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference.                         <GROUND_TRUTH_REFERENCE> {ground_truth_json} </GROUND_TRUTH_REFERENCE> Ground truth reference JSON has the fields we are interested in extracting from the document/image. Use the ground truth to optimize field extraction. Match field names, data types, and groupings from the reference. Image may contain multiple pages, process all pages. Extract all field names including those without values. Do not change the group name and field name from ground truth in the extracted data json. Add field_description field for every field which will contain instruction to LLM to extract the field data from the image/document. Add data_type field for every field.  Add two fields document_class and document_description.  For document_class generate a short name based on the document content like W4, I-9, Paystub.  For document_description generate a description about the document in less than 50 words. If the group repeats and follows table format, update the attributeType as \"list\".                          Do not extract the values. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:"
+       "top_p": "0.1",
+       "temperature": "1.0",
+       "user_prompt": "This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference. <GROUND_TRUTH_REFERENCE> {ground_truth_json} </GROUND_TRUTH_REFERENCE> Ground truth reference JSON has the fields we are interested in extracting from the document/image. Use the ground truth to optimize field extraction. Match field names, data types, and groupings from the reference. Image may contain multiple pages, process all pages. Extract all field names including those without values. Do not change the group name and field name from ground truth in the extracted data json. Add field_description field for every field which will contain instruction to LLM to extract the field data from the image/document. Add data_type field for every field. Make sure to fill out the top-level \"$id\" and \"x-aws-idp-document-type\" with the extracted document class, and the top-level \"description\" with a brief description of the document class. Nesting Groups: Do not nest the groups i.e. groups within groups. All groups should be directly associated under main \"properties\". If the group repeats and follows table format, update the attributeType as \"list\". Do not extract the values. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:"
       },
       "without_ground_truth": {
        "model_id": "us.amazon.nova-pro-v1:0",
        "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Analyze forms line by line to identify field names, data types, and organizational structure. Focus on creating comprehensive blueprints for document processing without extracting actual values.",
        "max_tokens": "10000",
-       "top_p": "0.0",
-       "temperature": "0.0",
-       "user_prompt": "This image contains forms data. Analyze the form line by line. Image may contains multiple pages, process all the pages.  Form may contain multiple name value pair in one line.  Extract all the names in the form including the name value pair which doesn't have value.  Organize them into groups, extract field_name, data_type and field description Field_name should be less than 60 characters, should not have space use '-' instead of space. field_description is a brief description of the field and the location of the field like box number or line number in the form and section of the form. Field_name should be unique within the group. Add two fields document_class and document_description.  For document_class generate a short name based on the document content like W4, I-9, Paystub.  For document_description generate a description about the document in less than 50 words.  Group the fields based on the section they are grouped in the form. Group should have attributeType as \"group\". If the group repeats and follows table format, update the attributeType as \"list\". Do not extract the values. Return the extracted data in JSON format. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:"
+       "top_p": "0.1",
+       "temperature": "1.0",
+       "user_prompt": "This image contains forms data. Analyze the form line by line. Image may contain multiple pages, process all the pages. Form may contain multiple name value pair in one line. Extract all the names in the form including the name value pair which doesn't have value. Organize them into groups, extract field_name, data_type and field description. Field names should be less than 30 characters, use camelCase or snake_case, name should not start with number and name should not have special characters. Field descriptions should include location hints (box number, line number, section). Field_name should be unique within the group. Make sure to fill out the top-level \"$id\" and \"x-aws-idp-document-type\" with the extracted document class, and the top-level \"description\" with a brief description of the document class. Group the fields based on the section they are grouped in the form. Group should have attributeType as \"group\". Nesting Groups: Do not nest the groups i.e. groups within groups. All groups should be directly associated under main \"properties\". If the group repeats and follows table format, update the attributeType as \"list\". Do not extract the values. Return the extracted data in JSON format. Format the extracted data using the below JSON format: Format the extracted groups and fields using the below JSON format:"
       }
      },
+     "use_bda": false,
      "pricing": [
       {
-       "name": "bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+       "name": "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0",
        "units": [
         {
          "name": "inputTokens",
@@ -3029,7 +3085,7 @@
           {
            "Ref": "AWS::Partition"
           },
-          ":bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0"
+          ":bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0"
          ]
         ]
        }
@@ -3056,7 +3112,7 @@
           {
            "Ref": "AWS::AccountId"
           },
-          ":inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+          ":inference-profile/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
          ]
         ]
        }
@@ -3365,7 +3421,7 @@
           {
            "Ref": "AWS::Partition"
           },
-          ":bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0"
+          ":bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0"
          ]
         ]
        }
@@ -3392,7 +3448,7 @@
           {
            "Ref": "AWS::AccountId"
           },
-          ":inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+          ":inference-profile/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
          ]
         ]
        }
@@ -3702,7 +3758,7 @@
           {
            "Ref": "AWS::Partition"
           },
-          ":bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0"
+          ":bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0"
          ]
         ]
        }
@@ -3729,7 +3785,7 @@
           {
            "Ref": "AWS::AccountId"
           },
-          ":inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+          ":inference-profile/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
          ]
         ]
        }
@@ -6311,7 +6367,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "e3b3db4344c4766517bc094333713fdab9c5db2f7e1fbddac7c8e254b461e73e.zip"
+     "S3Key": "ae159031ec900fdabca280dfcfe3b5c565b3dccc0e59c51eed1f23a8c9c77875.zip"
     },
     "Environment": {
      "Variables": {
@@ -6512,7 +6568,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "b535f5f9838b4dd1ada488f51b11559f10e5fe9958f59edb9ff714af47d476d8.zip"
+     "S3Key": "d4da921c650075817b98f8aeeeb4a86d00b24b06191a1acbb069686d8792f1e8.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr"
    },
@@ -6529,7 +6585,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "d32e416e474ee54ca02819d0eeaa189d1e26141a3b76bc91d2fa7f9edd1c1e02.zip"
+     "S3Key": "e95cce4c168cdb38e2e5f1eb979d79500fb5f462b0a7c85bd39b368bed58b5a7.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service"
    },
@@ -6546,7 +6602,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "1c6c9d6214b7c7716331bdd70b5067fca58e50ef2ca8577e4ef6e20ecc3ea3a6.zip"
+     "S3Key": "544699102f80868cc912966773c3c5a61254b600333be10dc02547fb9a02dd97.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction"
    },
@@ -6563,7 +6619,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "502d8581d453a7056e305463e5d888943273f4919849870f3460c9de83621847.zip"
+     "S3Key": "3670f4c406d0e9f447e48d4a155aa5b5e605d2dbc0606ba438437b54a40aa5ba.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service"
    },
@@ -6580,7 +6636,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "728769bece5bbc56476e372d8e122901209b16fae01d526556787cbb667831b3.zip"
+     "S3Key": "5ee6bc69d7edde3d265f2a451f25c324b420afd987f1def709902333ec3ac907.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, rule-validation"
    },
@@ -6597,7 +6653,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "697bab6e74311e6107a5de18ba9bd980731fc8e61eb71e0cb46231888bf4bb09.zip"
+     "S3Key": "5a7dcf560a5ea42742a671d85bb410dfa55e600f38052330cbd766e50bbd4759.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, rule-validation-orchestration"
    },
@@ -6614,7 +6670,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "8c34fe21d12575be545dbf283246a5a83847d56b527ee30f753796d8a2805649.zip"
+     "S3Key": "e3e8662cb193b2d266891f5dbc7763b716d8f8c560c30178e4f1769e6850d0c9.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, evaluation"
    },

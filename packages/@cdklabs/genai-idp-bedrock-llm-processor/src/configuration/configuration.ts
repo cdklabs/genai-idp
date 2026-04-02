@@ -345,12 +345,42 @@ export class BedrockLlmProcessorConfiguration implements IBedrockLlmProcessorCon
     }
 
     // Import LambdaHook functions from ARN when specified in config but not via CDK options
-    const hookImports: Array<{ section: string; key: string; prop: keyof IBedrockLlmProcessorConfigurationDefinition; id: string }> = [
-      { section: "ocr", key: "model_lambda_hook_arn", prop: "ocrInferenceProvider", id: "OcrLambdaHook" },
-      { section: "classification", key: "model_lambda_hook_arn", prop: "classificationInferenceProvider", id: "ClassificationLambdaHook" },
-      { section: "extraction", key: "model_lambda_hook_arn", prop: "extractionInferenceProvider", id: "ExtractionLambdaHook" },
-      { section: "assessment", key: "model_lambda_hook_arn", prop: "assessmentInferenceProvider", id: "AssessmentLambdaHook" },
-      { section: "summarization", key: "model_lambda_hook_arn", prop: "summarizationInferenceProvider", id: "SummarizationLambdaHook" },
+    const hookImports: Array<{
+      section: string;
+      key: string;
+      prop: keyof IBedrockLlmProcessorConfigurationDefinition;
+      id: string;
+    }> = [
+      {
+        section: "ocr",
+        key: "model_lambda_hook_arn",
+        prop: "ocrInferenceProvider",
+        id: "OcrLambdaHook",
+      },
+      {
+        section: "classification",
+        key: "model_lambda_hook_arn",
+        prop: "classificationInferenceProvider",
+        id: "ClassificationLambdaHook",
+      },
+      {
+        section: "extraction",
+        key: "model_lambda_hook_arn",
+        prop: "extractionInferenceProvider",
+        id: "ExtractionLambdaHook",
+      },
+      {
+        section: "assessment",
+        key: "model_lambda_hook_arn",
+        prop: "assessmentInferenceProvider",
+        id: "AssessmentLambdaHook",
+      },
+      {
+        section: "summarization",
+        key: "model_lambda_hook_arn",
+        prop: "summarizationInferenceProvider",
+        id: "SummarizationLambdaHook",
+      },
     ];
 
     for (const { section, key, prop, id } of hookImports) {
@@ -358,7 +388,9 @@ export class BedrockLlmProcessorConfiguration implements IBedrockLlmProcessorCon
       if (arn && !result[prop]) {
         result = {
           ...result,
-          [prop]: Invokable.fromFunction(lambda.Function.fromFunctionArn(processor, id, arn)),
+          [prop]: Invokable.fromFunction(
+            lambda.Function.fromFunctionArn(processor, id, arn),
+          ),
         };
       }
     }

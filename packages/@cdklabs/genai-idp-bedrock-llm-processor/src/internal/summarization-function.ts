@@ -13,7 +13,6 @@ import {
   ITrackingTable,
   LogLevel,
 } from "@cdklabs/genai-idp";
-import { IInvokable } from "../invokable";
 import { Duration, Stack } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ITable } from "aws-cdk-lib/aws-dynamodb";
@@ -21,6 +20,7 @@ import { IKey } from "aws-cdk-lib/aws-kms";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
+import { IInvokable } from "../invokable";
 
 export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
   /**

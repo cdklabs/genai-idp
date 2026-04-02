@@ -4,17 +4,29 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import path from "path";
+import {
+  BedrockFoundationModel,
+  CrossRegionInferenceProfile,
+  CrossRegionInferenceProfileRegion,
+} from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { ProcessingEnvironment } from "@cdklabs/genai-idp";
-import { App, Aspects, CfnResource, Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
+import {
+  App,
+  Aspects,
+  CfnResource,
+  Duration,
+  RemovalPolicy,
+  Stack,
+} from "aws-cdk-lib";
+import { FoundationModelIdentifier } from "aws-cdk-lib/aws-bedrock";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import {
   BedrockLlmProcessor,
   BedrockLlmProcessorConfiguration,
+  Invokable,
 } from "../../src";
-import { BedrockFoundationModel, CrossRegionInferenceProfile, CrossRegionInferenceProfileRegion } from "@aws-cdk/aws-bedrock-alpha/bedrock";
-import { FoundationModelIdentifier } from "aws-cdk-lib/aws-bedrock";
 
 const app = new App();
 
@@ -44,13 +56,15 @@ const environment = new ProcessingEnvironment(stack, "Environment", {
 });
 
 const hookInvokable = CrossRegionInferenceProfile.fromConfig({
-  model: BedrockFoundationModel.fromCdkFoundationModelId(new FoundationModelIdentifier("anthropic.claude-sonnet-4-5-20250929-v1:0"),
+  model: BedrockFoundationModel.fromCdkFoundationModelId(
+    new FoundationModelIdentifier("anthropic.claude-sonnet-4-5-20250929-v1:0"),
     {
       supportsAgents: true,
       supportsCrossRegion: true,
-      optimizedForAgents: true
-    }),
-  geoRegion: CrossRegionInferenceProfileRegion.US
+      optimizedForAgents: true,
+    },
+  ),
+  geoRegion: CrossRegionInferenceProfileRegion.US,
 });
 
 // Custom Lambda that proxies OCR requests to Bedrock via the LambdaHook contract.
@@ -77,11 +91,11 @@ new BedrockLlmProcessor(stack, "Processor", {
   configuration: BedrockLlmProcessorConfiguration.fromFile(
     path.join(__dirname, "bedrock-config.yaml"),
     {
-      ocrFunction: hook,
-      classificationFunction: hook,
-      extractionFunction: hook,
-      assessmentFunction: hook,
-      summarizationFunction: hook,
+      ocrInvokable: Invokable.fromFunction(hook),
+      classificationInvokable: Invokable.fromFunction(hook),
+      extractionInvokable: Invokable.fromFunction(hook),
+      assessmentInvokable: Invokable.fromFunction(hook),
+      summarizationInvokable: Invokable.fromFunction(hook),
     },
   ),
 });

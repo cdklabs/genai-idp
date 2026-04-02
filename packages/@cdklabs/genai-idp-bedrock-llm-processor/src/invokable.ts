@@ -24,7 +24,20 @@ export interface IInvokable {
 }
 
 /**
- * Factory for creating IInvokable instances from Bedrock models or Lambda functions.
+ * The type of inference backend wrapped by an Invokable.
+ * @internal
+ */
+export enum InvokableType {
+  /** A Bedrock foundation model or inference profile. */
+  MODEL = "model",
+  /** A Lambda function implementing the LambdaHook contract. */
+  FUNCTION = "function",
+}
+
+/**
+ * Unified wrapper for Bedrock models and Lambda functions that implements IInvokable.
+ *
+ * Use the static factory methods to create instances:
  *
  * @example
  * // From a Bedrock model
@@ -32,27 +45,71 @@ export interface IInvokable {
  *
  * // From a Lambda function (LambdaHook)
  * const provider = Invokable.fromFunction(fn);
+ *
  */
-export class Invokable {
+export class Invokable implements IInvokable {
   /**
-   * Create an IInvokable from a Bedrock model or inference profile.
+   * Create an Invokable from a Bedrock model or inference profile.
    *
    * @param model The Bedrock invokable model
-   * @returns An IInvokable that grants bedrock:InvokeModel permissions
+   * @returns An Invokable that grants bedrock:InvokeModel permissions
    */
-  static fromModel(model: IBedrockInvokable): IInvokable {
-    return model;
+  static fromModel(model: IBedrockInvokable): Invokable {
+    return new Invokable(model, InvokableType.MODEL);
   }
 
   /**
-   * Create an IInvokable from a Lambda function (LambdaHook pattern).
+   * Create an Invokable from a Lambda function (LambdaHook pattern).
    *
    * @param fn The Lambda function that implements the Converse API-compatible contract
-   * @returns An IInvokable that grants lambda:InvokeFunction permissions
+   * @returns An Invokable that grants lambda:InvokeFunction permissions
    */
-  static fromFunction(fn: lambda.IFunction): IInvokable {
-    return fn;
+  static fromFunction(fn: lambda.IFunction): Invokable {
+    return new Invokable(fn, InvokableType.FUNCTION);
   }
 
-  private constructor() {}
+  /**
+   * The type of inference backend.
+   * @internal
+   */
+  public readonly _type: InvokableType;
+
+  private readonly _inner: IBedrockInvokable | lambda.IFunction;
+
+  private constructor(
+    inner: IBedrockInvokable | lambda.IFunction,
+    type: InvokableType,
+  ) {
+    this._inner = inner;
+    this._type = type;
+  }
+
+  /**
+   * Grant the given identity permissions to invoke this resource.
+   */
+  public grantInvoke(grantee: iam.IGrantable): iam.Grant {
+    return this._inner.grantInvoke(grantee);
+  }
+
+  /**
+   * Get the underlying Bedrock model. Only valid when type is MODEL.
+   * @internal
+   */
+  public get _model(): IBedrockInvokable {
+    if (this._type !== InvokableType.MODEL) {
+      throw new Error("Cannot access model on a function-type Invokable");
+    }
+    return this._inner as IBedrockInvokable;
+  }
+
+  /**
+   * Get the underlying Lambda function. Only valid when type is FUNCTION.
+   * @internal
+   */
+  public get _fn(): lambda.IFunction {
+    if (this._type !== InvokableType.FUNCTION) {
+      throw new Error("Cannot access fn on a model-type Invokable");
+    }
+    return this._inner as lambda.IFunction;
+  }
 }
