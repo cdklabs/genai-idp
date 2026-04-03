@@ -39,7 +39,7 @@
     "@aws-cdk/aws-glue-alpha": "^2.241.0-alpha.0",
     "@aws-cdk/aws-lambda-python-alpha": "^2.241.0-alpha.0",
     "@aws-cdk/aws-sagemaker-alpha": "^2.241.0-alpha.0",
-    "@aws-sdk/client-sagemaker": "^3.812.0",
+    "@aws-sdk/client-sagemaker": "^3.1023.0",
     "@cdklabs/generative-ai-cdk-constructs": "^0.1.314",
     "@types/aws-lambda": "^8.10.149",
     "@types/jest": "^29.5.14",
