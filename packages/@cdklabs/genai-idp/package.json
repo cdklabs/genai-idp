@@ -102,7 +102,7 @@
     "@aws-cdk/cx-api": "^2.207.0",
     "@cdklabs/generative-ai-cdk-constructs": "0.1.314",
     "@types/jest": "^29.5.14",
-    "@types/node": "^22.15.16",
+    "@types/node": "^25.5.1",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
     "aws-cdk-lib": "2.241.0",
