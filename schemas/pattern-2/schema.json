@@ -66,8 +66,9 @@
         },
         "model_id": {
           "type": "string",
-          "description": "Bedrock model ID (only used if backend is 'bedrock')",
+          "description": "Bedrock model ID (only used if backend is 'bedrock'). Select 'LambdaHook' to use a custom Lambda function for inference.",
           "enum": [
+            "LambdaHook",
             "us.amazon.nova-lite-v1:0",
             "us.amazon.nova-pro-v1:0",
             "us.amazon.nova-premier-v1:0",
@@ -85,11 +86,21 @@
             "value": "bedrock"
           }
         },
+        "model_lambda_hook_arn": {
+          "type": "string",
+          "description": "Lambda function ARN for custom inference (used when model_id is 'LambdaHook'). Function name must start with GENAIIDP-.",
+          "default": "",
+          "order": 3,
+          "dependsOn": {
+            "field": "model_id",
+            "value": "LambdaHook"
+          }
+        },
         "system_prompt": {
           "type": "string",
           "description": "System prompt for Bedrock OCR (only used if backend is 'bedrock')",
           "default": "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible.",
-          "order": 3,
+          "order": 4,
           "dependsOn": {
             "field": "backend",
             "value": "bedrock"
@@ -99,7 +110,7 @@
           "type": "string",
           "description": "Task prompt for Bedrock OCR (only used if backend is 'bedrock')",
           "default": "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting.",
-          "order": 4,
+          "order": 5,
           "dependsOn": {
             "field": "backend",
             "value": "bedrock"
@@ -110,7 +121,7 @@
           "listLabel": "Textract Features",
           "itemLabel": "Feature",
           "description": "Textract features (only used if backend is 'textract')",
-          "order": 5,
+          "order": 6,
           "dependsOn": {
             "field": "backend",
             "values": [
@@ -472,8 +483,9 @@
         },
         "model": {
           "type": "string",
-          "description": "Model identifier",
+          "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
           "enum": [
+            "LambdaHook",
             "us.amazon.nova-lite-v1:0",
             "us.amazon.nova-pro-v1:0",
             "us.amazon.nova-premier-v1:0",
@@ -487,6 +499,16 @@
           ],
           "order": 1
         },
+        "model_lambda_hook_arn": {
+          "type": "string",
+          "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+          "default": "",
+          "order": 2,
+          "dependsOn": {
+            "field": "model",
+            "value": "LambdaHook"
+          }
+        },
         "classificationMethod": {
           "type": "string",
           "description": "Classification methodology to use",
@@ -494,7 +516,7 @@
             "multimodalPageLevelClassification",
             "textbasedHolisticClassification"
           ],
-          "order": 2
+          "order": 3
         },
         "maxPagesForClassification": {
           "type": "string",
@@ -507,40 +529,40 @@
             "5",
             "10"
           ],
-          "order": 3
+          "order": 4
         },
         "temperature": {
           "type": "number",
           "minimum": 0,
           "maximum": 1,
           "description": "Sampling temperature",
-          "order": 4
+          "order": 5
         },
         "top_k": {
           "type": "integer",
           "minimum": 1,
           "description": "Sampling Top K",
-          "order": 5
+          "order": 6
         },
         "top_p": {
           "type": "number",
           "description": "Sampling Top P",
-          "order": 6
+          "order": 7
         },
         "max_tokens": {
           "type": "number",
           "description": "Max tokens",
-          "order": 7
+          "order": 8
         },
         "system_prompt": {
           "type": "string",
           "description": "System prompt",
-          "order": 8
+          "order": 9
         },
         "task_prompt": {
           "type": "string",
           "description": "Task prompt - include placeholders {CLASS_NAMES_AND_DESCRIPTIONS} (replaced with the class names and descriptions for all specified classes), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and for multi-modal classification {DOCUMENT_IMAGE} (replaced by the page image attachment). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-          "order": 9
+          "order": 10
         }
       }
     },
@@ -585,8 +607,9 @@
         },
         "model": {
           "type": "string",
-          "description": "Model identifier",
+          "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
           "enum": [
+            "LambdaHook",
             "us.amazon.nova-lite-v1:0",
             "us.amazon.nova-pro-v1:0",
             "us.amazon.nova-premier-v1:0",
@@ -600,38 +623,48 @@
           ],
           "order": 1
         },
+        "model_lambda_hook_arn": {
+          "type": "string",
+          "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+          "default": "",
+          "order": 2,
+          "dependsOn": {
+            "field": "model",
+            "value": "LambdaHook"
+          }
+        },
         "temperature": {
           "type": "number",
           "minimum": 0,
           "maximum": 1,
           "description": "Sampling temperature",
-          "order": 2
+          "order": 3
         },
         "top_k": {
           "type": "integer",
           "minimum": 1,
           "description": "Sampling Top K",
-          "order": 3
+          "order": 4
         },
         "top_p": {
           "type": "number",
           "description": "Sampling Top P",
-          "order": 4
+          "order": 5
         },
         "max_tokens": {
           "type": "number",
           "description": "Max tokens",
-          "order": 5
+          "order": 6
         },
         "system_prompt": {
           "type": "string",
           "description": "System prompt",
-          "order": 6
+          "order": 7
         },
         "task_prompt": {
           "type": "string",
           "description": "Task prompt - supports placeholders {DOCUMENT_CLASS} (replaced with the detected class label), {ATTRIBUTE_NAMES_AND_DESCRIPTIONS} (replaced with the attribute names and descriptions for the detected class), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and {DOCUMENT_IMAGE} (replaced by the page image attachments for each page). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-          "order": 7
+          "order": 8
         }
       }
     },
@@ -721,8 +754,9 @@
         },
         "model": {
           "type": "string",
-          "description": "Bedrock model ID",
+          "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
           "enum": [
+            "LambdaHook",
             "us.amazon.nova-lite-v1:0",
             "us.amazon.nova-pro-v1:0",
             "us.amazon.nova-premier-v1:0",
@@ -736,37 +770,47 @@
           ],
           "order": 3
         },
+        "model_lambda_hook_arn": {
+          "type": "string",
+          "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+          "default": "",
+          "order": 4,
+          "dependsOn": {
+            "field": "model",
+            "value": "LambdaHook"
+          }
+        },
         "temperature": {
           "type": "number",
           "description": "Sampling temperature",
-          "order": 4
+          "order": 5
         },
         "top_k": {
           "type": "number",
           "description": "Sampling Top K",
-          "order": 5
+          "order": 6
         },
         "top_p": {
           "type": "number",
           "description": "Sampling Top P",
-          "order": 6
+          "order": 7
         },
         "max_tokens": {
           "type": "number",
           "description": "Max tokens",
-          "order": 7
+          "order": 8
         },
         "system_prompt": {
           "type": "string",
           "format": "textarea",
           "description": "System prompt",
-          "order": 8
+          "order": 9
         },
         "task_prompt": {
           "type": "string",
           "format": "textarea",
           "description": "Task prompt - supports placeholders {DOCUMENT_TEXT} (markdown text), {OCR_TEXT_CONFIDENCE} (OCR text blocks with confidence), {DOCUMENT_CLASS}, {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}, {EXTRACTION_RESULTS}, {GRANULAR_CONTEXT} and {DOCUMENT_IMAGE}. Use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-          "order": 9
+          "order": 10
         }
       }
     },
@@ -777,8 +821,9 @@
       "properties": {
         "model": {
           "type": "string",
-          "description": "Bedrock model ID",
+          "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
           "enum": [
+            "LambdaHook",
             "us.amazon.nova-lite-v1:0",
             "us.amazon.nova-pro-v1:0",
             "us.amazon.nova-premier-v1:0",
@@ -792,37 +837,47 @@
           ],
           "order": 1
         },
+        "model_lambda_hook_arn": {
+          "type": "string",
+          "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+          "default": "",
+          "order": 2,
+          "dependsOn": {
+            "field": "model",
+            "value": "LambdaHook"
+          }
+        },
         "temperature": {
           "type": "number",
           "description": "Sampling temperature",
-          "order": 2
+          "order": 3
         },
         "top_k": {
           "type": "number",
           "description": "Sampling Top K",
-          "order": 3
+          "order": 4
         },
         "top_p": {
           "type": "number",
           "description": "Sampling Top P",
-          "order": 4
+          "order": 5
         },
         "max_tokens": {
           "type": "number",
           "description": "Max tokens",
-          "order": 5
+          "order": 6
         },
         "system_prompt": {
           "type": "string",
           "format": "textarea",
           "description": "System prompt",
-          "order": 6
+          "order": 7
         },
         "task_prompt": {
           "type": "string",
           "format": "textarea",
           "description": "Task prompt - supports parameter {DOCUMENT_TEXT}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-          "order": 7
+          "order": 8
         }
       }
     },

@@ -4,7 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import path from "path";
-import { IBedrockInvokable as IInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
+import { IGuardrail } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import {
   IdpPythonFunctionOptions,
@@ -20,6 +20,7 @@ import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
+import { IInvokable } from "../invokable";
 
 export interface OcrFunctionProps extends IdpPythonFunctionOptions {
   /**
@@ -82,14 +83,12 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
   readonly ocrBackend?: "textract" | "bedrock" | "none";
 
   /**
-   * Optional invokable model used for OCR when using Bedrock-based OCR.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * Only used when the OCR backend is set to 'bedrock' in the configuration.
-   * Provides vision-based text extraction capabilities for document processing.
+   * The inference provider for OCR.
+   * Can be a Bedrock model or a custom Lambda function (LambdaHook).
    *
-   * @default - No specific model permissions granted, uses general Bedrock permissions
+   * @default - No inference provider
    */
-  readonly ocrModel?: IInvokable;
+  readonly inferenceProvider?: IInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to OCR model interactions.
@@ -98,7 +97,7 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
    *
    * @default - No guardrail is applied
    */
-  readonly ocrGuardrail?: import("@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock").IGuardrail;
+  readonly ocrGuardrail?: IGuardrail;
 
   /**
    * Optional ProcessingEnvironmentApi for progress notifications.
@@ -189,9 +188,7 @@ export class OcrFunction extends PythonFunction {
 
     const ocrBackend = props.ocrBackend || "textract";
 
-    if (ocrBackend === "bedrock" && props.ocrModel) {
-      props.ocrModel.grantInvoke(this);
-    } else if (ocrBackend === "textract") {
+    if (ocrBackend === "textract") {
       // Textract Policy
       this.addToRolePolicy(
         new PolicyStatement({
@@ -201,6 +198,8 @@ export class OcrFunction extends PythonFunction {
       );
     }
     // No permissions needed for "none" backend
+
+    props.inferenceProvider?.grantInvoke(this);
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);

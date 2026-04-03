@@ -272,7 +272,7 @@ export class BedrockLlmProcessor
       outputBucket: this.environment.outputBucket,
       workingBucket: this.environment.workingBucket,
       ocrBackend: renderedConfiguration.ocrBackend,
-      ocrModel: renderedConfiguration.ocrModel,
+      inferenceProvider: renderedConfiguration.ocrInferenceProvider,
       ocrGuardrail: props.ocrGuardrail,
       api: this.environment.api,
       logGroup: new logs.LogGroup(this, "OCRFunctionLogGroup", {
@@ -296,7 +296,8 @@ export class BedrockLlmProcessor
         outputBucket: this.environment.outputBucket,
         workingBucket: this.environment.workingBucket,
         encryptionKey: this.environment.encryptionKey,
-        classificationModel: renderedConfiguration.classificationModel,
+        inferenceProvider:
+          renderedConfiguration.classificationInferenceProvider,
         classificationGuardrail: props.classificationGuardrail,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "ClassificationFunctionLogGroup", {
@@ -320,7 +321,7 @@ export class BedrockLlmProcessor
         outputBucket: this.environment.outputBucket,
         workingBucket: this.environment.workingBucket,
         encryptionKey: this.environment.encryptionKey,
-        extractionModel: renderedConfiguration.extractionModel,
+        inferenceProvider: renderedConfiguration.extractionInferenceProvider,
         extractionGuardrail: props.extractionGuardrail,
         customPromptGenerator: renderedConfiguration.customPromptGenerator,
         api: this.environment.api,
@@ -344,7 +345,7 @@ export class BedrockLlmProcessor
         inputBucket: this.environment.inputBucket,
         outputBucket: this.environment.outputBucket,
         workingBucket: this.environment.workingBucket,
-        assessmentModel: renderedConfiguration.assessmentModel,
+        inferenceProvider: renderedConfiguration.assessmentInferenceProvider,
         assessmentGuardrail: props.assessmentGuardrail,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "AssessmentFunctionLogGroup", {
@@ -390,7 +391,7 @@ export class BedrockLlmProcessor
         outputBucket: this.environment.outputBucket,
         workingBucket: this.environment.workingBucket,
         encryptionKey: this.environment.encryptionKey,
-        summarizationModel: renderedConfiguration.summarizationModel,
+        inferenceProvider: renderedConfiguration.summarizationInferenceProvider,
         summarizationGuardrail: props.summarizationGuardrail,
         api: this.environment.api,
         logGroup: new logs.LogGroup(this, "SummarizationFunctionLogGroup", {

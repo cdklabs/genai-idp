@@ -20,6 +20,7 @@ import { IKey } from "aws-cdk-lib/aws-kms";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
+import { IInvokable } from "../invokable";
 
 export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
   /**
@@ -73,10 +74,12 @@ export interface SummarizationFunctionProps extends IdpPythonFunctionOptions {
   readonly encryptionKey?: IKey;
 
   /**
-   * Optional Bedrock model to use for summarization.
-   * The AI model that will generate document summaries.
+   * The inference provider for summarization.
+   * Can be a Bedrock model or a custom Lambda function (LambdaHook).
+   *
+   * @default - No inference provider
    */
-  readonly summarizationModel?: bedrock.IBedrockInvokable;
+  readonly inferenceProvider?: IInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to summarization model interactions.
@@ -163,7 +166,7 @@ export class SummarizationFunction extends PythonFunction {
     props.outputBucket.grantReadWrite(this);
     props.workingBucket.grantReadWrite(this);
     props.configurationTable.grantReadWriteData(this);
-    props.summarizationModel?.grantInvoke(this);
+    props.inferenceProvider?.grantInvoke(this);
     props.summarizationGuardrail?.grantApply(this);
 
     // Grant AppSync permissions if API is provided

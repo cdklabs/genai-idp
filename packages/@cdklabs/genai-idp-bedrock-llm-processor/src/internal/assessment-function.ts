@@ -19,6 +19,7 @@ import { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
+import { IInvokable } from "../invokable";
 
 export interface AssessmentFunctionProps extends IdpPythonFunctionOptions {
   /**
@@ -66,10 +67,12 @@ export interface AssessmentFunctionProps extends IdpPythonFunctionOptions {
   readonly workingBucket: IBucket;
 
   /**
-   * The Bedrock model to use for assessment.
-   * The AI model that will assess information from documents.
+   * The inference provider for assessment.
+   * Can be a Bedrock model or a custom Lambda function (LambdaHook).
+   *
+   * @default - No inference provider
    */
-  readonly assessmentModel?: bedrock.IBedrockInvokable;
+  readonly inferenceProvider?: IInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to assessment model interactions.
@@ -165,7 +168,7 @@ export class AssessmentFunction extends PythonFunction {
     Metric.grantPutMetricData(this);
     props.configurationTable.grantReadWriteData(this);
     props.trackingTable.grantReadWriteData(this);
-    props.assessmentModel?.grantInvoke(this);
+    props.inferenceProvider?.grantInvoke(this);
     props.assessmentGuardrail?.grantApply(this);
 
     // Grant AppSync permissions if API is provided

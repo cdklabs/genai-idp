@@ -10,6 +10,7 @@ import {
   BedrockLlmProcessorConfigurationDefinitionOptions,
   IBedrockLlmProcessorConfigurationDefinition,
 } from "./definition";
+import { Invokable } from "../invokable";
 import { IBedrockLlmProcessor } from "../processor";
 
 /**
@@ -332,20 +333,68 @@ export class BedrockLlmProcessorConfiguration implements IBedrockLlmProcessorCon
     const rawConfig = this.definition.raw();
     const customPromptArn = rawConfig?.extraction?.custom_prompt_lambda_arn;
 
+    let result: IBedrockLlmProcessorConfigurationDefinition = this.definition;
+
     if (customPromptArn && !this.definition.customPromptGenerator) {
       const importedFunction = lambda.Function.fromFunctionArn(
         processor,
         "CustomPromptGenerator",
         customPromptArn,
       );
-
-      // Return a wrapped definition with the imported function
-      return {
-        ...this.definition,
-        customPromptGenerator: importedFunction,
-      };
+      result = { ...result, customPromptGenerator: importedFunction };
     }
 
-    return this.definition;
+    // Import LambdaHook functions from ARN when specified in config but not via CDK options
+    const hookImports: Array<{
+      section: string;
+      key: string;
+      prop: keyof IBedrockLlmProcessorConfigurationDefinition;
+      id: string;
+    }> = [
+      {
+        section: "ocr",
+        key: "model_lambda_hook_arn",
+        prop: "ocrInferenceProvider",
+        id: "OcrLambdaHook",
+      },
+      {
+        section: "classification",
+        key: "model_lambda_hook_arn",
+        prop: "classificationInferenceProvider",
+        id: "ClassificationLambdaHook",
+      },
+      {
+        section: "extraction",
+        key: "model_lambda_hook_arn",
+        prop: "extractionInferenceProvider",
+        id: "ExtractionLambdaHook",
+      },
+      {
+        section: "assessment",
+        key: "model_lambda_hook_arn",
+        prop: "assessmentInferenceProvider",
+        id: "AssessmentLambdaHook",
+      },
+      {
+        section: "summarization",
+        key: "model_lambda_hook_arn",
+        prop: "summarizationInferenceProvider",
+        id: "SummarizationLambdaHook",
+      },
+    ];
+
+    for (const { section, key, prop, id } of hookImports) {
+      const arn = rawConfig?.[section]?.[key];
+      if (arn && !result[prop]) {
+        result = {
+          ...result,
+          [prop]: Invokable.fromFunction(
+            lambda.Function.fromFunctionArn(processor, id, arn),
+          ),
+        };
+      }
+    }
+
+    return result;
   }
 }
