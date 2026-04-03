@@ -2613,12 +2613,12 @@ cdk-nag@^2.36.45, cdk-nag@^2.37.55:
   resolved "https://registry.yarnpkg.com/cdk-nag/-/cdk-nag-2.37.55.tgz#438f6bb99a08bedee8c8067a0a16ede952a5f10e"
   integrity sha512-xcAkygwbph3pp7N0UEzJBmXUH/MIsluV7DYJSeZ/V3yCr0Y0QaRGO298WyD6mi4K+Rmnpl+EJoWUxcOblOqLKA==
 
-cdklabs-projen-project-types@^0.3.2:
-  version "0.3.16"
-  resolved "https://registry.yarnpkg.com/cdklabs-projen-project-types/-/cdklabs-projen-project-types-0.3.16.tgz#8c414c04f017c79352483f8d9b8ad0b565b2ce3c"
-  integrity sha512-hJxM6OKVbHoDxVa95szlelCYZMBcbDfAJBEQC4Q0uZ0fsKgj8d6IM0ZgdpzQuMxT5/DDCyP4sA1SW6QW048B6g==
+cdklabs-projen-project-types@^0.3.18:
+  version "0.3.18"
+  resolved "https://registry.yarnpkg.com/cdklabs-projen-project-types/-/cdklabs-projen-project-types-0.3.18.tgz#bb117dcfebd1f93fdc7915e39558d283657d5120"
+  integrity sha512-XP34tadxokQ4I8XJn+r4JGI4RH3Ew521VOST8FH4/WsocsG57sv5TvOi6OE8sQiFEUGMEZAi5XZuNBCd42XGSw==
   dependencies:
-    yaml "^2.8.2"
+    yaml "^2.8.3"
 
 chalk@^2.4.2:
   version "2.4.2"
@@ -6776,10 +6776,10 @@ yaml@1.10.2:
   resolved "https://registry.yarnpkg.com/yaml/-/yaml-1.10.2.tgz#2301c5ffbf12b467de8da2333a459e29e7920e4b"
   integrity sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg==
 
-yaml@^2.2.2, yaml@^2.6.0, yaml@^2.8.0, yaml@^2.8.2:
-  version "2.8.2"
-  resolved "https://registry.yarnpkg.com/yaml/-/yaml-2.8.2.tgz#5694f25eca0ce9c3e7a9d9e00ce0ddabbd9e35c5"
-  integrity sha512-mplynKqc1C2hTVYxd0PU2xQAc22TI1vShAYGksCCfxbn/dFwnHTNi1bvYsBTkhdUNtGIf5xNOg938rrSSYvS9A==
+yaml@^2.2.2, yaml@^2.6.0, yaml@^2.8.0, yaml@^2.8.3:
+  version "2.8.3"
+  resolved "https://registry.yarnpkg.com/yaml/-/yaml-2.8.3.tgz#a0d6bd2efb3dd03c59370223701834e60409bd7d"
+  integrity sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==
 
 yargs-parser@^20.2.2, yargs-parser@^20.2.3:
   version "20.2.9"
