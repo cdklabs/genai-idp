@@ -21,7 +21,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
-import { IInvokable } from "../invokable";
+import { IInvokable } from "@cdklabs/genai-idp";
 
 export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
   /**

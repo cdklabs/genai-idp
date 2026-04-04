@@ -15,7 +15,7 @@ import {
 import { Arn, ArnFormat } from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { ClassificationMethod } from "../classification-method";
-import { IInvokable, Invokable, InvokableType } from "../invokable";
+import { IInvokable, Invokable, InvokableType } from "@cdklabs/genai-idp";
 
 /**
  * Options for configuring the Bedrock LLM processor configuration definition.

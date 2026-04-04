@@ -20,7 +20,7 @@ import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
-import { IInvokable } from "../invokable";
+import { IInvokable } from "@cdklabs/genai-idp";
 
 export interface OcrFunctionProps extends IdpPythonFunctionOptions {
   /**

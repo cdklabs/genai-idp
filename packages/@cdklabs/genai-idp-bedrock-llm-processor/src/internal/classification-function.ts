@@ -20,7 +20,7 @@ import { IKey } from "aws-cdk-lib/aws-kms";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
-import { IInvokable } from "../invokable";
+import { IInvokable } from "@cdklabs/genai-idp";
 
 export interface ClassificationFunctionProps extends IdpPythonFunctionOptions {
   /**

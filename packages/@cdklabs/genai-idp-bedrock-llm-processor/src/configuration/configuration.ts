@@ -10,7 +10,7 @@ import {
   BedrockLlmProcessorConfigurationDefinitionOptions,
   IBedrockLlmProcessorConfigurationDefinition,
 } from "./definition";
-import { Invokable } from "../invokable";
+import { Invokable } from "@cdklabs/genai-idp";
 import { IBedrockLlmProcessor } from "../processor";
 
 /**
