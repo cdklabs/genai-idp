@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import { IConstruct } from "constructs";
 import { IProcessingEnvironment } from "./processing-environment";
+import { EvaluationFunction } from "./unified-document-processor";
 
 /**
  * Properties required to configure a document processor implementation.
@@ -71,5 +72,5 @@ export interface IDocumentProcessor extends IConstruct {
    * The evaluation function is created by the ProcessingEnvironment when
    * evaluation baseline bucket and model are provided.
    */
-  readonly evaluationFunction?: any;
+  readonly evaluationFunction?: EvaluationFunction;
 }

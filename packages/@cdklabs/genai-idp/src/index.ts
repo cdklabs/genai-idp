@@ -18,6 +18,7 @@ export * from "./processing-environment";
 export * from "./user-identity";
 export * from "./web-application";
 export * from "./idp-python-layer-version";
+export * from "./invokable";
 export * from "./log-level";
 export * from "./processing-environment-api/agent-analytics";
 export * from "./section-splitting-strategy";

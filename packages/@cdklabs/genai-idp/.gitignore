@@ -47,6 +47,15 @@ junit.xml
 tsconfig.json
 !/tsconfig.json
 !/API.md
+test/integ/.tmp
+test/integ/unified-processor.integ.snapshot/asset.*
+test/integ/unified-processor.integ.snapshot/**/asset.*
+test/integ/unified-processor.integ.snapshot/cdk.out
+test/integ/unified-processor.integ.snapshot/**/cdk.out
+test/integ/unified-processor.integ.snapshot/manifest.json
+test/integ/unified-processor.integ.snapshot/**/manifest.json
+test/integ/unified-processor.integ.snapshot/tree.json
+test/integ/unified-processor.integ.snapshot/**/tree.json
 !/src/fixed-key-table-props.ts
 !/src/processing-environment-api/processing-environment-api-base-props.ts
 !/src/functions/idp-python-function-options.ts

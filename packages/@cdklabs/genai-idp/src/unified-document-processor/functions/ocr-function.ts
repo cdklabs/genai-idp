@@ -6,6 +6,8 @@ SPDX-License-Identifier: Apache-2.0
 import * as path from "path";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
 import * as cdk from "aws-cdk-lib";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -13,7 +15,11 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { IConfigurationTable } from "../../configuration-table";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
+import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
+import { IInvokable } from "../../invokable";
+import { IProcessingEnvironmentApi } from "../../processing-environment-api";
 import { ITrackingTable } from "../../tracking-table";
+import { LogLevel } from "../../log-level";
 import { VpcConfiguration } from "../../vpc-configuration";
 
 /**
@@ -36,6 +42,19 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
   readonly configurationTable: IConfigurationTable;
 
   /**
+   * The CloudWatch metric namespace for emitting processing metrics.
+   */
+  readonly metricNamespace: string;
+
+  /**
+   * The log level for the function.
+   * Controls the verbosity of logs generated during processing.
+   *
+   * @default LogLevel.INFO
+   */
+  readonly logLevel?: LogLevel;
+
+  /**
    * The S3 bucket for input documents.
    */
   readonly inputBucket: s3.IBucket;
@@ -51,10 +70,10 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
   readonly workingBucket: s3.IBucket;
 
   /**
-   * Optional AppSync API URL for document tracking via GraphQL mutations.
-   * When provided, the function uses AppSync for real-time document status updates.
+   * Optional ProcessingEnvironmentApi for progress notifications.
+   * When provided, the function will use GraphQL mutations to update document status.
    */
-  readonly appSyncApiUrl?: string;
+  readonly api?: IProcessingEnvironmentApi;
 
   /**
    * Optional KMS encryption key.
@@ -65,6 +84,21 @@ export interface OcrFunctionProps extends IdpPythonFunctionOptions {
    * Optional VPC configuration for the Lambda function.
    */
   readonly vpcConfiguration?: VpcConfiguration;
+
+  /**
+   * Optional inference provider for OCR.
+   * Can be a Bedrock model or a custom Lambda function (LambdaHook).
+   *
+   * @default - No inference provider; permissions granted in parent construct
+   */
+  readonly inferenceProvider?: IInvokable;
+
+  /**
+   * OCR backend type.
+   *
+   * @default "textract"
+   */
+  readonly ocrBackend?: "textract" | "bedrock" | "none";
 }
 
 /**
@@ -105,19 +139,39 @@ export class OcrFunction extends lambda_python.PythonFunction {
         "unified",
         "ocr_function",
       ),
+      bundling: {
+        command: [
+          "bash",
+          "-c",
+          [
+            `mkdir -p /tmp/builddir`,
+            `mkdir -p /asset-output`,
+            `rsync -rL /asset-input/ /tmp/builddir`,
+            `cd /tmp/builddir`,
+            `sed -i '/\\.\\/lib/d' requirements.txt || true`,
+            `python -m pip install -r requirements.txt -t /tmp/builddir || true`,
+            `find /tmp/builddir -type d -name "*.egg-info" -exec rm -rf {} +`,
+            `find /tmp/builddir -type d -name "__pycache__" -exec rm -rf {} +`,
+            `find /tmp/builddir -type d -name "build" -exec rm -rf {} +`,
+            `find /tmp/builddir -type d -name "tests" -exec rm -rf {} +`,
+            `rsync -rL /tmp/builddir/ /asset-output`,
+            `rm -rf /tmp/builddir`,
+            `cd /asset-output`,
+          ].join(" && "),
+        ],
+      },
+      layers: [IdpPythonLayerVersion.getOrCreateForArchitecture(scope, lambda.Architecture.ARM_64, "ocr", "docs_service")],
       timeout: cdk.Duration.minutes(15),
       memorySize: 4096,
       environment: {
-        METRIC_NAMESPACE: cdk.Stack.of(scope).stackName,
+        METRIC_NAMESPACE: props.metricNamespace,
         MAX_WORKERS: "20",
         CONFIGURATION_TABLE_NAME: props.configurationTable.tableName,
-        LOG_LEVEL: "WARN",
+        LOG_LEVEL: props.logLevel ?? LogLevel.INFO,
         TRACKING_TABLE: props.trackingTable.tableName,
-        DOCUMENT_TRACKING_MODE: props.appSyncApiUrl ? "appsync" : "dynamodb",
+        DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
         WORKING_BUCKET: props.workingBucket.bucketName,
-        ...(props.appSyncApiUrl && {
-          APPSYNC_API_URL: props.appSyncApiUrl,
-        }),
+        ...(props.api && { APPSYNC_API_URL: props.api.graphqlUrl }),
       },
       ...(props.vpcConfiguration && {
         vpc: props.vpcConfiguration.vpc,
@@ -137,9 +191,20 @@ export class OcrFunction extends lambda_python.PythonFunction {
     });
 
     // Grant permissions
+    cloudwatch.Metric.grantPutMetricData(this);
     props.trackingTable.grantReadWriteData(this);
     props.configurationTable.grantReadData(this);
+    props.inputBucket.grantRead(this);
+    props.outputBucket.grantReadWrite(this);
     props.workingBucket.grantReadWrite(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
+    props.inferenceProvider?.grantInvoke(this);
+    props.api?.grantMutation(this);
+
+    // Textract permissions for OCR
+    this.addToRolePolicy(new iam.PolicyStatement({
+      actions: ["textract:DetectDocumentText", "textract:AnalyzeDocument"],
+      resources: ["*"],
+    }));
   }
 }

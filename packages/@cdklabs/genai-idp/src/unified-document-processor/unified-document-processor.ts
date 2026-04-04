@@ -8,13 +8,16 @@ import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as events from "aws-cdk-lib/aws-events";
 import * as eventtargets from "aws-cdk-lib/aws-events-targets";
-import * as iam from "aws-cdk-lib/aws-iam";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
+import { IUnifiedDocumentProcessorConfiguration } from "./configuration/configuration";
+import { UnifiedDocumentProcessorConfigurationSchema } from "./configuration/schema";
+import { BdaMetadataTable, IBdaMetadataTable } from "./bda-metadata-table";
 import { DocumentProcessorProps, IDocumentProcessor } from "../document-processor";
+import { Invokable } from "../invokable";
 import { IProcessingEnvironment } from "../processing-environment";
 import { VpcConfiguration } from "../vpc-configuration";
 import {
@@ -60,8 +63,6 @@ export interface IUnifiedDocumentProcessor extends IDocumentProcessor {
   readonly processResultsFunction: ProcessResultsFunction;
   /** Summarization function — summarizes document content using Bedrock. */
   readonly summarizationFunction: SummarizationFunction;
-  /** Evaluation function — evaluates processing results against baselines. */
-  readonly evaluationFunction: EvaluationFunction;
   /** Rule validation function — validates document sections against configured rules. */
   readonly ruleValidationFunction: RuleValidationFunction;
   /** Rule validation orchestration function — orchestrates and aggregates rule validation results. */
@@ -79,6 +80,15 @@ export interface IUnifiedDocumentProcessor extends IDocumentProcessor {
  */
 export interface UnifiedDocumentProcessorProps extends DocumentProcessorProps {
   /**
+   * The configuration for the unified document processor.
+   * Provides default configuration values and resolved inference providers.
+   * Use factory methods like `UnifiedDocumentProcessorConfiguration.lendingPackageSample()`.
+   *
+   * @since 0.5.2
+   */
+  readonly configuration: IUnifiedDocumentProcessorConfiguration;
+
+  /**
    * The S3 bucket containing classification, extraction, and assessment configuration files.
    * Used by Classification, Extraction, and Assessment functions in the pipeline branch.
    */
@@ -89,10 +99,9 @@ export interface UnifiedDocumentProcessorProps extends DocumentProcessorProps {
    * Stores execution_id/record_number pairs for BDA processing.
    * If not provided, a new table is created automatically.
    *
-   * @default - A new BDA metadata table is created with PK=execution_id (S),
-   * SK=record_number (N), TTL=ExpiresAfter
+   * @default - A new BdaMetadataTable is created
    */
-  readonly bdaMetadataTable?: dynamodb.ITable;
+  readonly bdaMetadataTable?: IBdaMetadataTable;
 
   /**
    * Optional AppSync API URL for document tracking via GraphQL mutations.
@@ -204,7 +213,7 @@ export class UnifiedDocumentProcessor
 
   // Shared functions
   public readonly summarizationFunction: SummarizationFunction;
-  public readonly evaluationFunction: EvaluationFunction;
+  public readonly evaluationFunction?: EvaluationFunction;
   public readonly ruleValidationFunction: RuleValidationFunction;
   public readonly ruleValidationOrchestrationFunction: RuleValidationOrchestrationFunction;
 
@@ -225,23 +234,11 @@ export class UnifiedDocumentProcessor
     // Create BDA Metadata Table if not provided
     const bdaMetadataTable =
       props.bdaMetadataTable ??
-      new dynamodb.Table(this, "BDAMetadataTable", {
-        partitionKey: {
-          name: "execution_id",
-          type: dynamodb.AttributeType.STRING,
-        },
-        sortKey: {
-          name: "record_number",
-          type: dynamodb.AttributeType.NUMBER,
-        },
-        timeToLiveAttribute: "ExpiresAfter",
-        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-        pointInTimeRecovery: true,
+      new BdaMetadataTable(this, "BDAMetadataTable", {
         encryption: encryptionKey
           ? dynamodb.TableEncryption.CUSTOMER_MANAGED
-          : dynamodb.TableEncryption.AWS_MANAGED,
+          : undefined,
         encryptionKey: encryptionKey,
-        removalPolicy: cdk.RemovalPolicy.DESTROY,
       });
 
     // Shared function props
@@ -251,18 +248,24 @@ export class UnifiedDocumentProcessor
       inputBucket: env.inputBucket,
       outputBucket: env.outputBucket,
       workingBucket: env.workingBucket,
+      metricNamespace: env.metricNamespace,
+      logLevel: env.logLevel,
       encryptionKey,
       vpcConfiguration,
-    };
-
-    const appSyncProps = {
-      appSyncApiUrl: props.appSyncApiUrl,
     };
 
     const guardrailProps = {
       guardrailId: props.guardrailId,
       guardrailVersion: props.guardrailVersion,
     };
+
+    // ========================================
+    // Bind configuration — resolves inference providers and writes defaults
+    // ========================================
+    const renderedConfiguration = props.configuration.bind(this);
+
+    // Bind schema
+    new UnifiedDocumentProcessorConfigurationSchema().bind(this);
 
     // ========================================
     // BDA-specific Lambda functions
@@ -285,7 +288,7 @@ export class UnifiedDocumentProcessor
       "BdaProcessResultsFunction",
       {
         ...sharedProps,
-        ...appSyncProps,
+        api: env.api,
         bdaMetadataTable,
       },
     );
@@ -296,7 +299,9 @@ export class UnifiedDocumentProcessor
 
     this.ocrFunction = new OcrFunction(this, "OcrFunction", {
       ...sharedProps,
-      ...appSyncProps,
+      api: env.api,
+      inferenceProvider: renderedConfiguration.ocrInferenceProvider,
+      ocrBackend: renderedConfiguration.ocrBackend,
     });
 
     this.classificationFunction = new ClassificationFunction(
@@ -304,8 +309,9 @@ export class UnifiedDocumentProcessor
       "ClassificationFunction",
       {
         ...sharedProps,
-        ...appSyncProps,
+        api: env.api,
         configurationBucket: props.configurationBucket,
+        inferenceProvider: renderedConfiguration.classificationInferenceProvider,
       },
     );
 
@@ -314,9 +320,11 @@ export class UnifiedDocumentProcessor
       "ExtractionFunction",
       {
         ...sharedProps,
-        ...appSyncProps,
+        api: env.api,
         ...guardrailProps,
         configurationBucket: props.configurationBucket,
+        inferenceProvider: renderedConfiguration.extractionInferenceProvider,
+        customPromptGenerator: renderedConfiguration.customPromptGenerator,
       },
     );
 
@@ -325,8 +333,9 @@ export class UnifiedDocumentProcessor
       "AssessmentFunction",
       {
         ...sharedProps,
-        ...appSyncProps,
+        api: env.api,
         configurationBucket: props.configurationBucket,
+        inferenceProvider: renderedConfiguration.assessmentInferenceProvider,
       },
     );
 
@@ -335,7 +344,7 @@ export class UnifiedDocumentProcessor
       "ProcessResultsFunction",
       {
         ...sharedProps,
-        ...appSyncProps,
+        api: env.api,
       },
     );
 
@@ -348,8 +357,9 @@ export class UnifiedDocumentProcessor
       "SummarizationFunction",
       {
         ...sharedProps,
-        ...appSyncProps,
+        api: env.api,
         ...guardrailProps,
+        inferenceProvider: renderedConfiguration.summarizationInferenceProvider,
       },
     );
 
@@ -358,7 +368,7 @@ export class UnifiedDocumentProcessor
       "RuleValidationFunction",
       {
         ...sharedProps,
-        ...appSyncProps,
+        api: env.api,
         ...guardrailProps,
       },
     );
@@ -369,7 +379,7 @@ export class UnifiedDocumentProcessor
         "RuleValidationOrchestrationFunction",
         {
           ...sharedProps,
-          ...appSyncProps,
+          api: env.api,
           ...guardrailProps,
           reportingBucket:
             props.reportingBucket ??
@@ -387,7 +397,8 @@ export class UnifiedDocumentProcessor
       "EvaluationFunction",
       {
         ...sharedProps,
-        ...appSyncProps,
+        api: env.api,
+        inferenceProvider: renderedConfiguration.evaluationModel ? Invokable.fromModel(renderedConfiguration.evaluationModel) : undefined,
         reportingBucket:
           props.reportingBucket ??
           env.reportingEnvironment?.reportingBucket ??
@@ -492,159 +503,7 @@ export class UnifiedDocumentProcessor
       }),
     );
 
-    // ========================================
-    // IAM permissions for Lambda functions
-    // ========================================
-    this.grantBedrockPermissions();
-    this.grantTextractPermissions();
-    this.grantBdaApiPermissions();
-    this.grantS3Permissions(props);
-
     // Attach processor to environment
     this.environment.attach(this);
-  }
-
-  /**
-   * Grants Bedrock model invoke permissions to functions that need it.
-   * OCR, Classification, Extraction, Assessment, Summarization, Evaluation,
-   * RuleValidation, and RuleValidationOrchestration all invoke Bedrock models.
-   */
-  private grantBedrockPermissions(): void {
-    const bedrockFunctions = [
-      this.ocrFunction,
-      this.classificationFunction,
-      this.extractionFunction,
-      this.assessmentFunction,
-      this.summarizationFunction,
-      this.evaluationFunction,
-      this.ruleValidationFunction,
-      this.ruleValidationOrchestrationFunction,
-    ];
-
-    const bedrockPolicy = new iam.PolicyStatement({
-      actions: [
-        "bedrock:InvokeModel",
-        "bedrock:InvokeModelWithResponseStream",
-        "bedrock:GetInferenceProfile",
-      ],
-      resources: [
-        cdk.Stack.of(this).formatArn({
-          service: "bedrock",
-          resource: "inference-profile",
-          resourceName: "*",
-          arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
-        }),
-        cdk.Stack.of(this).formatArn({
-          service: "bedrock",
-          resource: "foundation-model",
-          resourceName: "*",
-          arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
-        }),
-      ],
-    });
-
-    for (const fn of bedrockFunctions) {
-      fn.addToRolePolicy(bedrockPolicy);
-    }
-
-    // Guardrail permissions for functions that support it
-    const guardrailFunctions = [
-      this.extractionFunction,
-      this.summarizationFunction,
-      this.ruleValidationFunction,
-      this.ruleValidationOrchestrationFunction,
-    ];
-
-    const guardrailPolicy = new iam.PolicyStatement({
-      actions: ["bedrock:ApplyGuardrail"],
-      resources: [
-        cdk.Stack.of(this).formatArn({
-          service: "bedrock",
-          resource: "guardrail",
-          resourceName: "*",
-          arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
-        }),
-      ],
-    });
-
-    for (const fn of guardrailFunctions) {
-      fn.addToRolePolicy(guardrailPolicy);
-    }
-  }
-
-  /**
-   * Grants Textract permissions to the OCR function.
-   */
-  private grantTextractPermissions(): void {
-    this.ocrFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: [
-          "textract:DetectDocumentText",
-          "textract:AnalyzeDocument",
-        ],
-        resources: ["*"],
-      }),
-    );
-  }
-
-  /**
-   * Grants BDA API permissions to BDA-specific functions.
-   */
-  private grantBdaApiPermissions(): void {
-    const bdaPolicy = new iam.PolicyStatement({
-      actions: [
-        "bedrock:InvokeDataAutomationAsync",
-        "bedrock:GetDataAutomationStatus",
-        "bedrock:GetDataAutomationProject",
-        "bedrock:ListDataAutomationProjects",
-        "bedrock:GetBlueprint",
-        "bedrock:GetBlueprintRecommendation",
-      ],
-      resources: ["*"],
-    });
-
-    this.bdaInvokeFunction.addToRolePolicy(bdaPolicy);
-    this.bdaProcessResultsFunction.addToRolePolicy(bdaPolicy);
-  }
-
-  /**
-   * Grants S3 bucket permissions to functions that need cross-bucket access
-   * beyond what was granted in individual function constructors.
-   */
-  private grantS3Permissions(props: UnifiedDocumentProcessorProps): void {
-    const env = this.environment;
-
-    // BDA invoke needs read on input bucket and write on working bucket
-    env.inputBucket.grantRead(this.bdaInvokeFunction);
-    env.workingBucket.grantReadWrite(this.bdaInvokeFunction);
-    env.outputBucket.grantReadWrite(this.bdaInvokeFunction);
-
-    // BDA process results needs read on input/output buckets
-    env.inputBucket.grantRead(this.bdaProcessResultsFunction);
-    env.outputBucket.grantReadWrite(this.bdaProcessResultsFunction);
-
-    // OCR needs read on input bucket
-    env.inputBucket.grantRead(this.ocrFunction);
-
-    // Pipeline functions need input bucket read
-    env.inputBucket.grantRead(this.classificationFunction);
-    env.inputBucket.grantRead(this.extractionFunction);
-    env.inputBucket.grantRead(this.assessmentFunction);
-
-    // Output bucket access for process results
-    env.inputBucket.grantRead(this.processResultsFunction);
-
-    // Summarization needs input bucket read
-    env.inputBucket.grantRead(this.summarizationFunction);
-
-    // Evaluation needs input bucket read
-    env.inputBucket.grantRead(this.evaluationFunction);
-
-    // Rule validation functions need input bucket read
-    env.inputBucket.grantRead(this.ruleValidationFunction);
-    env.inputBucket.grantRead(this.ruleValidationOrchestrationFunction);
-
-    // Configuration bucket read for pipeline functions
-    props.configurationBucket.grantRead(this.ocrFunction);
   }
 }

@@ -17,12 +17,6 @@ import yaml from "yaml";
 export * from "./config-merge-utils";
 
 /**
- * Type alias for backward compatibility.
- * IInvokable is now IBedrockInvokable from the alpha module.
- */
-export type IInvokable = IBedrockInvokable;
-
-/**
  * Converts a model name string to an appropriate IBedrockInvokable implementation.
  * Handles region-specific model identifiers with prefixes (us., eu., apac.)
  * and creates the appropriate cross-region inference profile when needed.

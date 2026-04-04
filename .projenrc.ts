@@ -191,6 +191,32 @@ genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:unified:schema`, {
   ]
 }));
 
+// Bundle unified pattern configuration presets
+const unifiedConfigsDir = 'sources/config_library/unified';
+const unifiedConfigs = [
+  "bank-statement-sample",
+  "docsplit",
+  "fake-w2",
+  "healthcare-multisection-package",
+  "lending-package-sample",
+  "lending-package-sample-govcloud",
+  "ocr-benchmark",
+  "realkie-fcc-verified",
+  "rule-extraction",
+  "rule-validation",
+  "rvl-cdip",
+  "rvl-cdip-with-few-shot-examples",
+];
+
+unifiedConfigs.forEach((configName) => {
+  genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:unified:config:${configName}`, {
+    steps: [
+      { exec: `mkdir -p assets/configs/unified/${configName}` },
+      { exec: `rsync -rLct ../../../${unifiedConfigsDir}/${configName}/config.yaml assets/configs/unified/${configName}/.` }
+    ]
+  }));
+});
+
 buildPackages.exec(`yarn workspace ${genaiIdp.name} build`);
 
 const idpPattern1 = new AwsCdkTypeScriptWorkspace({
