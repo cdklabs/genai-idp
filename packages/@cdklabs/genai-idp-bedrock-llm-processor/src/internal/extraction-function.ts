@@ -21,6 +21,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
+import { IInvokable } from "../invokable";
 
 export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
   /**
@@ -74,10 +75,12 @@ export interface ExtractionFunctionProps extends IdpPythonFunctionOptions {
   readonly encryptionKey?: IKey;
 
   /**
-   * The Bedrock model to use for extraction.
-   * The AI model that will extract information from documents.
+   * The inference provider for extraction.
+   * Can be a Bedrock model or a custom Lambda function (LambdaHook).
+   *
+   * @default - No inference provider
    */
-  readonly extractionModel: bedrock.IBedrockInvokable;
+  readonly inferenceProvider?: IInvokable;
 
   /**
    * Optional Bedrock guardrail to apply to extraction model interactions.
@@ -178,7 +181,7 @@ export class ExtractionFunction extends PythonFunction {
     Metric.grantPutMetricData(this);
     props.trackingTable.grantReadWriteData(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
-    props.extractionModel.grantInvoke(this);
+    props.inferenceProvider?.grantInvoke(this);
     props.extractionGuardrail?.grantApply(this);
 
     // Grant invoke permissions to custom prompt generator if provided

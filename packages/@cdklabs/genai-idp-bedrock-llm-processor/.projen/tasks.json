@@ -319,6 +319,69 @@
         }
       ]
     },
+    "integ:lambda-hook:assert": {
+      "name": "integ:lambda-hook:assert",
+      "description": "assert the snapshot of integration test 'lambda-hook'",
+      "steps": [
+        {
+          "exec": "[ -d \"test/integ/lambda-hook.integ.snapshot\" ] || (echo \"No snapshot available for integration test 'lambda-hook'. Run 'projen integ:lambda-hook:deploy' to capture.\" && exit 1)"
+        },
+        {
+          "exec": "cdk synth --app \"ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata -o test/integ/.tmp/lambda-hook.integ/assert.cdk.out > /dev/null"
+        },
+        {
+          "exec": "diff -r -x asset.* -x cdk.out -x manifest.json -x tree.json test/integ/lambda-hook.integ.snapshot/ test/integ/.tmp/lambda-hook.integ/assert.cdk.out/"
+        }
+      ]
+    },
+    "integ:lambda-hook:deploy": {
+      "name": "integ:lambda-hook:deploy",
+      "description": "deploy integration test 'lambda-hook' and capture snapshot",
+      "steps": [
+        {
+          "exec": "rm -fr test/integ/.tmp/lambda-hook.integ/deploy.cdk.out"
+        },
+        {
+          "exec": "cdk deploy --app \"ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata '**' --require-approval=never -o test/integ/.tmp/lambda-hook.integ/deploy.cdk.out"
+        },
+        {
+          "exec": "rm -fr test/integ/lambda-hook.integ.snapshot"
+        },
+        {
+          "exec": "mv test/integ/.tmp/lambda-hook.integ/deploy.cdk.out test/integ/lambda-hook.integ.snapshot"
+        },
+        {
+          "spawn": "integ:lambda-hook:destroy"
+        }
+      ]
+    },
+    "integ:lambda-hook:destroy": {
+      "name": "integ:lambda-hook:destroy",
+      "description": "destroy integration test 'lambda-hook'",
+      "steps": [
+        {
+          "exec": "cdk destroy --app test/integ/lambda-hook.integ.snapshot '**' --no-version-reporting"
+        }
+      ]
+    },
+    "integ:lambda-hook:snapshot": {
+      "name": "integ:lambda-hook:snapshot",
+      "description": "update snapshot for integration test \"lambda-hook\"",
+      "steps": [
+        {
+          "exec": "cdk synth --app \"ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata -o test/integ/lambda-hook.integ.snapshot > /dev/null"
+        }
+      ]
+    },
+    "integ:lambda-hook:watch": {
+      "name": "integ:lambda-hook:watch",
+      "description": "watch integration test 'lambda-hook' (without updating snapshots)",
+      "steps": [
+        {
+          "exec": "cdk watch --app \"ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata '**' -o test/integ/.tmp/lambda-hook.integ/deploy.cdk.out"
+        }
+      ]
+    },
     "integ:pattern:assert": {
       "name": "integ:pattern:assert",
       "description": "assert the snapshot of integration test 'pattern'",
@@ -386,6 +449,9 @@
       "name": "integ:snapshot-all",
       "description": "update snapshot for all integration tests",
       "steps": [
+        {
+          "spawn": "integ:lambda-hook:snapshot"
+        },
         {
           "spawn": "integ:pattern:snapshot"
         }
@@ -487,6 +553,9 @@
         },
         {
           "spawn": "eslint"
+        },
+        {
+          "spawn": "integ:lambda-hook:assert"
         },
         {
           "spawn": "integ:pattern:assert"

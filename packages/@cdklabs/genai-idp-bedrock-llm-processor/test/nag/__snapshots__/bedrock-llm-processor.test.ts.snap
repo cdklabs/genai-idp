@@ -655,11 +655,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
               },
             },
             {
-              "Action": "bedrock:InvokeModel",
-              "Effect": "Allow",
-              "Resource": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
-            },
-            {
               "Action": "appsync:GraphQL",
               "Effect": "Allow",
               "Resource": "arn:aws:appsync:us-east-1:123456789012:apis/test-api-id/graphql",
@@ -1343,11 +1338,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                   "Arn",
                 ],
               },
-            },
-            {
-              "Action": "bedrock:InvokeModel",
-              "Effect": "Allow",
-              "Resource": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
             },
             {
               "Action": "appsync:GraphQL",
@@ -2796,12 +2786,13 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 },
                 "max_tokens": {
                   "description": "Max tokens",
-                  "order": 7,
+                  "order": 8,
                   "type": "number",
                 },
                 "model": {
-                  "description": "Bedrock model ID",
+                  "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
                   "enum": [
+                    "LambdaHook",
                     "us.amazon.nova-lite-v1:0",
                     "us.amazon.nova-pro-v1:0",
                     "us.amazon.nova-premier-v1:0",
@@ -2816,31 +2807,41 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                   "order": 3,
                   "type": "string",
                 },
+                "model_lambda_hook_arn": {
+                  "default": "",
+                  "dependsOn": {
+                    "field": "model",
+                    "value": "LambdaHook",
+                  },
+                  "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+                  "order": 4,
+                  "type": "string",
+                },
                 "system_prompt": {
                   "description": "System prompt",
                   "format": "textarea",
-                  "order": 8,
+                  "order": 9,
                   "type": "string",
                 },
                 "task_prompt": {
                   "description": "Task prompt - supports placeholders {DOCUMENT_TEXT} (markdown text), {OCR_TEXT_CONFIDENCE} (OCR text blocks with confidence), {DOCUMENT_CLASS}, {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}, {EXTRACTION_RESULTS}, {GRANULAR_CONTEXT} and {DOCUMENT_IMAGE}. Use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
                   "format": "textarea",
-                  "order": 9,
+                  "order": 10,
                   "type": "string",
                 },
                 "temperature": {
                   "description": "Sampling temperature",
-                  "order": 4,
+                  "order": 5,
                   "type": "number",
                 },
                 "top_k": {
                   "description": "Sampling Top K",
-                  "order": 5,
+                  "order": 6,
                   "type": "number",
                 },
                 "top_p": {
                   "description": "Sampling Top P",
-                  "order": 6,
+                  "order": 7,
                   "type": "number",
                 },
               },
@@ -3150,7 +3151,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "multimodalPageLevelClassification",
                     "textbasedHolisticClassification",
                   ],
-                  "order": 2,
+                  "order": 3,
                   "type": "string",
                 },
                 "image": {
@@ -3187,17 +3188,18 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "5",
                     "10",
                   ],
-                  "order": 3,
+                  "order": 4,
                   "type": "string",
                 },
                 "max_tokens": {
                   "description": "Max tokens",
-                  "order": 7,
+                  "order": 8,
                   "type": "number",
                 },
                 "model": {
-                  "description": "Model identifier",
+                  "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
                   "enum": [
+                    "LambdaHook",
                     "us.amazon.nova-lite-v1:0",
                     "us.amazon.nova-pro-v1:0",
                     "us.amazon.nova-premier-v1:0",
@@ -3212,32 +3214,42 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                   "order": 1,
                   "type": "string",
                 },
+                "model_lambda_hook_arn": {
+                  "default": "",
+                  "dependsOn": {
+                    "field": "model",
+                    "value": "LambdaHook",
+                  },
+                  "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+                  "order": 2,
+                  "type": "string",
+                },
                 "system_prompt": {
                   "description": "System prompt",
-                  "order": 8,
+                  "order": 9,
                   "type": "string",
                 },
                 "task_prompt": {
                   "description": "Task prompt - include placeholders {CLASS_NAMES_AND_DESCRIPTIONS} (replaced with the class names and descriptions for all specified classes), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and for multi-modal classification {DOCUMENT_IMAGE} (replaced by the page image attachment). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-                  "order": 9,
+                  "order": 10,
                   "type": "string",
                 },
                 "temperature": {
                   "description": "Sampling temperature",
                   "maximum": 1,
                   "minimum": 0,
-                  "order": 4,
+                  "order": 5,
                   "type": "number",
                 },
                 "top_k": {
                   "description": "Sampling Top K",
                   "minimum": 1,
-                  "order": 5,
+                  "order": 6,
                   "type": "integer",
                 },
                 "top_p": {
                   "description": "Sampling Top P",
-                  "order": 6,
+                  "order": 7,
                   "type": "number",
                 },
               },
@@ -3346,12 +3358,13 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                 },
                 "max_tokens": {
                   "description": "Max tokens",
-                  "order": 5,
+                  "order": 6,
                   "type": "number",
                 },
                 "model": {
-                  "description": "Model identifier",
+                  "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
                   "enum": [
+                    "LambdaHook",
                     "us.amazon.nova-lite-v1:0",
                     "us.amazon.nova-pro-v1:0",
                     "us.amazon.nova-premier-v1:0",
@@ -3366,32 +3379,42 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                   "order": 1,
                   "type": "string",
                 },
+                "model_lambda_hook_arn": {
+                  "default": "",
+                  "dependsOn": {
+                    "field": "model",
+                    "value": "LambdaHook",
+                  },
+                  "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+                  "order": 2,
+                  "type": "string",
+                },
                 "system_prompt": {
                   "description": "System prompt",
-                  "order": 6,
+                  "order": 7,
                   "type": "string",
                 },
                 "task_prompt": {
                   "description": "Task prompt - supports placeholders {DOCUMENT_CLASS} (replaced with the detected class label), {ATTRIBUTE_NAMES_AND_DESCRIPTIONS} (replaced with the attribute names and descriptions for the detected class), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and {DOCUMENT_IMAGE} (replaced by the page image attachments for each page). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
-                  "order": 7,
+                  "order": 8,
                   "type": "string",
                 },
                 "temperature": {
                   "description": "Sampling temperature",
                   "maximum": 1,
                   "minimum": 0,
-                  "order": 2,
+                  "order": 3,
                   "type": "number",
                 },
                 "top_k": {
                   "description": "Sampling Top K",
                   "minimum": 1,
-                  "order": 3,
+                  "order": 4,
                   "type": "integer",
                 },
                 "top_p": {
                   "description": "Sampling Top P",
-                  "order": 4,
+                  "order": 5,
                   "type": "number",
                 },
               },
@@ -3454,7 +3477,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "type": "object",
                   },
                   "listLabel": "Textract Features",
-                  "order": 5,
+                  "order": 6,
                   "type": "array",
                 },
                 "image": {
@@ -3498,8 +3521,9 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "field": "backend",
                     "value": "bedrock",
                   },
-                  "description": "Bedrock model ID (only used if backend is 'bedrock')",
+                  "description": "Bedrock model ID (only used if backend is 'bedrock'). Select 'LambdaHook' to use a custom Lambda function for inference.",
                   "enum": [
+                    "LambdaHook",
                     "us.amazon.nova-lite-v1:0",
                     "us.amazon.nova-pro-v1:0",
                     "us.amazon.nova-premier-v1:0",
@@ -3514,6 +3538,16 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                   "order": 2,
                   "type": "string",
                 },
+                "model_lambda_hook_arn": {
+                  "default": "",
+                  "dependsOn": {
+                    "field": "model_id",
+                    "value": "LambdaHook",
+                  },
+                  "description": "Lambda function ARN for custom inference (used when model_id is 'LambdaHook'). Function name must start with GENAIIDP-.",
+                  "order": 3,
+                  "type": "string",
+                },
                 "system_prompt": {
                   "default": "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible.",
                   "dependsOn": {
@@ -3521,7 +3555,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "value": "bedrock",
                   },
                   "description": "System prompt for Bedrock OCR (only used if backend is 'bedrock')",
-                  "order": 3,
+                  "order": 4,
                   "type": "string",
                 },
                 "task_prompt": {
@@ -3531,7 +3565,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                     "value": "bedrock",
                   },
                   "description": "Task prompt for Bedrock OCR (only used if backend is 'bedrock')",
-                  "order": 4,
+                  "order": 5,
                   "type": "string",
                 },
               },
@@ -3586,12 +3620,13 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
               "properties": {
                 "max_tokens": {
                   "description": "Max tokens",
-                  "order": 5,
+                  "order": 6,
                   "type": "number",
                 },
                 "model": {
-                  "description": "Bedrock model ID",
+                  "description": "Model identifier. Select 'LambdaHook' to use a custom Lambda function for inference.",
                   "enum": [
+                    "LambdaHook",
                     "us.amazon.nova-lite-v1:0",
                     "us.amazon.nova-pro-v1:0",
                     "us.amazon.nova-premier-v1:0",
@@ -3606,31 +3641,41 @@ exports[`BedrockLlmProcessor CDK Nag Compliance BedrockLlmProcessor with suppres
                   "order": 1,
                   "type": "string",
                 },
+                "model_lambda_hook_arn": {
+                  "default": "",
+                  "dependsOn": {
+                    "field": "model",
+                    "value": "LambdaHook",
+                  },
+                  "description": "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-.",
+                  "order": 2,
+                  "type": "string",
+                },
                 "system_prompt": {
                   "description": "System prompt",
                   "format": "textarea",
-                  "order": 6,
+                  "order": 7,
                   "type": "string",
                 },
                 "task_prompt": {
                   "description": "Task prompt - supports parameter {DOCUMENT_TEXT}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.",
                   "format": "textarea",
-                  "order": 7,
+                  "order": 8,
                   "type": "string",
                 },
                 "temperature": {
                   "description": "Sampling temperature",
-                  "order": 2,
+                  "order": 3,
                   "type": "number",
                 },
                 "top_k": {
                   "description": "Sampling Top K",
-                  "order": 3,
+                  "order": 4,
                   "type": "number",
                 },
                 "top_p": {
                   "description": "Sampling Top P",
-                  "order": 4,
+                  "order": 5,
                   "type": "number",
                 },
               },

@@ -4,7 +4,7 @@
 notes: Bedrock-based OCR configuration for Pattern 2 testing with Claude 3.5 Sonnet
 ocr:
   backend: "bedrock"  # Using Bedrock for OCR instead of Textract
-  model_id: "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+  model_id: "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
   system_prompt: "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible."
   task_prompt: "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting."
   image:
@@ -146,7 +146,7 @@ classification:
   image:
     target_width: 951
     target_height: 1268
-  model: us.anthropic.claude-3-5-sonnet-20241022-v2:0
+  model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
   classificationMethod: multimodalPageLevelClassification
   temperature: 0.0
   top_k: 5
@@ -218,7 +218,7 @@ extraction:
   image:
     target_width: 951
     target_height: 1268
-  model: us.anthropic.claude-3-5-sonnet-20241022-v2:0
+  model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
   temperature: 0.0
   top_k: 5
   top_p: 0.1
@@ -548,7 +548,7 @@ evaluation:
       }
 
 pricing:
-  - name: bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0
+  - name: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
     units:
       - name: inputTokens
         price: 3.0E-6

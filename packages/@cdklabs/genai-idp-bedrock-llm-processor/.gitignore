@@ -47,6 +47,14 @@ junit.xml
 tsconfig.json
 !/tsconfig.json
 !/API.md
+test/integ/lambda-hook.integ.snapshot/asset.*
+test/integ/lambda-hook.integ.snapshot/**/asset.*
+test/integ/lambda-hook.integ.snapshot/cdk.out
+test/integ/lambda-hook.integ.snapshot/**/cdk.out
+test/integ/lambda-hook.integ.snapshot/manifest.json
+test/integ/lambda-hook.integ.snapshot/**/manifest.json
+test/integ/lambda-hook.integ.snapshot/tree.json
+test/integ/lambda-hook.integ.snapshot/**/tree.json
 test/integ/.tmp
 test/integ/pattern.integ.snapshot/asset.*
 test/integ/pattern.integ.snapshot/**/asset.*
