@@ -74,6 +74,9 @@ export const X_AWS_IDP_CLASSIFICATION = 'x-aws-idp-classification';
 export const X_AWS_IDP_DOCUMENT_NAME_REGEX = 'x-aws-idp-document-name-regex';
 export const X_AWS_IDP_PAGE_CONTENT_REGEX = 'x-aws-idp-document-page-content-regex';
 
+// Per-class extraction model override (overrides extraction.model)
+export const X_AWS_IDP_EXTRACTION_MODEL = 'x-aws-idp-extraction-model';
+
 // ============================================================================
 // AWS IDP List-Specific Extensions
 // ============================================================================

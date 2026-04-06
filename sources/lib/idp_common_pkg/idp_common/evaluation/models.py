@@ -70,6 +70,9 @@ class SectionEvaluationResult:
     document_class: str
     attributes: List[AttributeEvaluationResult]
     metrics: Dict[str, float] = field(default_factory=dict)
+    stickler_comparison_result: Optional[Dict[str, Any]] = (
+        None  # Raw Stickler result for bulk aggregation
+    )
 
     def get_attribute_results(self) -> Dict[str, AttributeEvaluationResult]:
         """Get results indexed by attribute name."""
@@ -221,6 +224,7 @@ class DocumentEvaluationResult:
                     "section_id": sr.section_id,
                     "document_class": sr.document_class,
                     "metrics": sr.metrics,
+                    "stickler_comparison_result": sr.stickler_comparison_result,  # Include for bulk aggregation
                     "attributes": [
                         {
                             "name": ar.name,

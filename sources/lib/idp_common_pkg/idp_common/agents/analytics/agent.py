@@ -56,7 +56,7 @@ def create_analytics_agent(
     database_overview = _get_database_overview()
 
     # Define the system prompt for the analytics agent
-    system_prompt = f"""
+    system_prompt = f"""  # nosec B608 - AI agent prompt template, not SQL execution
     You are an AI agent that converts natural language questions into Athena queries, executes those queries, and writes python code to convert the query results into json representing either a plot, a table, or a string.
     
     # Task

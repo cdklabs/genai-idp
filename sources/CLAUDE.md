@@ -24,14 +24,12 @@ python3 publish.py idp-1234567890 idp us-east-1
 # With verbose output for debugging build failures
 python3 publish.py idp-1234567890 idp us-east-1 --verbose
 
-# Legacy build script
-./publish.sh <cfn_bucket_basename> <cfn_prefix> <region>
 ```
 
 The build process:
-- Checks system dependencies (AWS CLI, SAM CLI, Docker, Python 3.11+, Node.js 22.12+)
+- Checks system dependencies (AWS CLI, SAM CLI, Docker, Python 3.12+, Node.js 22.12+)
 - Builds CloudFormation templates and assets using SAM
-- Pattern-2 functions are built as container images; Pattern-1 and Pattern-3 use ZIP-based Lambdas
+- All pattern functions are built within the unified pattern directory
 - Uploads artifacts to S3 bucket named `<cfn_bucket_basename>-<region>`
 
 ### Code Quality & Linting
@@ -91,8 +89,10 @@ pytest -m "integration"
 The IDP CLI is used for programmatic deployment and batch processing:
 
 ```bash
-# Install CLI
+# Install all packages into current Python environment
 make setup
+# Or create an isolated .venv first
+make setup-venv
 
 # Deploy a new stack
 idp-cli deploy \
@@ -106,7 +106,7 @@ idp-cli deploy \
 idp-cli deploy \
     --stack-name my-idp-stack \
     --pattern pattern-2 \
-    --custom-config ./config_library/pattern-2/bank-statement-sample/config.yaml \
+    --custom-config ./config_library/unified/bank-statement-sample/config.yaml \
     --wait
 
 # Process documents in batch
@@ -125,7 +125,7 @@ idp-cli download-results \
 ### Local Lambda Testing
 
 ```bash
-cd patterns/pattern-2/
+cd patterns/unified/
 sam build
 sam local invoke OCRFunction -e ../../testing/OCRFunction-event.json --env-vars ../../testing/env.json
 ```
@@ -153,31 +153,65 @@ The solution uses a modular architecture with the main template (`template.yaml`
 - Authentication (Cognito User Pool, Identity Pool)
 - AppSync GraphQL API (for UI-backend communication)
 
-**Pattern Stacks** (`patterns/pattern-*/template.yaml`) - Pattern-specific resources:
-- Step Functions State Machine
-- Pattern-specific Lambda Functions (OCR, Classification, Extraction)
-- Pattern-specific CloudWatch Dashboard
-- Model Endpoints and Configurations
+**Unified Pattern Stack** (`patterns/unified/template.yaml`) - Processing resources:
+- Step Functions State Machine (BDA branch + Pipeline branch + shared tail)
+- Lambda Functions (OCR, Classification, Extraction, Assessment, Summarization, Evaluation, etc.)
+- CloudWatch Dashboard
 
-### Processing Patterns
+### Processing Modes
 
-1. **Pattern 1: Bedrock Data Automation (BDA)**
+The unified architecture supports two processing modes, controlled by the `use_bda` configuration flag:
+
+1. **BDA Mode** (formerly Pattern 1)
    - Uses AWS Bedrock Data Automation for end-to-end processing
    - Handles packet or media documents with integrated OCR, classification, and extraction
-   - Location: `patterns/pattern-1/`
 
-2. **Pattern 2: Textract + Bedrock**
+2. **Pipeline Mode** (formerly Pattern 2)
    - OCR with Amazon Textract
    - Classification with Bedrock (page-level or holistic)
-   - Extraction with Bedrock
+   - Extraction with Bedrock (traditional or agentic)
    - Supports few-shot examples
-   - Location: `patterns/pattern-2/`
+   - Optional agentic extraction with deterministic table parsing
 
-3. **Pattern 3: Textract + UDOP + Bedrock**
-   - OCR with Amazon Textract
-   - Classification with UDOP model on SageMaker
-   - Extraction with Bedrock
-   - Location: `patterns/pattern-3/`
+> **Note**: The separate `patterns/pattern-1/`, `patterns/pattern-2/`, and `patterns/pattern-3/` directories have been removed. All processing is now in `patterns/unified/`. See [pattern-1.md](docs/pattern-1.md) and [pattern-2.md](docs/pattern-2.md) for historical reference.
+
+### Agentic Extraction with Table Parsing
+
+The extraction service supports an optional **agentic extraction mode** with intelligent table parsing:
+
+**When to Use**:
+- Documents with large tables (100+ rows) where completeness is critical
+- Bank statements, transaction logs, brokerage statements
+- Multi-page tables that may split across OCR page breaks
+- Documents where OCR artifacts (empty lines, missing characters) cause data loss
+
+**Key Features**:
+- **Intelligent Lookahead Recovery**: Tolerates OCR artifacts (empty lines, missing pipes) by looking ahead to detect table continuation
+- **Auto-Merge Table Fragments**: Automatically merges tables with identical columns that were split by page breaks
+- **Smart Warnings**: Agent receives actionable warnings (⚠️ fragmentation, ℹ️ recovery) to verify completeness
+- **Hybrid Extraction**: Agent uses deterministic parsing for well-structured tables, falls back to LLM for complex layouts
+- **Completeness Validation**: Service validates extracted data against schema constraints (e.g., `minItems`)
+
+**Configuration**:
+```yaml
+extraction:
+  model: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+  agentic:
+    enabled: true
+    table_parsing:
+      enabled: true  # Enable deterministic table parser tool
+      max_empty_line_gap: 3  # Tolerate up to 3 empty lines in tables (0-10)
+      auto_merge_adjacent_tables: true  # Merge table fragments
+      min_confidence_threshold: 95.0  # OCR confidence target (Textract only)
+      min_parse_success_rate: 0.90  # Quality threshold for parsed results
+```
+
+**Tuning**:
+- **High-quality OCR**: `max_empty_line_gap: 2`
+- **Standard quality**: `max_empty_line_gap: 3` (default)
+- **Complex/noisy documents**: `max_empty_line_gap: 5-7`
+
+See `lib/idp_common_pkg/idp_common/extraction/README.md` for detailed documentation.
 
 ### Document Processing Flow
 
@@ -199,12 +233,19 @@ The solution uses a modular architecture with the main template (`template.yaml`
   - `pip install "idp_common[core]"` - minimal dependencies
   - `pip install "idp_common[ocr]"` - OCR support
   - `pip install "idp_common[classification]"` - Classification support
-  - `pip install "idp_common[extraction]"` - Extraction support
+  - `pip install "idp_common[extraction]"` - Extraction support (includes optional agentic mode with deterministic table parsing tool)
   - `pip install "idp_common[evaluation]"` - Evaluation support
   - `pip install "idp_common[all]"` - everything
-- Components: OCR, Classification, Extraction, Evaluation, Summarization, AppSync integration, Reporting, BDA integration
+- Components: OCR, Classification, Extraction (supports traditional and agentic modes with intelligent table parsing), Evaluation, Summarization, AppSync integration, Reporting, BDA integration
 - Configuration management via DynamoDB
 - Document models and data structures
+- Extraction features:
+  - Traditional LLM-based extraction with few-shot examples
+  - Agentic extraction with tool-based structured output (Strands framework)
+  - Deterministic Markdown table parser for robust tabular data extraction
+  - Intelligent recovery from OCR artifacts (empty lines, missing pipes)
+  - Automatic merging of table fragments split by page breaks
+  - Hybrid extraction: agent uses parsing for tables, LLM for complex layouts
 
 **`idp_cli`** (`idp_cli/`):
 - Command-line interface for deployment and batch processing

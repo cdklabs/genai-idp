@@ -6,6 +6,7 @@ import {
   X_AWS_IDP_EXAMPLES,
   X_AWS_IDP_DOCUMENT_NAME_REGEX,
   X_AWS_IDP_PAGE_CONTENT_REGEX,
+  X_AWS_IDP_EXTRACTION_MODEL,
 } from '../constants/schemaConstants';
 
 interface JsonSchemaProperty {
@@ -55,6 +56,7 @@ interface UseSchemaDesignerReturn {
   setSelectedAttributeId: React.Dispatch<React.SetStateAction<string | null>>;
   isDirty: boolean;
   addClass: (name: string, description?: string) => SchemaClass;
+  addStandardClasses: (schemas: JsonSchemaProperty[]) => void;
   updateClass: (classId: string, updates: Record<string, unknown>) => void;
   removeClass: (classId: string) => void;
   addAttribute: (classId: string, attributeName: string, attributeType: string) => SchemaAttribute;
@@ -69,6 +71,22 @@ interface UseSchemaDesignerReturn {
   getSelectedAttribute: () => JsonSchemaProperty | undefined;
   clearAllClasses: () => void;
 }
+
+/**
+ * Extract a human-readable name from a JSON Schema $id field.
+ * If $id is a URL (e.g., "https://schema.example.com/BankCheck"), returns the last path segment ("BankCheck").
+ * If $id is already a simple name, returns it as-is.
+ * Returns undefined if $id is falsy.
+ */
+const extractNameFromId = (id: string | undefined): string | undefined => {
+  if (!id) return undefined;
+  // If it looks like a URL, extract the last path segment
+  if (id.includes('://') || id.startsWith('/')) {
+    const segments = id.split('/').filter(Boolean);
+    return segments.length > 0 ? segments[segments.length - 1] : id;
+  }
+  return id;
+};
 
 const extractInlineObjectsToClasses = (
   properties: Record<string, JsonSchemaProperty>,
@@ -194,7 +212,11 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
       // Convert root schema to document type class
       const docTypeClass: SchemaClass = {
         id: `class-${timestamp}-doc-${schemaIndex}`,
-        name: (schema.$id as string) || (schema[X_AWS_IDP_DOCUMENT_TYPE] as string) || `DocumentType${schemaIndex + 1}`,
+        name:
+          (schema.title as string) ||
+          extractNameFromId(schema.$id as string) ||
+          (schema[X_AWS_IDP_DOCUMENT_TYPE] as string) ||
+          `DocumentType${schemaIndex + 1}`,
         description: schema.description,
         [X_AWS_IDP_DOCUMENT_TYPE]: true,
         attributes: {
@@ -207,6 +229,8 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
         // Preserve regex fields if they exist in the schema
         ...(schema[X_AWS_IDP_DOCUMENT_NAME_REGEX] ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: schema[X_AWS_IDP_DOCUMENT_NAME_REGEX] } : {}),
         ...(schema[X_AWS_IDP_PAGE_CONTENT_REGEX] ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: schema[X_AWS_IDP_PAGE_CONTENT_REGEX] } : {}),
+        // Preserve extraction model override if it exists in the schema
+        ...(schema[X_AWS_IDP_EXTRACTION_MODEL] ? { [X_AWS_IDP_EXTRACTION_MODEL]: schema[X_AWS_IDP_EXTRACTION_MODEL] } : {}),
       };
       allClasses.push(docTypeClass);
 
@@ -262,7 +286,7 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
   const mainClassId = `class-${timestamp}`;
   const mainClass: SchemaClass = {
     id: mainClassId,
-    name: jsonSchema.$id || 'MainClass',
+    name: (jsonSchema.title as string) || extractNameFromId(jsonSchema.$id as string) || 'MainClass',
     description: jsonSchema.description,
     [X_AWS_IDP_DOCUMENT_TYPE]: true, // Mark as document type for backward compat
     attributes: {
@@ -275,6 +299,8 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
     // Preserve regex fields if they exist in the schema
     ...(jsonSchema[X_AWS_IDP_DOCUMENT_NAME_REGEX] ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: jsonSchema[X_AWS_IDP_DOCUMENT_NAME_REGEX] } : {}),
     ...(jsonSchema[X_AWS_IDP_PAGE_CONTENT_REGEX] ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: jsonSchema[X_AWS_IDP_PAGE_CONTENT_REGEX] } : {}),
+    // Preserve extraction model override if it exists in the schema
+    ...(jsonSchema[X_AWS_IDP_EXTRACTION_MODEL] ? { [X_AWS_IDP_EXTRACTION_MODEL]: jsonSchema[X_AWS_IDP_EXTRACTION_MODEL] } : {}),
   };
   classes.push(mainClass);
 
@@ -344,6 +370,18 @@ export const useSchemaDesigner = (
     return newClass;
   }, []);
 
+  const addStandardClasses = useCallback((schemas: JsonSchemaProperty[]) => {
+    // Convert the standard JSON schemas to internal SchemaClass format
+    // This reuses the same convertJsonSchemaToClasses logic used for import
+    const newClasses = convertJsonSchemaToClasses(schemas);
+    if (newClasses.length > 0) {
+      setClasses((prev) => [...prev, ...newClasses]);
+      setSelectedClassId(newClasses[0].id);
+      setSelectedAttributeId(null);
+      setIsDirty(true);
+    }
+  }, []);
+
   const updateClass = useCallback((classId: string, updates: Record<string, unknown>) => {
     setClasses((prev) =>
       produce(prev, (draft) => {
@@ -357,8 +395,9 @@ export const useSchemaDesigner = (
               if (!cls.attributes) {
                 cls.attributes = { type: 'object', properties: {}, required: [] };
               }
-              Object.keys(updates.attributes).forEach((attrKey) => {
-                cls.attributes[attrKey] = updates.attributes[attrKey];
+              const updatesAttrs = updates.attributes as Record<string, unknown>;
+              Object.keys(updatesAttrs).forEach((attrKey) => {
+                (cls.attributes as Record<string, unknown>)[attrKey] = updatesAttrs[attrKey];
               });
             } else {
               // Direct assignment for top-level properties
@@ -727,6 +766,7 @@ export const useSchemaDesigner = (
         ...(docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX]
           ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX] }
           : {}),
+        ...(docTypeClass[X_AWS_IDP_EXTRACTION_MODEL] ? { [X_AWS_IDP_EXTRACTION_MODEL]: docTypeClass[X_AWS_IDP_EXTRACTION_MODEL] } : {}),
       };
 
       console.log('Final schema has $defs?', '$defs' in result);
@@ -777,6 +817,7 @@ export const useSchemaDesigner = (
     setSelectedAttributeId,
     isDirty,
     addClass,
+    addStandardClasses,
     updateClass,
     removeClass,
     addAttribute,

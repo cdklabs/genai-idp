@@ -688,6 +688,8 @@ class BedrockClient:
                 "TooManyRequestsException",
                 "ServiceUnavailableException",
                 "ModelErrorException",
+                "InternalServerException",
+                "InternalServerError",
                 "RequestTimeout",
                 "RequestTimeoutException",
             ]
@@ -816,22 +818,32 @@ class BedrockClient:
 
     def generate_embedding(
         self,
-        text: str,
+        text: Optional[str] = None,
         model_id: str = "amazon.titan-embed-text-v1",
         max_retries: Optional[int] = None,
+        image_bytes: Optional[bytes] = None,
+        input_type: Optional[str] = "search_document",
     ) -> List[float]:
         """
-        Generate an embedding vector for the given text using Amazon Bedrock.
+        Generate an embedding vector for text and/or image using Amazon Bedrock.
+
+        Supports multiple embedding models:
+        - Amazon Titan Embed Text (text only)
+        - Amazon Titan Multimodal Embedding (text + image)
+        - Cohere Embed v3/v4 (text + image, multimodal)
 
         Args:
-            text: The text to generate embeddings for
+            text: The text to generate embeddings for (optional if image_bytes provided)
             model_id: The embedding model ID to use (default: amazon.titan-embed-text-v1)
             max_retries: Optional override for the instance's max_retries setting
+            image_bytes: Optional image bytes for multimodal embedding models
+            input_type: Input type for Cohere models (search_document, search_query,
+                       classification, clustering). Defaults to search_document.
 
         Returns:
             List of floats representing the embedding vector
         """
-        if not text or not isinstance(text, str):
+        if not text and image_bytes is None:
             # Return an empty vector for empty input
             return []
 
@@ -843,24 +855,162 @@ class BedrockClient:
         # Track total embedding requests
         self._put_metric("BedrockEmbeddingRequestsTotal", 1)
 
-        # Normalize whitespace and prepare the input text
-        normalized_text = " ".join(text.split())
+        # Normalize whitespace if text provided
+        normalized_text = " ".join(text.split()) if text else None
 
         # Prepare the request body based on the model
-        if "amazon.titan-embed" in model_id:
-            request_body = json.dumps({"inputText": normalized_text})
-        else:
-            # Default format for other models
-            request_body = json.dumps({"text": normalized_text})
+        request_body = self._build_embedding_request_body(
+            model_id=model_id,
+            text=normalized_text,
+            image_bytes=image_bytes,
+            input_type=input_type,
+        )
 
         # Call the recursive embedding function
         return self._generate_embedding_with_retry(
             model_id=model_id,
             request_body=request_body,
-            normalized_text=normalized_text,
+            normalized_text=normalized_text or "(image-only)",
             retry_count=0,
             max_retries=effective_max_retries,
         )
+
+    def generate_embeddings_batch(
+        self,
+        items: List[Dict[str, Any]],
+        model_id: str = "amazon.titan-embed-text-v1",
+        max_retries: Optional[int] = None,
+        max_concurrent: int = 5,
+        input_type: Optional[str] = "search_document",
+        progress_callback: Optional[Any] = None,
+    ) -> List[Optional[List[float]]]:
+        """
+        Generate embeddings for a batch of items with concurrency control.
+
+        Each item in the batch can contain text, image_bytes, or both.
+
+        Args:
+            items: List of dicts with optional 'text' and 'image_bytes' keys
+            model_id: The embedding model ID to use
+            max_retries: Optional override for retry count
+            max_concurrent: Maximum concurrent embedding requests
+            input_type: Input type for Cohere models
+            progress_callback: Optional callable(completed, total) for progress updates
+
+        Returns:
+            List of embedding vectors (None for failed items)
+        """
+        import concurrent.futures
+
+        total = len(items)
+        results: List[Optional[List[float]]] = [None] * total
+        completed = 0
+
+        def _embed_single(index: int, item: Dict[str, Any]) -> tuple:
+            """Embed a single item and return (index, embedding)."""
+            try:
+                embedding = self.generate_embedding(
+                    text=item.get("text"),
+                    model_id=model_id,
+                    max_retries=max_retries,
+                    image_bytes=item.get("image_bytes"),
+                    input_type=input_type,
+                )
+                return (index, embedding)
+            except Exception as e:
+                logger.warning(f"Failed to generate embedding for item {index}: {e}")
+                return (index, None)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            futures = {
+                executor.submit(_embed_single, i, item): i
+                for i, item in enumerate(items)
+            }
+            for future in concurrent.futures.as_completed(futures):
+                idx, embedding = future.result()
+                results[idx] = embedding
+                completed += 1
+                if progress_callback:
+                    try:
+                        progress_callback(completed, total)
+                    except Exception:
+                        pass
+
+        return results
+
+    def _build_embedding_request_body(
+        self,
+        model_id: str,
+        text: Optional[str] = None,
+        image_bytes: Optional[bytes] = None,
+        input_type: Optional[str] = "search_document",
+    ) -> str:
+        """
+        Build the JSON request body for an embedding model.
+
+        Supports:
+        - Amazon Titan Embed Text v1/v2: text-only via inputText
+        - Amazon Titan Multimodal Embedding: text + image via inputText/inputImage
+        - Cohere Embed v3/v4: text + image via texts/images arrays
+
+        Args:
+            model_id: The embedding model ID
+            text: Optional text input
+            image_bytes: Optional image bytes
+            input_type: Input type for Cohere models
+
+        Returns:
+            JSON string for the request body
+        """
+        import base64
+
+        model_lower = model_id.lower()
+
+        if "cohere" in model_lower:
+            # Cohere Embed v3/v4 format
+            body: Dict[str, Any] = {
+                "input_type": input_type or "search_document",
+            }
+            # Detect v4 models (embed-v4) vs v3 (embed-english-v3, embed-multilingual-v3)
+            is_v4 = "embed-v4" in model_lower
+            if is_v4:
+                # Cohere v4 requires explicit embedding type and supports output_dimension
+                body["embedding_types"] = ["float"]
+                body["output_dimension"] = 1024
+            if text:
+                body["texts"] = [text]
+            if image_bytes is not None:
+                img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+                if is_v4:
+                    # Cohere v4 requires data URI format for images
+                    body["images"] = [f"data:image/png;base64,{img_b64}"]
+                else:
+                    # Cohere v3 uses raw base64
+                    body["images"] = [img_b64]
+            return json.dumps(body)
+
+        elif "titan-embed-image" in model_lower or (
+            "titan-embed" in model_lower and image_bytes is not None
+        ):
+            # Amazon Titan Multimodal Embedding G1 format
+            body = {}
+            if text:
+                body["inputText"] = text
+            if image_bytes is not None:
+                img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+                body["inputImage"] = img_b64
+            return json.dumps(body)
+
+        elif "titan-embed" in model_lower:
+            # Amazon Titan Embed Text v1/v2 (text-only)
+            return json.dumps({"inputText": text or ""})
+
+        else:
+            # Default format
+            body = {}
+            if text:
+                body["text"] = text
+            return json.dumps(body)
 
     def _generate_embedding_with_retry(
         self,
@@ -910,8 +1060,17 @@ class BedrockClient:
             # Handle different response formats based on the model
             if "amazon.titan-embed" in model_id:
                 embedding = response_body.get("embedding", [])
+            elif "cohere" in model_id.lower() and "embed-v4" in model_id.lower():
+                # Cohere Embed v4 returns {"embeddings": {"float": [[...]]}}
+                embeddings_obj = response_body.get("embeddings", {})
+                if isinstance(embeddings_obj, dict):
+                    float_embeddings = embeddings_obj.get("float", [])
+                    embedding = float_embeddings[0] if float_embeddings else []
+                else:
+                    # Fallback for unexpected format
+                    embedding = embeddings_obj[0] if embeddings_obj else []
             else:
-                # Default extraction format
+                # Default extraction format (Cohere v3 and others)
                 embedding = response_body.get("embedding", [])
 
             # Track successful requests and latency
@@ -933,6 +1092,8 @@ class BedrockClient:
                 "RequestLimitExceeded",
                 "TooManyRequestsException",
                 "ServiceUnavailableException",
+                "InternalServerException",
+                "InternalServerError",
                 "RequestTimeout",
                 "ReadTimeout",
                 "TimeoutError",
@@ -1480,7 +1641,7 @@ class BedrockClient:
         backoff_seconds = min(self.max_backoff, self.initial_backoff * (2**retry_count))
 
         # Add jitter (random value between 0 and 1 second)
-        jitter = random.random()
+        jitter = random.random()  # nosec B311 - retry jitter
 
         return backoff_seconds + jitter
 

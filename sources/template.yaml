@@ -28,21 +28,7 @@ Mappings:
     EveryDay:
       ScheduleExpression: "cron(0 0 * * ? *)"
 
-  Pattern1ConfigurationMap:
-    lending-package-sample:
-      ConfigPath: "lending-package-sample"
-    docsplit:
-      ConfigPath: "docsplit"
-    realkie-fcc-verified:
-      ConfigPath: "realkie-fcc-verified"
-    ocr-benchmark:
-      ConfigPath: "ocr-benchmark"
-    rvl-cdip:
-      ConfigPath: "rvl-cdip"
-    default:
-      ConfigPath: "lending-package-sample"
-
-  Pattern2ConfigurationMap:
+  ConfigurationMap:
     lending-package-sample:
       ConfigPath: "lending-package-sample"
     rvl-cdip:
@@ -61,16 +47,8 @@ Mappings:
       ConfigPath: "rule-validation"
     rule-extraction:
       ConfigPath: "rule-extraction"
-    default:
-      ConfigPath: "rvl-cdip"
-
-  Pattern3ConfigurationMap:
-    rvl-cdip:
-      ConfigPath: "rvl-cdip"
-    rvl-cdip-package-sample:  # for backward compatibility when updating existing stacks
-      ConfigPath: "rvl-cdip"
-    default:
-      ConfigPath: "rvl-cdip"
+    lending-package-sample-govcloud:
+      ConfigPath: "lending-package-sample-govcloud"
 
 Parameters:
   # Authorization params
@@ -93,17 +71,6 @@ Parameters:
     ConstraintDescription: >-
       Must be empty or a list of comma separated email domains (example1.com, example2.com)
 
-  # Pattern selection
-  IDPPattern:
-    Type: String
-    Default: Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)
-    AllowedValues:
-      - Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)
-      - Pattern2 - Packet processing with Textract and Bedrock
-      - Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock
-    Description: >-
-      Built-in IDP workflow patterns - see README for pattern descriptions.
-
   # Custom Configuration Path
 
   CustomConfigPath:
@@ -115,34 +82,12 @@ Parameters:
     AllowedPattern: '^(|s3://.*)$'
     ConstraintDescription: Must be empty or a valid S3 URI (e.g., s3://my-bucket/custom-config/config.yaml)
 
-  # Pattern 1 Parameters
-
-  Pattern1BDAProjectArn:
-    Type: String
-    Default: ""
-    AllowedPattern: "^(|^arn:aws[a-z-]*:bedrock:[a-z0-9-]+:.+:data-automation-project/.+)$"
-    Description: For Pattern-1, provide a Bedrock Data Automation (BDA) project ARN, or leave blank to create a sample project for processing the sample lending package.
-
-  Pattern1Configuration:
+  ConfigurationPreset:
     Type: String
     Default: "lending-package-sample"
     AllowedValues:
       - "lending-package-sample"
-      - "docsplit"
-      - "realkie-fcc-verified"
-      - "ocr-benchmark"
-      - "rvl-cdip"
-      - "default"
-    Description: >-
-      Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: This selected configuration will be replaced by the Custom Configuration Path if specified.
-
-  # Pattern 2 Parameters
-
-  Pattern2Configuration:
-    Type: String
-    Default: "lending-package-sample"
-    AllowedValues:
-      - "lending-package-sample"
+      - "lending-package-sample-govcloud"
       - "rvl-cdip"
       - "rvl-cdip-with-few-shot-examples"
       - "bank-statement-sample"
@@ -151,9 +96,8 @@ Parameters:
       - "ocr-benchmark"
       - "rule-validation"
       - "rule-extraction"
-      - "default"
     Description: >-
-      Select the configuration preset for Pattern 2. Each configuration contains pre-tuned settings for specific document processing scenarios see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
+      Select the configuration preset. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom Configuration Path overrides this when provided.
 
   Pattern2CustomClassificationModelARN:
     Type: String
@@ -164,22 +108,6 @@ Parameters:
     Type: String
     Default: ""
     Description: Specify Custom Fine Tuned Extraction Model ARN. Leave blank to use pretrained model specified in the selected configuration.
-
-  Pattern3UDOPModelArtifactPath:
-    Type: String
-    Default: "<PUBLIC_SAMPLE_UDOP_MODEL>"
-    AllowedPattern: "^(|s3://.*)$"
-    Description: For Pattern-3, provide S3 path to the UDOP model.tar.gz file (e.g., s3://bucket-name/path/to/model.tar.gz)
-
-  Pattern3Configuration:
-    Type: String
-    Default: "rvl-cdip"
-    AllowedValues:
-      - "rvl-cdip"
-      - "default"
-      - "rvl-cdip-package-sample" # for backward compatibility when updating existing stacks
-    Description: >-
-      Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
 
   # Evaluation
   EvaluationBaselineBucketName:
@@ -387,13 +315,63 @@ Parameters:
         3653,
       ]
 
+  WebUIHosting:
+    Type: String
+    Default: CloudFront
+    AllowedValues:
+      - CloudFront
+      - ALB
+    Description: >-
+      Frontend hosting method. Use CloudFront for public/standard deployments.
+      Use ALB for GovCloud or private network deployments that require
+      VPC-based hosting.
+
+  ALBVpcId:
+    Type: String
+    Default: ""
+    Description: >-
+      (Required when WebUIHosting=ALB) VPC ID for the ALB and S3 VPC endpoint.
+
+  ALBSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: >-
+      (Required when WebUIHosting=ALB) Comma-separated subnet IDs for the ALB
+      (minimum 2 subnets in different AZs).
+
+  ALBCertificateArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Required when WebUIHosting=ALB) ACM certificate ARN for the ALB HTTPS
+      listener. Can be ACM-issued or imported (including self-signed). Use
+      scripts/generate_self_signed_cert.sh for demo/testing.
+
+  ALBScheme:
+    Type: String
+    Default: internal
+    AllowedValues:
+      - internal
+      - internet-facing
+    Description: >-
+      (ALB hosting only) ALB scheme. Use 'internal' for private network access,
+      'internet-facing' for public access.
+
+  ALBAllowedCIDRs:
+    Type: String
+    Default: ""
+    Description: >-
+      (ALB hosting only) Comma-separated CIDR ranges allowed to access the ALB.
+      Leave empty to automatically use the VPC CIDR range (recommended for
+      internal ALBs). Specify explicit CIDRs to override.
+
   CloudFrontPriceClass:
     Type: String
     Default: PriceClass_100
     Description: >-
-      Specify the CloudFront price class. See https://aws.amazon.com/cloudfront/pricing/
-      for a
-      description of each price class.
+      (CloudFront hosting only) Specify the CloudFront price class. See
+      https://aws.amazon.com/cloudfront/pricing/ for a description of each
+      price class.
     AllowedValues:
       - PriceClass_100
       - PriceClass_200
@@ -423,38 +401,7 @@ Parameters:
     AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]{1,2}(,\s*([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]{1,2})*$'
     ConstraintDescription: Must be valid comma-separated list of IPv4 CIDR ranges
 
-Rules:
-  Pattern3UDOPModelArtifactPath:
-    RuleCondition:
-      !Equals [
-        !Ref IDPPattern,
-        "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
-      ]
-    Assertions:
-      - Assert: !Not [ !Equals [ !Ref Pattern3UDOPModelArtifactPath, "" ] ]
-        AssertDescription: UDOP Model Artifact Path is required when IDPPattern is 'Pattern1'
-
 Conditions:
-  IsPattern1:
-    !Equals [
-      !Ref IDPPattern,
-      "Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)",
-    ]
-  IsPattern2:
-    !Equals [
-      !Ref IDPPattern,
-      "Pattern2 - Packet processing with Textract and Bedrock",
-    ]
-
-  IsPattern3:
-    !Equals [
-      !Ref IDPPattern,
-      "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
-    ]
-  ShouldCreateBDASampleProject:
-    !And [ !Condition IsPattern1, !Equals [ !Ref Pattern1BDAProjectArn, "" ] ]
-  HasPattern1BDAProjectArn:
-    !Not [ !Equals [ !Ref Pattern1BDAProjectArn, "" ] ]
   HasGuardrailConfig:
     !And [
       !Not [ !Equals [ !Ref BedrockGuardrailId, "" ] ],
@@ -482,6 +429,8 @@ Conditions:
   IsS3VectorsVectorStore: !Equals [ !Ref KnowledgeBaseVectorStore, "S3_VECTORS" ]
   CreateAgentCoreLambda: !Equals [ !Ref EnableMCP, "true" ]
   CreateExternalAppClient: !Equals [ !Ref EnableMCP, "true" ]
+  UseCloudFrontHosting: !Equals [ !Ref WebUIHosting, "CloudFront" ]
+  UseALBHosting: !Equals [ !Ref WebUIHosting, "ALB" ]
 
 Metadata:
   cfn-lint:
@@ -496,29 +445,12 @@ Metadata:
           - AdminEmail
           - AllowedSignUpEmailDomain
       - Label:
-          default: "Workflow Pattern Selection"
+          default: "Configuration"
         Parameters:
-          - IDPPattern
-      - Label:
-          default: "Pattern 1 Configuration"
-        Parameters:
-          - Pattern1Configuration
-          - Pattern1BDAProjectArn
-      - Label:
-          default: "Pattern 2 Configuration"
-        Parameters:
-          - Pattern2Configuration
+          - ConfigurationPreset
+          - CustomConfigPath
           - Pattern2CustomClassificationModelARN
           - Pattern2CustomExtractionModelARN
-      - Label:
-          default: "Pattern 3 Configuration"
-        Parameters:
-          - Pattern3Configuration
-          - Pattern3UDOPModelArtifactPath
-      - Label:
-          default: "Custom Configuration"
-        Parameters:
-          - CustomConfigPath
       - Label:
           default: "Evaluation"
         Parameters:
@@ -553,6 +485,20 @@ Metadata:
         Parameters:
           - EnableMCP
       - Label:
+          default: "Web UI Hosting"
+        Parameters:
+          - WebUIHosting
+          - CloudFrontPriceClass
+          - CloudFrontAllowedGeos
+      - Label:
+          default: "ALB Hosting (when WebUIHosting=ALB)"
+        Parameters:
+          - ALBVpcId
+          - ALBSubnetIds
+          - ALBCertificateArn
+          - ALBScheme
+          - ALBAllowedCIDRs
+      - Label:
           default: "General Configuration"
         Parameters:
           - MaxConcurrentWorkflows
@@ -561,30 +507,18 @@ Metadata:
           - ExecutionTimeThresholdMs
           - LogLevel
           - LogRetentionDays
-          - CloudFrontPriceClass
-          - CloudFrontAllowedGeos
 
     ParameterLabels:
       AdminEmail:
         default: "Admin Email Address"
       AllowedSignUpEmailDomain:
         default: "Allowed Sign Up Email Domain"
-      IDPPattern:
-        default: "Document Processing Pattern"
-      Pattern1BDAProjectArn:
-        default: "Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA) Project ARN"
       Pattern2CustomClassificationModelARN:
-        default: "Pattern2 - Custom Classification Model ARN"
+        default: "Custom Classification Model ARN"
       Pattern2CustomExtractionModelARN:
-        default: "Pattern2 - Custom Extraction Model ARN"
-      Pattern1Configuration:
-        default: "Pattern1 - Configuration Preset"
-      Pattern2Configuration:
-        default: "Pattern2 - Configuration Preset"
-      Pattern3UDOPModelArtifactPath:
-        default: "Pattern3 - UDOP Model Artifact Path"
-      Pattern3Configuration:
-        default: "Pattern3 - Configuration Preset"
+        default: "Custom Extraction Model ARN"
+      ConfigurationPreset:
+        default: "Configuration Preset"
       CustomConfigPath:
         default: "Custom Configuration Path"
       PostProcessingLambdaHookFunctionArn:
@@ -623,6 +557,18 @@ Metadata:
         default: "WAF Allowed IPv4 Ranges"
       EnableMCP:
         default: "Enable MCP Integration"
+      WebUIHosting:
+        default: "Web UI Hosting Method"
+      ALBVpcId:
+        default: "ALB - VPC ID"
+      ALBSubnetIds:
+        default: "ALB - Subnet IDs"
+      ALBCertificateArn:
+        default: "ALB - ACM Certificate ARN"
+      ALBScheme:
+        default: "ALB - Scheme (internal/internet-facing)"
+      ALBAllowedCIDRs:
+        default: "ALB - Allowed CIDR Ranges"
 
 Resources:
   # Custom resource to enforce max length of StackName - prevent downstream failures
@@ -826,19 +772,6 @@ Resources:
   # Nested stack for selected options
   ##########################################################################
 
-  BDASAMPLEPROJECT:
-    DependsOn:
-      - IsStacknameLengthOK
-    Type: AWS::CloudFormation::Stack
-    Condition: ShouldCreateBDASampleProject
-    Properties:
-      TemplateURL: ./nested/bda-lending-project/.aws-sam/packaged.yaml
-      Parameters:
-        ProjectName: !Sub "${AWS::StackName}-Project"
-        ProjectDescription: !Sub "${AWS::StackName}-Project"
-        LogLevel: !Ref LogLevel
-        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
-
   DOCUMENTKB:
     DependsOn:
       - IsStacknameLengthOK
@@ -860,34 +793,36 @@ Resources:
 
 
   ##########################################################################
-  # AgentCore Analytics Lambda Function
+  # AgentCore MCP Handler Lambda Function
   ##########################################################################
 
-  AgentCoreAnalyticsLambdaLogGroup:
+  AgentCoreMCPHandlerLogGroup:
     Type: AWS::Logs::LogGroup
     Condition: CreateAgentCoreLambda
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-  AgentCoreAnalyticsLambdaFunction:
+  AgentCoreMCPHandlerFunction:
     Type: AWS::Serverless::Function
     Condition: CreateAgentCoreLambda
     Metadata:
       BuildMethod: python3.12
       cfn_nag:
         rules_to_suppress:
+          - id: W11
+            reason: "bedrock-agentcore:InvokeAgentRuntime, aws-marketplace, and logs:DescribeLogGroups APIs do not support resource-level permissions"
           - id: W89
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AgentCore analytics function"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AgentCore MCP handler function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-agentcore-analytics"
-      CodeUri: src/lambda/agentcore_analytics_processor/
+      FunctionName: !Sub "${AWS::StackName}-agentcore-mcp-handler"
+      CodeUri: src/lambda/agentcore_mcp_handler/
       Handler: index.lambda_handler
       Runtime: python3.12
       MemorySize: 1024
@@ -926,7 +861,7 @@ Resources:
           SETTINGS_PARAMETER_NAME: !Ref SettingsParameter
           MCP_SERVER_BUCKET: !Ref MCPContentBucket
       LoggingConfig:
-        LogGroup: !Ref AgentCoreAnalyticsLambdaLogGroup
+        LogGroup: !Ref AgentCoreMCPHandlerLogGroup
       Policies:
         - Statement:
             Effect: Allow
@@ -1116,6 +1051,12 @@ Resources:
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: F38
+            reason: "PassRole permission is required to delegate the execution role to the Bedrock AgentCore Gateway service securely"
+          - id: F3
+            reason: "Wildcard actions required for AgentCore Gateway lifecycle management (create, update, delete) and CloudWatch Logs delivery configuration"
+          - id: W11
+            reason: "Wildcard resource required as AgentCore Gateway ARNs are dynamically generated and unknown at deployment time"
     # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
@@ -1200,7 +1141,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: lambda:InvokeFunction
-                Resource: !GetAtt AgentCoreAnalyticsLambdaFunction.Arn
+                Resource: !GetAtt AgentCoreMCPHandlerFunction.Arn
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/CloudWatchLogsFullAccess"
       Tags:
@@ -1214,25 +1155,79 @@ Resources:
       ServiceToken: !GetAtt AgentCoreGatewayManagerFunction.Arn
       StackName: !Ref AWS::StackName
       Region: !Ref AWS::Region
-      LambdaArn: !GetAtt AgentCoreAnalyticsLambdaFunction.Arn
+      LambdaArn: !GetAtt AgentCoreMCPHandlerFunction.Arn
       UserPoolId: !Ref UserPool
       ClientId: !Ref ExternalAppClient
       ClientSecret: !GetAtt ExternalAppClient.ClientSecret
+      ConnectorClientId: !Ref MCPConnectorClient
       ExecutionRoleArn: !GetAtt AgentCoreGatewayExecutionRole.Arn
       SourceCodeHash: <LAMBDA_HASH_TOKEN>
+
+  ##########################################################################
+  # Read previous IDPPattern from SSM before PATTERNSTACK overwrites it
+  # This detects Pattern-1 → Unified upgrades so BDA can be auto-enabled
+  ##########################################################################
+
+  ReadPreviousIDPPatternFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: Function does not require VPC access
+          - id: W92
+            reason: Reserved concurrency not required
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values (log level only)"
+    Properties:
+      PermissionsBoundary:
+        !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 10
+      CodeUri: src/lambda/read_previous_idp_pattern
+      Environment:
+        Variables:
+          LOG_LEVEL: INFO
+      LoggingConfig:
+        LogGroup: !Ref ReadPreviousIDPPatternFunctionLogGroup
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
+
+  ReadPreviousIDPPatternFunctionLogGroup:
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: "LogGroup does not require KMS Key Id"
+    # checkov:skip=CKV_AWS_158: "LogGroup does not require KMS Key Id"
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: !Ref LogRetentionDays
+
+  PreviousIDPPatternValue:
+    Type: Custom::ReadPreviousIDPPattern
+    Properties:
+      ServiceToken: !GetAtt ReadPreviousIDPPatternFunction.Arn
+      SettingsParameterName: !Ref SettingsParameter
 
   ##########################################################################
   # Nested stack for selected pattern
   ##########################################################################
 
-  PATTERN1STACK:
+  PATTERNSTACK:
     DependsOn:
       - IsStacknameLengthOK
       - CopyConfigurationFiles
     Type: AWS::CloudFormation::Stack
-    Condition: IsPattern1
     Properties:
-      TemplateURL: ./patterns/pattern-1/.aws-sam/packaged.yaml
+      TemplateURL: ./patterns/unified/.aws-sam/packaged.yaml
       Parameters:
         StackName: !Ref AWS::StackName
         InputBucket: !Ref InputBucket
@@ -1248,10 +1243,6 @@ Resources:
         ExecutionTimeThresholdMs: !Ref ExecutionTimeThresholdMs
         BedrockGuardrailId: !Ref BedrockGuardrailId
         BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
-        BDAProjectArn: !If
-          - ShouldCreateBDASampleProject
-          - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
-          - !Ref Pattern1BDAProjectArn
         UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
         ConfigurationTable: !Ref ConfigurationTable
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
@@ -1260,11 +1251,11 @@ Resources:
           - HasCustomConfigPath
           - !Ref CustomConfigPath
           - !Sub
-            - "s3://${ConfigurationBucket}/config_library/pattern-1/${ConfigPath}/config.yaml"
+            - "s3://${ConfigurationBucket}/config_library/unified/${ConfigPath}/config.yaml"
             - ConfigPath:
                 !FindInMap [
-                  Pattern1ConfigurationMap,
-                  !Ref Pattern1Configuration,
+                  ConfigurationMap,
+                  !Ref ConfigurationPreset,
                   ConfigPath,
                 ]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
@@ -1279,123 +1270,14 @@ Resources:
           - !Ref EvaluationBaselineBucket
           - !Ref EvaluationBaselineBucketName
         SaveReportingFunctionName: !Ref SaveReportingDataFunctionV2
-        ImageVersion: "<PATTERN1_IMAGE_VERSION>"
+        ImageVersion: "<UNIFIED_IMAGE_VERSION>"
         ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
         ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
-        SourceZipfile: "<PATTERN1_SOURCE_ZIPFILE_TOKEN>"
-        EnableECRImageScanning: !Ref EnableECRImageScanning
-
-  PATTERN2STACK:
-    DependsOn:
-      - IsStacknameLengthOK
-      - CopyConfigurationFiles
-    Type: AWS::CloudFormation::Stack
-    Condition: IsPattern2
-    Properties:
-      TemplateURL: ./patterns/pattern-2/.aws-sam/packaged.yaml
-      Parameters:
-        StackName: !Ref AWS::StackName
-        InputBucket: !Ref InputBucket
-        ConfigurationBucket: !Ref ConfigurationBucket
-        OutputBucket: !Ref OutputBucket
-        WorkingBucket: !Ref WorkingBucket
-        TrackingTable: !Ref TrackingTable
-        CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
-        LogRetentionDays: !Ref LogRetentionDays
-        LogLevel: !Ref LogLevel
-        ExecutionTimeThresholdMs: !Ref ExecutionTimeThresholdMs
-        BedrockGuardrailId: !Ref BedrockGuardrailId
-        BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
+        SourceZipfile: "<UNIFIED_SOURCE_ZIPFILE_TOKEN>"
         CustomClassificationModelARN: !Ref Pattern2CustomClassificationModelARN
         CustomExtractionModelARN: !Ref Pattern2CustomExtractionModelARN
-        UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
-        AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
-        AppSyncApiArn: !GetAtt GraphQLApi.Arn
-        ConfigurationTable: !Ref ConfigurationTable
-        ConfigurationDefaultS3Uri: !If
-          - HasCustomConfigPath
-          - !Ref CustomConfigPath
-          - !Sub
-            - "s3://${ConfigurationBucket}/config_library/pattern-2/${ConfigPath}/config.yaml"
-            - ConfigPath:
-                !FindInMap [
-                  Pattern2ConfigurationMap,
-                  !Ref Pattern2Configuration,
-                  ConfigPath,
-                ]
-        ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
-        EnableXRayTracing: !Ref EnableXRayTracing
-        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
-        ImageVersion: "<PATTERN2_IMAGE_VERSION>"
-        ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
-        ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
-        SourceZipfile: "<PATTERN2_SOURCE_ZIPFILE_TOKEN>"
-        ReportingBucket: !If
-          - ShouldCreateReportingBucket
-          - !Ref ReportingBucket
-          - !Ref ReportingBucketName
-        BaselineBucket: !If
-          - ShouldCreateEvaluationBaselineBucket
-          - !Ref EvaluationBaselineBucket
-          - !Ref EvaluationBaselineBucketName
-        SaveReportingFunctionName: !Ref SaveReportingDataFunctionV2
         EnableECRImageScanning: !Ref EnableECRImageScanning
-
-  PATTERN3STACK:
-    DependsOn:
-      - IsStacknameLengthOK
-      - CopyConfigurationFiles
-    Type: AWS::CloudFormation::Stack
-    Condition: IsPattern3
-    Properties:
-      # yamllint disable rule:line-length
-      TemplateURL: ./patterns/pattern-3/.aws-sam/packaged.yaml
-      Parameters:
-        StackName: !Ref AWS::StackName
-        InputBucket: !Ref InputBucket
-        ConfigurationBucket: !Ref ConfigurationBucket
-        OutputBucket: !Ref OutputBucket
-        WorkingBucket: !Ref WorkingBucket
-        TrackingTable: !Ref TrackingTable
-        CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
-        LogRetentionDays: !Ref LogRetentionDays
-        LogLevel: !Ref LogLevel
-        ExecutionTimeThresholdMs: !Ref ExecutionTimeThresholdMs
-        BedrockGuardrailId: !Ref BedrockGuardrailId
-        BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
-        UDOPModelArtifactPath: !Ref Pattern3UDOPModelArtifactPath
-        UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
-        AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
-        AppSyncApiArn: !GetAtt GraphQLApi.Arn
-        ConfigurationTable: !Ref ConfigurationTable
-        ConfigurationDefaultS3Uri: !If
-          - HasCustomConfigPath
-          - !Ref CustomConfigPath
-          - !Sub
-            - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
-            - ConfigPath:
-                !FindInMap [
-                  Pattern3ConfigurationMap,
-                  !Ref Pattern3Configuration,
-                  ConfigPath,
-                ]
-        ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
-        EnableXRayTracing: !Ref EnableXRayTracing
-        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
-        ReportingBucket: !If
-          - ShouldCreateReportingBucket
-          - !Ref ReportingBucket
-          - !Ref ReportingBucketName
-        BaselineBucket: !If
-          - ShouldCreateEvaluationBaselineBucket
-          - !Ref EvaluationBaselineBucket
-          - !Ref EvaluationBaselineBucketName
-        SaveReportingFunctionName: !Ref SaveReportingDataFunctionV2
-        ImageVersion: "<PATTERN3_IMAGE_VERSION>"
-        ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
-        ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
-        SourceZipfile: "<PATTERN3_SOURCE_ZIPFILE_TOKEN>"
-        EnableECRImageScanning: !Ref EnableECRImageScanning
+        PreviousIDPPattern: !GetAtt PreviousIDPPatternValue.IDPPattern
 
   ##########################################################################
   # Encryption key
@@ -1421,6 +1303,7 @@ Resources:
         # Background worker ARNs
         AgentChatProcessorFunctionArn: !GetAtt AgentChatProcessorFunction.Arn
         AgentProcessorFunctionArn: !GetAtt AgentProcessorFunction.Arn
+        TestExecutionAggregationFunctionArn: !GetAtt PATTERNSTACK.Outputs.TestExecutionAggregationFunctionArn
         
         # DynamoDB Tables
         TrackingTableName: !Ref TrackingTable
@@ -1446,6 +1329,7 @@ Resources:
           - !Ref ReportingBucketName
         WorkingBucketName: !Ref WorkingBucket
         DiscoveryBucketName: !Ref DiscoveryBucket
+        MultiDocDiscoveryStateMachineArn: !Ref MultiDocDiscoveryStateMachine
         
         # SQS Queues
         DocumentQueueUrl: !Ref DocumentQueue
@@ -1486,16 +1370,14 @@ Resources:
         KnowledgeBaseModelId: !Ref KnowledgeBaseModelId
         ShouldCreateEvaluationBaselineBucket: !If [ShouldCreateEvaluationBaselineBucket, "true", "false"]
         ShouldCreateReportingBucket: !If [ShouldCreateReportingBucket, "true", "false"]
-        IsPattern1: !If [IsPattern1, "true", "false"]
-        Pattern1BDAProjectArn: !If
-          - ShouldCreateBDASampleProject
-          - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
-          - !Ref Pattern1BDAProjectArn
-        HasPattern1BDAProjectArn: !If [HasPattern1BDAProjectArn, "true", "false"]
                 
         # Lambda Layers
         IDPCommonBaseLayerArn: !Ref IDPCommonBaseLayer
         IDPCommonAgentsLayerArn: !Ref IDPCommonAgentsLayer
+        
+        # User management (for config-version scoping)
+        UsersTableName: !Ref UsersTable
+        UsersTableArn: !GetAtt UsersTable.Arn
         
   CustomerManagedEncryptionKey:
     DependsOn:
@@ -1615,6 +1497,9 @@ Resources:
       CompatibleRuntimes:
         - python3.12
         - python3.13
+
+  # IDPCommonMultiDocDiscoveryLayer removed — dependencies exceed 250MB Lambda layer limit.
+  # Multi-doc discovery Lambdas now use container images via nested/multi-doc-discovery stack.
 
   ##########################################################################
   # MCP Content Bucket for base64 document processing
@@ -1745,6 +1630,32 @@ Resources:
             Condition:
               StringEquals:
                 "AWS:SourceAccount": !Ref "AWS::AccountId"
+          - !If
+            - UseALBHosting
+            - Sid: AllowALBAccessLogs
+              Effect: Allow
+              Principal:
+                Service: !Sub "logdelivery.elasticloadbalancing.${AWS::URLSuffix}"
+              Action:
+                - s3:PutObject
+              Resource: !Sub "${LoggingBucket.Arn}/alb-access-logs/*"
+              Condition:
+                StringEquals:
+                  "aws:SourceAccount": !Ref "AWS::AccountId"
+            - !Ref AWS::NoValue
+          - !If
+            - UseALBHosting
+            - Sid: AllowALBAccessLogsBucketACL
+              Effect: Allow
+              Principal:
+                Service: !Sub "logdelivery.elasticloadbalancing.${AWS::URLSuffix}"
+              Action:
+                - s3:GetBucketAcl
+              Resource: !Sub "${LoggingBucket.Arn}"
+              Condition:
+                StringEquals:
+                  "aws:SourceAccount": !Ref "AWS::AccountId"
+            - !Ref AWS::NoValue
           - Sid: EnforceSSLOnly
             Effect: Deny
             Principal: "*"
@@ -1776,7 +1687,10 @@ Resources:
               - PUT
               - POST
             AllowedOrigins:
-              - !Sub "https://${CloudFrontDistribution.DomainName}"
+              - !If
+                - UseCloudFrontHosting
+                - !Sub "https://${CloudFrontDistribution.DomainName}"
+                - !GetAtt ALBHOSTINGSTACK.Outputs.WebUIURL
               # For local development only
               - "http://localhost:3000"
             ExposedHeaders:
@@ -1845,7 +1759,10 @@ Resources:
               - PUT
               - POST
             AllowedOrigins:
-              - !Sub "https://${CloudFrontDistribution.DomainName}"
+              - !If
+                - UseCloudFrontHosting
+                - !Sub "https://${CloudFrontDistribution.DomainName}"
+                - !GetAtt ALBHOSTINGSTACK.Outputs.WebUIURL
               # For local development only
               - "http://localhost:3000"
             ExposedHeaders:
@@ -1895,7 +1812,8 @@ Resources:
 
   TestSetBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
     Properties:
       CorsConfiguration:
         CorsRules:
@@ -1909,7 +1827,10 @@ Resources:
               - PUT
               - POST
             AllowedOrigins:
-              - !Sub "https://${CloudFrontDistribution.DomainName}"
+              - !If
+                - UseCloudFrontHosting
+                - !Sub "https://${CloudFrontDistribution.DomainName}"
+                - !GetAtt ALBHOSTINGSTACK.Outputs.WebUIURL
               # For local development only
               - "http://localhost:3000"
             ExposedHeaders:
@@ -2263,6 +2184,78 @@ Resources:
       DatasetDescription: "Test set with 500 multi-page document packets combining 13 document types (budget, email, form, handwritten, invoice, language, letter, memo, news article, questionnaire, resume, scientific publication, specification) for classification and document splitting evaluation."
       SourceCodeHash: <docsplit_testset_deployer_HASH_TOKEN>
 
+  ##########################################################################
+  # W2 Dataset Deployer - Automatically deploys Fake W-2 Tax Form dataset
+  ##########################################################################
+
+  W2DatasetDeployerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  W2DatasetDeployerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      FunctionName: !Sub "${AWS::StackName}-W2DatasetDeployer"
+      CodeUri: src/lambda/w2_dataset_deployer/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 3008
+      EphemeralStorage:
+        Size: 10240
+      LoggingConfig:
+        LogGroup: !Ref W2DatasetDeployerLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TESTSET_BUCKET: !Ref TestSetBucket
+          TRACKING_TABLE: !Ref TrackingTable
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref TestSetBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  W2DatasetDeployment:
+    Type: Custom::W2DatasetDeployer
+    DependsOn:
+      - TestSetBucket
+      - TrackingTable
+    Properties:
+      ServiceToken: !GetAtt W2DatasetDeployerFunction.Arn
+      DatasetVersion: "1.0"
+      DatasetName: "Fake-W2-Tax-Forms"
+      DatasetDescription: "Test set with 2,000 synthetic US W-2 tax form images and 45-field structured ground truth for extraction evaluation. Source: HuggingFace singhsays/fake-w2-us-tax-form-dataset (CC0: Public Domain)."
+      SourceCodeHash: <w2_dataset_deployer_HASH_TOKEN>
+
   ConfigurationBucket:
     Type: AWS::S3::Bucket
     UpdateReplacePolicy: Retain
@@ -2283,7 +2276,10 @@ Resources:
               - PUT
               - POST
             AllowedOrigins:
-              - !Sub "https://${CloudFrontDistribution.DomainName}"
+              - !If
+                - UseCloudFrontHosting
+                - !Sub "https://${CloudFrontDistribution.DomainName}"
+                - !GetAtt ALBHOSTINGSTACK.Outputs.WebUIURL
               # For local development only
               - "http://localhost:3000"
             ExposedHeaders:
@@ -2395,7 +2391,10 @@ Resources:
               - PUT
               - POST
             AllowedOrigins:
-              - !Sub "https://${CloudFrontDistribution.DomainName}"
+              - !If
+                - UseCloudFrontHosting
+                - !Sub "https://${CloudFrontDistribution.DomainName}"
+                - !GetAtt ALBHOSTINGSTACK.Outputs.WebUIURL
               # For local development only
               - "http://localhost:3000"
             ExposedHeaders:
@@ -2461,7 +2460,10 @@ Resources:
               - PUT
               - POST
             AllowedOrigins:
-              - !Sub "https://${CloudFrontDistribution.DomainName}"
+              - !If
+                - UseCloudFrontHosting
+                - !Sub "https://${CloudFrontDistribution.DomainName}"
+                - !GetAtt ALBHOSTINGSTACK.Outputs.WebUIURL
               # For local development only
               - "http://localhost:3000"
             ExposedHeaders:
@@ -2912,7 +2914,10 @@ Resources:
               - PUT
               - POST
             AllowedOrigins:
-              - !Sub "https://${CloudFrontDistribution.DomainName}"
+              - !If
+                - UseCloudFrontHosting
+                - !Sub "https://${CloudFrontDistribution.DomainName}"
+                - !GetAtt ALBHOSTINGSTACK.Outputs.WebUIURL
               # For local development only
               - "http://localhost:3000"
             ExposedHeaders:
@@ -2977,9 +2982,11 @@ Resources:
         RestrictPublicBuckets: true
       VersioningConfiguration:
         Status: Enabled
-      WebsiteConfiguration:
-        IndexDocument: index.html
-        ErrorDocument: index.html
+      WebsiteConfiguration: !If
+        - UseCloudFrontHosting
+        - IndexDocument: index.html
+          ErrorDocument: index.html
+        - !Ref AWS::NoValue
       LoggingConfiguration:
         DestinationBucketName: !Ref LoggingBucket
         LogFilePrefix: webapp-bucket-logs/
@@ -2991,11 +2998,24 @@ Resources:
       PolicyDocument:
         Version: 2012-10-17
         Statement:
-          - Effect: Allow
-            Principal:
-              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
-            Action: s3:GetObject
-            Resource: !Sub "${WebUIBucket.Arn}/*"
+          - !If
+            - UseCloudFrontHosting
+            - Effect: Allow
+              Principal:
+                CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
+              Action: s3:GetObject
+              Resource: !Sub "${WebUIBucket.Arn}/*"
+            - !Ref AWS::NoValue
+          - !If
+            - UseALBHosting
+            - Effect: Allow
+              Principal: "*"
+              Action: s3:GetObject
+              Resource: !Sub "${WebUIBucket.Arn}/*"
+              Condition:
+                StringEquals:
+                  "aws:sourceVpce": !GetAtt ALBHOSTINGSTACK.Outputs.S3VPCEndpointId
+            - !Ref AWS::NoValue
           - Effect: "Deny"
             Action:
               - "s3:*"
@@ -3022,11 +3042,47 @@ Resources:
           AttributeType: S
         - AttributeName: SK
           AttributeType: S
+        - AttributeName: InitialEventTime
+          AttributeType: S
+        - AttributeName: ItemType
+          AttributeType: S
       KeySchema:
         - AttributeName: PK
           KeyType: HASH
         - AttributeName: SK
           KeyType: RANGE
+      GlobalSecondaryIndexes:
+        # TypeDateIndex replaces both the old listDocuments scan and the HITLPendingReviewIndex.
+        # Pending reviews use: ItemType='document' + time range + FilterExpression: HITLPendingReview='true'
+        - IndexName: TypeDateIndex
+          KeySchema:
+            - AttributeName: ItemType
+              KeyType: HASH
+            - AttributeName: InitialEventTime
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - ObjectKey
+              - ObjectStatus
+              - CompletionTime
+              - ConfigVersion
+              - EvaluationStatus
+              - NumPages
+              - ConfidenceAlertCount
+              - HITLTriggered
+              - HITLCompleted
+              - HITLStatus
+              - HITLReviewOwner
+              - HITLReviewedBy
+              - TestRunId
+              - TestSetName
+              - CreatedAt
+              - CompletedFiles
+              - FailedFiles
+              - FilesCount
+              - Status
+              - CompletedAt
       TimeToLiveSpecification:
         AttributeName: ExpiresAfter
         Enabled: true
@@ -3034,6 +3090,141 @@ Resources:
         SSEEnabled: true
         SSEType: KMS
         KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
+
+  ##########################################################################
+  # GSI Attribute Backfill - Step Functions + Lambda for populating
+  # TypeDateIndex and HITLPendingReviewIndex on existing items
+  ##########################################################################
+
+  BackfillWorkerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  BackfillWorkerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with DynamoDB"
+          - id: W92
+            reason: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_116: "DLQ not required - Step Functions handles retries"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data"
+    Properties:
+      PermissionsBoundary:
+        !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.lambda_handler
+      Runtime: python3.12
+      CodeUri: src/lambda/backfill_gsi_attributes/
+      Timeout: 900
+      MemorySize: 512
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+      LoggingConfig:
+        LogGroup: !Ref BackfillWorkerFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  BackfillStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "states.${AWS::URLSuffix}"
+            Action: sts:AssumeRole
+      PermissionsBoundary:
+        !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Policies:
+        - PolicyName: BackfillStateMachinePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt BackfillWorkerFunction.Arn
+
+  BackfillStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${AWS::StackName}-GSIBackfill"
+      DefinitionUri: src/lambda/backfill_gsi_attributes/statemachine.asl.json
+      DefinitionSubstitutions:
+        BackfillWorkerFunctionArn: !GetAtt BackfillWorkerFunction.Arn
+      Role: !GetAtt BackfillStateMachineRole.Arn
+
+  BackfillTriggerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  BackfillTriggerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access"
+          - id: W92
+            reason: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values (log level only)"
+    Properties:
+      PermissionsBoundary:
+        !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: src/lambda/backfill_gsi_attributes/
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+      LoggingConfig:
+        LogGroup: !Ref BackfillTriggerFunctionLogGroup
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TrackingTable
+        - Statement:
+            - Effect: Allow
+              Action: states:StartExecution
+              Resource: !Ref BackfillStateMachine
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  BackfillCustomResource:
+    Type: Custom::GSIBackfill
+    Properties:
+      ServiceToken: !GetAtt BackfillTriggerFunction.Arn
+      TrackingTableName: !Ref TrackingTable
+      BackfillStateMachineArn: !Ref BackfillStateMachine
+      TotalSegments: "10"
+      # Force re-evaluation on each stack update (bumped for ConfidenceAlertCount=0 repair)
+      BackfillVersion: "3.0"
 
   ##############################################################################
   # DynamoDB table and initialization function for workflow concurrency counter
@@ -3335,9 +3526,10 @@ Resources:
         StackName: !Sub "${AWS::StackName}"
         Version: <VERSION>
         BuildDateTime: <BUILD_DATE_TIME>
-        IDPPattern: !Ref IDPPattern
+        IDPPattern: "Unified"
         InputBucket: !Ref InputBucket
         DiscoveryBucket: !Ref DiscoveryBucket
+        TestSetBucket: !Ref TestSetBucket
         ConfigurationBucket: !Ref ConfigurationBucket
         OutputBucket: !Ref OutputBucket
         ReportingBucket: !If
@@ -3360,27 +3552,9 @@ Resources:
             - !Ref QueueProcessorLogGroup
             - !Ref WorkflowTrackerLogGroup
             - !Ref SaveReportingDataFunctionV2LogGroup
-            - !If
-              - IsPattern1
-              - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
-              - !If
-                - IsPattern2
-                - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
-                - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
-        StateMachineArn: !If
-          - IsPattern3
-          - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-          - !If
-            - IsPattern2
-            - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
-            - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
-        StateMachineName: !If
-          - IsPattern3
-          - !GetAtt PATTERN3STACK.Outputs.StateMachineName
-          - !If
-            - IsPattern2
-            - !GetAtt PATTERN2STACK.Outputs.StateMachineName
-            - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+            - !GetAtt PATTERNSTACK.Outputs.PatternLogGroups
+        StateMachineArn: !GetAtt PATTERNSTACK.Outputs.StateMachineArn
+        StateMachineName: !GetAtt PATTERNSTACK.Outputs.StateMachineName
         KnowledgeBaseId: !If
           - ShouldCreateDocumentKnowledgeBase
           - !GetAtt DOCUMENTKB.Outputs.KnowledgeBaseID
@@ -3586,32 +3760,23 @@ Resources:
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
-          STATE_MACHINE_ARN: !If
-            - IsPattern3
-            - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-            - !If
-              - IsPattern2
-              - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
-              - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+          STATE_MACHINE_ARN: !GetAtt PATTERNSTACK.Outputs.StateMachineArn
           APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
           CONCURRENCY_TABLE: !Ref ConcurrencyTable
           MAX_CONCURRENT: !Ref MaxConcurrentWorkflows
           WORKING_BUCKET: !Ref WorkingBucket
+          CONFIG_TABLE: !Ref ConfigurationTable
       Policies:
         - SQSPollerPolicy:
             QueueName: !GetAtt DocumentQueue.QueueName
         - StepFunctionsExecutionPolicy:
-            StateMachineName: !If
-              - IsPattern3
-              - !GetAtt PATTERN3STACK.Outputs.StateMachineName
-              - !If
-                - IsPattern2
-                - !GetAtt PATTERN2STACK.Outputs.StateMachineName
-                - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+            StateMachineName: !GetAtt PATTERNSTACK.Outputs.StateMachineName
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ConcurrencyTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConfigurationTable
         - S3CrudPolicy:
             BucketName: !Ref WorkingBucket
         - Statement:
@@ -3772,13 +3937,7 @@ Resources:
           - Step Functions Execution Status Change
         detail:
           stateMachineArn:
-            - !If
-              - IsPattern3
-              - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-              - !If
-                - IsPattern2
-                - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
-                - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+            - !GetAtt PATTERNSTACK.Outputs.StateMachineArn
           status:
             - FAILED
             - TIMED_OUT
@@ -3904,13 +4063,7 @@ Resources:
           - Step Functions Execution Status Change
         detail:
           stateMachineArn:
-            - !If
-              - IsPattern3
-              - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-              - !If
-                - IsPattern2
-                - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
-                - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+            - !GetAtt PATTERNSTACK.Outputs.StateMachineArn
           status:
             - SUCCEEDED
       State: ENABLED
@@ -4040,13 +4193,7 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       Dimensions:
         - Name: StateMachineArn
-          Value: !If
-            - IsPattern3
-            - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-            - !If
-              - IsPattern2
-              - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
-              - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+          Value: !GetAtt PATTERNSTACK.Outputs.StateMachineArn
       AlarmActions:
         - !Ref AlertsTopic
 
@@ -4063,13 +4210,7 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: StateMachineArn
-          Value: !If
-            - IsPattern3
-            - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-            - !If
-              - IsPattern2
-              - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
-              - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+          Value: !GetAtt PATTERNSTACK.Outputs.StateMachineArn
       AlarmActions:
         - !Ref AlertsTopic
 
@@ -4431,20 +4572,8 @@ Resources:
               }
             ]
           }
-        - StateMachineArn: !If
-            - IsPattern3
-            - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-            - !If
-              - IsPattern2
-              - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
-              - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
-          StateMachineLogGroup: !If
-            - IsPattern3
-            - !GetAtt PATTERN3STACK.Outputs.StateMachineLogGroup
-            - !If
-              - IsPattern2
-              - !GetAtt PATTERN2STACK.Outputs.StateMachineLogGroup
-              - !GetAtt PATTERN1STACK.Outputs.StateMachineLogGroup
+        - StateMachineArn: !GetAtt PATTERNSTACK.Outputs.StateMachineArn
+          StateMachineLogGroup: !GetAtt PATTERNSTACK.Outputs.StateMachineLogGroup
 
   DashboardMergerFunction:
     DependsOn:
@@ -4495,13 +4624,7 @@ Resources:
     Properties:
       ServiceToken: !GetAtt DashboardMergerFunction.Arn
       Dashboard1Name: !Ref MainTemplateSubsetDashboard
-      Dashboard2Name: !If
-        - IsPattern3
-        - !GetAtt PATTERN3STACK.Outputs.DashboardName
-        - !If
-          - IsPattern2
-          - !GetAtt PATTERN2STACK.Outputs.DashboardName
-          - !GetAtt PATTERN1STACK.Outputs.DashboardName
+      Dashboard2Name: !GetAtt PATTERNSTACK.Outputs.DashboardName
       MergedDashboardName: !Sub "${AWS::StackName}-${AWS::Region}"
       ChangeToForceUpdate: <HASH_TOKEN> # Source code hash set by publish script
 
@@ -4947,6 +5070,8 @@ Resources:
     Metadata:
       cfn_nag:
         rules_to_suppress:
+          - id: W11
+            reason: "servicequotas:GetServiceQuota and ListServiceQuotas APIs do not support resource-level permissions"
           - id: W89
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
@@ -4954,6 +5079,7 @@ Resources:
     # checkov:skip=CKV_AWS_116: "DLQ not required for capacity planning function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values (log level and feature flags)"
     Properties:
       PermissionsBoundary:
         !If [
@@ -5032,6 +5158,7 @@ Resources:
     # checkov:skip=CKV_AWS_116: "DLQ not required"
     # checkov:skip=CKV_AWS_117: "VPC not required"
     # checkov:skip=CKV_AWS_115: "Reserved concurrency not required"
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values (log level only)"
     Properties:
       PermissionsBoundary:
         !If [
@@ -5290,7 +5417,7 @@ Resources:
     Type: AWS::Cognito::UserPoolClient
     Condition: CreateExternalAppClient
     Properties:
-      ClientName: "External-App-Client"
+      ClientName: "external-app-client"
       UserPoolId: !Ref UserPool
       GenerateSecret: true
       ExplicitAuthFlows:
@@ -5308,7 +5435,10 @@ Resources:
         - profile
       CallbackURLs:
         - !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com"
-        - !Sub "https://${CloudFrontDistribution.DomainName}/"
+        - !If
+          - UseCloudFrontHosting
+          - !Sub "https://${CloudFrontDistribution.DomainName}/"
+          - !Sub "${ALBHOSTINGSTACK.Outputs.WebUIURL}/"
         - !Sub "https://${AWS::Region}.quicksight.aws.amazon.com/sn/oauthcallback"
         - https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback
         - https://us-west-2.quicksight.aws.amazon.com/sn/oauthcallback
@@ -5316,12 +5446,42 @@ Resources:
         - https://ap-southeast-2.quicksight.aws.amazon.com/sn/oauthcallback
       LogoutURLs:
         - !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com"
-        - !Sub "https://${CloudFrontDistribution.DomainName}/"
+        - !If
+          - UseCloudFrontHosting
+          - !Sub "https://${CloudFrontDistribution.DomainName}/"
+          - !Sub "${ALBHOSTINGSTACK.Outputs.WebUIURL}/"
         - !Sub "https://${AWS::Region}.quicksight.aws.amazon.com/sn/oauthcallback"
         - https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback
         - https://us-west-2.quicksight.aws.amazon.com/sn/oauthcallback
         - https://eu-west-1.quicksight.aws.amazon.com/sn/oauthcallback
         - https://ap-southeast-2.quicksight.aws.amazon.com/sn/oauthcallback
+
+  MCPResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Condition: CreateAgentCoreLambda
+    Properties:
+      UserPoolId: !Ref UserPool
+      Identifier: idp-mcp-connector
+      Name: idp-mcp-connector
+      Scopes:
+        - ScopeName: access
+          ScopeDescription: Full access to IDP MCP Connector
+
+  MCPConnectorClient:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: CreateAgentCoreLambda
+    DependsOn: MCPResourceServer
+    Properties:
+      ClientName: "mcp-connector-client"
+      UserPoolId: !Ref UserPool
+      GenerateSecret: true
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - idp-mcp-connector/access
+      SupportedIdentityProviders:
+        - COGNITO
 
   ##########################################################################
   # Cognoito user authentication for AppSync API and WebUI
@@ -5343,16 +5503,21 @@ Resources:
           - true
         InviteMessageTemplate:
           EmailSubject: Welcome to GenAI-IDP!
-          EmailMessage: !Sub |-
-            <p>Hello {username},</p>
-            <p>Welcome to the AWS GenAIIDP Solution! Your temporary password is: <strong>{####}</strong></p>
-            <p>When the CloudFormation stack is COMPLETE, use the link below to log in and set your permanent password.
-            <p>     https://${CloudFrontDistribution.DomainName}/
-            <p>
-            <p>Thanks,</p>
-            <p>AWS GenAIIDP Team</p>
-            <p>
-            <p><em>Stack: ${AWS::StackName}, v<VERSION>, <BUILD_DATE_TIME></em>
+          EmailMessage: !Sub
+            - |-
+              <p>Hello {username},</p>
+              <p>Welcome to the AWS GenAIIDP Solution! Your temporary password is: <strong>{####}</strong></p>
+              <p>When the CloudFormation stack is COMPLETE, use the link below to log in and set your permanent password.
+              <p>     ${WebUIURL}
+              <p>
+              <p>Thanks,</p>
+              <p>AWS GenAIIDP Team</p>
+              <p>
+              <p><em>Stack: ${AWS::StackName}, v<VERSION>, <BUILD_DATE_TIME></em>
+            - WebUIURL: !If
+                - UseCloudFrontHosting
+                - !Sub "https://${CloudFrontDistribution.DomainName}/"
+                - !GetAtt ALBHOSTINGSTACK.Outputs.WebUIURL
       AutoVerifiedAttributes:
         - email
       EmailConfiguration:
@@ -5395,7 +5560,10 @@ Resources:
         - phone
         - profile
       CallbackURLs:
-        - !Sub "https://${CloudFrontDistribution.DomainName}"
+        - !If
+          - UseCloudFrontHosting
+          - !Sub "https://${CloudFrontDistribution.DomainName}"
+          - !GetAtt ALBHOSTINGSTACK.Outputs.WebUIURL
       AccessTokenValidity: 1
       EnableTokenRevocation: true
       ExplicitAuthFlows:
@@ -5585,12 +5753,28 @@ Resources:
       Precedence: 0
       UserPoolId: !Ref UserPool
 
+  AuthorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      Description: Authors - read/write access to documents and configuration
+      GroupName: Author
+      Precedence: 1
+      UserPoolId: !Ref UserPool
+
   ReviewerGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
       Description: Document Reviewers for HITL
       GroupName: Reviewer
-      Precedence: 1
+      Precedence: 2
+      UserPoolId: !Ref UserPool
+
+  ViewerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      Description: Viewers - read-only access to documents and configuration
+      GroupName: Viewer
+      Precedence: 3
       UserPoolId: !Ref UserPool
 
   AdminUserToGroupAttachment:
@@ -6046,6 +6230,10 @@ Resources:
             reason: "Lambda function does not need to be in VPC"
           - id: W92
             reason: "Lambda function does not need reserved concurrency"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for synchronous AppSync resolver"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values"
     Properties:
       PermissionsBoundary:
         !If [
@@ -6235,6 +6423,7 @@ Resources:
     # checkov:skip=CKV_AWS_116: "DLQ configured for SQS triggered function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values (bucket names and log level)"
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
@@ -6341,6 +6530,7 @@ Resources:
           DISCOVERY_TRACKING_TABLE: !Ref DiscoveryTrackingTable
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
+          BLUEPRINT_OPTIMIZATION_FUNCTION_NAME: !Ref BlueprintOptimizationFunction
       LoggingConfig:
         LogGroup: !Ref DiscoveryProcessorFunctionLogGroup
       Events:
@@ -6388,8 +6578,250 @@ Resources:
                 - aws-marketplace:Unsubscribe
                 - aws-marketplace:ViewSubscriptions
               Resource: "*"
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt BlueprintOptimizationFunction.Arn
 
   DiscoveryProcessorFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  ##########################################################################
+  # Multi-Document Discovery (Clustering + Agentic Analysis)
+  ##########################################################################
+
+  # --- Lambda Functions (5 step handlers sharing same CodeUri) ---
+
+  MultiDocDiscoveryPrepareFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access"
+          - id: W92
+            reason: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_116: "DLQ handled at Step Functions level"
+    # checkov:skip=CKV_AWS_117: "No VPC needed"
+    # checkov:skip=CKV_AWS_115: "No reserved concurrency needed"
+    # checkov:skip=CKV_AWS_173: "No sensitive env vars"
+    Properties:
+      FunctionName: !Sub "GENAIIDP-${AWS::StackName}-MultiDocPrepare"
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: prepare_handler.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/multi_doc_discovery
+      Description: Multi-doc discovery - prepare and list documents
+      MemorySize: 512
+      Timeout: 300
+      Layers:
+        - !Ref IDPCommonBaseLayer
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          DISCOVERY_BUCKET: !Ref DiscoveryBucket
+          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
+      LoggingConfig:
+        LogGroup: !Ref MultiDocDiscoveryPrepareFunctionLogGroup
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref DiscoveryBucket
+        - S3ReadPolicy:
+            BucketName: !Ref InputBucket
+        - S3ReadPolicy:
+            BucketName: !Ref TestSetBucket
+        - Statement:
+            - Effect: Allow
+              Action: [kms:Encrypt, kms:Decrypt, kms:ReEncrypt*, kms:GenerateDataKey*, kms:DescribeKey]
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+            - Effect: Allow
+              Action: [appsync:GraphQL]
+              Resource: !Sub "${GraphQLApi.Arn}/*"
+
+  MultiDocDiscoveryPrepareFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  # --- Nested Stack for container-based multi-doc discovery Lambdas ---
+  # Embed, Cluster, Analyze, Save functions use Docker images because their
+  # dependencies (scikit-learn, scipy, numpy, strands-agents) exceed Lambda's
+  # 250MB unzipped layer limit.
+
+  MULTIDOCDISCOVERYSTACK:
+    DependsOn:
+      - IsStacknameLengthOK
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/multi-doc-discovery/.aws-sam/packaged.yaml
+      Parameters:
+        StackName: !Ref AWS::StackName
+        DiscoveryBucketName: !Ref DiscoveryBucket
+        DiscoveryBucketArn: !GetAtt DiscoveryBucket.Arn
+        InputBucketName: !Ref InputBucket
+        TestSetBucketName: !Ref TestSetBucket
+        ConfigurationTableName: !Ref ConfigurationTable
+        ConfigurationTableArn: !GetAtt ConfigurationTable.Arn
+        CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+        LogLevel: !Ref LogLevel
+        LogRetentionDays: !Ref LogRetentionDays
+        BuildHash: <MULTI_DOC_DISCOVERY_BUILD_HASH_TOKEN>
+        ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
+        SourceZipfile: "<ARTIFACT_PREFIX_TOKEN>/multi-doc-discovery-source.zip"
+        AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
+        AppSyncApiArn: !GetAtt GraphQLApi.Arn
+
+  # --- Step Functions State Machine ---
+
+  MultiDocDiscoveryStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "states.${AWS::URLSuffix}"
+            Action: sts:AssumeRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Policies:
+        - PolicyName: MultiDocDiscoveryStateMachinePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt MultiDocDiscoveryPrepareFunction.Arn
+                  - !GetAtt MULTIDOCDISCOVERYSTACK.Outputs.EmbedFunctionArn
+                  - !GetAtt MULTIDOCDISCOVERYSTACK.Outputs.ClusterFunctionArn
+                  - !GetAtt MULTIDOCDISCOVERYSTACK.Outputs.AnalyzeFunctionArn
+                  - !GetAtt MULTIDOCDISCOVERYSTACK.Outputs.SaveFunctionArn
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                  - dynamodb:GetItem
+                Resource: !GetAtt DiscoveryTrackingTable.Arn
+              - Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:GenerateDataKey*
+                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  MultiDocDiscoveryStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${AWS::StackName}-MultiDocDiscovery"
+      DefinitionUri: src/lambda/multi_doc_discovery/statemachine.asl.json
+      DefinitionSubstitutions:
+        DiscoveryTrackingTable: !Ref DiscoveryTrackingTable
+        PrepareFunction: !GetAtt MultiDocDiscoveryPrepareFunction.Arn
+        EmbedFunction: !GetAtt MULTIDOCDISCOVERYSTACK.Outputs.EmbedFunctionArn
+        ClusterFunction: !GetAtt MULTIDOCDISCOVERYSTACK.Outputs.ClusterFunctionArn
+        AnalyzeFunction: !GetAtt MULTIDOCDISCOVERYSTACK.Outputs.AnalyzeFunctionArn
+        SaveFunction: !GetAtt MULTIDOCDISCOVERYSTACK.Outputs.SaveFunctionArn
+      Role: !GetAtt MultiDocDiscoveryStateMachineRole.Arn
+
+  ##########################################################################
+  # Blueprint Optimization Function
+  ##########################################################################
+
+  BlueprintOptimizationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+          - id: W11
+            reason: "Role requires * resource access for CloudWatch Metrics and Logs"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for async invoked function - failures are handled internally"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      FunctionName: !Sub "${AWS::StackName}-blueprint-optimization"
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: src/lambda/blueprint_optimization/
+      Description: Lambda function to optimize BDA blueprints using ground truth data
+      MemorySize: 3008
+      Timeout: 900
+      Layers:
+        - !Ref IDPCommonBaseLayer
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+          STACK_NAME: !Ref AWS::StackName
+          DISCOVERY_TRACKING_TABLE: !Ref DiscoveryTrackingTable
+      LoggingConfig:
+        LogGroup: !Ref BlueprintOptimizationFunctionLogGroup
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref DiscoveryBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigurationTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DiscoveryTrackingTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cloudwatch:PutMetricData
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+            # BDA permissions for blueprint optimization
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeDataAutomationAsync
+                - bedrock:CreateDataAutomationProject
+                - bedrock:UpdateDataAutomationProject
+                - bedrock:GetDataAutomationProject
+                - bedrock:GetDataAutomationStatus
+                - bedrock:GetBlueprint
+                - bedrock:UpdateBlueprint
+                - bedrock:CreateBlueprint
+                - bedrock:CreateBlueprintVersion
+                - bedrock:DeleteBlueprint
+                - bedrock:ListBlueprints
+                - bedrock:InvokeBlueprintOptimizationAsync
+                - bedrock:GetBlueprintOptimizationStatus
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:data-automation-project/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:aws:blueprint/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint-optimization-invocation/*"
+
+  BlueprintOptimizationFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
@@ -6401,6 +6833,7 @@ Resources:
 
   CloudFrontOriginAccessIdentity:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Condition: UseCloudFrontHosting
     Properties:
       CloudFrontOriginAccessIdentityConfig:
         Comment: !Sub "${AWS::StackName} CloudFront OAI for ${WebUIBucket}"
@@ -6408,6 +6841,7 @@ Resources:
   # Define a custom response headers policy for security headers
   SecurityHeadersPolicy:
     Type: AWS::CloudFront::ResponseHeadersPolicy
+    Condition: UseCloudFrontHosting
     Properties:
       ResponseHeadersPolicyConfig:
         Name: !Sub "${AWS::StackName}-security-headers-policy"
@@ -6432,6 +6866,7 @@ Resources:
 
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
+    Condition: UseCloudFrontHosting
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -6493,6 +6928,26 @@ Resources:
           - GeoRestriction:
               RestrictionType: none
 
+  ##########################################################################
+  # ALB Hosting (alternative to CloudFront for GovCloud / private networks)
+  ##########################################################################
+
+  ALBHOSTINGSTACK:
+    Type: AWS::CloudFormation::Stack
+    Condition: UseALBHosting
+    Properties:
+      TemplateURL: ./nested/alb-hosting/.aws-sam/packaged.yaml
+      Parameters:
+        VpcId: !Ref ALBVpcId
+        SubnetIds: !Join [",", !Ref ALBSubnetIds]
+        CertificateArn: !Ref ALBCertificateArn
+        ALBScheme: !Ref ALBScheme
+        ALBAllowedCIDRs: !Ref ALBAllowedCIDRs
+        WebUIBucketName: !Ref WebUIBucket
+        StackName: !Ref AWS::StackName
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+        LoggingBucketName: !Ref LoggingBucket
+
   UICodeBuildServiceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -6540,11 +6995,14 @@ Resources:
                   - s3:DeleteObject
                 Resource:
                   - !Sub "arn:${AWS::Partition}:s3:::${WebUIBucket}/*"
-              - Effect: Allow
-                Action:
-                  - cloudfront:CreateInvalidation
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+              - !If
+                - UseCloudFrontHosting
+                - Effect: Allow
+                  Action:
+                    - cloudfront:CreateInvalidation
+                  Resource:
+                    - !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+                - !Ref AWS::NoValue
 
   UICodeBuildProject:
     Type: AWS::CodeBuild::Project
@@ -6588,10 +7046,13 @@ Resources:
                 - echo Copying Web UI
                 - find build -ls
                 - aws s3 cp --recursive build s3://${WEBAPP_BUCKET}/
-                - echo Invalidating CloudFront Distribution
-                - >
-                  aws cloudfront create-invalidation
-                  --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths '/*'
+                - |
+                  if [ "$WEB_UI_HOSTING" = "CloudFront" ]; then
+                    echo "Invalidating CloudFront Distribution"
+                    aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths '/*'
+                  else
+                    echo "ALB hosting mode - skipping CloudFront invalidation"
+                  fi
           artifacts:
             files:
               - build.json
@@ -6609,8 +7070,13 @@ Resources:
             Value: !Sub "<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>"
           - Name: WEBAPP_BUCKET
             Value: !Ref WebUIBucket
+          - Name: WEB_UI_HOSTING
+            Value: !Ref WebUIHosting
           - Name: CLOUDFRONT_DISTRIBUTION_ID
-            Value: !Ref CloudFrontDistribution
+            Value: !If
+              - UseCloudFrontHosting
+              - !Ref CloudFrontDistribution
+              - ""
             # These VITE variables are used by the web ui in the
             # aws-exports.js Amplify config. The values are embedded in the
             # code at build time.
@@ -6632,7 +7098,10 @@ Resources:
               - "false"
               - "true"
           - Name: VITE_CLOUDFRONT_DOMAIN
-            Value: !Sub "https://${CloudFrontDistribution.DomainName}/"
+            Value: !If
+              - UseCloudFrontHosting
+              - !Sub "https://${CloudFrontDistribution.DomainName}/"
+              - !Sub "${ALBHOSTINGSTACK.Outputs.WebUIURL}/"
           - Name: VITE_TEST_SET_BUCKET_NAME
             Value: !Ref TestSetBucket
           - Name: VITE_INPUT_BUCKET_NAME
@@ -6779,6 +7248,7 @@ Resources:
     # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values (Cognito pool and group IDs)"
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
@@ -6791,7 +7261,9 @@ Resources:
         Variables:
           USER_POOL_ID: !Ref UserPool
           ADMIN_GROUP: !Ref AdminGroup
+          AUTHOR_GROUP: !Ref AuthorGroup
           REVIEWER_GROUP: !Ref ReviewerGroup
+          VIEWER_GROUP: !Ref ViewerGroup
           USERS_TABLE_NAME: !Ref UsersTable
           ALLOWED_SIGNUP_EMAIL_DOMAINS: !Ref AllowedSignUpEmailDomain
       LoggingConfig:
@@ -6836,6 +7308,7 @@ Resources:
     # checkov:skip=CKV_AWS_116: "DLQ not required for DynamoDB stream processing"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values (Cognito pool and group IDs)"
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
@@ -6887,6 +7360,7 @@ Resources:
     # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_173: "Environment variables contain non-sensitive configuration values (DynamoDB table name)"
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
@@ -6983,6 +7457,24 @@ Resources:
       TypeName: Query
       FieldName: listUsers
 
+  UpdateUserResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: APPSYNCSTACK
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt UserManagementDataSource.Name
+      TypeName: Mutation
+      FieldName: updateUser
+
+  GetMyProfileResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: APPSYNCSTACK
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt UserManagementDataSource.Name
+      TypeName: Query
+      FieldName: getMyProfile
+
   CompleteSectionReviewDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
@@ -7035,7 +7527,10 @@ Outputs:
     Value: !GetAtt CustomerManagedEncryptionKey.Arn
   ApplicationWebURL:
     Description: Application Web URL
-    Value: !Sub "https://${CloudFrontDistribution.DomainName}/"
+    Value: !If
+      - UseCloudFrontHosting
+      - !Sub "https://${CloudFrontDistribution.DomainName}/"
+      - !GetAtt ALBHOSTINGSTACK.Outputs.WebUIURL
   S3InstallBucket:
     Description: Install S3 bucket name
     Value: !Ref InputBucket
@@ -7108,24 +7603,12 @@ Outputs:
     Value: !Sub https://s3.console.aws.amazon.com/s3/buckets/${TestSetBucket}
   StateMachineArn:
     Description: Step Functions State machine ARN
-    Value: !If
-      - IsPattern3
-      - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-      - !If
-        - IsPattern2
-        - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
-        - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+    Value: !GetAtt PATTERNSTACK.Outputs.StateMachineArn
   StateMachineConsoleURL:
     Description: Step Functions State machine console URL
     Value: !Sub
       - https://${AWS::Region}.console.aws.amazon.com/states/home?region=${AWS::Region}#/statemachines/view/${StateMachineArn}
-      - StateMachineArn: !If
-          - IsPattern3
-          - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-          - !If
-            - IsPattern2
-            - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
-            - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+      - StateMachineArn: !GetAtt PATTERNSTACK.Outputs.StateMachineArn
 
   CWDashboardConsoleName:
     Description: Name of the merged CloudWatch dashboard
@@ -7203,11 +7686,11 @@ Outputs:
     Value: !GetAtt AgentCoreGateway.GatewayUrl
   MCPClientId:
     Condition: CreateAgentCoreLambda
-    Description: MCP Client ID
+    Description: Cognito client ID for user-based authentication with the IDP MCP server. Used by external applications like Amazon QuickSight that require user password authentication.
     Value: !Ref ExternalAppClient
   MCPClientSecret:
     Condition: CreateAgentCoreLambda
-    Description: MCP Client Secret
+    Description: Cognito client secret for user-based authentication with the IDP MCP server. Used by external applications like Amazon QuickSight that require user password authentication.
     Value: !GetAtt ExternalAppClient.ClientSecret
   MCPUserPool:
     Condition: CreateAgentCoreLambda
@@ -7221,6 +7704,14 @@ Outputs:
     Condition: CreateAgentCoreLambda
     Description: MCP Authorization URL
     Value: !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
+  MCPConnectorClientId:
+    Condition: CreateAgentCoreLambda
+    Description: Cognito client ID used by the MCP Connector for machine-to-machine (M2M) authentication with the IDP system
+    Value: !Ref MCPConnectorClient
+  MCPConnectorClientSecret:
+    Condition: CreateAgentCoreLambda
+    Description: Cognito client secret used by the MCP Connector for machine-to-machine (M2M) authentication with the IDP system
+    Value: !GetAtt MCPConnectorClient.ClientSecret
   MCPContentBucketConsoleURL:
     Description: MCP server content bucket console URL
     Value: !Sub https://s3.console.aws.amazon.com/s3/buckets/${MCPContentBucket}

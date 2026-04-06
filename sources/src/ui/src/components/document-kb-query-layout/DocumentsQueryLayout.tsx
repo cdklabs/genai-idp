@@ -9,7 +9,7 @@ import { Box, Button, Spinner, Header, Grid, Container, SpaceBetween, Input, Lin
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 
-import queryKnowledgeBase from '../../graphql/queries/queryKnowledgeBase';
+import { queryKnowledgeBase } from '../../graphql/generated';
 import { DOCUMENTS_PATH } from '../../routes/constants';
 import useSettingsContext from '../../contexts/settings';
 
@@ -44,15 +44,14 @@ interface CustomLinkProps {
 }
 
 const CustomLink = ({ href, children }: CustomLinkProps): React.JSX.Element => {
-  const handleClick = (e: CustomEvent): void => {
-    e.preventDefault();
+  const handleClick = (): void => {
     // Handle the link click here
     console.log('Link clicked:', href);
     // You can add your custom navigation logic here
   };
 
   return (
-    <Link href={`#${DOCUMENTS_PATH}/${href}`} onClick={handleClick as unknown as (event: CustomEvent) => void}>
+    <Link href={`#${DOCUMENTS_PATH}/${href}`} onClick={handleClick}>
       {children}
     </Link>
   );
@@ -85,7 +84,7 @@ export const DocumentsQueryLayout = (): React.JSX.Element => {
 
   const getDocumentsQueryResponseFromKB = async (input: string, sessionId: string) => {
     const response = await client.graphql({
-      query: queryKnowledgeBase as unknown as string,
+      query: queryKnowledgeBase,
       variables: { input, sessionId },
     });
     return response;

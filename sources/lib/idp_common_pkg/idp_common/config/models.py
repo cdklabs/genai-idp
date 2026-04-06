@@ -82,6 +82,81 @@ class ImageConfig(BaseModel):
         return bool(v)
 
 
+class TableParsingConfig(BaseModel):
+    """Configuration for deterministic table parsing tool in agentic extraction.
+
+    When enabled, the extraction agent gains a parse_table tool that can
+    deterministically parse well-formatted Markdown tables from OCR output
+    without LLM inference. The agent decides when to use this tool based
+    on table quality and confidence metrics.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Enable the parse_table tool for the extraction agent. "
+        "When enabled, the agent can use deterministic table parsing "
+        "for well-formatted Markdown tables in OCR output (works with any OCR backend "
+        "that produces Markdown tables: Textract with TABLES/LAYOUT, or Bedrock OCR).",
+    )
+    min_confidence_threshold: float = Field(
+        default=95.0,
+        ge=0.0,
+        le=100.0,
+        description="Minimum average OCR text confidence (Textract 0-100 scale) "
+        "for the agent to prefer table parsing over LLM extraction. "
+        "Included in the agent's system prompt as guidance.",
+    )
+    min_parse_success_rate: float = Field(
+        default=0.90,
+        ge=0.0,
+        le=1.0,
+        description="Minimum parse_success_rate from the parse_table tool "
+        "for the agent to trust the parsed results. Below this threshold, "
+        "the agent should fall back to LLM extraction.",
+    )
+    use_confidence_data: bool = Field(
+        default=True,
+        description="Whether to load and provide OCR confidence data to the "
+        "parse_table tool for quality assessment.",
+    )
+    max_empty_line_gap: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description=(
+            "Maximum consecutive empty lines to tolerate within a table "
+            "before treating it as table boundary. Helps handle OCR page "
+            "breaks and artifacts. Higher values are more tolerant but may "
+            "merge unrelated tables."
+        ),
+    )
+    auto_merge_adjacent_tables: bool = Field(
+        default=True,
+        description="Automatically merge consecutive tables with identical column "
+        "structure. Helps recover from table splits caused by OCR artifacts like "
+        "page breaks. Disable if documents contain multiple similar tables that "
+        "should remain separate.",
+    )
+
+    @field_validator(
+        "min_confidence_threshold", "min_parse_success_rate", mode="before"
+    )
+    @classmethod
+    def parse_float(cls, v: Any) -> float:
+        """Parse float from string or number"""
+        if isinstance(v, str):
+            return float(v) if v else 0.0
+        return float(v)
+
+    @field_validator("max_empty_line_gap", mode="before")
+    @classmethod
+    def parse_int(cls, v: Any) -> int:
+        """Parse int from string or number"""
+        if isinstance(v, str):
+            return int(v) if v else 0
+        return int(v)
+
+
 class AgenticConfig(BaseModel):
     """Agentic extraction configuration"""
 
@@ -90,6 +165,21 @@ class AgenticConfig(BaseModel):
     review_agent_model: str | None = Field(
         default=None,
         description="Model used for reviewing and correcting extraction work",
+    )
+    max_concurrent_batches: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        description="Max concurrent page-batch agents for parallel extraction. "
+        "1 = sequential (default). >1 splits pages into N batches and runs N agents "
+        "concurrently. Reduces wall-clock time but increases Bedrock RPM. "
+        "Tune based on your Bedrock quota.",
+    )
+    table_parsing: TableParsingConfig = Field(
+        default_factory=TableParsingConfig,
+        description="Configuration for deterministic table parsing tool. "
+        "When enabled, the extraction agent can parse well-formatted "
+        "Markdown tables from OCR output without LLM inference.",
     )
 
 
@@ -1001,6 +1091,94 @@ class DiscoveryModelConfig(BaseModel):
         return int(v)
 
 
+class MultiDocumentDiscoveryConfig(BaseModel):
+    """Multi-document discovery configuration for batch clustering.
+
+    Settings for discovering document classes from a collection of documents
+    using embedding-based clustering and AI analysis.
+    """
+
+    embedding_model_id: str = Field(
+        default="us.cohere.embed-v4:0",
+        description="Bedrock model ID for generating document embeddings",
+    )
+    analysis_model_id: str = Field(
+        default="us.anthropic.claude-sonnet-4-6",
+        description="Bedrock model ID for analyzing document clusters",
+    )
+    temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Temperature for cluster analysis model",
+    )
+    max_tokens: int = Field(
+        default=10000,
+        gt=0,
+        description="Maximum output tokens for cluster analysis. "
+        "Ensure this does not exceed the selected model's limit.",
+    )
+    max_documents: int = Field(
+        default=500,
+        gt=0,
+        description="Maximum documents to process in a single discovery run",
+    )
+    min_cluster_size: int = Field(
+        default=2,
+        gt=0,
+        description="Minimum documents required to form a cluster",
+    )
+    num_sample_documents: int = Field(
+        default=3,
+        gt=0,
+        description="Number of sample documents selected per cluster for analysis",
+    )
+    max_sample_size: int = Field(
+        default=5,
+        gt=0,
+        description="Maximum sample size for cluster analysis",
+    )
+    max_concurrent_embeddings: int = Field(
+        default=5,
+        gt=0,
+        description="Maximum concurrent embedding API requests",
+    )
+    max_concurrent_clusters: int = Field(
+        default=3,
+        gt=0,
+        description="Maximum concurrent cluster analysis requests",
+    )
+    system_prompt: str = Field(
+        default="",
+        description="System prompt for the cluster analysis agent (leave empty to use built-in Jinja2 template)",
+    )
+
+    @field_validator("temperature", mode="before")
+    @classmethod
+    def parse_float(cls, v: Any) -> float:
+        """Parse float from string or number"""
+        if isinstance(v, str):
+            return float(v) if v else 0.0
+        return float(v)
+
+    @field_validator(
+        "max_tokens",
+        "max_documents",
+        "min_cluster_size",
+        "num_sample_documents",
+        "max_sample_size",
+        "max_concurrent_embeddings",
+        "max_concurrent_clusters",
+        mode="before",
+    )
+    @classmethod
+    def parse_int(cls, v: Any) -> int:
+        """Parse int from string or number"""
+        if isinstance(v, str):
+            return int(v) if v else 0
+        return int(v)
+
+
 class DiscoveryConfig(BaseModel):
     """Discovery configuration"""
 
@@ -1011,6 +1189,14 @@ class DiscoveryConfig(BaseModel):
     with_ground_truth: DiscoveryModelConfig = Field(
         default_factory=DiscoveryModelConfig,
         description="Configuration for discovery with ground truth",
+    )
+    auto_split: DiscoveryModelConfig = Field(
+        default_factory=DiscoveryModelConfig,
+        description="Configuration for auto-detecting document section boundaries in multi-page packages",
+    )
+    multi_document: MultiDocumentDiscoveryConfig = Field(
+        default_factory=MultiDocumentDiscoveryConfig,
+        description="Configuration for multi-document batch discovery using embedding clustering",
     )
 
 
@@ -1025,6 +1211,13 @@ IDP_CONFIG_DEPRECATED_FIELDS = {
     "output_bucket",
     "textract_page_tracker",
     "summary",
+    "processing_mode",  # Renamed to use_bda (bool) in Phase 1
+    # DynamoDB storage metadata fields (not part of IDPConfig model)
+    "BdaProjectArn",
+    "BdaSyncStatus",
+    "BdaLastSyncedAt",
+    "_config_format",
+    "_config_storage",
 }
 
 
@@ -1071,6 +1264,32 @@ class IDPConfig(BaseModel):
 
     config_type: Literal["Config"] = Field(
         default="Config", description="Configuration type"
+    )
+
+    use_bda: bool = Field(
+        default=False,
+        description="Use Bedrock Data Automation (BDA) for document processing. "
+        "When true, BDA handles OCR, classification, and extraction as a single managed service. "
+        "When false (default), uses the step-by-step pipeline with configurable OCR, classification, "
+        "extraction, and assessment stages.",
+    )
+
+    enable_blueprint_optimization: bool = Field(
+        default=False,
+        description="Enable BDA blueprint optimization during discovery. "
+        "When true and a ground truth file is provided, discovery will automatically "
+        "optimize the BDA blueprint using the InvokeBlueprintOptimizationAsync API "
+        "to improve extraction accuracy. Defaults to false.",
+    )
+
+    managed: bool = Field(
+        default=False,
+        description="Stack-managed configuration that is overwritten on stack updates.",
+    )
+
+    test_set: Optional[str] = Field(
+        default=None,
+        description="Associated test set name (documentation/reference only).",
     )
 
     notes: Optional[str] = Field(default=None, description="Configuration notes")
@@ -1268,10 +1487,16 @@ class ConfigurationRecord(BaseModel):
         # Stringify values (preserve booleans, convert numbers to strings)
         stringified = self._stringify_values(config_dict)
 
+        # Map managed field to PascalCase DynamoDB convention (before spreading into item)
+        managed_value = stringified.pop("managed", None)
+
         configuration_type = f"{self.configuration_type}#{self.version}" if self.version else self.configuration_type
 
         # Build DynamoDB item
         item = {"Configuration": configuration_type, **stringified}
+
+        if managed_value is not None:
+            item["Managed"] = managed_value
 
         # Add ConfigurationRecord level fields
         if self.is_active is not None:
@@ -1327,8 +1552,18 @@ class ConfigurationRecord(BaseModel):
             version = ""
 
         # Remove DynamoDB keys and metadata
-        config_data = {k: v for k, v in item.items() 
-                      if k not in ("Configuration", "IsActive", "CreatedAt", "UpdatedAt", "Description")}
+        # Remove DynamoDB partition key, record metadata, and storage metadata fields
+        # These are not part of the config data model
+        _DYNAMODB_NON_CONFIG_FIELDS = {
+            "Configuration", "IsActive", "CreatedAt", "UpdatedAt", "Description",
+            "BdaProjectArn", "BdaSyncStatus", "BdaLastSyncedAt", "Managed",
+            "_config_format", "_config_storage",
+        }
+        config_data = {k: v for k, v in item.items() if k not in _DYNAMODB_NON_CONFIG_FIELDS}
+
+        # Map PascalCase DynamoDB field back to lowercase Pydantic field
+        if "Managed" in item:
+            config_data["managed"] = item["Managed"]
 
         # Set config_type discriminator directly from DynamoDB Configuration key
         # DynamoDB keys match Pydantic discriminators exactly:

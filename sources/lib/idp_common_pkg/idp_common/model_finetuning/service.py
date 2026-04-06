@@ -171,7 +171,7 @@ class ModelFinetuningService:
 
             # Shuffle lines with a fixed seed for reproducibility
             random.seed(42)
-            random.shuffle(lines)
+            random.shuffle(lines)  # nosec B311 - training data shuffle
 
             # Split data
             split_idx = int(len(lines) * (1 - validation_split))

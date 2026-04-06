@@ -11,7 +11,7 @@ scripts/
 ├── sdlc/                # SDLC CI/CD scripts and infrastructure
 │   ├── cfn/             # CloudFormation templates for CI/CD pipeline
 │   └── [scripts]        # CI/CD automation scripts
-└── generate_govcloud_template.py  # GovCloud template generation
+└── generate_govcloud_template.py  # GovCloud template generation (deprecated — use `idp-cli publish --headless`)
 ```
 
 ## Subdirectories
@@ -39,7 +39,7 @@ See [sdlc/cfn/README.md](sdlc/cfn/README.md) for CloudFormation templates.
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
-| `generate_govcloud_template.py` | Generate GovCloud-compatible template | `python scripts/generate_govcloud_template.py <bucket> <prefix> <region>` |
+| `generate_govcloud_template.py` | Generate GovCloud-compatible template (**deprecated** — use `idp-cli publish --headless`) | `idp-cli publish --source-dir . --region <region> --headless` |
 
 ## Operational Commands (via idp-cli)
 

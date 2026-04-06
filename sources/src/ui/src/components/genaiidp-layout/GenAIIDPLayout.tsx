@@ -7,6 +7,7 @@ import { AppLayout, Flashbar } from '@cloudscape-design/components';
 import { ConsoleLogger } from 'aws-amplify/utils';
 
 import { DocumentsContext } from '../../contexts/documents';
+import { Document } from '../../types/documents';
 
 import useNotifications from '../../hooks/use-notifications';
 import useSplitPanel from '../../hooks/use-split-panel';
@@ -18,7 +19,8 @@ import DocumentDetails from '../document-details';
 import DocumentsQueryLayout from '../document-kb-query-layout';
 import DocumentsAgentsLayout from '../document-agents-layout/DocumentsAgentsLayout';
 import UploadDocumentPanel from '../upload-document';
-import DiscoveryPanel from '../discovery/DiscoveryPanel';
+import DiscoveryPage from '../discovery/DiscoveryPage';
+import DiscoveryJobDetails from '../discovery/DiscoveryJobDetails';
 import UserManagementLayout from '../user-management/UserManagementLayout';
 import { appLayoutLabels } from '../common/labels';
 
@@ -43,13 +45,13 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
 
   const notifications = useNotifications();
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [selectedItems, setSelectedItems] = useState([]);
+  const [selectedItems, setSelectedItems] = useState<Document[]>([]);
 
   const getInitialPeriodsToLoad = () => {
     // default to 2 hours - half of one (4hr) shard period
     let periods = 0.5;
     try {
-      const periodsFromStorage = Math.abs(JSON.parse(localStorage.getItem(PERIODS_TO_LOAD_STORAGE_KEY)));
+      const periodsFromStorage = Math.abs(JSON.parse(localStorage.getItem(PERIODS_TO_LOAD_STORAGE_KEY) ?? '0'));
       // prettier-ignore
       if (
         !Number.isFinite(periodsFromStorage)
@@ -73,6 +75,7 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
     documents,
     getDocumentDetailsFromIds,
     isDocumentsListLoading,
+    hasListBeenLoaded,
     periodsToLoad,
     setIsDocumentsListLoading,
     setPeriodsToLoad,
@@ -91,6 +94,7 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
     documents,
     getDocumentDetailsFromIds,
     isDocumentsListLoading,
+    hasListBeenLoaded,
     selectedItems,
     setIsDocumentsListLoading,
     setPeriodsToLoad,
@@ -110,8 +114,8 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
       <AppLayout
         headerSelector="#top-navigation"
         navigation={<Navigation />}
-        navigationOpen={navigationOpen as boolean}
-        onNavigationChange={({ detail }) => (setNavigationOpen as (open: boolean) => void)(detail.open)}
+        navigationOpen={navigationOpen}
+        onNavigationChange={({ detail }) => setNavigationOpen(detail.open)}
         breadcrumbs={<Breadcrumbs />}
         notifications={<Flashbar items={notifications as import('@cloudscape-design/components').FlashbarProps.MessageDefinition[]} />}
         tools={<ToolsPanel />}
@@ -132,7 +136,8 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
               <Route path="pricing" element={<PricingLayout />} />
               <Route path="capacity-planning" element={<CapacityPlanningLayout />} />
               <Route path="upload" element={<UploadDocumentPanel />} />
-              <Route path="discovery" element={<DiscoveryPanel />} />
+              <Route path="discovery" element={<DiscoveryPage />} />
+              <Route path="discovery/job/:jobId" element={<DiscoveryJobDetails />} />
               <Route path="users" element={<UserManagementLayout />} />
               <Route path="*" element={<DocumentDetails />} />
             </Routes>

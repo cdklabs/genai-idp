@@ -18,7 +18,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 def run_command(cmd, check=True):
     """Run shell command and return result"""
     print(f"Running: {cmd}")
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true - Reviewed: command input is controlled and sanitized
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)  # nosec B602 nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true - hardcoded commands, no user input
     if check and result.returncode != 0:
         print(f"Error: {result.stderr}")
         sys.exit(1)
