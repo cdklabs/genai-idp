@@ -6,12 +6,15 @@ SPDX-License-Identifier: Apache-2.0
 import * as cxapi from "@aws-cdk/cx-api";
 import { App, Stack } from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
+import * as ec2 from "aws-cdk-lib/aws-ec2";
+import * as kms from "aws-cdk-lib/aws-kms";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import {
   ProcessingEnvironment,
   UnifiedDocumentProcessor,
   IUnifiedDocumentProcessor,
   UnifiedDocumentProcessorProps,
+  IUnifiedDocumentProcessorConfiguration,
 } from "../src";
 
 describe("UnifiedDocumentProcessor", () => {
@@ -19,6 +22,7 @@ describe("UnifiedDocumentProcessor", () => {
   let stack: Stack;
   let environment: ProcessingEnvironment;
   let configurationBucket: Bucket;
+  let configuration: IUnifiedDocumentProcessorConfiguration;
 
   beforeEach(() => {
     app = new App({
@@ -40,6 +44,24 @@ describe("UnifiedDocumentProcessor", () => {
       workingBucket,
       metricNamespace: "TestNamespace",
     });
+
+    // Mock configuration that returns a minimal valid definition
+    configuration = {
+      bind: () => ({
+        ocrInferenceProvider: undefined,
+        classificationInferenceProvider: undefined,
+        extractionInferenceProvider: undefined,
+        assessmentInferenceProvider: undefined,
+        summarizationInferenceProvider: undefined,
+        evaluationModel: undefined,
+        ocrBackend: "textract" as const,
+        customPromptGenerator: undefined,
+        raw: () => ({ use_bda: false, classes: [], notes: "test" }),
+        validate: () => ({ valid: true, errors: [], warnings: [] }),
+        isLegacyFormat: () => false,
+        isJsonSchemaFormat: () => true,
+      }),
+    };
   });
 
   describe("basic construct creation", () => {
@@ -47,6 +69,7 @@ describe("UnifiedDocumentProcessor", () => {
       const processor = new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       expect(processor).toBeDefined();
@@ -56,6 +79,7 @@ describe("UnifiedDocumentProcessor", () => {
       const processor = new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       expect(processor.stateMachine).toBeDefined();
@@ -70,6 +94,7 @@ describe("UnifiedDocumentProcessor", () => {
         {
           environment,
           configurationBucket,
+          configuration,
         },
       );
 
@@ -94,6 +119,7 @@ describe("UnifiedDocumentProcessor", () => {
       const processor = new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       expect(processor.maxProcessingConcurrency).toBe(1);
@@ -103,6 +129,7 @@ describe("UnifiedDocumentProcessor", () => {
       const processor = new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
         maxProcessingConcurrency: 50,
       });
 
@@ -115,6 +142,7 @@ describe("UnifiedDocumentProcessor", () => {
       new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       const template = Template.fromStack(stack);
@@ -130,14 +158,15 @@ describe("UnifiedDocumentProcessor", () => {
       new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       const template = Template.fromStack(stack);
       const stateMachines = template.findResources(
         "AWS::StepFunctions::StateMachine",
       );
-      const processorStateMachines = Object.keys(stateMachines).filter(
-        (key) => key.startsWith("Processor"),
+      const processorStateMachines = Object.keys(stateMachines).filter((key) =>
+        key.startsWith("Processor"),
       ).length;
       expect(processorStateMachines).toBe(1);
     });
@@ -146,6 +175,7 @@ describe("UnifiedDocumentProcessor", () => {
       new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       const template = Template.fromStack(stack);
@@ -161,12 +191,13 @@ describe("UnifiedDocumentProcessor", () => {
       new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       const template = Template.fromStack(stack);
       const tables = template.findResources("AWS::DynamoDB::Table");
-      const processorTables = Object.keys(tables).filter(
-        (key) => key.startsWith("Processor"),
+      const processorTables = Object.keys(tables).filter((key) =>
+        key.startsWith("Processor"),
       );
       // Should have at least the BDA metadata table
       expect(processorTables.length).toBeGreaterThanOrEqual(1);
@@ -176,6 +207,7 @@ describe("UnifiedDocumentProcessor", () => {
       new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       const template = Template.fromStack(stack);
@@ -193,12 +225,13 @@ describe("UnifiedDocumentProcessor", () => {
       new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       const template = Template.fromStack(stack);
       const logGroups = template.findResources("AWS::Logs::LogGroup");
-      const processorLogGroups = Object.keys(logGroups).filter(
-        (key) => key.startsWith("Processor"),
+      const processorLogGroups = Object.keys(logGroups).filter((key) =>
+        key.startsWith("Processor"),
       );
       expect(processorLogGroups.length).toBeGreaterThanOrEqual(1);
     });
@@ -209,6 +242,7 @@ describe("UnifiedDocumentProcessor", () => {
       new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       const template = Template.fromStack(stack);
@@ -233,6 +267,7 @@ describe("UnifiedDocumentProcessor", () => {
       new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       const template = Template.fromStack(stack);
@@ -251,6 +286,7 @@ describe("UnifiedDocumentProcessor", () => {
       new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       const template = Template.fromStack(stack);
@@ -268,6 +304,7 @@ describe("UnifiedDocumentProcessor", () => {
       new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
       });
 
       const template = Template.fromStack(stack);
@@ -288,12 +325,12 @@ describe("UnifiedDocumentProcessor", () => {
 
   describe("optional props", () => {
     test("accepts encryptionKey without errors", () => {
-      const kms = require("aws-cdk-lib/aws-kms");
       const key = new kms.Key(stack, "TestKey");
 
       const processor = new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
         encryptionKey: key,
       });
 
@@ -302,12 +339,12 @@ describe("UnifiedDocumentProcessor", () => {
     });
 
     test("accepts vpcConfiguration without errors", () => {
-      const ec2 = require("aws-cdk-lib/aws-ec2");
       const vpc = new ec2.Vpc(stack, "TestVpc");
 
       const processor = new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
         vpcConfiguration: {
           vpc,
           vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
@@ -325,6 +362,7 @@ describe("UnifiedDocumentProcessor", () => {
       const processor = new UnifiedDocumentProcessor(stack, "Processor", {
         environment,
         configurationBucket,
+        configuration,
         reportingBucket,
         baselineBucket,
       });
@@ -336,6 +374,7 @@ describe("UnifiedDocumentProcessor", () => {
       const propsCheck: UnifiedDocumentProcessorProps = {
         environment,
         configurationBucket,
+        configuration,
       } as any;
       expect(propsCheck).toBeDefined();
 

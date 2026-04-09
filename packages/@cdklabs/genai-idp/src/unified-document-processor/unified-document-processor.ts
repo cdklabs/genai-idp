@@ -13,13 +13,16 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
-import { IUnifiedDocumentProcessorConfiguration } from "./configuration/configuration";
-import { UnifiedDocumentProcessorConfigurationSchema } from "./configuration/schema";
 import { BdaMetadataTable, IBdaMetadataTable } from "./bda-metadata-table";
-import { DocumentProcessorProps, IDocumentProcessor } from "../document-processor";
+import {
+  DocumentProcessorProps,
+  IDocumentProcessor,
+} from "../document-processor";
 import { Invokable } from "../invokable";
 import { IProcessingEnvironment } from "../processing-environment";
 import { VpcConfiguration } from "../vpc-configuration";
+import { IUnifiedDocumentProcessorConfiguration } from "./configuration/configuration";
+import { UnifiedDocumentProcessorConfigurationSchema } from "./configuration/schema";
 import {
   AssessmentFunction,
   BdaCompletionFunction,
@@ -311,7 +314,8 @@ export class UnifiedDocumentProcessor
         ...sharedProps,
         api: env.api,
         configurationBucket: props.configurationBucket,
-        inferenceProvider: renderedConfiguration.classificationInferenceProvider,
+        inferenceProvider:
+          renderedConfiguration.classificationInferenceProvider,
       },
     );
 
@@ -398,13 +402,14 @@ export class UnifiedDocumentProcessor
       {
         ...sharedProps,
         api: env.api,
-        inferenceProvider: renderedConfiguration.evaluationModel ? Invokable.fromModel(renderedConfiguration.evaluationModel) : undefined,
+        inferenceProvider: renderedConfiguration.evaluationModel
+          ? Invokable.fromModel(renderedConfiguration.evaluationModel)
+          : undefined,
         reportingBucket:
           props.reportingBucket ??
           env.reportingEnvironment?.reportingBucket ??
           env.outputBucket,
-        baselineBucket:
-          props.baselineBucket ?? env.outputBucket,
+        baselineBucket: props.baselineBucket ?? env.outputBucket,
         saveReportingFunctionName:
           props.saveReportingFunctionName ??
           env.saveReportingDataFunction?.functionName ??

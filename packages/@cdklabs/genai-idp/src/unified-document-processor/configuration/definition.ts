@@ -90,8 +90,7 @@ export interface UnifiedDocumentProcessorConfigurationDefinitionOptions {
  *
  * @since 0.5.2
  */
-export interface IUnifiedDocumentProcessorConfigurationDefinition
-  extends IConfigurationDefinition {
+export interface IUnifiedDocumentProcessorConfigurationDefinition extends IConfigurationDefinition {
   /** Inference provider for OCR. */
   readonly ocrInferenceProvider?: IInvokable;
   /** Inference provider for classification. */
@@ -109,7 +108,6 @@ export interface IUnifiedDocumentProcessorConfigurationDefinition
   /** Custom prompt generator Lambda function. */
   readonly customPromptGenerator?: lambda.IFunction;
 }
-
 
 /**
  * Configuration definition for the Unified Document Processor.
@@ -260,27 +258,62 @@ export class UnifiedDocumentProcessorConfigurationDefinition {
           },
         },
         // Model transforms with LambdaHook support
-        ...buildInvokableTransform("ocr.model_id", options?.ocrInvokable, (inv) => {
-          _ocrInferenceProvider = inv;
-        }),
-        ...buildInvokableTransform("classification.model", options?.classificationInvokable, (inv) => {
-          _classificationInferenceProvider = inv;
-        }),
-        ...buildInvokableTransform("extraction.model", options?.extractionInvokable, (inv) => {
-          _extractionInferenceProvider = inv;
-        }),
-        ...buildInvokableTransform("assessment.model", options?.assessmentInvokable, (inv) => {
-          _assessmentInferenceProvider = inv;
-        }),
-        ...buildInvokableTransform("summarization.model", options?.summarizationInvokable, (inv) => {
-          _summarizationInferenceProvider = inv;
-        }),
+        ...buildInvokableTransform(
+          "ocr.model_id",
+          options?.ocrInvokable,
+          (inv) => {
+            _ocrInferenceProvider = inv;
+          },
+        ),
+        ...buildInvokableTransform(
+          "classification.model",
+          options?.classificationInvokable,
+          (inv) => {
+            _classificationInferenceProvider = inv;
+          },
+        ),
+        ...buildInvokableTransform(
+          "extraction.model",
+          options?.extractionInvokable,
+          (inv) => {
+            _extractionInferenceProvider = inv;
+          },
+        ),
+        ...buildInvokableTransform(
+          "assessment.model",
+          options?.assessmentInvokable,
+          (inv) => {
+            _assessmentInferenceProvider = inv;
+          },
+        ),
+        ...buildInvokableTransform(
+          "summarization.model",
+          options?.summarizationInvokable,
+          (inv) => {
+            _summarizationInferenceProvider = inv;
+          },
+        ),
         // LambdaHook ARN transforms
-        ...buildLambdaHookArnTransform("ocr.model_lambda_hook_arn", options?.ocrInvokable),
-        ...buildLambdaHookArnTransform("classification.model_lambda_hook_arn", options?.classificationInvokable),
-        ...buildLambdaHookArnTransform("extraction.model_lambda_hook_arn", options?.extractionInvokable),
-        ...buildLambdaHookArnTransform("assessment.model_lambda_hook_arn", options?.assessmentInvokable),
-        ...buildLambdaHookArnTransform("summarization.model_lambda_hook_arn", options?.summarizationInvokable),
+        ...buildLambdaHookArnTransform(
+          "ocr.model_lambda_hook_arn",
+          options?.ocrInvokable,
+        ),
+        ...buildLambdaHookArnTransform(
+          "classification.model_lambda_hook_arn",
+          options?.classificationInvokable,
+        ),
+        ...buildLambdaHookArnTransform(
+          "extraction.model_lambda_hook_arn",
+          options?.extractionInvokable,
+        ),
+        ...buildLambdaHookArnTransform(
+          "assessment.model_lambda_hook_arn",
+          options?.assessmentInvokable,
+        ),
+        ...buildLambdaHookArnTransform(
+          "summarization.model_lambda_hook_arn",
+          options?.summarizationInvokable,
+        ),
         // Evaluation (Bedrock only, no LambdaHook)
         {
           flatPath: "evaluation.llm_method.model",
@@ -319,14 +352,16 @@ export class UnifiedDocumentProcessorConfigurationDefinition {
       // Will be resolved during bind() when we have a scope
     }
 
-    class LoadedDefinition
-      implements IUnifiedDocumentProcessorConfigurationDefinition
-    {
+    class LoadedDefinition implements IUnifiedDocumentProcessorConfigurationDefinition {
       public readonly ocrInferenceProvider = _ocrInferenceProvider;
-      public readonly classificationInferenceProvider = _classificationInferenceProvider;
-      public readonly extractionInferenceProvider = _extractionInferenceProvider;
-      public readonly assessmentInferenceProvider = _assessmentInferenceProvider;
-      public readonly summarizationInferenceProvider = _summarizationInferenceProvider;
+      public readonly classificationInferenceProvider =
+        _classificationInferenceProvider;
+      public readonly extractionInferenceProvider =
+        _extractionInferenceProvider;
+      public readonly assessmentInferenceProvider =
+        _assessmentInferenceProvider;
+      public readonly summarizationInferenceProvider =
+        _summarizationInferenceProvider;
       public readonly evaluationModel = _evaluationModel;
       public readonly ocrBackend = _ocrBackend;
       public readonly customPromptGenerator = _customPromptGenerator;

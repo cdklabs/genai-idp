@@ -3,316 +3,176 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-import path from "path";
-import { IBedrockInvokable as IInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
+import { IBedrockInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import {
-  ConfigurationDefinition,
-  ConfigurationDefinitionLoader,
   IConfigurationDefinition,
-  mergeConfigWithDefaults,
-  modelNameToInvokable,
+  IInvokable,
+  Invokable,
+  UnifiedDocumentProcessorConfigurationDefinition,
+  IUnifiedDocumentProcessorConfigurationDefinition,
 } from "@cdklabs/genai-idp";
-import { Arn, ArnFormat } from "aws-cdk-lib";
 
 /**
  * Options for configuring the BDA processor configuration definition.
- * Allows customization of evaluation and summarization models and parameters.
+ * Allows customization of evaluation and summarization models.
+ * BDA handles OCR, classification, extraction, and assessment internally,
+ * so those options are not exposed.
  */
 export interface BdaProcessorConfigurationDefinitionOptions {
   /**
-   * Optional configuration for the evaluation stage.
-   * Defines the model and parameters used for evaluating extraction accuracy.
+   * Optional model for the evaluation stage.
+   * Defines the model used for evaluating extraction accuracy.
    */
-  readonly evaluationModel?: IInvokable;
+  readonly evaluationModel?: IBedrockInvokable;
 
   /**
-   * Optional configuration for the summarization stage.
-   * Defines the model and parameters used for generating document summaries.
+   * Optional model for the summarization stage.
+   * Defines the model used for generating document summaries.
    */
-  readonly summarizationModel?: IInvokable;
+  readonly summarizationModel?: IBedrockInvokable;
 }
 
 /**
  * Interface for BDA processor configuration definition.
- * Defines the structure and capabilities of configuration for Bedrock Data Automation processing.
+ * Exposes only BDA-relevant options (summarization, evaluation).
  */
 export interface IBdaProcessorConfigurationDefinition extends IConfigurationDefinition {
-  /**
-   * Optional invokable model used for evaluating extraction results.
-   * When provided, enables assessment of extraction quality and accuracy by
-   * comparing extraction results against expected values.
-   */
-  readonly evaluationModel?: IInvokable;
-
-  /**
-   * Optional invokable model used for document summarization.
-   * When provided, enables automatic generation of document summaries
-   * that capture key information from processed documents.
-   */
-  readonly summarizationModel?: IInvokable;
-  //updateFor(processor: IBdaProcessor): void;
+  /** Optional model for evaluating extraction results. */
+  readonly evaluationModel?: IBedrockInvokable;
+  /** Optional model for document summarization. */
+  readonly summarizationModel?: IBedrockInvokable;
+  /** @internal Resolved summarization inference provider from config or options. */
+  readonly _summarizationInferenceProvider?: IInvokable;
 }
 
 /**
  * Configuration definition for BDA document processing.
- * Provides methods to create and customize configuration for Bedrock Data Automation processing.
+ *
+ * Loads configuration from the unified config library and forces `use_bda: true`.
+ * Maps BDA-specific options (summarizationModel, evaluationModel) to the unified
+ * configuration definition options.
+ *
+ * @since 0.5.2
  */
 export class BdaProcessorConfigurationDefinition {
-  /**
-   * Creates a default configuration definition for BDA processing.
-   * This configuration includes full class definitions and extraction schemas.
-   *
-   * @param options Optional customization for evaluation and summarization settings
-   * @returns A configuration definition with default settings
-   */
+  /** Lending package sample preset with `use_bda: true`. */
   static lendingPackageSample(
     options?: BdaProcessorConfigurationDefinitionOptions,
   ): IBdaProcessorConfigurationDefinition {
-    return this._fromFile(
-      path.join(
-        __dirname,
-        "..",
-        "..",
-        "assets",
-        "configs",
-        "lending-package-sample",
-        "config.yaml",
-      ),
-      options,
-    );
+    const unified =
+      UnifiedDocumentProcessorConfigurationDefinition.lendingPackageSample(
+        BdaProcessorConfigurationDefinition._toUnifiedOptions(options),
+      );
+    return BdaProcessorConfigurationDefinition._wrap(unified, options);
   }
 
-  /**
-   * Creates a minimal configuration definition for GovCloud deployments.
-   * This configuration demonstrates the "minimal override" pattern where only
-   * GovCloud-compatible model IDs are specified, and all other settings
-   * (classes, prompts, etc.) are inherited from system defaults at runtime.
-   *
-   * This approach is useful when you want to:
-   * - Use system default class definitions
-   * - Only override region-specific settings (like model IDs)
-   * - Keep your config file minimal and maintainable
-   *
-   * @param options Optional customization for evaluation and summarization settings
-   * @returns A minimal configuration definition for GovCloud deployment
-   */
+  /** Lending package sample for GovCloud with `use_bda: true`. */
   static lendingPackageSampleGovCloud(
     options?: BdaProcessorConfigurationDefinitionOptions,
   ): IBdaProcessorConfigurationDefinition {
-    return this._fromFile(
-      path.join(
-        __dirname,
-        "..",
-        "..",
-        "assets",
-        "configs",
-        "lending-package-sample-govcloud",
-        "config.yaml",
-      ),
-      options,
-    );
+    const unified =
+      UnifiedDocumentProcessorConfigurationDefinition.lendingPackageSampleGovCloud(
+        BdaProcessorConfigurationDefinition._toUnifiedOptions(options),
+      );
+    return BdaProcessorConfigurationDefinition._wrap(unified, options);
   }
 
-  /**
-   * Creates a configuration definition for document splitting.
-   * This configuration focuses on splitting multi-document files into
-   * individual documents for processing.
-   *
-   * @param options Optional customization for evaluation and summarization settings
-   * @returns A configuration definition for document splitting
-   */
+  /** Document splitting preset with `use_bda: true`. */
   static docSplit(
     options?: BdaProcessorConfigurationDefinitionOptions,
   ): IBdaProcessorConfigurationDefinition {
-    return this._fromFile(
-      path.join(
-        __dirname,
-        "..",
-        "..",
-        "assets",
-        "configs",
-        "docsplit",
-        "config.yaml",
-      ),
-      options,
+    const unified = UnifiedDocumentProcessorConfigurationDefinition.docSplit(
+      BdaProcessorConfigurationDefinition._toUnifiedOptions(options),
     );
+    return BdaProcessorConfigurationDefinition._wrap(unified, options);
   }
 
-  /**
-   * Creates a configuration definition for OCR benchmarking.
-   * This configuration is designed for evaluating OCR performance
-   * across different document types and quality levels.
-   *
-   * @param options Optional customization for evaluation and summarization settings
-   * @returns A configuration definition for OCR benchmarking
-   */
+  /** OCR benchmark preset with `use_bda: true`. */
   static ocrBenchmark(
     options?: BdaProcessorConfigurationDefinitionOptions,
   ): IBdaProcessorConfigurationDefinition {
-    return this._fromFile(
-      path.join(
-        __dirname,
-        "..",
-        "..",
-        "assets",
-        "configs",
-        "ocr-benchmark",
-        "config.yaml",
-      ),
-      options,
-    );
+    const unified =
+      UnifiedDocumentProcessorConfigurationDefinition.ocrBenchmark(
+        BdaProcessorConfigurationDefinition._toUnifiedOptions(options),
+      );
+    return BdaProcessorConfigurationDefinition._wrap(unified, options);
   }
 
-  /**
-   * Creates a configuration definition for RealKIE FCC verified documents.
-   * This configuration is optimized for processing FCC-verified documents
-   * from the RealKIE dataset.
-   *
-   * @param options Optional customization for evaluation and summarization settings
-   * @returns A configuration definition for RealKIE FCC documents
-   */
+  /** RealKIE FCC verified preset with `use_bda: true`. */
   static realkieFccVerified(
     options?: BdaProcessorConfigurationDefinitionOptions,
   ): IBdaProcessorConfigurationDefinition {
-    return this._fromFile(
-      path.join(
-        __dirname,
-        "..",
-        "..",
-        "assets",
-        "configs",
-        "realkie-fcc-verified",
-        "config.yaml",
-      ),
-      options,
-    );
+    const unified =
+      UnifiedDocumentProcessorConfigurationDefinition.realkieFccVerified(
+        BdaProcessorConfigurationDefinition._toUnifiedOptions(options),
+      );
+    return BdaProcessorConfigurationDefinition._wrap(unified, options);
   }
 
-  /**
-   * Creates a configuration definition for RVL-CDIP document classification.
-   * This configuration is designed for the RVL-CDIP dataset, which contains
-   * 16 classes of document images for classification tasks.
-   *
-   * @param options Optional customization for evaluation and summarization settings
-   * @returns A configuration definition for RVL-CDIP processing
-   */
+  /** RVL-CDIP classification preset with `use_bda: true`. */
   static rvlCdip(
     options?: BdaProcessorConfigurationDefinitionOptions,
   ): IBdaProcessorConfigurationDefinition {
-    return this._fromFile(
-      path.join(
-        __dirname,
-        "..",
-        "..",
-        "assets",
-        "configs",
-        "rvl-cdip",
-        "config.yaml",
-      ),
-      options,
+    const unified = UnifiedDocumentProcessorConfigurationDefinition.rvlCdip(
+      BdaProcessorConfigurationDefinition._toUnifiedOptions(options),
     );
+    return BdaProcessorConfigurationDefinition._wrap(unified, options);
   }
 
-  /**
-   * Creates a configuration definition from a YAML file.
-   * Allows users to provide custom configuration files for document processing.
-   *
-   * @param filePath Path to the YAML configuration file
-   * @param options Optional customization for evaluation and summarization settings
-   * @returns A configuration definition loaded from the file
-   */
+  /** Creates a configuration definition from a custom YAML file with `use_bda: true`. */
   static fromFile(
     filePath: string,
     options?: BdaProcessorConfigurationDefinitionOptions,
   ): IBdaProcessorConfigurationDefinition {
-    return this._fromFile(filePath, options);
+    const unified = UnifiedDocumentProcessorConfigurationDefinition.fromFile(
+      filePath,
+      BdaProcessorConfigurationDefinition._toUnifiedOptions(options),
+    );
+    return BdaProcessorConfigurationDefinition._wrap(unified, options);
   }
 
   /**
-   * Creates a configuration definition from a file.
-   *
-   * @param filePath Path to the configuration file
-   * @param options Optional customization for evaluation and summarization settings
-   * @returns A loaded configuration definition
-   * @private
+   * Maps BDA-specific options to unified configuration definition options.
+   * Only maps summarization and evaluation — BDA handles OCR, classification,
+   * extraction, and assessment internally.
    */
-  private static _fromFile(
-    filePath: string,
+  private static _toUnifiedOptions(
+    options?: BdaProcessorConfigurationDefinitionOptions,
+  ) {
+    if (!options) return undefined;
+    return {
+      summarizationInvokable: options.summarizationModel
+        ? Invokable.fromModel(options.summarizationModel)
+        : undefined,
+      evaluationModel: options.evaluationModel,
+    };
+  }
+
+  /**
+   * Wraps a unified definition to force `use_bda: true` and expose
+   * only BDA-relevant properties.
+   */
+  private static _wrap(
+    unified: IUnifiedDocumentProcessorConfigurationDefinition,
     options?: BdaProcessorConfigurationDefinitionOptions,
   ): IBdaProcessorConfigurationDefinition {
-    let _summarizationInvokable: IInvokable | undefined;
-    let _evaluationInvokable: IInvokable | undefined;
+    // Force use_bda: true in the raw config
+    const rawConfig = unified.raw();
+    rawConfig.use_bda = true;
 
-    // Set invokables from options if provided, regardless of config file content
-    if (options?.summarizationModel) {
-      _summarizationInvokable = options.summarizationModel;
-    }
-    if (options?.evaluationModel) {
-      _evaluationInvokable = options.evaluationModel;
-    }
+    // Resolve summarization inference provider: explicit option > config-derived
+    const summarizationInferenceProvider = options?.summarizationModel
+      ? Invokable.fromModel(options.summarizationModel)
+      : unified.summarizationInferenceProvider;
 
-    // Load user config from file
-    const userConfig = ConfigurationDefinitionLoader.fromFile(filePath);
-
-    // Merge with system defaults for pattern-1 (BDA processor)
-    // This ensures we have all required fields (like model info) at synthesis time
-    const mergedConfig = mergeConfigWithDefaults(userConfig, "pattern-1");
-
-    const def = new ConfigurationDefinition({
-      configurationObject: mergedConfig,
-      transforms: [
-        {
-          flatPath: "evaluation.llm_method.model",
-          transform: (modelName?: string) => {
-            if (options?.evaluationModel) {
-              return Arn.split(
-                options.evaluationModel.invokableArn,
-                ArnFormat.SLASH_RESOURCE_NAME,
-              ).resourceName;
-            }
-            if (modelName) {
-              _evaluationInvokable = modelNameToInvokable(modelName);
-            }
-            return modelName;
-          },
-        },
-        {
-          flatPath: "summarization.model",
-          transform: (modelName?: string) => {
-            if (options?.summarizationModel) {
-              return Arn.split(
-                options.summarizationModel.invokableArn,
-                ArnFormat.SLASH_RESOURCE_NAME,
-              ).resourceName;
-            }
-            if (modelName) {
-              _summarizationInvokable = modelNameToInvokable(modelName);
-            }
-            return modelName;
-          },
-        },
-      ],
-    });
-
-    class LoadedDefinition implements IBdaProcessorConfigurationDefinition {
-      public readonly summarizationModel = _summarizationInvokable;
-      public readonly evaluationModel = _evaluationInvokable;
-      raw() {
-        return def.raw();
-      }
-
-      validate() {
-        return def.validate();
-      }
-
-      isLegacyFormat(): boolean {
-        return def.isLegacyFormat();
-      }
-
-      isJsonSchemaFormat(): boolean {
-        return def.isJsonSchemaFormat();
-      }
-    }
-    return new LoadedDefinition();
+    return {
+      evaluationModel: options?.evaluationModel ?? unified.evaluationModel,
+      summarizationModel: options?.summarizationModel,
+      _summarizationInferenceProvider: summarizationInferenceProvider,
+      raw: () => rawConfig,
+      validate: () => unified.validate(),
+      isLegacyFormat: () => unified.isLegacyFormat(),
+      isJsonSchemaFormat: () => unified.isJsonSchemaFormat(),
+    };
   }
 }

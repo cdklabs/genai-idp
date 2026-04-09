@@ -3,8 +3,9 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import { IProcessingEnvironment } from "@cdklabs/genai-idp";
 import { CustomResource } from "aws-cdk-lib";
-import { IBdaProcessor } from "../processor";
+import { Construct } from "constructs";
 import {
   BdaProcessorConfigurationDefinition,
   BdaProcessorConfigurationDefinitionOptions,
@@ -16,13 +17,22 @@ import {
  * Provides configuration management for Bedrock Data Automation processing.
  */
 export interface IBdaProcessorConfiguration {
+  /** The configuration definition. */
+  readonly definition: IBdaProcessorConfigurationDefinition;
+
   /**
    * Binds the configuration to a processor instance.
-   * This method applies the configuration to the processor.
+   * Writes the default configuration to the configuration table.
    *
-   * @param processor The BDA document processor to apply to
+   * @param scope The construct scope for creating custom resources
+   * @param environment The processing environment providing the configuration function and table
+   * @param bdaProjectArn Optional BDA project ARN to store alongside the config
    */
-  bind(processor: IBdaProcessor): IBdaProcessorConfigurationDefinition;
+  bind(
+    scope: Construct,
+    environment: IProcessingEnvironment,
+    bdaProjectArn?: string,
+  ): IBdaProcessorConfigurationDefinition;
 }
 
 /**
@@ -156,23 +166,29 @@ export class BdaProcessorConfiguration implements IBdaProcessorConfiguration {
    * @param definition The configuration definition instance
    */
   protected constructor(
-    private readonly definition: IBdaProcessorConfigurationDefinition,
+    public readonly definition: IBdaProcessorConfigurationDefinition,
   ) {}
 
   /**
    * Binds the configuration to a processor instance.
    * Creates a custom resource that writes the default configuration to the configuration table.
    *
-   * @param processor The BDA document processor to bind to
+   * @param scope The construct scope for creating custom resources
+   * @param environment The processing environment providing the configuration function and table
+   * @param bdaProjectArn Optional BDA project ARN to store alongside the config
    * @returns The configuration definition with resolved model references
    */
-  public bind(processor: IBdaProcessor): IBdaProcessorConfigurationDefinition {
-    new CustomResource(processor, "UpdateDefaultConfig", {
-      serviceToken: processor.environment.configurationFunction.functionArn,
+  public bind(
+    scope: Construct,
+    environment: IProcessingEnvironment,
+    bdaProjectArn?: string,
+  ): IBdaProcessorConfigurationDefinition {
+    new CustomResource(scope, "UpdateDefaultConfig", {
+      serviceToken: environment.configurationFunction.functionArn,
       properties: {
         Default: this.definition.raw(),
-        // NOTE: this is for making sure this CR executes on changes
-        ConfigurationTable: processor.environment.configurationTable.tableName,
+        ConfigurationTable: environment.configurationTable.tableName,
+        ...(bdaProjectArn && { BdaProjectArn: bdaProjectArn }),
       },
     });
 

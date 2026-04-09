@@ -874,7 +874,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "82acf4fe418eff17b6cc33ee25862a8bc4b63f5411fac0672ffd450ed8dab801.zip"
+     "S3Key": "057cdd48d65b4626ba2351c61c051e85da33172a4f97ec5c304e71872245c90a.zip"
     },
     "Environment": {
      "Variables": {
@@ -1075,6 +1075,36 @@
          ]
         }
        ]
+      },
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
       }
      ],
      "Version": "2012-10-17"
@@ -1119,7 +1149,10 @@
       "OUTPUT_BUCKET": {
        "Ref": "OutputBucket7114EB27"
       },
-      "DOCUMENT_TRACKING_MODE": "dynamodb"
+      "DOCUMENT_TRACKING_MODE": "dynamodb",
+      "CONFIG_TABLE": {
+       "Ref": "EnvironmentConfigurationTableFFC21CA7"
+      }
      }
     },
     "Handler": "index.handler",
@@ -1664,7 +1697,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "1349df9b73a5b1af6c14c69df4bf3985ff425a625d0a69df5ec9c6ee0855761b.zip"
+     "S3Key": "87574205c7182d45c83248cf35a25920077eb52bb6ce7b6f8acb21be5ac0eb3f.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only) (x86_64)"
    },
@@ -1684,7 +1717,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "47d5474ab53f2c304da8dd4bc63b35c9f3ea7b7d60b2509d23079f4be966c9ce.zip"
+     "S3Key": "96ece55d191b51a52bce024d4c7e2651d05076514e32e27ba2cdfbfb350f9dc6.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service (x86_64)"
    },
@@ -9918,6 +9951,36 @@
       },
       {
        "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EnvironmentConfigurationTableFFC21CA7",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
         "sqs:ReceiveMessage",
         "sqs:ChangeMessageVisibility",
         "sqs:GetQueueUrl",
@@ -9970,7 +10033,10 @@
       "WORKING_BUCKET": {
        "Ref": "WorkingBucketAF106285"
       },
-      "DOCUMENT_TRACKING_MODE": "dynamodb"
+      "DOCUMENT_TRACKING_MODE": "dynamodb",
+      "CONFIG_TABLE": {
+       "Ref": "EnvironmentConfigurationTableFFC21CA7"
+      }
      }
     },
     "Handler": "index.handler",
@@ -10156,7 +10222,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "8d284307ee6b871274a6c8f0dcc4d10dd10dac59413da8505703e0646bd4b1e1.zip"
+     "S3Key": "38bfdb107e02a0b53bf064db6d8ec92ba0708c5e6d276ac00b00d0c2f89d1f20.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only) (arm64)"
    },
@@ -10176,7 +10242,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "d4c4076ac977e7237e64165af8dd7fd8d7293bf2c1433f6db3c5bedb757a01e4.zip"
+     "S3Key": "5b26e36a7f7f68446566a90f7e7c48d7099a1a0d3e4f85807e9ea6763fe7a82d.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, image (arm64)"
    },
@@ -10196,7 +10262,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "a7b344d9889baec2d42d0174e8f486593e774c86c6353935e5c063bb14e3bf36.zip"
+     "S3Key": "3102d2d9c9991639bb012f0077533738268ac5fe4a1371d2529a1501ae0700b3.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr (arm64)"
    },
@@ -10216,7 +10282,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "6ce25ac5740b5ea11b728d412ae5da2d2e6363c2a8deeeeb525bea3c5fe1dc90.zip"
+     "S3Key": "b40148cc301780e19648214f64e63b940910ab2c79b7e19cebd993cadb366901.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service (arm64)"
    },
@@ -10236,7 +10302,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "9b5414db44f93735a8e81fe0964eb6f582853c798b38c7f9ae808f817eb12d19.zip"
+     "S3Key": "0669caf049e3b02eef45dc56f6bd706522c39f7143578a6f855ae9d3df03848c.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction (arm64)"
    },
@@ -10256,7 +10322,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "4511404df51acf0bf7201de1d5e08b6488dbc83fe848159ea3475a8a9a51a0b0.zip"
+     "S3Key": "cdc61d781ebba92e7fa184d30a226deaa79e2dc6d4764f3fc2a209f733a19e56.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service (arm64)"
    },
@@ -10276,7 +10342,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "f08aa4e8e4d687bdfd091ce13896c29118023fd15e34111b242b655e899298c4.zip"
+     "S3Key": "7d79e6acbe9613972266a707cfbdcbfa519289c974be406426460a43e1f857d1.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service (arm64)"
    },
@@ -10296,7 +10362,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "9d904a93b92ceb8d38b32fae58b5c3491481cada2fa14b53f1c67914ec9cf027.zip"
+     "S3Key": "f3bf4a99844a649fa1d2c643908c5d2cb84319de2cf9ae54263e521a92d90d64.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, summarization (arm64)"
    },
@@ -10316,7 +10382,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "79c2f99cc78c7409b5c7a6fdbe9ecb71f3b989798e92d7fa5687f3da11df1106.zip"
+     "S3Key": "91d05958349b42d012a2411072824dac644bed138f9d107a1a99bc7e563b8993.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, rule_validation (arm64)"
    },
@@ -10336,7 +10402,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "ab37bb6443b6de8467a15d99a95f5d6feebb6d6a542eae5c7f4b9e34a9622817.zip"
+     "S3Key": "bb0987459fde2618a8e1b3004074e100c384fb04e9191ca3493a10990777736d.zip"
     },
     "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, evaluation (arm64)"
    },

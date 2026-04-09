@@ -578,6 +578,8 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 "CustomClassificationModelARN",
                 "CustomExtractionModelARN",
                 "PreviousIDPPattern",
+                "BdaProjectArn",
+                "ConfigurationTable",
             }
             
             for prop_name, prop_value in properties.items():
@@ -667,6 +669,15 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                         logger.info("Activated default version")
                 except Exception as e:
                     logger.error(f"Error activating version during create, error: {e}")
+
+            # Set BDA project ARN on the default config version if provided
+            bda_project_arn = properties.get("BdaProjectArn", "").strip()
+            if bda_project_arn:
+                try:
+                    manager.set_bda_project_arn("default", arn=bda_project_arn, sync_status="synced")
+                    logger.info(f"Set BDA project ARN on default version: {bda_project_arn}")
+                except Exception as e:
+                    logger.warning(f"Failed to set BDA project ARN: {e}")
                     
             # Auto-enable BDA on ALL config versions when upgrading from a Pattern-1 stack
             previous_idp_pattern = properties.get("PreviousIDPPattern", "").strip()

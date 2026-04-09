@@ -15,8 +15,8 @@ import { Construct } from "constructs";
 import { IConfigurationTable } from "../../configuration-table";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
 import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
-import { ITrackingTable } from "../../tracking-table";
 import { LogLevel } from "../../log-level";
+import { ITrackingTable } from "../../tracking-table";
 import { VpcConfiguration } from "../../vpc-configuration";
 
 /**
@@ -88,11 +88,7 @@ export interface BdaCompletionFunctionProps extends IdpPythonFunctionOptions {
  * @since 0.5.2
  */
 export class BdaCompletionFunction extends lambda_python.PythonFunction {
-  constructor(
-    scope: Construct,
-    id: string,
-    props: BdaCompletionFunctionProps,
-  ) {
+  constructor(scope: Construct, id: string, props: BdaCompletionFunctionProps) {
     super(scope, id, {
       ...props,
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -128,7 +124,12 @@ export class BdaCompletionFunction extends lambda_python.PythonFunction {
           ].join(" && "),
         ],
       },
-      layers: [IdpPythonLayerVersion.getOrCreateForArchitecture(scope, lambda.Architecture.ARM_64)],
+      layers: [
+        IdpPythonLayerVersion.getOrCreateForArchitecture(
+          scope,
+          lambda.Architecture.ARM_64,
+        ),
+      ],
       timeout: cdk.Duration.minutes(15),
       memorySize: 4096,
       environment: {

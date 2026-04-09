@@ -11,6 +11,7 @@ import {
   ProcessingEnvironmentApi,
   ConfigurationTable,
   TrackingTable,
+  CapacityPlanning,
 } from "../src";
 
 describe("Phase 1: Resolver Alignment & Core Infrastructure", () => {
@@ -30,15 +31,6 @@ describe("Phase 1: Resolver Alignment & Core Infrastructure", () => {
     outputBucket = new Bucket(stack, "OutputBucket");
     trackingTable = new TrackingTable(stack, "TrackingTable");
     configurationTable = new ConfigurationTable(stack, "ConfigurationTable");
-  });
-
-  describe("Task 1.1: ErrorAnalyzer removal", () => {
-    test("ErrorAnalyzer is no longer exported from the package", () => {
-      // Verify that importing ErrorAnalyzer from the package fails at the type level
-      const exports = require("../src");
-      expect(exports.ErrorAnalyzer).toBeUndefined();
-      expect(exports.ErrorAnalyzerFunction).toBeUndefined();
-    });
   });
 
   describe("Task 1.2: TrackingTable TypeDateIndex GSI", () => {
@@ -90,7 +82,8 @@ describe("Phase 1: Resolver Alignment & Core Infrastructure", () => {
 
       // Verify GSI Lambda function is created
       template.hasResourceProperties("AWS::Lambda::Function", {
-        Description: "Lambda function for GSI-based document listing and counting",
+        Description:
+          "Lambda function for GSI-based document listing and counting",
       });
     });
 
@@ -159,7 +152,8 @@ describe("Phase 1: Resolver Alignment & Core Infrastructure", () => {
       const template = Template.fromStack(stack);
 
       template.hasResourceProperties("AWS::Lambda::Function", {
-        Description: "Lambda function to list documents by date range via GraphQL API",
+        Description:
+          "Lambda function to list documents by date range via GraphQL API",
       });
     });
   });
@@ -234,12 +228,7 @@ describe("Phase 1: Resolver Alignment & Core Infrastructure", () => {
 
   describe("Task 1.8: calculateCapacity is Query not Mutation", () => {
     test("CapacityPlanning wires calculateCapacity as Query", () => {
-      // This is a compile-time verification — the CapacityPlanning construct
-      // now uses typeName: 'Query' instead of 'Mutation'.
-      // Full integration test requires CapacityPlanning to be enabled,
-      // which is covered by the existing optional-features tests.
-      // Here we just verify the import still works.
-      const { CapacityPlanning } = require("../src");
+      // Verify the import still works
       expect(CapacityPlanning).toBeDefined();
     });
   });

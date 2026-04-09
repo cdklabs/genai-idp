@@ -56,7 +56,6 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Bucket, EventType, IBucket } from "aws-cdk-lib/aws-s3";
 import { IStateMachine } from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
-import { BedrockDataAutomation } from "./bedrock-data-automation";
 import { OptionalAdminUser } from "./optional-admin";
 
 export class BdaLendingStack extends Stack {
@@ -196,25 +195,17 @@ export class BdaLendingStack extends Stack {
 
     // 4.    Creating the processor, the actual engine for performing the IDP function.
 
-    // 4.1.  As this example processes with the use of the Amazon Bedrock Data Automation (BDA, for short) - we need to create such automation project and blueprints.
-    const bda = new BedrockDataAutomation(this, "LendingBda");
+    // 4.1.  Configuration bucket for pipeline configuration files
+    const configurationBucket = new Bucket(this, "ConfigurationBucket", {
+      encryptionKey: this.encryptionKey,
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
 
-    // 4.2   In the processing there is a mandatory evaluation step and this bucket is used for baseline data for evaluations.
-    const evaluationBaselineBucket = new Bucket(
-      this,
-      "EvaluationBaselineBucket",
-      {
-        encryptionKey: this.encryptionKey,
-        removalPolicy: RemovalPolicy.DESTROY,
-        autoDeleteObjects: true,
-      },
-    );
-
-    // 4.3.  Creating the processor that can run for a specific BDA project.
+    // 4.2.  Creating the processor — BDA blueprints and project are auto-created from the config classes.
     const processor = new BdaProcessor(this, "Pattern1", {
       environment,
-      dataAutomationProject: bda.project,
-      evaluationBaselineBucket,
+      configurationBucket,
       configuration: BdaProcessorConfiguration.lendingPackageSample(),
     });
 
@@ -277,6 +268,11 @@ export class BdaLendingStack extends Stack {
     webApplication.enable(documentDiscovery);
 
     // 7.6.  Evaluation baseline management for accuracy measurement against ground truth
+    const evaluationBaselineBucket = new Bucket(this, "EvaluationBaselineBucket", {
+      encryptionKey: this.encryptionKey,
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
     const evaluation = this.createEvaluation(
       evaluationBaselineBucket,
       outputBucket,

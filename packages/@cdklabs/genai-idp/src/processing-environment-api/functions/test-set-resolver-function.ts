@@ -12,6 +12,7 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
+import { LogLevel } from "../../log-level";
 import { ITrackingTable } from "../../tracking-table";
 
 /**
@@ -54,7 +55,7 @@ export interface TestSetResolverFunctionProps extends IdpPythonFunctionOptions {
    *
    * @default LogLevel.INFO
    */
-  readonly logLevel?: import("../../log-level").LogLevel;
+  readonly logLevel?: LogLevel;
 }
 
 /**

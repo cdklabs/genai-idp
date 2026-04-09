@@ -17,9 +17,9 @@ import { IConfigurationTable } from "../../configuration-table";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
 import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
 import { IInvokable } from "../../invokable";
+import { LogLevel } from "../../log-level";
 import { IProcessingEnvironmentApi } from "../../processing-environment-api";
 import { ITrackingTable } from "../../tracking-table";
-import { LogLevel } from "../../log-level";
 import { VpcConfiguration } from "../../vpc-configuration";
 
 /**
@@ -31,8 +31,7 @@ import { VpcConfiguration } from "../../vpc-configuration";
  *
  * @since 0.5.2
  */
-export interface RuleValidationOrchestrationFunctionProps
-  extends IdpPythonFunctionOptions {
+export interface RuleValidationOrchestrationFunctionProps extends IdpPythonFunctionOptions {
   /**
    * The DynamoDB table for tracking document processing status.
    */
@@ -144,7 +143,9 @@ export interface RuleValidationOrchestrationFunctionProps
  *
  * @since 0.5.2
  */
-export class RuleValidationOrchestrationFunction extends lambda_python.PythonFunction {
+export class RuleValidationOrchestrationFunction
+  extends lambda_python.PythonFunction
+{
   constructor(
     scope: Construct,
     id: string,
@@ -184,7 +185,14 @@ export class RuleValidationOrchestrationFunction extends lambda_python.PythonFun
           ].join(" && "),
         ],
       },
-      layers: [IdpPythonLayerVersion.getOrCreateForArchitecture(scope, lambda.Architecture.ARM_64, "rule_validation", "docs_service")],
+      layers: [
+        IdpPythonLayerVersion.getOrCreateForArchitecture(
+          scope,
+          lambda.Architecture.ARM_64,
+          "rule_validation",
+          "docs_service",
+        ),
+      ],
       timeout: cdk.Duration.minutes(15),
       memorySize: 4096,
       environment: {
@@ -229,14 +237,22 @@ export class RuleValidationOrchestrationFunction extends lambda_python.PythonFun
     props.api?.grantMutation(this);
 
     // Bedrock permissions for runtime-configured models
-    this.addToRolePolicy(new iam.PolicyStatement({
-      actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream", "bedrock:GetInferenceProfile"],
-      resources: ["*"],
-    }));
+    this.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+          "bedrock:GetInferenceProfile",
+        ],
+        resources: ["*"],
+      }),
+    );
 
-    this.addToRolePolicy(new iam.PolicyStatement({
-      actions: ["bedrock:ApplyGuardrail"],
-      resources: ["*"],
-    }));
+    this.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock:ApplyGuardrail"],
+        resources: ["*"],
+      }),
+    );
   }
 }

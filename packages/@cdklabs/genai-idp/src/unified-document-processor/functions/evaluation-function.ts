@@ -17,9 +17,9 @@ import { IConfigurationTable } from "../../configuration-table";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
 import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
 import { IInvokable } from "../../invokable";
+import { LogLevel } from "../../log-level";
 import { IProcessingEnvironmentApi } from "../../processing-environment-api";
 import { ITrackingTable } from "../../tracking-table";
-import { LogLevel } from "../../log-level";
 import { VpcConfiguration } from "../../vpc-configuration";
 
 /**
@@ -166,7 +166,14 @@ export class EvaluationFunction extends lambda_python.PythonFunction {
           ].join(" && "),
         ],
       },
-      layers: [IdpPythonLayerVersion.getOrCreateForArchitecture(scope, lambda.Architecture.ARM_64, "evaluation", "docs_service")],
+      layers: [
+        IdpPythonLayerVersion.getOrCreateForArchitecture(
+          scope,
+          lambda.Architecture.ARM_64,
+          "evaluation",
+          "docs_service",
+        ),
+      ],
       timeout: cdk.Duration.minutes(15),
       memorySize: 4096,
       environment: {
@@ -214,14 +221,22 @@ export class EvaluationFunction extends lambda_python.PythonFunction {
     props.api?.grantMutation(this);
 
     // Bedrock permissions for runtime-configured models
-    this.addToRolePolicy(new iam.PolicyStatement({
-      actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream", "bedrock:GetInferenceProfile"],
-      resources: ["*"],
-    }));
+    this.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+          "bedrock:GetInferenceProfile",
+        ],
+        resources: ["*"],
+      }),
+    );
 
-    this.addToRolePolicy(new iam.PolicyStatement({
-      actions: ["bedrock:ApplyGuardrail"],
-      resources: ["*"],
-    }));
+    this.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock:ApplyGuardrail"],
+        resources: ["*"],
+      }),
+    );
   }
 }

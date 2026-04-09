@@ -10,7 +10,7 @@ exports[`Core Constructs CDK Nag Compliance IdpPythonLayerVersion satisfies CDK 
     },
   },
   "Resources": {
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayer1695a11fC9CF6570": {
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayerce8af29eD1F6A0AF": {
       "Metadata": {
         "cdk_nag": {
           "rules_to_suppress": [
@@ -22,6 +22,9 @@ exports[`Core Constructs CDK Nag Compliance IdpPythonLayerVersion satisfies CDK 
         },
       },
       "Properties": {
+        "CompatibleArchitectures": [
+          "x86_64",
+        ],
         "CompatibleRuntimes": [
           "python3.12",
         ],
@@ -29,9 +32,9 @@ exports[`Core Constructs CDK Nag Compliance IdpPythonLayerVersion satisfies CDK 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "28f11f3473dcf007506e87eff3f98d68d819298ef4ab2e43456bbfe62a53f1d4.zip",
+          "S3Key": "891feee326d4d1d2de953c4325d5d1b79f81069ec47240c84945a440459fcc38.zip",
         },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: core",
+        "Description": "Lambda Layer containing the idp_common Python package with modules: core (x86_64)",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },
@@ -76,7 +79,7 @@ exports[`Core Constructs CDK Nag Compliance IdpPythonLayerVersion satisfies CDK 
     },
   },
   "Resources": {
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayeref7b2694B946B9A8": {
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer5c2fd8de6C8248D1": {
       "Metadata": {
         "cdk_nag": {
           "rules_to_suppress": [
@@ -88,6 +91,9 @@ exports[`Core Constructs CDK Nag Compliance IdpPythonLayerVersion satisfies CDK 
         },
       },
       "Properties": {
+        "CompatibleArchitectures": [
+          "x86_64",
+        ],
         "CompatibleRuntimes": [
           "python3.12",
         ],
@@ -95,9 +101,9 @@ exports[`Core Constructs CDK Nag Compliance IdpPythonLayerVersion satisfies CDK 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "28f11f3473dcf007506e87eff3f98d68d819298ef4ab2e43456bbfe62a53f1d4.zip",
+          "S3Key": "4032ae981804d911b952cb0d368fbe8cb8f8772c48b3e2e54be717283040cfa2.zip",
         },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, classification, ocr",
+        "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, classification, ocr (x86_64)",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },

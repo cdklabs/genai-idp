@@ -11,7 +11,6 @@ import {
 import { ProcessingEnvironment } from "@cdklabs/genai-idp";
 import { App, Aspects, CfnResource, RemovalPolicy, Stack } from "aws-cdk-lib";
 import { Bucket } from "aws-cdk-lib/aws-s3";
-import { SimpleDataAutomationProject } from "./simple-data-automation-project";
 import { BdaProcessor, BdaProcessorConfiguration } from "../../src";
 
 const app = new App();
@@ -34,6 +33,11 @@ const workingBucket = new Bucket(stack, "WorkingBucket", {
   autoDeleteObjects: true,
 });
 
+const configurationBucket = new Bucket(stack, "ConfigurationBucket", {
+  removalPolicy: RemovalPolicy.DESTROY,
+  autoDeleteObjects: true,
+});
+
 const environment = new ProcessingEnvironment(stack, "Environment", {
   metricNamespace: stack.stackName,
   inputBucket,
@@ -43,19 +47,16 @@ const environment = new ProcessingEnvironment(stack, "Environment", {
 
 new BdaProcessor(stack, "Pattern1", {
   environment,
+  configurationBucket,
   configuration: BdaProcessorConfiguration.lendingPackageSample({
     summarizationModel: CrossRegionInferenceProfile.fromConfig({
       geoRegion: CrossRegionInferenceProfileRegion.US,
       model: BedrockFoundationModel.AMAZON_NOVA_PRO_V1,
     }),
   }),
-  dataAutomationProject: new SimpleDataAutomationProject(
-    stack,
-    "BedrockProject",
-  ),
 });
 
-// INFO: clean up all the resources after deletion
+// Clean up all resources after deletion
 Aspects.of(app).add({
   visit(node) {
     if (node instanceof CfnResource) {

@@ -11,6 +11,7 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Construct } from "constructs";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
+import { LogLevel } from "../../log-level";
 
 /**
  * Properties for the Agent Chat Resolver function.
@@ -57,7 +58,7 @@ export interface AgentChatResolverFunctionProps extends IdpPythonFunctionOptions
    *
    * @default LogLevel.INFO
    */
-  readonly logLevel?: import("../../log-level").LogLevel;
+  readonly logLevel?: LogLevel;
 }
 
 /**

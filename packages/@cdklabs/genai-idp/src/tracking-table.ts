@@ -3,7 +3,12 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-import { AttributeType, ITable, ProjectionType, Table } from "aws-cdk-lib/aws-dynamodb";
+import {
+  AttributeType,
+  ITable,
+  ProjectionType,
+  Table,
+} from "aws-cdk-lib/aws-dynamodb";
 
 import { Construct } from "constructs";
 import { FixedKeyTableProps as TrackingTableProps } from "./fixed-key-table-props";

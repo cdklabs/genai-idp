@@ -262,38 +262,9 @@ if (fs.existsSync(pattern1LambdasDir)) {
   });
 }
 
-const pattern1_configs = [
-  "lending-package-sample",
-  "lending-package-sample-govcloud",
-  "docsplit",
-  "ocr-benchmark",
-  "realkie-fcc-verified",
-  "rvl-cdip"
-]
-
-pattern1_configs.forEach((configName) => {
-  idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:config:${configName}`, {
-    steps: [
-      { exec: `mkdir -p assets/configs/${configName}` },
-      { exec: `rsync -rLct ../../../sources/config_library/pattern-1/${configName}/config.yaml assets/configs/${configName}/.` }
-    ]
-  }))
-});
-
-idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:state-machine`, {
-  steps: [
-    { exec: `mkdir -p assets/sfn` },
-    { exec: `rsync -rLct ../../../sources/patterns/pattern-1/statemachine/workflow.asl.json assets/sfn/.` }
-  ]
-}));
-
-// Bundle schema for Pattern 1 (BDA Processor)
-idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:schema`, {
-  steps: [
-    { exec: `mkdir -p assets/schema` },
-    { exec: `rsync -rLct ../../../schemas/pattern-1/schema.json assets/schema/.` }
-  ]
-}));
+// BDA processor no longer bundles its own configs, state machine, or schema.
+// It delegates to UnifiedDocumentProcessor from @cdklabs/genai-idp which
+// bundles these assets itself.
 
 buildPackages.exec(`yarn workspace ${idpPattern1.name} build`);
 

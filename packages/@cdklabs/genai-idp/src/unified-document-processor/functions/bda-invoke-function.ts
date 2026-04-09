@@ -16,8 +16,8 @@ import { Construct } from "constructs";
 import { IConfigurationTable } from "../../configuration-table";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
 import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
-import { ITrackingTable } from "../../tracking-table";
 import { LogLevel } from "../../log-level";
+import { ITrackingTable } from "../../tracking-table";
 import { VpcConfiguration } from "../../vpc-configuration";
 
 /**
@@ -130,7 +130,12 @@ export class BdaInvokeFunction extends lambda_python.PythonFunction {
           ].join(" && "),
         ],
       },
-      layers: [IdpPythonLayerVersion.getOrCreateForArchitecture(scope, lambda.Architecture.ARM_64)],
+      layers: [
+        IdpPythonLayerVersion.getOrCreateForArchitecture(
+          scope,
+          lambda.Architecture.ARM_64,
+        ),
+      ],
       timeout: cdk.Duration.minutes(15),
       memorySize: 4096,
       environment: {
@@ -165,16 +170,18 @@ export class BdaInvokeFunction extends lambda_python.PythonFunction {
     props.encryptionKey?.grantEncryptDecrypt(this);
 
     // BDA API permissions
-    this.addToRolePolicy(new iam.PolicyStatement({
-      actions: [
-        "bedrock:InvokeDataAutomationAsync",
-        "bedrock:GetDataAutomationStatus",
-        "bedrock:GetDataAutomationProject",
-        "bedrock:ListDataAutomationProjects",
-        "bedrock:GetBlueprint",
-        "bedrock:GetBlueprintRecommendation",
-      ],
-      resources: ["*"],
-    }));
+    this.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "bedrock:InvokeDataAutomationAsync",
+          "bedrock:GetDataAutomationStatus",
+          "bedrock:GetDataAutomationProject",
+          "bedrock:ListDataAutomationProjects",
+          "bedrock:GetBlueprint",
+          "bedrock:GetBlueprintRecommendation",
+        ],
+        resources: ["*"],
+      }),
+    );
   }
 }

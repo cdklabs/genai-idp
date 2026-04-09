@@ -37,9 +37,7 @@ export interface IUnifiedDocumentProcessorConfigurationSchema {
  *
  * @since 0.5.2
  */
-export class UnifiedDocumentProcessorConfigurationSchema
-  implements IUnifiedDocumentProcessorConfigurationSchema
-{
+export class UnifiedDocumentProcessorConfigurationSchema implements IUnifiedDocumentProcessorConfigurationSchema {
   constructor() {}
 
   /**

@@ -3,9 +3,10 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+import * as fs from "fs";
 import path from "path";
 import { PythonLayerVersion } from "@aws-cdk/aws-lambda-python-alpha";
-import { Stack } from "aws-cdk-lib";
+import { AssetHashType, Stack } from "aws-cdk-lib";
 import { Architecture, ILayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { md5hash } from "aws-cdk-lib/core/lib/helpers-internal";
 import { Construct } from "constructs";
@@ -68,13 +69,37 @@ export class IdpPythonLayerVersion {
         ? `python -m pip install -e .[${modules.join(",")}] -t /asset-output/python`
         : `python -m pip install -e .[core] -t /asset-output/python`;
 
+    // Compute a stable asset hash based on pyproject.toml content + modules + architecture
+    // This prevents unnecessary rebuilds when only file timestamps change
+    const entryPath = path.join(
+      __dirname,
+      "..",
+      "assets",
+      "lib",
+      "idp_common_pkg",
+    );
+    const pyprojectContent = fs.readFileSync(
+      path.join(entryPath, "pyproject.toml"),
+      "utf8",
+    );
+    const assetHash = md5hash(
+      JSON.stringify({
+        pyproject: pyprojectContent,
+        modules: sortedModules,
+        arch: architecture.name,
+        pipCommand: pipInstallCommand,
+      }),
+    );
+
     // Create a new instance if one doesn't exist
     const newLayer = new PythonLayerVersion(stack, layerId, {
-      entry: path.join(__dirname, "..", "assets", "lib", "idp_common_pkg"),
+      entry: entryPath,
       compatibleRuntimes: [Runtime.PYTHON_3_12],
       compatibleArchitectures: [architecture],
       description: `Lambda Layer containing the idp_common Python package with modules: ${modules.length > 0 ? modules.join(", ") : "core (base only)"} (${architecture.name})`,
       bundling: {
+        assetHashType: AssetHashType.CUSTOM,
+        assetHash,
         command: [
           "bash",
           "-c",

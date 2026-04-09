@@ -580,23 +580,25 @@ export class ProcessingEnvironmentApi
     // ========================================
     // GSI-based listDocuments and getDocumentCount (replaces VTL Scan)
     // ========================================
-    const listDocumentsGSIFunction = new functions.ListDocumentsGSIResolverFunction(
-      this,
-      "ListDocumentsGSIResolverFunction",
-      {
-        trackingTable: this._trackingTable,
-        usersTable: this._usersTable,
-        encryptionKey: this._encryptionKey,
-        ...this._vpcConfiguration,
-      },
-    );
+    const listDocumentsGSIFunction =
+      new functions.ListDocumentsGSIResolverFunction(
+        this,
+        "ListDocumentsGSIResolverFunction",
+        {
+          trackingTable: this._trackingTable,
+          usersTable: this._usersTable,
+          encryptionKey: this._encryptionKey,
+          ...this._vpcConfiguration,
+        },
+      );
 
     const listDocumentsGSIDataSource = this.addLambdaDataSource(
       "ListDocumentsGSIDataSource",
       listDocumentsGSIFunction,
       {
         name: "ListDocumentsGSIDataSource",
-        description: "Lambda function for GSI-based document listing and counting",
+        description:
+          "Lambda function for GSI-based document listing and counting",
       },
     );
 
@@ -613,15 +615,16 @@ export class ProcessingEnvironmentApi
     // ========================================
     // listDocumentsByDateRange — separate Lambda resolver
     // ========================================
-    const listDocumentsRangeFunction = new functions.ListDocumentsByDateRangeResolverFunction(
-      this,
-      "ListDocumentsByDateRangeResolverFunction",
-      {
-        trackingTable: this._trackingTable,
-        encryptionKey: this._encryptionKey,
-        ...this._vpcConfiguration,
-      },
-    );
+    const listDocumentsRangeFunction =
+      new functions.ListDocumentsByDateRangeResolverFunction(
+        this,
+        "ListDocumentsByDateRangeResolverFunction",
+        {
+          trackingTable: this._trackingTable,
+          encryptionKey: this._encryptionKey,
+          ...this._vpcConfiguration,
+        },
+      );
 
     const listDocumentsRangeDataSource = this.addLambdaDataSource(
       "ListDocumentsByDateRangeDataSource",
@@ -632,10 +635,13 @@ export class ProcessingEnvironmentApi
       },
     );
 
-    listDocumentsRangeDataSource.createResolver("ListDocumentsByDateRangeResolver", {
-      typeName: "Query",
-      fieldName: "listDocumentsByDateRange",
-    });
+    listDocumentsRangeDataSource.createResolver(
+      "ListDocumentsByDateRangeResolver",
+      {
+        typeName: "Query",
+        fieldName: "listDocumentsByDateRange",
+      },
+    );
 
     trackingTableDataSource.createResolver("ListDocumentDateHourResolver", {
       typeName: "Query",
