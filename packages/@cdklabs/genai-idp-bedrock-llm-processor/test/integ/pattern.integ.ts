@@ -32,6 +32,11 @@ const outputBucket = new Bucket(stack, "OutputBucket", {
   autoDeleteObjects: true,
 });
 
+const configurationBucket = new Bucket(stack, "ConfigurationBucket", {
+  removalPolicy: RemovalPolicy.DESTROY,
+  autoDeleteObjects: true,
+});
+
 const environment = new ProcessingEnvironment(stack, "Environment", {
   metricNamespace: stack.stackName,
   inputBucket,
@@ -41,6 +46,7 @@ const environment = new ProcessingEnvironment(stack, "Environment", {
 
 new BedrockLlmProcessor(stack, "Processor", {
   environment,
+  configurationBucket,
   configuration: BedrockLlmProcessorConfiguration.fromFile(
     path.join(__dirname, "bedrock-config.yaml"),
   ),

@@ -52,6 +52,27 @@ new BdaProcessor(scope: Construct, id: string, props: BdaProcessorProps)
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.with">with</a></code> | Applies one or more mixins to this construct. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDAJobsFailed">metricBDAJobsFailed</a></code> | Failed BDA async jobs. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDAJobsSucceeded">metricBDAJobsSucceeded</a></code> | Successful BDA async jobs. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDAJobsTotal">metricBDAJobsTotal</a></code> | Total BDA async jobs submitted. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsFailed">metricBDARequestsFailed</a></code> | Failed BDA invocation requests. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsLatency">metricBDARequestsLatency</a></code> | BDA single-request latency in milliseconds. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsMaxRetriesExceeded">metricBDARequestsMaxRetriesExceeded</a></code> | BDA requests that exceeded max retries. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsNonRetryableErrors">metricBDARequestsNonRetryableErrors</a></code> | BDA non-retryable errors. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsRetrySuccess">metricBDARequestsRetrySuccess</a></code> | BDA requests that succeeded after retry. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsSucceeded">metricBDARequestsSucceeded</a></code> | Successful BDA invocation requests. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsThrottles">metricBDARequestsThrottles</a></code> | BDA request throttles. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsTotal">metricBDARequestsTotal</a></code> | Total BDA Data Automation invocation requests. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsTotalLatency">metricBDARequestsTotalLatency</a></code> | BDA total latency including retries in milliseconds. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsUnexpectedErrors">metricBDARequestsUnexpectedErrors</a></code> | BDA unexpected errors. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBedrockRequestsFailed">metricBedrockRequestsFailed</a></code> | Failed Bedrock model invocation requests. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBedrockRequestsSucceeded">metricBedrockRequestsSucceeded</a></code> | Successful Bedrock model invocation requests. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBedrockRequestsTotal">metricBedrockRequestsTotal</a></code> | Total Bedrock model invocation requests (summarization, evaluation). |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricHITLTriggered">metricHITLTriggered</a></code> | Documents flagged for human-in-the-loop review. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedCustomPages">metricProcessedCustomPages</a></code> | Custom blueprint pages processed. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedDocuments">metricProcessedDocuments</a></code> | Documents processed by BDA. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedPages">metricProcessedPages</a></code> | Total pages processed. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedStandardPages">metricProcessedStandardPages</a></code> | Standard pages processed. |
 
 ---
 
@@ -81,6 +102,300 @@ constructs.
 - *Type:* ...constructs.IMixin[]
 
 The mixins to apply.
+
+---
+
+##### `metricBDAJobsFailed` <a name="metricBDAJobsFailed" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDAJobsFailed"></a>
+
+```typescript
+public metricBDAJobsFailed(props?: MetricOptions): Metric
+```
+
+Failed BDA async jobs.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDAJobsFailed.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDAJobsSucceeded` <a name="metricBDAJobsSucceeded" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDAJobsSucceeded"></a>
+
+```typescript
+public metricBDAJobsSucceeded(props?: MetricOptions): Metric
+```
+
+Successful BDA async jobs.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDAJobsSucceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDAJobsTotal` <a name="metricBDAJobsTotal" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDAJobsTotal"></a>
+
+```typescript
+public metricBDAJobsTotal(props?: MetricOptions): Metric
+```
+
+Total BDA async jobs submitted.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDAJobsTotal.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsFailed` <a name="metricBDARequestsFailed" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsFailed"></a>
+
+```typescript
+public metricBDARequestsFailed(props?: MetricOptions): Metric
+```
+
+Failed BDA invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsFailed.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsLatency` <a name="metricBDARequestsLatency" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsLatency"></a>
+
+```typescript
+public metricBDARequestsLatency(props?: MetricOptions): Metric
+```
+
+BDA single-request latency in milliseconds.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsLatency.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsMaxRetriesExceeded` <a name="metricBDARequestsMaxRetriesExceeded" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsMaxRetriesExceeded"></a>
+
+```typescript
+public metricBDARequestsMaxRetriesExceeded(props?: MetricOptions): Metric
+```
+
+BDA requests that exceeded max retries.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsMaxRetriesExceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsNonRetryableErrors` <a name="metricBDARequestsNonRetryableErrors" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsNonRetryableErrors"></a>
+
+```typescript
+public metricBDARequestsNonRetryableErrors(props?: MetricOptions): Metric
+```
+
+BDA non-retryable errors.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsNonRetryableErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsRetrySuccess` <a name="metricBDARequestsRetrySuccess" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsRetrySuccess"></a>
+
+```typescript
+public metricBDARequestsRetrySuccess(props?: MetricOptions): Metric
+```
+
+BDA requests that succeeded after retry.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsRetrySuccess.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsSucceeded` <a name="metricBDARequestsSucceeded" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsSucceeded"></a>
+
+```typescript
+public metricBDARequestsSucceeded(props?: MetricOptions): Metric
+```
+
+Successful BDA invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsSucceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsThrottles` <a name="metricBDARequestsThrottles" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsThrottles"></a>
+
+```typescript
+public metricBDARequestsThrottles(props?: MetricOptions): Metric
+```
+
+BDA request throttles.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsTotal` <a name="metricBDARequestsTotal" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsTotal"></a>
+
+```typescript
+public metricBDARequestsTotal(props?: MetricOptions): Metric
+```
+
+Total BDA Data Automation invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsTotal.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsTotalLatency` <a name="metricBDARequestsTotalLatency" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsTotalLatency"></a>
+
+```typescript
+public metricBDARequestsTotalLatency(props?: MetricOptions): Metric
+```
+
+BDA total latency including retries in milliseconds.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsTotalLatency.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsUnexpectedErrors` <a name="metricBDARequestsUnexpectedErrors" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsUnexpectedErrors"></a>
+
+```typescript
+public metricBDARequestsUnexpectedErrors(props?: MetricOptions): Metric
+```
+
+BDA unexpected errors.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBDARequestsUnexpectedErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockRequestsFailed` <a name="metricBedrockRequestsFailed" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBedrockRequestsFailed"></a>
+
+```typescript
+public metricBedrockRequestsFailed(props?: MetricOptions): Metric
+```
+
+Failed Bedrock model invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBedrockRequestsFailed.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockRequestsSucceeded` <a name="metricBedrockRequestsSucceeded" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBedrockRequestsSucceeded"></a>
+
+```typescript
+public metricBedrockRequestsSucceeded(props?: MetricOptions): Metric
+```
+
+Successful Bedrock model invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBedrockRequestsSucceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockRequestsTotal` <a name="metricBedrockRequestsTotal" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBedrockRequestsTotal"></a>
+
+```typescript
+public metricBedrockRequestsTotal(props?: MetricOptions): Metric
+```
+
+Total Bedrock model invocation requests (summarization, evaluation).
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricBedrockRequestsTotal.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricHITLTriggered` <a name="metricHITLTriggered" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricHITLTriggered"></a>
+
+```typescript
+public metricHITLTriggered(props?: MetricOptions): Metric
+```
+
+Documents flagged for human-in-the-loop review.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricHITLTriggered.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricProcessedCustomPages` <a name="metricProcessedCustomPages" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedCustomPages"></a>
+
+```typescript
+public metricProcessedCustomPages(props?: MetricOptions): Metric
+```
+
+Custom blueprint pages processed.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedCustomPages.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricProcessedDocuments` <a name="metricProcessedDocuments" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedDocuments"></a>
+
+```typescript
+public metricProcessedDocuments(props?: MetricOptions): Metric
+```
+
+Documents processed by BDA.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedDocuments.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricProcessedPages` <a name="metricProcessedPages" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedPages"></a>
+
+```typescript
+public metricProcessedPages(props?: MetricOptions): Metric
+```
+
+Total pages processed.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedPages.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricProcessedStandardPages` <a name="metricProcessedStandardPages" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedStandardPages"></a>
+
+```typescript
+public metricProcessedStandardPages(props?: MetricOptions): Metric
+```
+
+Standard pages processed.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-bda-processor.BdaProcessor.metricProcessedStandardPages.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
 
 ---
 
@@ -131,7 +446,7 @@ Any object.
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.environment">environment</a></code> | <code>@cdklabs/genai-idp.IProcessingEnvironment</code> | The processing environment that provides shared infrastructure and services. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.maxProcessingConcurrency">maxProcessingConcurrency</a></code> | <code>number</code> | The maximum number of documents that can be processed concurrently. |
-| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.project">project</a></code> | <code><a href="#@cdklabs/genai-idp-bda-processor.IDataAutomationProject">IDataAutomationProject</a></code> | The BDA Data Automation Project created from the configuration classes. |
+| <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.project">project</a></code> | <code><a href="#@cdklabs/genai-idp-bda-processor.IDataAutomationProject">IDataAutomationProject</a></code> | The BDA Data Automation Project used by this processor. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.stateMachine">stateMachine</a></code> | <code>aws-cdk-lib.aws_stepfunctions.IStateMachine</code> | The Step Functions state machine that orchestrates the document processing workflow. |
 | <code><a href="#@cdklabs/genai-idp-bda-processor.BdaProcessor.property.evaluationFunction">evaluationFunction</a></code> | <code>@cdklabs/genai-idp.EvaluationFunction</code> | The evaluation function if evaluation is enabled for this processor. |
 
@@ -186,7 +501,7 @@ public readonly project: IDataAutomationProject;
 
 - *Type:* <a href="#@cdklabs/genai-idp-bda-processor.IDataAutomationProject">IDataAutomationProject</a>
 
-The BDA Data Automation Project created from the configuration classes.
+The BDA Data Automation Project used by this processor.
 
 ---
 

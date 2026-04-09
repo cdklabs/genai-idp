@@ -296,58 +296,9 @@ const idpPattern2 = new AwsCdkTypeScriptWorkspace({
   releasableCommits: ReleasableCommits.featuresAndFixes('.'),
 });
 
-// Bundle lambdas for Pattern 2 (Bedrock LLM Processor) - read dynamically
-// Guard: pattern-2 sources removed in v0.5.2 (consolidated into unified pattern)
-const pattern2LambdasDir = 'sources/patterns/pattern-2/src';
-if (fs.existsSync(pattern2LambdasDir)) {
-  fs.readdirSync(pattern2LambdasDir).forEach((lambdaName) => {
-    const lambdaSrcDir = path.join('../../../', pattern2LambdasDir, lambdaName);
-    idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:lambda:${lambdaName}`, {
-      steps: [
-        { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-        { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
-      ]
-    }));
-  });
-}
-
-const pattern2_configs = [
-  "bank-statement-sample",
-  "docsplit",
-  "healthcare-multisection-package",
-  "lending-package-sample",
-  "lending-package-sample-govcloud",
-  "ocr-benchmark",
-  "realkie-fcc-verified",
-  "rule-extraction",
-  "rule-validation",
-  "rvl-cdip",
-  "rvl-cdip-with-few-shot-examples",
-]
-
-pattern2_configs.forEach((configName) => {
-  idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:config:${configName}`, {
-    steps: [
-      { exec: `mkdir -p assets/configs/${configName}` },
-      { exec: `rsync -rLct ../../../sources/config_library/pattern-2/${configName}/config.yaml assets/configs/${configName}/.` }
-    ]
-  }))
-});
-
-idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:state-machine`, {
-  steps: [
-    { exec: `mkdir -p assets/sfn` },
-    { exec: `rsync -rLct ../../../sources/patterns/pattern-2/statemachine/workflow.asl.json assets/sfn/.` }
-  ]
-}));
-
-// Bundle schema for Pattern 2 (Bedrock LLM Processor)
-idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:schema`, {
-  steps: [
-    { exec: `mkdir -p assets/schema` },
-    { exec: `rsync -rLct ../../../schemas/pattern-2/schema.json assets/schema/.` }
-  ]
-}));
+// Bedrock LLM Processor no longer bundles its own configs, lambdas, state machine, or schema.
+// It delegates to UnifiedDocumentProcessor from @cdklabs/genai-idp which
+// bundles these assets itself.
 
 buildPackages.exec(`yarn workspace ${idpPattern2.name} build`);
 

@@ -13,6 +13,7 @@ import {
   IUnifiedDocumentProcessorConfigurationDefinition,
   UnifiedDocumentProcessor,
 } from "@cdklabs/genai-idp";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
@@ -64,54 +65,24 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
   public readonly maxProcessingConcurrency: number;
   public readonly stateMachine: sfn.IStateMachine;
   public readonly evaluationFunction?: EvaluationFunction;
-  /** The BDA Data Automation Project created from the configuration classes. */
+  /** The BDA Data Automation Project used by this processor. */
   public readonly project: IDataAutomationProject;
+
+  private readonly innerProcessor: UnifiedDocumentProcessor;
 
   constructor(scope: Construct, id: string, props: BdaProcessorProps) {
     super(scope, id);
 
-    // Read the raw config to get class definitions for blueprint creation
     const rawConfig = props.configuration.definition.raw();
 
-    // Create BDA blueprints from config classes using L2 constructs
-    const classes: any[] = rawConfig.classes || [];
-    const blueprints: Blueprint[] = classes.map((idpClass, i) => {
-      const className =
-        idpClass.$id || idpClass["x-aws-idp-document-type"] || `Class${i}`;
-      return new Blueprint(this, `Blueprint${sanitizeId(className)}`, {
-        type: BlueprintType.DOCUMENT,
-        schema: translateClassToBlueprint(idpClass),
-      });
-    });
-
-    // Create BDA Data Automation Project linking all blueprints
-    const project = new DataAutomationProject(this, "Project", {
-      standardOutputConfiguration: {
-        document: {
-          extraction: {
-            granularity: { types: ["PAGE", "ELEMENT"] },
-            boundingBox: { state: "DISABLED" },
-          },
-          generativeField: { state: "DISABLED" },
-          outputFormat: {
-            textFormat: { types: ["MARKDOWN"] },
-            additionalFileFormat: { state: "DISABLED" },
-          },
-        },
-      },
-      overrideConfiguration: {
-        document: { splitter: { state: "ENABLED" } },
-      },
-      blueprints,
-    });
-
-    this.project = project;
+    // Create BDA project from config classes
+    this.project = this.createProject(rawConfig);
 
     // Bind configuration — writes default config + BDA project ARN to config table
     const bdaDefinition = props.configuration.bind(
       this,
       props.environment,
-      project.arn,
+      this.project.arn,
     );
 
     // Pass-through configuration for the unified processor
@@ -138,7 +109,7 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
     };
 
     // Create the UnifiedDocumentProcessor
-    const innerProcessor = new UnifiedDocumentProcessor(this, "Unified", {
+    this.innerProcessor = new UnifiedDocumentProcessor(this, "Unified", {
       environment: props.environment,
       configurationBucket: props.configurationBucket,
       maxProcessingConcurrency: props.maxProcessingConcurrency,
@@ -146,10 +117,192 @@ export class BdaProcessor extends Construct implements IBdaProcessor {
     });
 
     // Delegate IDocumentProcessor properties
-    this.environment = innerProcessor.environment;
-    this.maxProcessingConcurrency = innerProcessor.maxProcessingConcurrency;
-    this.stateMachine = innerProcessor.stateMachine;
-    this.evaluationFunction = innerProcessor.evaluationFunction;
+    this.environment = this.innerProcessor.environment;
+    this.maxProcessingConcurrency =
+      this.innerProcessor.maxProcessingConcurrency;
+    this.stateMachine = this.innerProcessor.stateMachine;
+    this.evaluationFunction = this.innerProcessor.evaluationFunction;
+  }
+
+  // ========================================
+  // CloudWatch Metrics — BDA Requests
+  // ========================================
+
+  /** Total BDA Data Automation invocation requests. */
+  public metricBDARequestsTotal(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDARequestsTotal(props);
+  }
+  /** Successful BDA invocation requests. */
+  public metricBDARequestsSucceeded(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDARequestsSucceeded(props);
+  }
+  /** Failed BDA invocation requests. */
+  public metricBDARequestsFailed(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDARequestsFailed(props);
+  }
+  /** BDA single-request latency in milliseconds. */
+  public metricBDARequestsLatency(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDARequestsLatency(props);
+  }
+  /** BDA total latency including retries in milliseconds. */
+  public metricBDARequestsTotalLatency(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDARequestsTotalLatency(props);
+  }
+  /** BDA requests that succeeded after retry. */
+  public metricBDARequestsRetrySuccess(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDARequestsRetrySuccess(props);
+  }
+  /** BDA request throttles. */
+  public metricBDARequestsThrottles(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDARequestsThrottles(props);
+  }
+  /** BDA requests that exceeded max retries. */
+  public metricBDARequestsMaxRetriesExceeded(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDARequestsMaxRetriesExceeded(props);
+  }
+  /** BDA non-retryable errors. */
+  public metricBDARequestsNonRetryableErrors(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDARequestsNonRetryableErrors(props);
+  }
+  /** BDA unexpected errors. */
+  public metricBDARequestsUnexpectedErrors(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDARequestsUnexpectedErrors(props);
+  }
+
+  // ========================================
+  // CloudWatch Metrics — BDA Jobs
+  // ========================================
+
+  /** Total BDA async jobs submitted. */
+  public metricBDAJobsTotal(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDAJobsTotal(props);
+  }
+  /** Successful BDA async jobs. */
+  public metricBDAJobsSucceeded(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDAJobsSucceeded(props);
+  }
+  /** Failed BDA async jobs. */
+  public metricBDAJobsFailed(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBDAJobsFailed(props);
+  }
+
+  // ========================================
+  // CloudWatch Metrics — Document Processing
+  // ========================================
+
+  /** Documents processed by BDA. */
+  public metricProcessedDocuments(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricProcessedDocuments(props);
+  }
+  /** Total pages processed. */
+  public metricProcessedPages(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricProcessedPages(props);
+  }
+  /** Custom blueprint pages processed. */
+  public metricProcessedCustomPages(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricProcessedCustomPages(props);
+  }
+  /** Standard pages processed. */
+  public metricProcessedStandardPages(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricProcessedStandardPages(props);
+  }
+  /** Documents flagged for human-in-the-loop review. */
+  public metricHITLTriggered(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricHITLTriggered(props);
+  }
+
+  // ========================================
+  // CloudWatch Metrics — Bedrock (summarization/evaluation)
+  // ========================================
+
+  /** Total Bedrock model invocation requests (summarization, evaluation). */
+  public metricBedrockRequestsTotal(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBedrockRequestsTotal(props);
+  }
+  /** Successful Bedrock model invocation requests. */
+  public metricBedrockRequestsSucceeded(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBedrockRequestsSucceeded(props);
+  }
+  /** Failed Bedrock model invocation requests. */
+  public metricBedrockRequestsFailed(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBedrockRequestsFailed(props);
+  }
+
+  /**
+   * Creates BDA blueprints and a Data Automation Project from config classes.
+   */
+  private createProject(rawConfig: any): IDataAutomationProject {
+    const classes: any[] = rawConfig.classes || [];
+    const blueprints: Blueprint[] = classes.map((idpClass, i) => {
+      const className =
+        idpClass.$id || idpClass["x-aws-idp-document-type"] || `Class${i}`;
+      return new Blueprint(this, `Blueprint${sanitizeId(className)}`, {
+        type: BlueprintType.DOCUMENT,
+        schema: translateClassToBlueprint(idpClass),
+      });
+    });
+
+    return new DataAutomationProject(this, "Project", {
+      standardOutputConfiguration: {
+        document: {
+          extraction: {
+            granularity: { types: ["PAGE", "ELEMENT"] },
+            boundingBox: { state: "DISABLED" },
+          },
+          generativeField: { state: "DISABLED" },
+          outputFormat: {
+            textFormat: { types: ["MARKDOWN"] },
+            additionalFileFormat: { state: "DISABLED" },
+          },
+        },
+      },
+      overrideConfiguration: {
+        document: { splitter: { state: "ENABLED" } },
+      },
+      blueprints,
+    });
   }
 }
 

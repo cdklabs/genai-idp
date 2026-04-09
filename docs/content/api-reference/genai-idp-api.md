@@ -56445,6 +56445,48 @@ new UnifiedDocumentProcessor(scope: Construct, id: string, props: UnifiedDocumen
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.with">with</a></code> | Applies one or more mixins to this construct. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDAJobsFailed">metricBDAJobsFailed</a></code> | Failed BDA async jobs. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDAJobsSucceeded">metricBDAJobsSucceeded</a></code> | Successful BDA async jobs. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDAJobsTotal">metricBDAJobsTotal</a></code> | Total BDA async jobs submitted. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsFailed">metricBDARequestsFailed</a></code> | Failed BDA invocation requests. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsLatency">metricBDARequestsLatency</a></code> | BDA single-request latency in milliseconds. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsMaxRetriesExceeded">metricBDARequestsMaxRetriesExceeded</a></code> | BDA requests that exceeded max retries. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsNonRetryableErrors">metricBDARequestsNonRetryableErrors</a></code> | BDA non-retryable errors. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsRetrySuccess">metricBDARequestsRetrySuccess</a></code> | BDA requests that succeeded after retry. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsSucceeded">metricBDARequestsSucceeded</a></code> | Successful BDA invocation requests. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsThrottles">metricBDARequestsThrottles</a></code> | BDA request throttles. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsTotal">metricBDARequestsTotal</a></code> | Total BDA Data Automation invocation requests. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsTotalLatency">metricBDARequestsTotalLatency</a></code> | BDA total latency including retries in milliseconds. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsUnexpectedErrors">metricBDARequestsUnexpectedErrors</a></code> | BDA unexpected errors. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockMaxRetriesExceeded">metricBedrockMaxRetriesExceeded</a></code> | Bedrock requests that exceeded max retries. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockNonRetryableErrors">metricBedrockNonRetryableErrors</a></code> | Bedrock non-retryable errors. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestLatency">metricBedrockRequestLatency</a></code> | Bedrock single-request latency in milliseconds. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestsFailed">metricBedrockRequestsFailed</a></code> | Failed Bedrock model invocation requests. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestsSucceeded">metricBedrockRequestsSucceeded</a></code> | Successful Bedrock model invocation requests. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestsTotal">metricBedrockRequestsTotal</a></code> | Total Bedrock model invocation requests. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRetrySuccess">metricBedrockRetrySuccess</a></code> | Bedrock requests that succeeded after retry. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockThrottles">metricBedrockThrottles</a></code> | Bedrock request throttles. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockTimeouts">metricBedrockTimeouts</a></code> | Bedrock request timeouts. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockTotalLatency">metricBedrockTotalLatency</a></code> | Bedrock total latency including retries in milliseconds. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockUnexpectedErrors">metricBedrockUnexpectedErrors</a></code> | Bedrock unexpected errors. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricCacheReadInputTokens">metricCacheReadInputTokens</a></code> | Cache-read input tokens. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricCacheWriteInputTokens">metricCacheWriteInputTokens</a></code> | Cache-write input tokens. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricHITLTriggered">metricHITLTriggered</a></code> | Documents flagged for human-in-the-loop review. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricInputDocumentPages">metricInputDocumentPages</a></code> | Document pages submitted for extraction. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricInputDocuments">metricInputDocuments</a></code> | Documents submitted for extraction. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricInputTokens">metricInputTokens</a></code> | Input tokens consumed by Bedrock model invocations. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestLatency">metricLambdaHookRequestLatency</a></code> | LambdaHook single-request latency in milliseconds. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestsFailed">metricLambdaHookRequestsFailed</a></code> | Failed LambdaHook invocation requests. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestsSucceeded">metricLambdaHookRequestsSucceeded</a></code> | Successful LambdaHook invocation requests. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestsTotal">metricLambdaHookRequestsTotal</a></code> | Total LambdaHook invocation requests. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookThrottles">metricLambdaHookThrottles</a></code> | LambdaHook request throttles. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookTotalLatency">metricLambdaHookTotalLatency</a></code> | LambdaHook total latency including retries in milliseconds. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricOutputTokens">metricOutputTokens</a></code> | Output tokens generated by Bedrock model invocations. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedCustomPages">metricProcessedCustomPages</a></code> | Custom blueprint pages processed (BDA path). |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedDocuments">metricProcessedDocuments</a></code> | Documents processed (BDA or pipeline). |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedPages">metricProcessedPages</a></code> | Total pages processed. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedStandardPages">metricProcessedStandardPages</a></code> | Standard pages processed (BDA path). |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessor.metricTotalTokens">metricTotalTokens</a></code> | Total tokens (input + output) used by Bedrock model invocations. |
 
 ---
 
@@ -56474,6 +56516,594 @@ constructs.
 - *Type:* ...constructs.IMixin[]
 
 The mixins to apply.
+
+---
+
+##### `metricBDAJobsFailed` <a name="metricBDAJobsFailed" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDAJobsFailed"></a>
+
+```typescript
+public metricBDAJobsFailed(props?: MetricOptions): Metric
+```
+
+Failed BDA async jobs.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDAJobsFailed.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDAJobsSucceeded` <a name="metricBDAJobsSucceeded" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDAJobsSucceeded"></a>
+
+```typescript
+public metricBDAJobsSucceeded(props?: MetricOptions): Metric
+```
+
+Successful BDA async jobs.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDAJobsSucceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDAJobsTotal` <a name="metricBDAJobsTotal" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDAJobsTotal"></a>
+
+```typescript
+public metricBDAJobsTotal(props?: MetricOptions): Metric
+```
+
+Total BDA async jobs submitted.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDAJobsTotal.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsFailed` <a name="metricBDARequestsFailed" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsFailed"></a>
+
+```typescript
+public metricBDARequestsFailed(props?: MetricOptions): Metric
+```
+
+Failed BDA invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsFailed.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsLatency` <a name="metricBDARequestsLatency" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsLatency"></a>
+
+```typescript
+public metricBDARequestsLatency(props?: MetricOptions): Metric
+```
+
+BDA single-request latency in milliseconds.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsLatency.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsMaxRetriesExceeded` <a name="metricBDARequestsMaxRetriesExceeded" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsMaxRetriesExceeded"></a>
+
+```typescript
+public metricBDARequestsMaxRetriesExceeded(props?: MetricOptions): Metric
+```
+
+BDA requests that exceeded max retries.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsMaxRetriesExceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsNonRetryableErrors` <a name="metricBDARequestsNonRetryableErrors" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsNonRetryableErrors"></a>
+
+```typescript
+public metricBDARequestsNonRetryableErrors(props?: MetricOptions): Metric
+```
+
+BDA non-retryable errors.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsNonRetryableErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsRetrySuccess` <a name="metricBDARequestsRetrySuccess" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsRetrySuccess"></a>
+
+```typescript
+public metricBDARequestsRetrySuccess(props?: MetricOptions): Metric
+```
+
+BDA requests that succeeded after retry.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsRetrySuccess.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsSucceeded` <a name="metricBDARequestsSucceeded" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsSucceeded"></a>
+
+```typescript
+public metricBDARequestsSucceeded(props?: MetricOptions): Metric
+```
+
+Successful BDA invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsSucceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsThrottles` <a name="metricBDARequestsThrottles" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsThrottles"></a>
+
+```typescript
+public metricBDARequestsThrottles(props?: MetricOptions): Metric
+```
+
+BDA request throttles.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsTotal` <a name="metricBDARequestsTotal" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsTotal"></a>
+
+```typescript
+public metricBDARequestsTotal(props?: MetricOptions): Metric
+```
+
+Total BDA Data Automation invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsTotal.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsTotalLatency` <a name="metricBDARequestsTotalLatency" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsTotalLatency"></a>
+
+```typescript
+public metricBDARequestsTotalLatency(props?: MetricOptions): Metric
+```
+
+BDA total latency including retries in milliseconds.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsTotalLatency.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBDARequestsUnexpectedErrors` <a name="metricBDARequestsUnexpectedErrors" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsUnexpectedErrors"></a>
+
+```typescript
+public metricBDARequestsUnexpectedErrors(props?: MetricOptions): Metric
+```
+
+BDA unexpected errors.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBDARequestsUnexpectedErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockMaxRetriesExceeded` <a name="metricBedrockMaxRetriesExceeded" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockMaxRetriesExceeded"></a>
+
+```typescript
+public metricBedrockMaxRetriesExceeded(props?: MetricOptions): Metric
+```
+
+Bedrock requests that exceeded max retries.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockMaxRetriesExceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockNonRetryableErrors` <a name="metricBedrockNonRetryableErrors" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockNonRetryableErrors"></a>
+
+```typescript
+public metricBedrockNonRetryableErrors(props?: MetricOptions): Metric
+```
+
+Bedrock non-retryable errors.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockNonRetryableErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockRequestLatency` <a name="metricBedrockRequestLatency" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestLatency"></a>
+
+```typescript
+public metricBedrockRequestLatency(props?: MetricOptions): Metric
+```
+
+Bedrock single-request latency in milliseconds.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestLatency.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockRequestsFailed` <a name="metricBedrockRequestsFailed" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestsFailed"></a>
+
+```typescript
+public metricBedrockRequestsFailed(props?: MetricOptions): Metric
+```
+
+Failed Bedrock model invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestsFailed.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockRequestsSucceeded` <a name="metricBedrockRequestsSucceeded" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestsSucceeded"></a>
+
+```typescript
+public metricBedrockRequestsSucceeded(props?: MetricOptions): Metric
+```
+
+Successful Bedrock model invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestsSucceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockRequestsTotal` <a name="metricBedrockRequestsTotal" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestsTotal"></a>
+
+```typescript
+public metricBedrockRequestsTotal(props?: MetricOptions): Metric
+```
+
+Total Bedrock model invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRequestsTotal.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockRetrySuccess` <a name="metricBedrockRetrySuccess" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRetrySuccess"></a>
+
+```typescript
+public metricBedrockRetrySuccess(props?: MetricOptions): Metric
+```
+
+Bedrock requests that succeeded after retry.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockRetrySuccess.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockThrottles` <a name="metricBedrockThrottles" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockThrottles"></a>
+
+```typescript
+public metricBedrockThrottles(props?: MetricOptions): Metric
+```
+
+Bedrock request throttles.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockTimeouts` <a name="metricBedrockTimeouts" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockTimeouts"></a>
+
+```typescript
+public metricBedrockTimeouts(props?: MetricOptions): Metric
+```
+
+Bedrock request timeouts.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockTimeouts.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockTotalLatency` <a name="metricBedrockTotalLatency" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockTotalLatency"></a>
+
+```typescript
+public metricBedrockTotalLatency(props?: MetricOptions): Metric
+```
+
+Bedrock total latency including retries in milliseconds.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockTotalLatency.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricBedrockUnexpectedErrors` <a name="metricBedrockUnexpectedErrors" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockUnexpectedErrors"></a>
+
+```typescript
+public metricBedrockUnexpectedErrors(props?: MetricOptions): Metric
+```
+
+Bedrock unexpected errors.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricBedrockUnexpectedErrors.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricCacheReadInputTokens` <a name="metricCacheReadInputTokens" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricCacheReadInputTokens"></a>
+
+```typescript
+public metricCacheReadInputTokens(props?: MetricOptions): Metric
+```
+
+Cache-read input tokens.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricCacheReadInputTokens.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricCacheWriteInputTokens` <a name="metricCacheWriteInputTokens" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricCacheWriteInputTokens"></a>
+
+```typescript
+public metricCacheWriteInputTokens(props?: MetricOptions): Metric
+```
+
+Cache-write input tokens.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricCacheWriteInputTokens.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricHITLTriggered` <a name="metricHITLTriggered" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricHITLTriggered"></a>
+
+```typescript
+public metricHITLTriggered(props?: MetricOptions): Metric
+```
+
+Documents flagged for human-in-the-loop review.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricHITLTriggered.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricInputDocumentPages` <a name="metricInputDocumentPages" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricInputDocumentPages"></a>
+
+```typescript
+public metricInputDocumentPages(props?: MetricOptions): Metric
+```
+
+Document pages submitted for extraction.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricInputDocumentPages.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricInputDocuments` <a name="metricInputDocuments" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricInputDocuments"></a>
+
+```typescript
+public metricInputDocuments(props?: MetricOptions): Metric
+```
+
+Documents submitted for extraction.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricInputDocuments.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricInputTokens` <a name="metricInputTokens" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricInputTokens"></a>
+
+```typescript
+public metricInputTokens(props?: MetricOptions): Metric
+```
+
+Input tokens consumed by Bedrock model invocations.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricInputTokens.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricLambdaHookRequestLatency` <a name="metricLambdaHookRequestLatency" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestLatency"></a>
+
+```typescript
+public metricLambdaHookRequestLatency(props?: MetricOptions): Metric
+```
+
+LambdaHook single-request latency in milliseconds.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestLatency.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricLambdaHookRequestsFailed` <a name="metricLambdaHookRequestsFailed" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestsFailed"></a>
+
+```typescript
+public metricLambdaHookRequestsFailed(props?: MetricOptions): Metric
+```
+
+Failed LambdaHook invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestsFailed.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricLambdaHookRequestsSucceeded` <a name="metricLambdaHookRequestsSucceeded" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestsSucceeded"></a>
+
+```typescript
+public metricLambdaHookRequestsSucceeded(props?: MetricOptions): Metric
+```
+
+Successful LambdaHook invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestsSucceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricLambdaHookRequestsTotal` <a name="metricLambdaHookRequestsTotal" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestsTotal"></a>
+
+```typescript
+public metricLambdaHookRequestsTotal(props?: MetricOptions): Metric
+```
+
+Total LambdaHook invocation requests.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookRequestsTotal.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricLambdaHookThrottles` <a name="metricLambdaHookThrottles" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookThrottles"></a>
+
+```typescript
+public metricLambdaHookThrottles(props?: MetricOptions): Metric
+```
+
+LambdaHook request throttles.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookThrottles.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricLambdaHookTotalLatency` <a name="metricLambdaHookTotalLatency" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookTotalLatency"></a>
+
+```typescript
+public metricLambdaHookTotalLatency(props?: MetricOptions): Metric
+```
+
+LambdaHook total latency including retries in milliseconds.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricLambdaHookTotalLatency.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricOutputTokens` <a name="metricOutputTokens" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricOutputTokens"></a>
+
+```typescript
+public metricOutputTokens(props?: MetricOptions): Metric
+```
+
+Output tokens generated by Bedrock model invocations.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricOutputTokens.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricProcessedCustomPages` <a name="metricProcessedCustomPages" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedCustomPages"></a>
+
+```typescript
+public metricProcessedCustomPages(props?: MetricOptions): Metric
+```
+
+Custom blueprint pages processed (BDA path).
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedCustomPages.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricProcessedDocuments` <a name="metricProcessedDocuments" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedDocuments"></a>
+
+```typescript
+public metricProcessedDocuments(props?: MetricOptions): Metric
+```
+
+Documents processed (BDA or pipeline).
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedDocuments.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricProcessedPages` <a name="metricProcessedPages" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedPages"></a>
+
+```typescript
+public metricProcessedPages(props?: MetricOptions): Metric
+```
+
+Total pages processed.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedPages.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricProcessedStandardPages` <a name="metricProcessedStandardPages" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedStandardPages"></a>
+
+```typescript
+public metricProcessedStandardPages(props?: MetricOptions): Metric
+```
+
+Standard pages processed (BDA path).
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricProcessedStandardPages.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricTotalTokens` <a name="metricTotalTokens" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricTotalTokens"></a>
+
+```typescript
+public metricTotalTokens(props?: MetricOptions): Metric
+```
+
+Total tokens (input + output) used by Bedrock model invocations.
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp.UnifiedDocumentProcessor.metricTotalTokens.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
 
 ---
 
