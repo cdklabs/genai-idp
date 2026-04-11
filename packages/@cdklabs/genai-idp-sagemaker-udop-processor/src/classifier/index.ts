@@ -117,7 +117,17 @@ export class BasicSagemakerClassifier extends Construct {
    * This endpoint is invoked during document processing to determine
    * document types and categories.
    */
+  /**
+   * The SageMaker endpoint that hosts the document classification model.
+   */
   public readonly endpoint: sagemaker.IEndpoint;
+
+  /**
+   * The SageMaker model deployed to the endpoint.
+   * Exposed so that additional S3 bucket permissions can be granted
+   * (e.g. working bucket access when used with the LambdaHook bridge).
+   */
+  public readonly model: sagemaker.IModel;
 
   constructor(
     scope: Construct,
@@ -155,6 +165,8 @@ export class BasicSagemakerClassifier extends Construct {
 
     props.outputBucket.grantRead(udopModel);
     props.key?.grantEncryptDecrypt(udopModel);
+
+    this.model = udopModel;
 
     const variantName = "AllTraffic";
 

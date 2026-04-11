@@ -41,6 +41,11 @@ const outputBucket = new Bucket(stack, "OutputBucket", {
   autoDeleteObjects: true,
 });
 
+const configurationBucket = new Bucket(stack, "ConfigurationBucket", {
+  removalPolicy: RemovalPolicy.DESTROY,
+  autoDeleteObjects: true,
+});
+
 const environment = new ProcessingEnvironment(stack, "Environment", {
   metricNamespace: stack.stackName,
   inputBucket,
@@ -71,7 +76,8 @@ const classifier = new BasicSagemakerClassifier(stack, "Classifier", {
 
 new SagemakerUdopProcessor(stack, "Processor", {
   environment,
-  classifierEndpoint: classifier.endpoint, // Pass the endpoint directly
+  configurationBucket,
+  classifierEndpoint: classifier.endpoint,
   configuration: SagemakerUdopProcessorConfiguration.fromFile(
     path.join(__dirname, "sagemaker-config.yaml"),
     {

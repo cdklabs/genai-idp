@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 import * as path from "path";
+import * as sagemaker from "@aws-cdk/aws-sagemaker-alpha";
 import * as cdk from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -175,6 +176,15 @@ export interface UnifiedDocumentProcessorProps extends DocumentProcessorProps {
    * @default - Functions are not deployed in a VPC
    */
   readonly vpcConfiguration?: VpcConfiguration;
+
+  /**
+   * Optional SageMaker endpoint for document classification.
+   * When provided, the classification function uses the SageMaker backend
+   * instead of Bedrock. Used by the SageMaker UDOP processor facade.
+   *
+   * @default - Bedrock backend is used for classification
+   */
+  readonly classifierEndpoint?: sagemaker.IEndpoint;
 }
 
 /**
@@ -317,6 +327,7 @@ export class UnifiedDocumentProcessor
         configurationBucket: props.configurationBucket,
         inferenceProvider:
           renderedConfiguration.classificationInferenceProvider,
+        classifierEndpoint: props.classifierEndpoint,
       },
     );
 

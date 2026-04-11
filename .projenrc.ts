@@ -330,53 +330,9 @@ const idpPattern3 = new AwsCdkTypeScriptWorkspace({
   releasableCommits: ReleasableCommits.featuresAndFixes('.'),
 });
 
-const p3BundleTask = idpPattern3.tasks.tryFind("bundle") ?? idpPattern3.tasks.addTask("bundle");
-const p3PreCompileTask = idpPattern3.tasks.tryFind("pre-compile") ?? idpPattern3.tasks.addTask("pre-compile");
-
-p3PreCompileTask.spawn(p3BundleTask);
-
-// Bundle lambdas for Pattern 3 (SageMaker UDOP Processor) - read dynamically
-// Guard: pattern-3 sources removed in v0.5.2 (consolidated into unified pattern)
-const pattern3LambdasDir = 'sources/patterns/pattern-3/src';
-if (fs.existsSync(pattern3LambdasDir)) {
-  fs.readdirSync(pattern3LambdasDir).forEach((lambdaName) => {
-    const lambdaSrcDir = path.join('../../../', pattern3LambdasDir, lambdaName);
-    p3BundleTask.spawn(idpPattern3.addTask(`bundle:lambda:${lambdaName}`, {
-      steps: [
-        { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-        { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
-      ]
-    }));
-  });
-}
-
-const pattern3_configs = [
-  { source: "rvl-cdip", target: "rvl-cdip-package-sample" }
-]
-
-pattern3_configs.forEach((config) => {
-  idpPattern3.bundleTask.spawn(idpPattern3.addTask(`bundle:config:${config.target}`, {
-    steps: [
-      { exec: `mkdir -p assets/configs/${config.target}` },
-      { exec: `rsync -rLct ../../../sources/config_library/pattern-3/${config.source}/config.yaml assets/configs/${config.target}/.` }
-    ]
-  }))
-});
-
-p3BundleTask.spawn(idpPattern3.addTask(`bundle:state-machine`, {
-  steps: [
-    { exec: `mkdir -p assets/sfn` },
-    { exec: `rsync -rLct ../../../sources/patterns/pattern-3/statemachine/workflow.asl.json assets/sfn/.` }
-  ]
-}));
-
-// Bundle schema for Pattern 3 (SageMaker UDOP Processor)
-p3BundleTask.spawn(idpPattern3.addTask(`bundle:schema`, {
-  steps: [
-    { exec: `mkdir -p assets/schema` },
-    { exec: `rsync -rLct ../../../schemas/pattern-3/schema.json assets/schema/.` }
-  ]
-}));
+// SageMaker UDOP Processor no longer bundles its own configs, lambdas, state machine, or schema.
+// It delegates to UnifiedDocumentProcessor from @cdklabs/genai-idp.
+// Only the SageMaker classification bridge Lambda is bundled as a local asset.
 
 buildPackages.exec(`yarn workspace ${idpPattern3.name} build`);
 

@@ -72799,6 +72799,7 @@ const classificationFunctionProps: ClassificationFunctionProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.ClassificationFunctionProps.property.trackingTable">trackingTable</a></code> | <code><a href="#@cdklabs/genai-idp.ITrackingTable">ITrackingTable</a></code> | The DynamoDB table for tracking document processing status. |
 | <code><a href="#@cdklabs/genai-idp.ClassificationFunctionProps.property.workingBucket">workingBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | The S3 bucket for intermediate working files. |
 | <code><a href="#@cdklabs/genai-idp.ClassificationFunctionProps.property.api">api</a></code> | <code><a href="#@cdklabs/genai-idp.IProcessingEnvironmentApi">IProcessingEnvironmentApi</a></code> | Optional ProcessingEnvironmentApi for progress notifications. |
+| <code><a href="#@cdklabs/genai-idp.ClassificationFunctionProps.property.classifierEndpoint">classifierEndpoint</a></code> | <code>@aws-cdk/aws-sagemaker-alpha.IEndpoint</code> | Optional SageMaker endpoint for classification. |
 | <code><a href="#@cdklabs/genai-idp.ClassificationFunctionProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key. |
 | <code><a href="#@cdklabs/genai-idp.ClassificationFunctionProps.property.inferenceProvider">inferenceProvider</a></code> | <code><a href="#@cdklabs/genai-idp.IInvokable">IInvokable</a></code> | Optional inference provider for classification. |
 | <code><a href="#@cdklabs/genai-idp.ClassificationFunctionProps.property.logLevel">logLevel</a></code> | <code><a href="#@cdklabs/genai-idp.LogLevel">LogLevel</a></code> | The log level for the function. |
@@ -73590,6 +73591,22 @@ public readonly api: IProcessingEnvironmentApi;
 Optional ProcessingEnvironmentApi for progress notifications.
 
 When provided, the function will use GraphQL mutations to update document status.
+
+---
+
+##### `classifierEndpoint`<sup>Optional</sup> <a name="classifierEndpoint" id="@cdklabs/genai-idp.ClassificationFunctionProps.property.classifierEndpoint"></a>
+
+```typescript
+public readonly classifierEndpoint: IEndpoint;
+```
+
+- *Type:* @aws-cdk/aws-sagemaker-alpha.IEndpoint
+- *Default:* Bedrock backend is used
+
+Optional SageMaker endpoint for classification.
+
+When provided, the classification function uses the SageMaker backend
+instead of Bedrock for document classification.
 
 ---
 
@@ -95234,6 +95251,7 @@ const unifiedDocumentProcessorProps: UnifiedDocumentProcessorProps = { ... }
 | <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessorProps.property.appSyncApiUrl">appSyncApiUrl</a></code> | <code>string</code> | Optional AppSync API URL for document tracking via GraphQL mutations. |
 | <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessorProps.property.baselineBucket">baselineBucket</a></code> | <code>aws-cdk-lib.aws_s3.IBucket</code> | Optional S3 bucket for evaluation baselines. |
 | <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessorProps.property.bdaMetadataTable">bdaMetadataTable</a></code> | <code><a href="#@cdklabs/genai-idp.IBdaMetadataTable">IBdaMetadataTable</a></code> | Optional DynamoDB table for BDA metadata records. |
+| <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessorProps.property.classifierEndpoint">classifierEndpoint</a></code> | <code>@aws-cdk/aws-sagemaker-alpha.IEndpoint</code> | Optional SageMaker endpoint for document classification. |
 | <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessorProps.property.encryptionKey">encryptionKey</a></code> | <code>aws-cdk-lib.aws_kms.IKey</code> | Optional KMS encryption key for encrypting resources created by this construct. |
 | <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessorProps.property.guardrailId">guardrailId</a></code> | <code>string</code> | Optional Bedrock Guardrail ID for content filtering. |
 | <code><a href="#@cdklabs/genai-idp.UnifiedDocumentProcessorProps.property.guardrailVersion">guardrailVersion</a></code> | <code>string</code> | Optional Bedrock Guardrail version. |
@@ -95347,6 +95365,22 @@ Optional DynamoDB table for BDA metadata records.
 
 Stores execution_id/record_number pairs for BDA processing.
 If not provided, a new table is created automatically.
+
+---
+
+##### `classifierEndpoint`<sup>Optional</sup> <a name="classifierEndpoint" id="@cdklabs/genai-idp.UnifiedDocumentProcessorProps.property.classifierEndpoint"></a>
+
+```typescript
+public readonly classifierEndpoint: IEndpoint;
+```
+
+- *Type:* @aws-cdk/aws-sagemaker-alpha.IEndpoint
+- *Default:* Bedrock backend is used for classification
+
+Optional SageMaker endpoint for document classification.
+
+When provided, the classification function uses the SageMaker backend
+instead of Bedrock. Used by the SageMaker UDOP processor facade.
 
 ---
 

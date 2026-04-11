@@ -2642,7 +2642,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "66df911d86c56a5ba2bcf7fc9d278884b3dcfbca3f6c640857d3095604ad29b7.zip",
+          "S3Key": "7eee2808e29f5468acc4bd93bb15071103b22b642adfc94ff04fe86947078d70.zip",
         },
         "DeadLetterConfig": {
           "TargetArn": {

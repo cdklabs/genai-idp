@@ -5957,7 +5957,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "aef9c08af0e8eb05228805e8ed2df39d5a4e08f88d5ea21dc7cf548306e306a3.zip"
+     "S3Key": "090b16ffcb8be92008400496f48ba299af188da801b29ff0f1da3e722428eb1a.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {

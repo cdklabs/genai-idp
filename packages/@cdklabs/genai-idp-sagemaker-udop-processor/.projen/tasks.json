@@ -45,51 +45,7 @@
       "condition": "git log --oneline -1 | grep -qv \"chore(release):\""
     },
     "bundle": {
-      "name": "bundle",
-      "steps": [
-        {
-          "spawn": "bundle:config:rvl-cdip-package-sample"
-        },
-        {
-          "spawn": "bundle:state-machine"
-        },
-        {
-          "spawn": "bundle:schema"
-        }
-      ]
-    },
-    "bundle:config:rvl-cdip-package-sample": {
-      "name": "bundle:config:rvl-cdip-package-sample",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/configs/rvl-cdip-package-sample"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/config_library/pattern-3/rvl-cdip/config.yaml assets/configs/rvl-cdip-package-sample/."
-        }
-      ]
-    },
-    "bundle:schema": {
-      "name": "bundle:schema",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/schema"
-        },
-        {
-          "exec": "rsync -rLct ../../../schemas/pattern-3/schema.json assets/schema/."
-        }
-      ]
-    },
-    "bundle:state-machine": {
-      "name": "bundle:state-machine",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/sfn"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-3/statemachine/workflow.asl.json assets/sfn/."
-        }
-      ]
+      "name": "bundle"
     },
     "check-for-updates": {
       "name": "check-for-updates",
@@ -332,9 +288,6 @@
       "name": "pre-compile",
       "description": "Prepare the project for compilation",
       "steps": [
-        {
-          "spawn": "bundle"
-        },
         {
           "spawn": "bundle"
         }
