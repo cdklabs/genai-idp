@@ -1,3 +1,7 @@
+---
+title: "GovCloud Deployment Guide"
+---
+
 # GovCloud Deployment Guide
 
 ## Overview
@@ -46,38 +50,24 @@ You need to have the following packages installed on your computer:
 5. Node.js >=22.12.0
 6. npm >=10.0.0
 7. A local Docker daemon
-8. Python packages for publish.py.  You are encouraged to configure a virtual environment for dependency management, ie. `python -m venv .venv`.  Activate the environment (`. .venv/bin/activate`) and then install dependencies via `pip install boto3 rich PyYAML botocore setuptools docker ruff build`
+8. Python packages for the IDP CLI and SDK. Run `make setup-venv` from the project root to create a `.venv` and install all required packages (idp-cli, idp-sdk, idp_common). Activate with `source .venv/bin/activate`.
 
-### Step 1: Generate GovCloud Template
+### Deploy to GovCloud
 
-First, generate the GovCloud-compatible template - this run the standard build process first to create all Lambda functions and artifacts, and then creates a stripped down version for GovCloud:
-
-```bash
-# Note: The Python script will create an S3 bucket automatically by concatenating the provided bucket name and region, ie. my-govcloud-bucket-us-gov-west-1.  You can change the bucket base name as desired.  Files will be placed under [my-prefix] prefix within the generated bucket.
-# Build for GovCloud region
-python scripts/generate_govcloud_template.py my-bucket-govcloud my-prefix us-gov-west-1
-
-# Or build for commercial region first (for testing)
-python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1
-```
-
-### Step 2: Deploy to GovCloud
-
-Deploy the generated template to GovCloud using the AWS CloudFormation console (recommended) or deploy using AWS CLI e.g:
+Build and deploy to GovCloud with a single command. The `--from-code .` flag builds from your local source code (required for GovCloud since public templates are not published for GovCloud regions), and `--headless` strips UI, AppSync, Cognito, and WAF resources:
 
 ```bash
-# Populate {s3-bucket-govcloud} with the bucket name where you'd like the template to be uploaded
-aws cloudformation deploy \
-  --template-file .aws-sam/idp-govcloud.yaml \
-  --s3-bucket <S3BUCKET> \
-  --s3-prefix idp-headless \
+idp-cli deploy \
   --stack-name my-idp-headless-stack \
   --region us-gov-west-1 \
-  --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-  --parameter-overrides \
-    IDPPattern="Pattern2 - Packet processing with Textract and Bedrock" \
-  --s3-bucket {s3-bucket-govcloud}
+  --from-code . \
+  --headless \
+  --wait
 ```
+
+> **Note**: The CLI creates an S3 bucket automatically. Customize with `--bucket-basename` and `--prefix`.
+
+> **Legacy**: The `scripts/generate_govcloud_template.py` script is deprecated. Use `idp-cli deploy --headless --from-code .` instead.
 
 ## Services Removed in GovCloud
 

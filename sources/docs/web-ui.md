@@ -1,3 +1,7 @@
+---
+title: "GenAIIDP Web User Interface"
+---
+
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
@@ -180,6 +184,36 @@ Pattern-1 uses **Bedrock Data Automation (BDA)** with automatic page management.
 - **Alternative Workflows**: Available options like "View Page Text", Configuration updates, and document reprocessing
 - **Future Considerations**: Guidance on using Pattern-2/Pattern-3 for fine-grained page control
 
+## Prompt Preview
+
+The **Prompt Preview** tab in the Configuration page allows you to see exactly what prompts are sent to the LLM for each processing step, with configuration-derived placeholders filled in using your actual class definitions and schemas.
+
+### Key Capabilities
+
+- **Step Selection**: Preview prompts for Classification, Extraction, Assessment, or Summarization
+- **Class Selection**: For Extraction and Assessment, select a specific document class to see how its JSON Schema appears in the prompt
+- **Filled Placeholders**: Config-derived values (`{CLASS_NAMES_AND_DESCRIPTIONS}`, `{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}`, `{DOCUMENT_CLASS}`) are replaced with actual values from your configuration
+- **Runtime Markers**: Document-specific placeholders (`{DOCUMENT_TEXT}`, `{DOCUMENT_IMAGE}`, etc.) are shown as highlighted yellow markers indicating where document content will be inserted at processing time
+- **Token Estimates**: Approximate token counts for system and task prompts help with cost awareness
+- **Copy to Clipboard**: Copy rendered or raw prompt templates for use in external tools
+- **Substitution Details**: See the exact formatted class list or cleaned JSON Schema that gets inserted into the prompt
+
+### How to Use
+
+1. Navigate to the Configuration page
+2. Click the **Prompt Preview** tab (alongside Configuration, Document Schema, Rule Schema)
+3. Select a **Processing Step** from the dropdown (Classification, Extraction, Assessment, Summarization)
+4. For Extraction or Assessment, select a **Document Class** to preview its schema in the prompt
+5. View the rendered prompts in the Task Prompt and System Prompt sub-tabs
+6. Use the Raw Task Template and Raw System Template sub-tabs to see the unprocessed templates with placeholder syntax
+
+### Use Cases
+
+- **Schema Optimization**: See how your document class attributes appear in the extraction prompt — optimize descriptions and structure for better LLM comprehension
+- **Prompt Debugging**: Verify that custom prompt edits render correctly with actual placeholder values
+- **Cost Awareness**: Estimate prompt token usage before processing documents
+- **Training**: Help new users understand what the LLM actually sees during each processing step
+
 ## Document Analytics
 
 The Document Analytics feature allows users to query their processed documents using natural language and receive results in various formats including charts, tables, and text responses.
@@ -291,7 +325,7 @@ The web UI is automatically deployed as part of the CloudFormation stack. The de
 
 1. Creates required Cognito resources (User Pool, Identity Pool)
 2. Builds and deploys the React application to S3
-3. Sets up CloudFront distribution for content delivery
+3. Sets up CloudFront distribution for content delivery (or ALB for VPC-based hosting — see [ALB Hosting](./alb-hosting.md))
 4. Configures necessary IAM roles and permissions
 
 ## Accessing the Web UI
@@ -338,7 +372,7 @@ The web UI implementation includes several security features:
 - All communication is encrypted using HTTPS
 - Authentication tokens are automatically rotated
 - Session timeouts are enforced
-- CloudFront distribution uses secure configuration
+- CloudFront distribution uses secure configuration (or ALB with TLS 1.3 for VPC-based hosting)
 - S3 buckets are configured with appropriate security policies
 - API access is controlled through IAM and Cognito
 - Web Application Firewall (WAF) protection for AppSync API
@@ -367,7 +401,7 @@ The web UI includes built-in monitoring:
 
 - CloudWatch metrics for API and authentication activity
 - Access logs in CloudWatch Logs
-- CloudFront distribution logs
+- CloudFront distribution logs (or ALB access logs for VPC-based hosting)
 - Error tracking and reporting
 - Performance monitoring
 
@@ -375,6 +409,6 @@ To troubleshoot issues:
 
 1. Check CloudWatch Logs for application errors
 2. Verify Cognito user status in the AWS Console
-3. Check CloudFront distribution status
+3. Check CloudFront distribution status (or ALB target group health for VPC-based hosting)
 4. Verify API endpoints are accessible
 5. Review browser console for client-side errors

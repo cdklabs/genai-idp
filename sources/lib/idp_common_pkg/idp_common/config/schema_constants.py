@@ -30,6 +30,12 @@ X_AWS_IDP_DOCUMENT_NAME_REGEX = "x-aws-idp-document-name-regex"
 X_AWS_IDP_PAGE_CONTENT_REGEX = "x-aws-idp-document-page-content-regex"
 
 # ============================================================================
+# AWS IDP Extraction Extensions
+# ============================================================================
+# Per-class model override for extraction (overrides extraction.model)
+X_AWS_IDP_EXTRACTION_MODEL = "x-aws-idp-extraction-model"
+
+# ============================================================================
 # Legacy Attribute Type Values (for migration only)
 # ============================================================================
 # These map to standard JSON Schema types:

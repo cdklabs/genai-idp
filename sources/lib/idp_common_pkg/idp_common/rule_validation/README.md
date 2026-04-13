@@ -565,7 +565,7 @@ from idp_common.rule_validation import RuleValidationService
 from idp_common import s3
 
 # Load configuration
-config_path = "../../config_library/pattern-2/rule-validation/config.yaml"
+config_path = "../../config_library/unified/rule-validation/config.yaml"
 with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
 

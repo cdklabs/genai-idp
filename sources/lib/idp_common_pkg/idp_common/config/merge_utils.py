@@ -22,8 +22,8 @@ from copy import deepcopy
 
 # Use importlib.resources for Python 3.9+
 if sys.version_info >= (3, 9):
-    from importlib.resources import files as importlib_files
-    from importlib.resources import as_file
+    from importlib.resources import files as importlib_files  # nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2
+    from importlib.resources import as_file  # nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2
 else:
     from importlib_resources import files as importlib_files
     from importlib_resources import as_file
@@ -31,7 +31,7 @@ else:
 logger = logging.getLogger(__name__)
 
 # Valid pattern names
-VALID_PATTERNS = ["pattern-1", "pattern-2", "pattern-3"]
+VALID_PATTERNS = ["pattern-1", "pattern-2"]
 
 # Feature sets for create-config command
 FEATURE_SETS = {
@@ -372,7 +372,7 @@ def load_system_defaults(pattern: str = "pattern-2") -> Dict[str, Any]:
     - Multiple modules: _inherits: [base-notes.yaml, base-classes.yaml, base-ocr.yaml, ...]
 
     Args:
-        pattern: Pattern name (pattern-1, pattern-2, pattern-3)
+        pattern: Pattern name (pattern-1, pattern-2)
 
     Returns:
         Dictionary containing the merged system defaults
@@ -411,7 +411,7 @@ def merge_config_with_defaults(
 
     Args:
         user_config: User's configuration dictionary (may be partial)
-        pattern: Pattern to use for defaults (pattern-1, pattern-2, pattern-3)
+        pattern: Pattern to use for defaults (pattern-1, pattern-2)
         validate: If True, validate the merged config with Pydantic
 
     Returns:

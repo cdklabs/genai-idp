@@ -26,10 +26,18 @@ notebooks/examples/data
 .dsr/
 *tmp-dev-assets*
 scratch/
+.mcp.json
 
 # Node.js / npm
 node_modules/
 package-lock.json
+
+# Docs site (Astro Starlight) - build artifacts and symlinks
+docs-site/.astro/
+docs-site/dist/
+docs-site/src/content/docs/*.md
+docs-site/src/content/images
+docs-site/public/images
 
 # Type checking
 pyrightconfig.temp.json
@@ -50,3 +58,6 @@ notebooks/doc-split-metrics-exp/
 samconfig.toml
 ..bfg-report
 .git-rewrite
+
+# Cline memory bank (session-specific, not project source)
+memory-bank/

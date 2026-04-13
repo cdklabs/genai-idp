@@ -22,6 +22,7 @@ class TestingOperation:
         duration: int = 1,
         schedule_file: Optional[str] = None,
         dest_prefix: str = "load-test",
+        config_version: Optional[str] = None,
         **kwargs,
     ) -> LoadTestResult:
         """Run load test by copying files to input bucket.
@@ -33,12 +34,15 @@ class TestingOperation:
             duration: Duration in minutes
             schedule_file: Optional schedule file for variable load
             dest_prefix: Destination prefix in S3
+            config_version: Configuration version to tag files with (optional).
+                           If provided, files will be tagged with the specified version.
+                           If not provided, the active configuration version is used.
             **kwargs: Additional parameters
 
         Returns:
             LoadTestResult with test statistics
         """
-        from idp_sdk.core.load_test import LoadTester
+        from idp_sdk._core.load_test import LoadTester
 
         name = self._client._require_stack(stack_name)
         tester = LoadTester(stack_name=name, region=self._client._region)
@@ -49,6 +53,7 @@ class TestingOperation:
                     source_file=source_file,
                     schedule_file=schedule_file,
                     dest_prefix=dest_prefix,
+                    config_version=config_version,
                 )
             else:
                 result = tester.run_constant_load(
@@ -56,6 +61,7 @@ class TestingOperation:
                     rate=rate,
                     duration=duration,
                     dest_prefix=dest_prefix,
+                    config_version=config_version,
                 )
 
             return LoadTestResult(

@@ -1,3 +1,7 @@
+---
+title: "JSON Schema Migration Guide"
+---
+
 # JSON Schema Migration Guide
 
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -189,6 +193,9 @@ The web UI provides two ways to create/edit document schemas:
 1. **Schema Builder** - Visual editor with drag-and-drop interface
    - Navigate to Configuration → Document Schema tab
    - Click "Schema Builder" view
+   - Click "Add Class" to choose between:
+     - **Custom Class** — define your own class with custom fields
+     - **Standard Class** — import from 35+ pre-built document types (Invoice, Receipt, W-2, Bank Statement, Payslip, Driver License, Passport, tax forms, insurance cards, certificates, and more) derived from AWS BDA standard blueprints. Imported classes are fully editable.
    - Add/edit document types and properties visually
 
 2. **JSON View** - Direct JSON editing with validation
@@ -217,8 +224,7 @@ classes:
 ### Configuration Templates
 
 Find JSON Schema templates in:
-- `config_library/pattern-2/` - Pattern 2 examples (Bedrock)
-- `config_library/pattern-3/` - Pattern 3 examples (UDOP + Bedrock)
+- `config_library/unified/` - Pattern 2 examples (Bedrock)
 
 ## Validation Methods
 

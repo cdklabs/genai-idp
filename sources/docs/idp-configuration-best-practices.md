@@ -1,3 +1,7 @@
+---
+title: "IDP Configuration Best Practices Guide"
+---
+
 # IDP Configuration Best Practices Guide
 
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -773,7 +777,7 @@ classes:
               "RecipientName": "The Honorable Wendell H. Ford",
               "Date": "10/31/1995",
               "Subject": null
-        x-aws-idp-image-path: "config_library/pattern-2/few_shot_example/example-images/letter1.jpg"
+        x-aws-idp-image-path: "config_library/unified/few_shot_example/example-images/letter1.jpg"
       - x-aws-idp-class-prompt: "This is an example of the class 'Letter'"
         name: "Letter2"
         x-aws-idp-attributes-prompt: |
@@ -783,7 +787,7 @@ classes:
               "RecipientName": "Mr. Addison Y. Yeaman",
               "Date": "10/14/1970",
               "Subject": "Invitation to the Twelfth Annual Meeting of the TGIC"
-        x-aws-idp-image-path: "config_library/pattern-2/few_shot_example/example-images/letter2.png"
+        x-aws-idp-image-path: "config_library/unified/few_shot_example/example-images/letter2.png"
 ```
 
 ### Example Fields Explained
@@ -808,12 +812,12 @@ The `x-aws-idp-image-path` field supports multiple formats:
 
 **Single Image File:**
 ```yaml
-x-aws-idp-image-path: "config_library/pattern-2/few_shot_example/example-images/letter1.jpg"
+x-aws-idp-image-path: "config_library/unified/few_shot_example/example-images/letter1.jpg"
 ```
 
 **Local Directory with Multiple Images:**
 ```yaml
-x-aws-idp-image-path: "config_library/pattern-2/few_shot_example/example-images/"
+x-aws-idp-image-path: "config_library/unified/few_shot_example/example-images/"
 ```
 
 **S3 Prefix with Multiple Images:**
@@ -1493,9 +1497,7 @@ Configure from these supported models:
 - `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
 - `us.anthropic.claude-3-7-sonnet-20250219-v1:0`
 - `us.anthropic.claude-sonnet-4-20250514-v1:0`
-- `us.anthropic.claude-sonnet-4-20250514-v1:0:1m`
 - `us.anthropic.claude-sonnet-4-5-20250929-v1:0`
-- `us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`  
 - `us.anthropic.claude-sonnet-4-6`
 - `us.anthropic.claude-sonnet-4-6:1m`
 - `us.anthropic.claude-opus-4-20250514-v1:0`
@@ -1512,7 +1514,6 @@ Configure from these supported models:
 - `eu.anthropic.claude-3-7-sonnet-20250219-v1:0`
 - `eu.anthropic.claude-sonnet-4-20250514-v1:0`
 - `eu.anthropic.claude-sonnet-4-5-20250929-v1:0`
-- `eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`
 - `eu.anthropic.claude-sonnet-4-6`
 - `eu.anthropic.claude-sonnet-4-6:1m`
 - `eu.anthropic.claude-opus-4-5-20251101-v1:0`
@@ -1522,7 +1523,6 @@ Configure from these supported models:
 - `global.amazon.nova-2-lite-v1:0`
 - `global.anthropic.claude-haiku-4-5-20251001-v1:0`
 - `global.anthropic.claude-sonnet-4-5-20250929-v1:0`
-- `global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`
 - `global.anthropic.claude-sonnet-4-6`
 - `global.anthropic.claude-sonnet-4-6:1m`
 - `global.anthropic.claude-opus-4-5-20251101-v1:0`
