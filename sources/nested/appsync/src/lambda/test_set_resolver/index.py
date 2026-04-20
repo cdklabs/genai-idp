@@ -47,6 +47,10 @@ def handler(event, context):
         return add_test_set(event['arguments'])
     elif field_name == 'addTestSetFromUpload':
         return add_test_set_from_upload(event['arguments'])
+    elif field_name == 'addDocumentsToTestSet':
+        return add_documents_to_test_set(event['arguments'])
+    elif field_name == 'addDocumentsToTestSetFromUpload':
+        return add_documents_to_test_set_from_upload(event['arguments'])
     elif field_name == 'deleteTestSets':
         return delete_test_sets(event['arguments'])
     elif field_name == 'getTestSets':
@@ -109,6 +113,8 @@ def add_test_set_from_upload(args):
     item = {
         'PK': f'testset#{test_set_id}',
         'SK': 'metadata',
+        'ItemType': 'testset',
+        'InitialEventTime': now,
         'id': test_set_id,
         'name': test_set_name,
         'description': description,
@@ -153,6 +159,8 @@ def add_test_set(args):
     item = {
         'PK': f'testset#{test_set_id}',
         'SK': 'metadata',
+        'ItemType': 'testset',
+        'InitialEventTime': now,
         'id': test_set_id,
         'name': test_set_name,
         'description': description,
@@ -170,18 +178,22 @@ def add_test_set(args):
     sqs = boto3.client('sqs')
     queue_url = os.environ['TEST_SET_COPY_QUEUE_URL']
     
+    message_body = {
+        'testSetId': test_set_id,
+        'filePattern': args['filePattern'],
+        'bucketType': args['bucketType'],
+        'trackingTable': os.environ['TRACKING_TABLE']
+    }
+    if args.get('modifiedAfter'):
+        message_body['modifiedAfter'] = args['modifiedAfter']
+
     sqs.send_message(
         QueueUrl=queue_url,
-        MessageBody=json.dumps({
-            'testSetId': test_set_id,
-            'filePattern': args['filePattern'],
-            'bucketType': args['bucketType'],
-            'trackingTable': os.environ['TRACKING_TABLE']
-        })
+        MessageBody=json.dumps(message_body)
     )
-    
+
     logger.info(f"Queued test set creation job for {test_set_id} with pattern '{args['filePattern']}'")
-    
+
     return {
         'id': test_set_id,
         'name': test_set_name,
@@ -191,6 +203,129 @@ def add_test_set(args):
         'status': 'QUEUED',
         'createdAt': now
     }
+
+def add_documents_to_test_set(args):
+    logger.info(f"Adding documents to existing test set: {args}")
+
+    test_set_id = args['testSetId']
+    file_pattern = args['filePattern']
+    bucket_type = args['bucketType']
+    file_count = args['fileCount']
+
+    # Look up existing test set
+    item = db_client.get_item({
+        'PK': f'testset#{test_set_id}',
+        'SK': 'metadata'
+    })
+
+    if not item:
+        raise Exception(f"Test set '{test_set_id}' not found")
+
+    if item.get('status') != 'COMPLETED':
+        raise Exception(f"Test set '{test_set_id}' is not in COMPLETED status (current: {item.get('status')})")
+
+    # Update status to UPDATING
+    tracking_table = os.environ['TRACKING_TABLE']
+    table = boto3.resource('dynamodb').Table(tracking_table)
+    table.update_item(
+        Key={'PK': f'testset#{test_set_id}', 'SK': 'metadata'},
+        UpdateExpression='SET #status = :status REMOVE lastAddResult',
+        ExpressionAttributeNames={'#status': 'status'},
+        ExpressionAttributeValues={':status': 'UPDATING'}
+    )
+
+    # Send file copying job to SQS queue
+    sqs = boto3.client('sqs')
+    queue_url = os.environ['TEST_SET_COPY_QUEUE_URL']
+
+    message_body = {
+        'testSetId': test_set_id,
+        'filePattern': file_pattern,
+        'bucketType': bucket_type,
+        'trackingTable': tracking_table,
+        'mode': 'append'
+    }
+    if args.get('modifiedAfter'):
+        message_body['modifiedAfter'] = args['modifiedAfter']
+
+    sqs.send_message(
+        QueueUrl=queue_url,
+        MessageBody=json.dumps(message_body)
+    )
+
+    logger.info(f"Queued append job for test set {test_set_id} with pattern '{file_pattern}'")
+
+    return {
+        'id': test_set_id,
+        'name': item['name'],
+        'description': item.get('description', ''),
+        'filePattern': item.get('filePattern', ''),
+        'fileCount': item.get('fileCount'),
+        'status': 'UPDATING',
+        'createdAt': item['createdAt']
+    }
+
+
+def add_documents_to_test_set_from_upload(args):
+    logger.info(f"Adding documents to test set from zip upload: {args}")
+
+    input_data = args['input']
+    test_set_id = input_data['testSetId']
+    zip_filename = input_data['fileName']
+
+    # Validate zip file extension
+    if not zip_filename.lower().endswith('.zip'):
+        raise Exception("File must be a zip file")
+
+    # Look up existing test set
+    item = db_client.get_item({
+        'PK': f'testset#{test_set_id}',
+        'SK': 'metadata'
+    })
+
+    if not item:
+        raise Exception(f"Test set '{test_set_id}' not found")
+
+    if item.get('status') != 'COMPLETED':
+        raise Exception(f"Test set '{test_set_id}' is not in COMPLETED status (current: {item.get('status')})")
+
+    # Update status to UPDATING
+    tracking_table = os.environ['TRACKING_TABLE']
+    table = boto3.resource('dynamodb').Table(tracking_table)
+    table.update_item(
+        Key={'PK': f'testset#{test_set_id}', 'SK': 'metadata'},
+        UpdateExpression='SET #status = :status REMOVE lastAddResult',
+        ExpressionAttributeNames={'#status': 'status'},
+        ExpressionAttributeValues={':status': 'UPDATING'}
+    )
+
+    test_set_bucket = os.environ['TEST_SET_BUCKET']
+
+    # Upload with .zip extension in the test set folder
+    key = f"{test_set_id}/{zip_filename}"
+
+    # Generate presigned URL for zip file
+    presigned_post = s3_client.generate_presigned_post(
+        Bucket=test_set_bucket,
+        Key=key,
+        Fields={
+            'Content-Type': 'application/zip'
+        },
+        Conditions=[
+            ['content-length-range', 1, MAX_ZIP_SIZE_BYTES],
+            {'Content-Type': 'application/zip'}
+        ],
+        ExpiresIn=900  # 15 minutes
+    )
+
+    logger.info(f"Generated presigned POST for append zip file {key}")
+
+    return {
+        'testSetId': test_set_id,
+        'presignedUrl': json.dumps(presigned_post),
+        'objectKey': key
+    }
+
 
 def delete_test_sets(args):
     logger.info(f"Deleting test sets: {args['testSetIds']}")
@@ -233,20 +368,61 @@ def delete_test_sets(args):
 def get_test_sets():
     logger.info("Retrieving all test sets and scanning for direct uploads")
     
-    # Get existing test sets from DynamoDB
-    items = db_client.scan_all(
-        filter_expression='begins_with(PK, :pk) AND SK = :sk',
-        expression_attribute_values={
-            ':pk': 'testset#',
-            ':sk': 'metadata'
+    # Use GSI to find testset PK/SK keys efficiently, then BatchGetItem for full records.
+    # This avoids scanning the entire TrackingTable (which includes all documents).
+    tracking_table = boto3.resource('dynamodb').Table(os.environ['TRACKING_TABLE'])
+    items = []
+    try:
+        from boto3.dynamodb.conditions import Key as DDBKey
+        # Step 1: GSI query to get testset keys (lightweight - only projected attrs)
+        gsi_items = []
+        query_kwargs = {
+            'IndexName': 'TypeDateIndex',
+            'KeyConditionExpression': DDBKey('ItemType').eq('testset'),
+            'ProjectionExpression': 'PK, SK',
         }
-    )
+        while True:
+            response = tracking_table.query(**query_kwargs)
+            gsi_items.extend(response.get('Items', []))
+            if 'LastEvaluatedKey' not in response:
+                break
+            query_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+        
+        logger.info(f"GSI query found {len(gsi_items)} testset keys")
+        
+        if gsi_items:
+            # Step 2: BatchGetItem to fetch full records from base table
+            keys = [{'PK': item['PK'], 'SK': item['SK']} for item in gsi_items]
+            # DynamoDB BatchGetItem supports max 100 keys per call
+            for i in range(0, len(keys), 100):
+                batch_keys = keys[i:i+100]
+                batch_response = boto3.resource('dynamodb').batch_get_item(
+                    RequestItems={
+                        os.environ['TRACKING_TABLE']: {'Keys': batch_keys}
+                    }
+                )
+                items.extend(batch_response.get('Responses', {}).get(os.environ['TRACKING_TABLE'], []))
+            logger.info(f"BatchGetItem returned {len(items)} full testset records")
+    except Exception as e:
+        logger.warning(f"GSI+BatchGet failed, falling back to scan: {e}")
+        items = []
+    
+    # Fallback to scan only if GSI approach failed
+    if not items:
+        items = db_client.scan_all(
+            filter_expression='begins_with(PK, :pk) AND SK = :sk',
+            expression_attribute_values={
+                ':pk': 'testset#',
+                ':sk': 'metadata'
+            }
+        )
     
     existing_test_sets = {}
     result = []
     
     for item in items:
-        test_set_id = item['id']
+        # GSI projection may not include 'id' - derive from PK if needed
+        test_set_id = item.get('id') or item.get('PK', '').replace('testset#', '')
         existing_test_sets[test_set_id] = item
         result.append({
             'id': test_set_id,
@@ -256,7 +432,8 @@ def get_test_sets():
             'fileCount': item.get('fileCount'),  # Returns None if attribute doesn't exist
             'status': item.get('status'),
             'createdAt': item['createdAt'],
-            'error': item.get('error')  # Include error message for failed test sets
+            'error': item.get('error'),  # Include error message for failed test sets
+            'lastAddResult': item.get('lastAddResult')
         })
     
     # Scan TestSetBucket for direct uploads
@@ -368,8 +545,22 @@ def get_test_sets():
     return result
 
 def _is_valid_test_set_structure(s3_client, bucket, prefix):
-    """Check if prefix contains input/ and baseline/ folders"""
+    """Check if prefix contains input/ and baseline/ folders.
+    
+    Also checks for a .uploading marker file which indicates the CLI is still
+    uploading files. This prevents a race condition where the resolver auto-detects
+    and validates a test set before all files (especially baselines) are uploaded.
+    See: https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/193
+    """
     try:
+        # Check for upload-in-progress marker
+        try:
+            s3_client.head_object(Bucket=bucket, Key=f"{prefix}/.uploading")
+            logger.info(f"Skipping {prefix} - upload in progress (.uploading marker found)")
+            return False
+        except Exception:
+            pass  # No marker = not uploading, proceed with validation
+
         # Check for input/ folder
         input_response = s3_client.list_objects_v2(
             Bucket=bucket,
@@ -475,16 +666,19 @@ def _get_test_set_creation_time(s3_client, bucket, prefix):
 def _create_test_set_tracking_entry(test_set_id, name, file_count, status, error=None, created_at=None):
     """Create tracking table entry for direct upload test set"""
     try:
+        now = datetime.utcnow().isoformat() + 'Z'
         item = {
             'PK': f'testset#{test_set_id}',
             'SK': 'metadata',
+            'ItemType': 'testset',
+            'InitialEventTime': now,
             'id': test_set_id,
             'name': name,
             'description': '',  # Direct uploads don't have descriptions
             'filePattern': '',
             'fileCount': file_count,
             'status': status,
-            'createdAt': datetime.utcnow().isoformat() + 'Z'
+            'createdAt': now
         }
         
         if error:
@@ -499,10 +693,11 @@ def _create_test_set_tracking_entry(test_set_id, name, file_count, status, error
 
 def list_bucket_files(args):
     logger.info(f"Listing files with pattern: {args['filePattern']} from bucket type: {args['bucketType']}")
-    
+
     file_pattern = args['filePattern']
     bucket_type = args['bucketType']
-    
+    modified_after = args.get('modifiedAfter')
+
     # Determine which bucket to use based on bucket type
     if bucket_type == 'input':
         bucket = os.environ['INPUT_BUCKET']
@@ -510,10 +705,10 @@ def list_bucket_files(args):
         bucket = os.environ['TEST_SET_BUCKET']
     else:
         raise Exception(f"Invalid bucket type: {bucket_type}")
-    
-    files = find_matching_files(bucket, file_pattern)
+
+    files = find_matching_files(bucket, file_pattern, modified_after=modified_after)
     logger.info(f"Found {len(files)} matching files in {bucket_type} bucket")
-    
+
     return files
 
 def validate_test_file_name(args):

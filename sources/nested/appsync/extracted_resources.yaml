@@ -48,10 +48,7 @@
             TableName: !Ref TrackingTable
         - StepFunctionsExecutionPolicy:
             StateMachineName: !If
-              - IsPattern3
-              - !GetAtt PATTERN3STACK.Outputs.StateMachineName
-              - !If
-                - IsPattern2
+              - IsPattern2
                 - !GetAtt PATTERN2STACK.Outputs.StateMachineName
                 - !GetAtt PATTERN1STACK.Outputs.StateMachineName
         - Statement:
@@ -66,12 +63,9 @@
                 - states:StopExecution
               Resource:
                 - !If
-                  - IsPattern3
-                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN3STACK.Outputs.StateMachineName}:*"
-                  - !If
-                    - IsPattern2
-                    - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN2STACK.Outputs.StateMachineName}:*"
-                    - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN1STACK.Outputs.StateMachineName}:*"
+                  - IsPattern2
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN2STACK.Outputs.StateMachineName}:*"
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN1STACK.Outputs.StateMachineName}:*"
             - Effect: Allow
               Action:
                 - kms:Encrypt
@@ -289,9 +283,11 @@
             - Effect: Allow
               Action:
                 - "bedrock:InvokeModel"
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -307,6 +303,7 @@
                 - "bedrock:GetInferenceProfile"
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -986,10 +983,7 @@
                 - !Sub
                   - "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
                   - StateMachineName: !If
-                      - IsPattern3
-                      - !GetAtt PATTERN3STACK.Outputs.StateMachineName
-                      - !If
-                        - IsPattern2
+                      - IsPattern2
                         - !GetAtt PATTERN2STACK.Outputs.StateMachineName
                         - !GetAtt PATTERN1STACK.Outputs.StateMachineName
         - KMSDecryptPolicy:
@@ -1327,14 +1321,17 @@
             - Effect: Allow
               Action:
                 - "bedrock:InvokeModel"
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - "bedrock:GetInferenceProfile"
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -1475,10 +1472,6 @@
           LOG_LEVEL: !Ref LogLevel
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           STACK_NAME: !Ref AWS::StackName
-          BDA_PROJECT_ARN: !If
-            - HasPattern1BDAProjectArn
-            - !Ref Pattern1BDAProjectArn
-            - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
       LoggingConfig:
         LogGroup: !Ref SyncBdaIdpResolverFunctionLogGroup
       Policies:
@@ -1516,10 +1509,7 @@
                 - bedrock:ListBlueprints
                 - bedrock:DeleteBlueprint
               Resource:
-                - !If
-                  - HasPattern1BDAProjectArn
-                  - !Ref Pattern1BDAProjectArn
-                  - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:data-automation-project/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:aws:blueprint/*"
 
@@ -1552,6 +1542,8 @@
       Description: GraphQL resolver for test results queries
       MemorySize: 512
       Timeout: 300
+      Layers:
+        - !Ref IDPCommonBaseLayerArn
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel

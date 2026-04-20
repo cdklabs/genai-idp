@@ -1,3 +1,7 @@
+---
+title: "Reporting Database"
+---
+
 # Reporting Database
 
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -42,6 +46,7 @@ The `document_evaluations` table contains document-level evaluation metrics:
 | false_alarm_rate | double | False alarm rate (0-1) |
 | false_discovery_rate | double | False discovery rate (0-1) |
 | execution_time | double | Time taken to evaluate (seconds) |
+| config_version | string | Configuration version used for processing |
 
 This table is partitioned by date (YYYY-MM-DD format).
 
@@ -61,6 +66,7 @@ The `section_evaluations` table contains section-level evaluation metrics:
 | false_alarm_rate | double | Section false alarm rate (0-1) |
 | false_discovery_rate | double | Section false discovery rate (0-1) |
 | evaluation_date | timestamp | When the evaluation was performed |
+| config_version | string | Configuration version used for processing |
 
 This table is partitioned by date (YYYY-MM-DD format).
 
@@ -83,6 +89,7 @@ The `attribute_evaluations` table contains attribute-level evaluation metrics:
 | confidence | string | Confidence score from extraction |
 | confidence_threshold | string | Confidence threshold used |
 | evaluation_date | timestamp | When the evaluation was performed |
+| config_version | string | Configuration version used for processing |
 
 This table is partitioned by date (YYYY-MM-DD format).
 
@@ -140,6 +147,7 @@ The `metering` table captures detailed usage metrics and cost information for ea
 | unit_cost | double | Cost per unit in USD (e.g., cost per token, cost per page) |
 | estimated_cost | double | Calculated total cost in USD (value × unit_cost) |
 | timestamp | timestamp | When the operation was performed |
+| config_version | string | Configuration version used for processing |
 
 This table is partitioned by date (YYYY-MM-DD format).
 
@@ -210,6 +218,7 @@ Document sections are stored in dynamically created tables based on the section 
 | section_classification | string | Type/class of the section |
 | section_confidence | double | Confidence score for the section classification |
 | timestamp | timestamp | When the document was processed |
+| config_version | string | Configuration version used for processing |
 
 **Dynamic Data Columns:**
 The remaining columns are dynamically inferred from the JSON extraction results and vary by section type. Common patterns include:
@@ -498,6 +507,68 @@ GROUP BY
   context
 ORDER BY 
   total_cost DESC;
+
+-- Cost analysis by configuration version
+SELECT 
+  config_version,
+  COUNT(DISTINCT document_id) as document_count,
+  SUM(estimated_cost) as total_cost,
+  AVG(estimated_cost) as avg_cost_per_record
+FROM 
+  metering
+WHERE 
+  date >= '2024-01-01'
+GROUP BY 
+  config_version
+ORDER BY 
+  total_cost DESC;
+```
+
+**Configuration version analysis:**
+```sql
+-- Compare accuracy across configuration versions
+SELECT 
+  config_version,
+  AVG(accuracy) as avg_accuracy,
+  AVG(f1_score) as avg_f1_score,
+  COUNT(DISTINCT document_id) as document_count
+FROM 
+  document_evaluations
+WHERE 
+  date >= '2024-01-01'
+GROUP BY 
+  config_version
+ORDER BY 
+  avg_f1_score DESC;
+
+-- Filter documents by configuration version
+SELECT 
+  document_id,
+  section_classification,
+  timestamp
+FROM 
+  document_sections_w2
+WHERE 
+  config_version = 'v2.1'
+  AND date >= '2024-01-01'
+LIMIT 100;
+
+-- Cost vs quality by configuration version
+SELECT 
+  m.config_version,
+  AVG(e.weighted_overall_score) as avg_quality,
+  SUM(m.estimated_cost) as total_cost,
+  COUNT(DISTINCT m.document_id) as document_count
+FROM 
+  document_evaluations e
+JOIN 
+  metering m ON e.document_id = m.document_id AND e.config_version = m.config_version
+WHERE 
+  e.date >= '2024-01-01'
+GROUP BY 
+  m.config_version
+ORDER BY 
+  avg_quality DESC;
 ```
 
 ### Creating Dashboards

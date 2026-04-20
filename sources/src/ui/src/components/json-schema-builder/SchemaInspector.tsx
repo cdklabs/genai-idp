@@ -24,6 +24,7 @@ import {
   X_AWS_IDP_EXAMPLES,
   X_AWS_IDP_DOCUMENT_NAME_REGEX,
   X_AWS_IDP_PAGE_CONTENT_REGEX,
+  X_AWS_IDP_EXTRACTION_MODEL,
 } from '../../constants/schemaConstants';
 
 interface SchemaAttribute {
@@ -178,7 +179,7 @@ const SchemaInspector = ({
             />
           </FormField>
 
-          {selectedClass[X_AWS_IDP_DOCUMENT_TYPE] && !isRuleSchema && (
+          {!!selectedClass[X_AWS_IDP_DOCUMENT_TYPE] && !isRuleSchema && (
             <>
               <ExamplesEditor
                 examples={(selectedClass[X_AWS_IDP_EXAMPLES] as Example[]) || []}
@@ -204,6 +205,66 @@ const SchemaInspector = ({
                   value={(selectedClass[X_AWS_IDP_PAGE_CONTENT_REGEX] as string) || ''}
                   onChange={({ detail }) => onUpdateClass({ [X_AWS_IDP_PAGE_CONTENT_REGEX]: detail.value || undefined })}
                   placeholder="e.g., (?i)(invoice\\s+number|bill\\s+to)"
+                />
+              </FormField>
+
+              <FormField
+                label="Extraction Model Override (Optional)"
+                description="Override the global extraction model for this class. When set, this model is used instead of the global extraction.model setting. Select empty to use the default."
+              >
+                <Select
+                  selectedOption={
+                    (selectedClass[X_AWS_IDP_EXTRACTION_MODEL] as string)
+                      ? {
+                          label: selectedClass[X_AWS_IDP_EXTRACTION_MODEL] as string,
+                          value: selectedClass[X_AWS_IDP_EXTRACTION_MODEL] as string,
+                        }
+                      : { label: '(Use global default)', value: '' }
+                  }
+                  onChange={({ detail }) => onUpdateClass({ [X_AWS_IDP_EXTRACTION_MODEL]: detail.selectedOption.value || undefined })}
+                  options={[
+                    { label: '(Use global default)', value: '' },
+                    { label: 'us.amazon.nova-lite-v1:0', value: 'us.amazon.nova-lite-v1:0' },
+                    { label: 'us.amazon.nova-pro-v1:0', value: 'us.amazon.nova-pro-v1:0' },
+                    { label: 'us.amazon.nova-premier-v1:0', value: 'us.amazon.nova-premier-v1:0' },
+                    { label: 'us.amazon.nova-2-lite-v1:0', value: 'us.amazon.nova-2-lite-v1:0' },
+                    { label: 'us.anthropic.claude-haiku-4-5-20251001-v1:0', value: 'us.anthropic.claude-haiku-4-5-20251001-v1:0' },
+                    { label: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', value: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0' },
+                    { label: 'us.anthropic.claude-sonnet-4-6', value: 'us.anthropic.claude-sonnet-4-6' },
+                    { label: 'us.anthropic.claude-sonnet-4-6:1m', value: 'us.anthropic.claude-sonnet-4-6:1m' },
+                    { label: 'us.anthropic.claude-opus-4-5-20251101-v1:0', value: 'us.anthropic.claude-opus-4-5-20251101-v1:0' },
+                    { label: 'us.anthropic.claude-opus-4-6-v1', value: 'us.anthropic.claude-opus-4-6-v1' },
+                    { label: 'us.anthropic.claude-opus-4-6-v1:1m', value: 'us.anthropic.claude-opus-4-6-v1:1m' },
+                    { label: 'us.anthropic.claude-opus-4-7', value: 'us.anthropic.claude-opus-4-7' },
+                    { label: 'us.anthropic.claude-opus-4-7:1m', value: 'us.anthropic.claude-opus-4-7:1m' },
+                    { label: 'eu.amazon.nova-lite-v1:0', value: 'eu.amazon.nova-lite-v1:0' },
+                    { label: 'eu.amazon.nova-pro-v1:0', value: 'eu.amazon.nova-pro-v1:0' },
+                    { label: 'eu.amazon.nova-2-lite-v1:0', value: 'eu.amazon.nova-2-lite-v1:0' },
+                    { label: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', value: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0' },
+                    { label: 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0', value: 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0' },
+                    { label: 'eu.anthropic.claude-sonnet-4-6', value: 'eu.anthropic.claude-sonnet-4-6' },
+                    { label: 'eu.anthropic.claude-sonnet-4-6:1m', value: 'eu.anthropic.claude-sonnet-4-6:1m' },
+                    { label: 'eu.anthropic.claude-opus-4-5-20251101-v1:0', value: 'eu.anthropic.claude-opus-4-5-20251101-v1:0' },
+                    { label: 'eu.anthropic.claude-opus-4-6-v1', value: 'eu.anthropic.claude-opus-4-6-v1' },
+                    { label: 'eu.anthropic.claude-opus-4-6-v1:1m', value: 'eu.anthropic.claude-opus-4-6-v1:1m' },
+                    { label: 'eu.anthropic.claude-opus-4-7', value: 'eu.anthropic.claude-opus-4-7' },
+                    { label: 'eu.anthropic.claude-opus-4-7:1m', value: 'eu.anthropic.claude-opus-4-7:1m' },
+                    { label: 'global.amazon.nova-2-lite-v1:0', value: 'global.amazon.nova-2-lite-v1:0' },
+                    { label: 'global.anthropic.claude-haiku-4-5-20251001-v1:0', value: 'global.anthropic.claude-haiku-4-5-20251001-v1:0' },
+                    {
+                      label: 'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+                      value: 'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+                    },
+                    { label: 'global.anthropic.claude-sonnet-4-6', value: 'global.anthropic.claude-sonnet-4-6' },
+                    { label: 'global.anthropic.claude-sonnet-4-6:1m', value: 'global.anthropic.claude-sonnet-4-6:1m' },
+                    { label: 'global.anthropic.claude-opus-4-5-20251101-v1:0', value: 'global.anthropic.claude-opus-4-5-20251101-v1:0' },
+                    { label: 'global.anthropic.claude-opus-4-6-v1', value: 'global.anthropic.claude-opus-4-6-v1' },
+                    { label: 'global.anthropic.claude-opus-4-6-v1:1m', value: 'global.anthropic.claude-opus-4-6-v1:1m' },
+                    { label: 'global.anthropic.claude-opus-4-7', value: 'global.anthropic.claude-opus-4-7' },
+                    { label: 'global.anthropic.claude-opus-4-7:1m', value: 'global.anthropic.claude-opus-4-7:1m' },
+                  ]}
+                  filteringType="auto"
+                  placeholder="Select model override"
                 />
               </FormField>
 
@@ -550,7 +611,7 @@ const SchemaInspector = ({
                   <Select
                     selectedOption={availableMethods.find((opt) => opt.value === currentMethod) || null}
                     onChange={({ detail }) => {
-                      const method = detail.selectedOption.value;
+                      const method = detail.selectedOption.value ?? '';
                       const updates: Record<string, unknown> = {
                         [X_AWS_IDP_EVALUATION_METHOD]: method,
                       };

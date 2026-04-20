@@ -5,8 +5,7 @@ import { Table, Button, SpaceBetween, ButtonDropdown, Pagination, Box, TextFilte
 import type { IconProps } from '@cloudscape-design/components';
 import { useCollection } from '@cloudscape-design/collection-hooks';
 import { generateClient } from 'aws-amplify/api';
-import GET_TEST_RUNS from '../../graphql/queries/getTestRuns';
-import DELETE_TESTS from '../../graphql/queries/deleteTests';
+import { getTestRuns, deleteTests } from '../../graphql/generated';
 import DeleteTestModal from './DeleteTestModal';
 import DateRangeModal from '../common/DateRangeModal';
 import { paginationLabels } from '../common/labels';
@@ -169,13 +168,14 @@ const TestResultsList = ({
     window.location.hash = `#/test-studio?tab=results&testRunId=${testRunId}`;
   };
 
-  const getTestRunIdCell = (item) => <TestRunIdCell item={item} onSelect={handleTestRunSelect} />;
-  const getTestSetNameCell = (item) => <TextCell text={item.testSetName} />;
-  const getContextCell = (item) => <TextCell text={item.context || 'N/A'} />;
+  const getTestRunIdCell = (item: TestRunItem) => <TestRunIdCell item={item} onSelect={handleTestRunSelect} />;
+  const getTestSetNameCell = (item: TestRunItem) => <TextCell text={item.testSetName} />;
+  const getContextCell = (item: TestRunItem) => <TextCell text={item.context || 'N/A'} />;
 
-  const getStatusCell = (item) => {
-    if (item.isActive) {
-      return <TestRunnerStatus testRunId={item.testRunId} onComplete={() => onTestComplete(item.testRunId)} />;
+  const getStatusCell = (item: TestRunItem) => {
+    const terminalStatuses = ['COMPLETE', 'PARTIAL_COMPLETE', 'FAILED'];
+    if (!terminalStatuses.includes(item.status || '')) {
+      return <TestRunnerStatus testRunId={item.testRunId} createdAt={item.createdAt} onComplete={() => onTestComplete(item.testRunId)} />;
     }
     return item.status;
   };
@@ -188,7 +188,7 @@ const TestResultsList = ({
         : { timePeriodHours };
       console.log('Fetching test runs with variables:', variables);
       const result = (await client.graphql({
-        query: GET_TEST_RUNS,
+        query: getTestRuns,
         variables,
       })) as GqlResult;
       console.log('Raw GraphQL result:', result);
@@ -206,14 +206,14 @@ const TestResultsList = ({
         progress: Math.min(90, Math.floor(((Date.now() - run.startTime.getTime()) / 1000 / 60) * 10)), // Simulate progress
         filesCount: run.filesCount || 0,
         createdAt: run.startTime.toISOString(),
-        completedAt: null,
+        completedAt: null as string | null,
         context: run.context || 'N/A',
         configVersion: run.configVersion || null,
       }));
 
       // Filter out completed runs that match active run IDs to avoid duplicates
-      const activeRunIds = new Set(activeTestRuns.map((run) => run.testRunId));
-      const filteredCompletedRuns = completedRuns.filter((run) => !activeRunIds.has(run.testRunId));
+      const activeRunIds = new Set(activeTestRuns.map((run: ActiveTestRun) => run.testRunId));
+      const filteredCompletedRuns = completedRuns.filter((run: TestRunItem) => !activeRunIds.has(run.testRunId));
 
       // Merge active and completed runs, active runs first
       const allRuns = [...activeRunsWithProgress, ...filteredCompletedRuns];
@@ -221,7 +221,11 @@ const TestResultsList = ({
       setError(null);
     } catch (err) {
       console.error('Error fetching test runs:', err);
-      const errorMessage = err.errors?.length > 0 ? err.errors.map((e) => e.message).join('; ') : 'Failed to load test runs';
+      const typedErr = err as { errors?: Array<{ message: string }> };
+      const errorMessage =
+        typedErr.errors?.length && typedErr.errors.length > 0
+          ? typedErr.errors.map((e: { message: string }) => e.message).join('; ')
+          : 'Failed to load test runs';
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -278,7 +282,7 @@ const TestResultsList = ({
       console.log('Attempting to delete test runs:', testRunIds);
 
       const result = (await client.graphql({
-        query: DELETE_TESTS,
+        query: deleteTests,
         variables: { testRunIds },
       })) as GqlResult;
       console.log('Delete result:', result);
@@ -295,7 +299,7 @@ const TestResultsList = ({
       return result.data.deleteTests;
     } catch (err) {
       console.error('Error deleting test runs:', err);
-      console.error('Error details:', err.errors);
+      console.error('Error details:', (err as { errors?: unknown }).errors);
       return false;
     } finally {
       setDeleteLoading(false);

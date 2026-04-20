@@ -30,7 +30,7 @@ import { getDocumentConfidenceAlertCount } from '../common/confidence-alerts-uti
 import { renderHitlStatus } from '../common/hitl-status-renderer';
 import StepFunctionFlowViewer from '../step-function-flow/StepFunctionFlowViewer';
 import TroubleshootModal from './TroubleshootModal';
-import claimReviewMutation from '../../graphql/mutations/claimReview';
+import { claimReview } from '../../graphql/generated';
 // Uncomment the line below to enable debugging
 // import { debugDocumentStructure } from '../common/debug-utils';
 
@@ -127,12 +127,12 @@ interface DocumentPanelProps {
 
 interface TroubleshootJobData {
   jobId: string;
-  status: string;
-  result: unknown;
+  status: string | null;
+  result: string | Record<string, unknown> | null;
   agentMessages: unknown;
   error: string | null;
   timestamp: number;
-  documentKey: string;
+  documentKey: string | undefined;
 }
 
 const client = generateClient();
@@ -627,8 +627,14 @@ export const DocumentPanel = ({
 
   // Fetch active configuration for dynamic confidence threshold (used by sections panel, etc.)
   const { mergedConfig } = useConfiguration();
-  // Fetch the specific config version that was used to process this document (for flow viewer)
-  const { mergedConfig: documentVersionConfig } = useConfiguration(localItem?.configVersion || 'default');
+  // Fetch the specific config version that was used to process this document (for flow viewer).
+  // Optimization: skip the extra API call when the document version is 'default' or unset,
+  // since useConfiguration() above already fetches the default config.
+  const docConfigVersion = localItem?.configVersion || 'default';
+  const needsSeparateVersionFetch = docConfigVersion !== 'default';
+  const { mergedConfig: separateVersionConfig } = useConfiguration(needsSeparateVersionFetch ? docConfigVersion : 'default');
+  // Use the separate fetch result only when the version differs; otherwise reuse the default config
+  const documentVersionConfig = needsSeparateVersionFetch ? separateVersionConfig : mergedConfig;
   const { isReviewer } = useUserRole();
 
   // Check if document can be aborted
@@ -647,7 +653,7 @@ export const DocumentPanel = ({
     setIsClaimingReview(true);
     try {
       const result = await client.graphql({
-        query: claimReviewMutation as unknown as string,
+        query: claimReview,
         variables: { objectKey: localItem.objectKey },
       });
 
@@ -677,7 +683,7 @@ export const DocumentPanel = ({
   // Create enhanced item with configuration
   const enhancedItem = {
     ...localItem,
-    mergedConfig,
+    mergedConfig: mergedConfig ?? undefined,
   };
 
   return (

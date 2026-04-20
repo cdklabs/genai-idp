@@ -599,6 +599,7 @@ class SaveReportingData:
                 ("correctly_classified_pages", pa.int32()),
                 ("correctly_split_without_order", pa.int32()),
                 ("correctly_split_with_order", pa.int32()),
+                ("config_version", pa.string()),
             ]
         )
 
@@ -615,6 +616,7 @@ class SaveReportingData:
                 ("false_discovery_rate", pa.float64()),
                 ("weighted_overall_score", pa.float64()),
                 ("evaluation_date", pa.timestamp("ms")),
+                ("config_version", pa.string()),
             ]
         )
 
@@ -634,6 +636,7 @@ class SaveReportingData:
                 ("confidence_threshold", pa.string()),
                 ("weight", pa.float64()),
                 ("evaluation_date", pa.timestamp("ms")),
+                ("config_version", pa.string()),
             ]
         )
 
@@ -730,6 +733,7 @@ class SaveReportingData:
                 if doc_split_metrics
                 else None
             ),
+            "config_version": document.config_version or "default",
         }
 
         # Save document metrics in Parquet format
@@ -768,6 +772,7 @@ class SaveReportingData:
                     "weighted_overall_score", 0.0
                 ),
                 "evaluation_date": evaluation_date,  # Use document's initial_event_time
+                "config_version": document.config_version or "default",
             }
             section_records.append(section_record)
 
@@ -804,6 +809,7 @@ class SaveReportingData:
                     ),
                     "weight": weight,  # Explicitly handle None values
                     "evaluation_date": evaluation_date,  # Use document's initial_event_time
+                    "config_version": document.config_version or "default",
                 }
                 attribute_records.append(attribute_record)
                 logger.debug(
@@ -1093,6 +1099,7 @@ class SaveReportingData:
                 ("unit_cost", pa.float64()),
                 ("estimated_cost", pa.float64()),
                 ("timestamp", pa.timestamp("ms")),
+                ("config_version", pa.string()),
             ]
         )
 
@@ -1171,6 +1178,7 @@ class SaveReportingData:
                     "unit_cost": unit_cost,
                     "estimated_cost": estimated_cost,
                     "timestamp": timestamp,
+                    "config_version": document.config_version or "default",
                 }
                 metering_records.append(metering_record)
 
@@ -1290,6 +1298,9 @@ class SaveReportingData:
                     flattened_data["section_classification"] = section.classification
                     flattened_data["section_confidence"] = section.confidence
                     flattened_data["timestamp"] = timestamp
+                    flattened_data["config_version"] = (
+                        document.config_version or "default"
+                    )
 
                     section_records.append(flattened_data)
 
@@ -1309,6 +1320,9 @@ class SaveReportingData:
                         )
                         flattened_item["section_confidence"] = section.confidence
                         flattened_item["record_index"] = i
+                        flattened_item["config_version"] = (
+                            document.config_version or "default"
+                        )
 
                         section_records.append(flattened_item)
                 else:
@@ -1319,6 +1333,7 @@ class SaveReportingData:
                         "section_classification": section.classification,
                         "section_confidence": section.confidence,
                         "value": str(extraction_data),
+                        "config_version": document.config_version or "default",
                     }
                     section_records.append(record)
 

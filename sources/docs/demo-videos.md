@@ -1,3 +1,7 @@
+---
+title: "Demo Videos"
+---
+
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
@@ -13,8 +17,10 @@ This page contains all demonstration videos for the GenAI Intelligent Document P
 - [Web User Interface](#web-user-interface)
 - [Command Line Interface (CLI)](#command-line-interface-cli)
 - [AI Agents & Analytics](#ai-agents--analytics)
+- [Role-Based Access Control (RBAC)](#role-based-access-control-rbac)
 - [Configuration & Management](#configuration--management)
 - [Evaluation & Testing](#evaluation--testing)
+- [Rule Validation](#rule-validation)
 - [Integration & Extensions](#integration--extensions)
 
 ---
@@ -26,9 +32,9 @@ A scalable, serverless solution for automated document processing and informatio
 
 **Duration**: ~3 minutes
 
-TODO Placeholder - replace asset with new short demo video
 
-https://github.com/user-attachments/assets/272b543b-e506-48ce-acc1-361422d22322
+https://github.com/user-attachments/assets/fc2652b5-a9cc-42d7-9975-887c8320a2f5
+
 
 **Related Documentation**: [README.md](../README.md)
 
@@ -60,7 +66,7 @@ A comprehensive technical session demonstrating how AWS's GenAI Intelligent Docu
 
 **Replicate This Demo**: You can now run this exact healthcare demo yourself using the pre-configured sample and config files included in the repository:
 - **Sample Document**: [healthcare-multisection-package.pdf](../samples/healthcare-multisection-package.pdf)
-- **Configuration**: [Pattern-2 Healthcare Config](../config_library/pattern-2/healthcare-multisection-package/config.yaml)
+- **Configuration**: [Pattern-2 Healthcare Config](../config_library/unified/healthcare-multisection-package/config.yaml)
 
 These are the same files used in the video demonstration and can be deployed with the IDP CLI or web UI.
 
@@ -162,25 +168,31 @@ https://github.com/user-attachments/assets/78764207-0fcf-4523-ad12-f428581a685f
 
 ---
 
-## Configuration & Management
+## Role-Based Access Control (RBAC)
 
-### Discovery Module (Quick Overview)
-Intelligent document analysis that automatically identifies structures and creates processing blueprints.
+### RBAC Demo
+Role-based access control for managing user permissions and access to document processing features, configurations, and review workflows.
 
-**Duration**: 3 minutes
+https://github.com/user-attachments/assets/a1e9ce1a-1b2e-4e98-a387-d2e48d7e557d
 
-https://github.com/user-attachments/assets/101f73f6-27f1-4995-b35e-fa2fb44eb254
-
-**Related Documentation**: [Discovery Module Documentation](./discovery.md)
+**Related Documentation**: [RBAC Documentation](./rbac.md)
 
 ---
 
-### Discovery Module (Comprehensive)
-Detailed walkthrough of the pattern-neutral discovery process and pattern-specific implementations.
+## Configuration & Management
 
-**Duration**: 10 minutes
+### Discovery Module
+Intelligent document analysis that automatically identifies structures and creates processing blueprints, including pattern-neutral discovery and pattern-specific implementations.
 
-https://github.com/user-attachments/assets/ba7f863f-0cac-4778-8bcf-b4beee8a3301
+#### Multi-Document Collection Discovery
+**Duration**: ~4 minutes
+
+https://github.com/user-attachments/assets/9c3923fb-f4ff-43cd-a563-44c7c6132921
+
+#### Single Document Discovery
+**Duration**: ~4 minutes
+
+https://github.com/user-attachments/assets/b0bc5df0-cd8f-472c-98c6-299ac3a9bd43
 
 **Related Documentation**: [Discovery Module Documentation](./discovery.md)
 
@@ -216,6 +228,15 @@ Migration from legacy custom format to industry-standard JSON Schema with automa
 https://github.com/user-attachments/assets/ee817858-8285-4087-9b25-2c7c5bea65df
 
 **Related Documentation**: [JSON Schema Migration Guide](./json-schema-migration.md)
+
+---
+
+### Custom Model Fine-Tuning
+Fine-tune Amazon Nova models for document classification using your own labeled Test Sets — validate data, generate training data, train via Bedrock, and deploy a custom model endpoint.
+
+https://github.com/user-attachments/assets/e82c7be0-ee73-4ad7-8537-87ecf6a1a4c8
+
+**Related Documentation**: [Custom Model Fine-Tuning Documentation](./custom-model-finetuning.md)
 
 ---
 
@@ -265,16 +286,53 @@ https://github.com/user-attachments/assets/d952fd37-1bd0-437f-8f67-5a634e9422e0
 
 ---
 
+### Creating Custom Test Sets with Ground Truth
+End-to-end workflow for creating your own test set from scratch — configure for high accuracy, discover the schema, process and review documents, save ground truth, and compare model accuracy vs. cost.
+
+https://github.com/user-attachments/assets/d5e0d590-ce8b-4e14-b2b7-8bde31e57ec2
+
+**Related Documentation**: [Creating Custom Test Sets](./creating-custom-test-sets.md)
+
+---
+
+### Adding Documents to Existing Test Sets
+Incrementally grow test sets over time by adding newly reviewed documents with ground truth — with automatic baseline filtering, time-based file selection, and prepopulated file patterns.
+
+https://github.com/user-attachments/assets/bcd18e62-4795-44ea-9554-637062fd21d7
+
+**Related Documentation**: [Creating Custom Test Sets - Incrementally Growing Your Test Set](./creating-custom-test-sets.md#incrementally-growing-your-test-set)
+
+---
+
+## Rule Validation
+
+### Rule Validation Demo
+Automatically validate documents against business rules and compliance requirements using AI. Includes rule extraction from policy documents, configurable rule schemas, and detailed Pass/Fail reporting with supporting evidence.
+
+https://github.com/user-attachments/assets/5d115b90-ff52-4e17-ab70-d259efe5a183
+
+**Related Documentation**: [Rule Validation Documentation](./rule-validation.md)
+
+---
+
 ## Integration & Extensions
 
 ### MCP Integration
 Model Context Protocol integration enabling external applications like Amazon Quick Suite to access IDP data.
 
-**Duration**: ~3 minutes
+
+#### Demo with Quick Suite
+**Duration**: ~3 minutes  
 
 https://github.com/user-attachments/assets/529ce6ad-1062-4af5-97c1-86c3a47ac12c
 
-**Related Documentation**: [MCP Integration Documentation](./mcp-integration.md)
+#### Demo with Cline 
+**Duration**: ~5 minutes  
+
+https://github.com/user-attachments/assets/28d3a358-7aec-4c40-9081-ad4683d2a89f
+
+
+**Related Documentation**: [MCP Server Documentation](./mcp-server.md)
 
 ---
 

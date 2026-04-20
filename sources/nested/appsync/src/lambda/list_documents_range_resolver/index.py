@@ -14,6 +14,7 @@ making it suitable for custom date ranges of any length.
 import os
 import json
 import logging
+import time
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -24,6 +25,10 @@ logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 dynamodb = boto3.resource("dynamodb")
+
+# User scope cache (TTL-based, per Lambda container)
+_user_scope_cache = {}
+_USER_SCOPE_CACHE_TTL = 60  # seconds
 
 # Must match DOCUMENT_LIST_SHARDS_PER_DAY in the frontend
 SHARDS_PER_DAY = 6
@@ -176,12 +181,110 @@ def _deserialize_next_token(token: str):
 
 
 # ---------------------------------------------------------------------------
+# RBAC helpers (mirrors list_documents_gsi_resolver pattern)
+# ---------------------------------------------------------------------------
+
+def _get_caller_identity(event):
+    """Extract caller's Cognito groups, username, and email from AppSync event identity."""
+    identity = event.get("identity", {})
+    claims = identity.get("claims", {})
+    groups = claims.get("cognito:groups", [])
+    username = claims.get("cognito:username", "") or claims.get("sub", "")
+    email = claims.get("email", "") or identity.get("username", "") or username
+
+    if isinstance(groups, str):
+        groups = [groups]
+
+    return {
+        "groups": groups,
+        "username": username,
+        "email": email,
+        "is_admin": "Admin" in groups,
+        "is_author": "Author" in groups,
+        "is_reviewer": "Reviewer" in groups,
+        "is_viewer": "Viewer" in groups,
+    }
+
+
+def _is_reviewer_only(caller):
+    """Check if caller is a reviewer-only user (no Admin/Author/Viewer groups)."""
+    return caller["is_reviewer"] and not caller["is_admin"] and not caller["is_author"] and not caller["is_viewer"]
+
+
+def _get_user_allowed_config_versions(caller_email):
+    """Look up user's allowedConfigVersions from UsersTable with caching."""
+    users_table_name = os.environ.get("USERS_TABLE_NAME", "")
+    if not users_table_name:
+        return None
+
+    now = time.time()
+    cached = _user_scope_cache.get(caller_email)
+    if cached and (now - cached["timestamp"]) < _USER_SCOPE_CACHE_TTL:
+        return cached["scope"]
+
+    try:
+        users_table = dynamodb.Table(users_table_name)
+        response = users_table.query(
+            IndexName="EmailIndex",
+            KeyConditionExpression=Key("email").eq(caller_email),
+        )
+        items = response.get("Items", [])
+        if items:
+            scope = items[0].get("allowedConfigVersions")
+            result = list(scope) if scope and len(scope) > 0 else None
+        else:
+            result = None
+    except Exception as e:
+        logger.warning(f"Failed to look up user scope for {caller_email}: {e}")
+        result = None
+
+    _user_scope_cache[caller_email] = {"scope": result, "timestamp": now}
+    return result
+
+
+def _should_include_document(doc, caller, reviewer_only, allowed_versions):
+    """Apply RBAC filtering to a single document.
+
+    Returns True if the document should be included in results.
+    """
+    # Config-version scope filter (applies to non-admin users)
+    if allowed_versions:
+        doc_version = doc.get("ConfigVersion") or doc.get("ConfigurationVersion")
+        if doc_version and doc_version not in allowed_versions:
+            return False
+
+    # Reviewer-only filter: only HITL-pending or owned documents
+    if reviewer_only:
+        hitl_triggered = doc.get("HITLTriggered", False)
+        hitl_status = doc.get("HITLStatus", "")
+        hitl_completed = doc.get("HITLCompleted", False)
+        hitl_owner = doc.get("HITLReviewOwner", "")
+        reviewer_id = caller["username"]
+        reviewer_email = caller["email"]
+
+        hitl_active = (
+            hitl_triggered is True
+            or hitl_status in ("PendingReview", "InProgress", "ReviewInProgress")
+        )
+        owner_is_me = hitl_owner in (reviewer_id, reviewer_email)
+
+        if not hitl_active:
+            return False
+        if hitl_completed and not owner_is_me:
+            return False
+        if not hitl_completed and hitl_owner and not owner_is_me:
+            return False
+
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
 
 def handler(event, context):
     """AppSync Lambda resolver handler."""
-    logger.info(f"listDocumentsByDateRange invoked")
+    logger.info("listDocumentsByDateRange invoked")
     logger.debug(f"Event: {json.dumps(event, default=str)}")
 
     args = event.get("arguments", {})
@@ -256,6 +359,15 @@ def handler(event, context):
 
     logger.info(f"Collected {len(collected_entries)} list entries")
 
+    # RBAC: Get caller identity and scope
+    caller = _get_caller_identity(event)
+    reviewer_only = _is_reviewer_only(caller)
+    allowed_versions = None
+    if not caller["is_admin"]:
+        allowed_versions = _get_user_allowed_config_versions(caller["email"])
+
+    logger.info(f"Caller groups: {caller['groups']}, reviewer_only: {reviewer_only}")
+
     # Extract ObjectKeys from list entries
     object_keys = [entry.get("ObjectKey") for entry in collected_entries if entry.get("ObjectKey")]
 
@@ -264,11 +376,15 @@ def handler(event, context):
     logger.info(f"Fetched {len(documents_map)} document details")
 
     # Build response, preserving list entry PK/SK for compatibility
+    # Apply RBAC filtering (reviewer-only + config-version scope)
     documents = []
     for entry in collected_entries:
         obj_key = entry.get("ObjectKey")
         if obj_key and obj_key in documents_map:
             doc = documents_map[obj_key]
+            # RBAC filter
+            if not _should_include_document(doc, caller, reviewer_only, allowed_versions):
+                continue
             # Add list entry PK/SK for potential deletion/reprocessing
             doc["ListPK"] = entry.get("PK")
             doc["ListSK"] = entry.get("SK")
@@ -286,7 +402,7 @@ def handler(event, context):
     }
 
     logger.info(
-        f"Returning {len(documents)} documents, "
+        f"Returning {len(documents)} documents (after RBAC filtering), "
         f"hasNextPage={result_next_token is not None}"
     )
 
