@@ -5,7 +5,6 @@ SPDX-License-Identifier: Apache-2.0
 
 import * as path from "path";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
-import * as sagemaker from "@aws-cdk/aws-sagemaker-alpha";
 import * as cdk from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as kms from "aws-cdk-lib/aws-kms";
@@ -97,15 +96,6 @@ export interface ClassificationFunctionProps extends IdpPythonFunctionOptions {
    * @default - No inference provider; permissions granted in parent construct
    */
   readonly inferenceProvider?: IInvokable;
-
-  /**
-   * Optional SageMaker endpoint for classification.
-   * When provided, the classification function uses the SageMaker backend
-   * instead of Bedrock for document classification.
-   *
-   * @default - Bedrock backend is used
-   */
-  readonly classifierEndpoint?: sagemaker.IEndpoint;
 }
 
 /**
@@ -192,9 +182,6 @@ export class ClassificationFunction extends lambda_python.PythonFunction {
         DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
         WORKING_BUCKET: props.workingBucket.bucketName,
         ...(props.api && { APPSYNC_API_URL: props.api.graphqlUrl }),
-        ...(props.classifierEndpoint && {
-          SAGEMAKER_ENDPOINT_NAME: props.classifierEndpoint.endpointName,
-        }),
       },
       ...(props.vpcConfiguration && {
         vpc: props.vpcConfiguration.vpc,
@@ -223,7 +210,6 @@ export class ClassificationFunction extends lambda_python.PythonFunction {
     props.workingBucket.grantReadWrite(this);
     props.encryptionKey?.grantEncryptDecrypt(this);
     props.inferenceProvider?.grantInvoke(this);
-    props.classifierEndpoint?.grantInvoke(this);
     props.api?.grantMutation(this);
   }
 }

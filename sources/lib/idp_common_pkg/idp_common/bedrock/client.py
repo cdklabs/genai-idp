@@ -318,6 +318,7 @@ class BedrockClient:
         context: str = "Unspecified",
         service_tier: Optional[str] = None,
         model_lambda_hook_arn: Optional[str] = None,
+        work_location_uri: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Invoke a Bedrock model or custom Lambda hook with retry logic.
@@ -338,6 +339,9 @@ class BedrockClient:
             max_retries: Optional override for the instance's max_retries setting
             service_tier: Optional service tier (priority, standard, flex)
             model_lambda_hook_arn: Lambda function ARN (required when model_id is 'LambdaHook')
+            work_location_uri: Optional S3 prefix where the hook reads inputs and writes outputs.
+                              Enables hooks to access page artifacts (image, textract JSON, etc.)
+                              without embedding them in the payload.
 
         Returns:
             Response object with metering information (same format for both Bedrock and Lambda)
@@ -354,6 +358,7 @@ class BedrockClient:
                 max_tokens=max_tokens,
                 max_retries=max_retries,
                 context=context,
+                work_location_uri=work_location_uri,
             )
 
         # Track total requests
@@ -1051,6 +1056,7 @@ class BedrockClient:
         max_tokens: Optional[Union[int, str]] = None,
         max_retries: Optional[int] = None,
         context: str = "Unspecified",
+        work_location_uri: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Invoke a custom Lambda function instead of Bedrock for LLM inference.
@@ -1069,6 +1075,7 @@ class BedrockClient:
             max_tokens: Optional max_tokens parameter
             max_retries: Optional override for retry count
             context: Context prefix for metering key
+            work_location_uri: Optional S3 prefix where the hook reads inputs and writes outputs
 
         Returns:
             Response object with metering information (same format as Bedrock responses)
@@ -1165,6 +1172,11 @@ class BedrockClient:
             "inferenceConfig": inference_config,
             "context": context,
         }
+
+        # Include workLocationUri if provided — enables hooks to access
+        # page artifacts (image, textract JSON, etc.) from S3
+        if work_location_uri:
+            lambda_payload["workLocationUri"] = work_location_uri
 
         # Invoke Lambda with retry logic
         effective_max_retries = max_retries if max_retries is not None else self.max_retries

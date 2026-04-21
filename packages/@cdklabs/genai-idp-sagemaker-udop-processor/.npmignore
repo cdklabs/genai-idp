@@ -22,6 +22,7 @@ tsconfig.tsbuildinfo
 /dist/changelog.md
 /dist/version.txt
 !.jsii
+!/assets/
 test/integ/.tmp
 test/integ/pattern.integ.snapshot
 /.gitattributes

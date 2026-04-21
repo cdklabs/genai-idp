@@ -45,7 +45,31 @@
       "condition": "git log --oneline -1 | grep -qv \"chore(release):\""
     },
     "bundle": {
-      "name": "bundle"
+      "name": "bundle",
+      "description": "Prepare assets",
+      "steps": [
+        {
+          "spawn": "bundle:sagemaker-classification-hook.lambda"
+        }
+      ]
+    },
+    "bundle:sagemaker-classification-hook.lambda": {
+      "name": "bundle:sagemaker-classification-hook.lambda",
+      "description": "Create a JavaScript bundle from src/sagemaker-classification-hook.lambda.ts",
+      "steps": [
+        {
+          "exec": "esbuild --bundle src/sagemaker-classification-hook.lambda.ts --target=\"node22\" --platform=\"node\" --outfile=\"assets/sagemaker-classification-hook.lambda/index.js\" --tsconfig=\"tsconfig.dev.json\" --external:@aws-sdk/*"
+        }
+      ]
+    },
+    "bundle:sagemaker-classification-hook.lambda:watch": {
+      "name": "bundle:sagemaker-classification-hook.lambda:watch",
+      "description": "Continuously update the JavaScript bundle from src/sagemaker-classification-hook.lambda.ts",
+      "steps": [
+        {
+          "exec": "esbuild --bundle src/sagemaker-classification-hook.lambda.ts --target=\"node22\" --platform=\"node\" --outfile=\"assets/sagemaker-classification-hook.lambda/index.js\" --tsconfig=\"tsconfig.dev.json\" --external:@aws-sdk/* --watch"
+        }
+      ]
     },
     "check-for-updates": {
       "name": "check-for-updates",
@@ -54,7 +78,7 @@
       },
       "steps": [
         {
-          "exec": "npx npm-check-updates@18 --upgrade --target=minor --peer --no-deprecated --dep=dev,peer,prod,optional --filter=@aws-cdk/cx-api,@types/jest,@types/node,cdk-nag,eslint-config-prettier,eslint-import-resolver-typescript,eslint-plugin-import,eslint-plugin-prettier,jest,jsii-diff,jsii-docgen,jsii-pacmak,prettier,ts-jest,ts-node,typescript"
+          "exec": "npx npm-check-updates@18 --upgrade --target=minor --peer --no-deprecated --dep=dev,peer,prod,optional --filter=@aws-cdk/cx-api,@aws-sdk/client-sagemaker-runtime,@types/jest,@types/node,cdk-nag,esbuild,eslint-config-prettier,eslint-import-resolver-typescript,eslint-plugin-import,eslint-plugin-prettier,jest,jsii-diff,jsii-docgen,jsii-pacmak,prettier,ts-jest,ts-node,typescript"
         }
       ]
     },
@@ -288,6 +312,9 @@
       "name": "pre-compile",
       "description": "Prepare the project for compilation",
       "steps": [
+        {
+          "spawn": "bundle"
+        },
         {
           "spawn": "bundle"
         }

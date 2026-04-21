@@ -12,13 +12,16 @@ import {
   IUnifiedDocumentProcessor,
   IUnifiedDocumentProcessorConfiguration,
   IUnifiedDocumentProcessorConfigurationDefinition,
+  Invokable,
   UnifiedDocumentProcessor,
 } from "@cdklabs/genai-idp";
+import * as cdk from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
 import { ISagemakerUdopProcessorConfiguration } from "./configuration";
+import { SagemakerClassificationHookFunction } from "./sagemaker-classification-hook-function";
 
 /**
  * Interface for SageMaker UDOP document processor implementation.
@@ -29,20 +32,14 @@ export interface ISagemakerUdopProcessor extends IDocumentProcessor {}
  * Configuration properties for the SageMaker UDOP document processor facade.
  */
 export interface SagemakerUdopProcessorProps extends DocumentProcessorProps {
-  /**
-   * Configuration for the SageMaker UDOP document processor.
-   */
+  /** Configuration for the SageMaker UDOP document processor. */
   readonly configuration: ISagemakerUdopProcessorConfiguration;
-
-  /**
-   * The S3 bucket containing configuration files.
-   */
+  /** The S3 bucket containing configuration files. */
   readonly configurationBucket: s3.IBucket;
-
   /**
    * The SageMaker endpoint used for document classification.
-   * The unified processor's classification function uses the SageMaker backend
-   * to invoke this endpoint directly for document classification.
+   * A LambdaHook bridge reads page artifacts from `workLocationUri`
+   * and calls this endpoint for classification.
    */
   readonly classifierEndpoint: sagemaker.IEndpoint;
 }
@@ -50,9 +47,9 @@ export interface SagemakerUdopProcessorProps extends DocumentProcessorProps {
 /**
  * SageMaker UDOP document processor facade over UnifiedDocumentProcessor.
  *
- * Uses the unified processor's native SageMaker classification backend
- * to route classification requests to a SageMaker endpoint while delegating
- * all other processing to the pipeline path.
+ * Creates a LambdaHook bridge that uses `workLocationUri` to read page
+ * artifacts (image, Textract JSON) from S3 and calls the SageMaker endpoint
+ * for classification. All other stages delegate to the unified processor.
  */
 export class SagemakerUdopProcessor
   extends Construct
@@ -62,40 +59,58 @@ export class SagemakerUdopProcessor
   public readonly maxProcessingConcurrency: number;
   public readonly stateMachine: sfn.IStateMachine;
   public readonly evaluationFunction?: EvaluationFunction;
-
   private readonly innerProcessor: UnifiedDocumentProcessor;
 
-  constructor(
-    scope: Construct,
-    id: string,
-    props: SagemakerUdopProcessorProps,
-  ) {
+  constructor(scope: Construct, id: string, props: SagemakerUdopProcessorProps) {
     super(scope, id);
 
+    // Create the SageMaker classification bridge Lambda
+    const bridgeLambda = new SagemakerClassificationHookFunction(this, "ClassificationBridge", {
+      functionName: cdk.Lazy.string({
+        produce: () =>
+          `GENAIIDP-${cdk.Names.uniqueResourceName(this, {
+            maxLength: 40,
+            allowedSpecialCharacters: "-",
+          })}-sm-cls`,
+      }),
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 256,
+      environment: {
+        SAGEMAKER_ENDPOINT_NAME: props.classifierEndpoint.endpointName,
+      },
+    });
+
+    // Grant permissions
+    props.classifierEndpoint.grantInvoke(bridgeLambda);
+    // Bridge Lambda reads page artifacts (image, rawText.json) from the output bucket
+    props.environment.outputBucket.grantRead(bridgeLambda);
+
+    const classificationInvokable = Invokable.fromFunction(bridgeLambda);
+
     // Bind configuration
-    const renderedDefinition = props.configuration.bind(
-      this,
-      props.environment,
-    );
+    const renderedDefinition = props.configuration.bind(this, props.environment);
 
     // Pass-through configuration for the unified processor
     const unifiedConfig: IUnifiedDocumentProcessorConfiguration = {
       bind: (
         _processor: IUnifiedDocumentProcessor,
       ): IUnifiedDocumentProcessorConfigurationDefinition => {
+        // Override classification to route through LambdaHook bridge
+        const rawConfig = renderedDefinition.raw();
+        if (!rawConfig.classification) rawConfig.classification = {};
+        rawConfig.classification.model = "LambdaHook";
+        rawConfig.classification.model_lambda_hook_arn = bridgeLambda.functionArn;
+
         return {
           ocrInferenceProvider: undefined,
-          classificationInferenceProvider: undefined,
-          extractionInferenceProvider:
-            renderedDefinition.extractionInferenceProvider,
-          assessmentInferenceProvider:
-            renderedDefinition.assessmentInferenceProvider,
-          summarizationInferenceProvider:
-            renderedDefinition.summarizationInferenceProvider,
+          classificationInferenceProvider: classificationInvokable,
+          extractionInferenceProvider: renderedDefinition.extractionInferenceProvider,
+          assessmentInferenceProvider: renderedDefinition.assessmentInferenceProvider,
+          summarizationInferenceProvider: renderedDefinition.summarizationInferenceProvider,
           evaluationModel: renderedDefinition.evaluationModel,
           ocrBackend: renderedDefinition.ocrBackend,
           customPromptGenerator: renderedDefinition.customPromptGenerator,
-          raw: () => renderedDefinition.raw(),
+          raw: () => rawConfig,
           validate: () => renderedDefinition.validate(),
           isLegacyFormat: () => renderedDefinition.isLegacyFormat(),
           isJsonSchemaFormat: () => renderedDefinition.isJsonSchemaFormat(),
@@ -108,12 +123,10 @@ export class SagemakerUdopProcessor
       configurationBucket: props.configurationBucket,
       maxProcessingConcurrency: props.maxProcessingConcurrency,
       configuration: unifiedConfig,
-      classifierEndpoint: props.classifierEndpoint,
     });
 
     this.environment = this.innerProcessor.environment;
-    this.maxProcessingConcurrency =
-      this.innerProcessor.maxProcessingConcurrency;
+    this.maxProcessingConcurrency = this.innerProcessor.maxProcessingConcurrency;
     this.stateMachine = this.innerProcessor.stateMachine;
     this.evaluationFunction = this.innerProcessor.evaluationFunction;
   }
@@ -122,46 +135,34 @@ export class SagemakerUdopProcessor
   // CloudWatch Metrics
   // ========================================
 
-  /** Total Bedrock model invocation requests. */
-  public metricBedrockRequestsTotal(
-    props?: cloudwatch.MetricOptions,
-  ): cloudwatch.Metric {
+  public metricBedrockRequestsTotal(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
     return this.innerProcessor.metricBedrockRequestsTotal(props);
   }
-  /** Successful Bedrock model invocation requests. */
-  public metricBedrockRequestsSucceeded(
-    props?: cloudwatch.MetricOptions,
-  ): cloudwatch.Metric {
+  public metricBedrockRequestsSucceeded(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
     return this.innerProcessor.metricBedrockRequestsSucceeded(props);
   }
-  /** Failed Bedrock model invocation requests. */
-  public metricBedrockRequestsFailed(
-    props?: cloudwatch.MetricOptions,
-  ): cloudwatch.Metric {
+  public metricBedrockRequestsFailed(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
     return this.innerProcessor.metricBedrockRequestsFailed(props);
   }
-  /** Input tokens consumed. */
-  public metricInputTokens(
-    props?: cloudwatch.MetricOptions,
-  ): cloudwatch.Metric {
+  public metricInputTokens(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
     return this.innerProcessor.metricInputTokens(props);
   }
-  /** Output tokens generated. */
-  public metricOutputTokens(
-    props?: cloudwatch.MetricOptions,
-  ): cloudwatch.Metric {
+  public metricOutputTokens(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
     return this.innerProcessor.metricOutputTokens(props);
   }
-  /** Documents submitted for extraction. */
-  public metricInputDocuments(
-    props?: cloudwatch.MetricOptions,
-  ): cloudwatch.Metric {
+  public metricInputDocuments(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
     return this.innerProcessor.metricInputDocuments(props);
   }
-  /** Document pages submitted for extraction. */
-  public metricInputDocumentPages(
-    props?: cloudwatch.MetricOptions,
-  ): cloudwatch.Metric {
+  public metricInputDocumentPages(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
     return this.innerProcessor.metricInputDocumentPages(props);
+  }
+  public metricLambdaHookRequestsTotal(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    return this.innerProcessor.metricLambdaHookRequestsTotal(props);
+  }
+  public metricLambdaHookRequestsSucceeded(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    return this.innerProcessor.metricLambdaHookRequestsSucceeded(props);
+  }
+  public metricLambdaHookRequestsFailed(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    return this.innerProcessor.metricLambdaHookRequestsFailed(props);
   }
 }

@@ -309,7 +309,7 @@ const idpPattern3 = new AwsCdkTypeScriptWorkspace({
   authorEmail: "aws-cdk-dev@amazon.com",
   name: "@cdklabs/genai-idp-sagemaker-udop-processor",
   repository: "https://github.com/cdklabs/genai-idp",
-  devDeps: [...idpDeps, '@aws-cdk/cx-api', 'cdk-nag'],
+  devDeps: [...idpDeps, '@aws-cdk/cx-api', 'cdk-nag', '@aws-sdk/client-sagemaker-runtime'],
   peerDeps: [...idpDeps, genaiIdp],
   prettier: true,
   jest: true,

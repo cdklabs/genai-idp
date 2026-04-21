@@ -54,7 +54,8 @@
       {
         "devDependencies": [
           "**/test/**",
-          "**/build-tools/**"
+          "**/build-tools/**",
+          "src/sagemaker-classification-hook.lambda.ts"
         ],
         "optionalDependencies": false,
         "peerDependencies": true
