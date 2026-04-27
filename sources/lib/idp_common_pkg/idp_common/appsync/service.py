@@ -69,6 +69,9 @@ class DocumentAppSyncService:
             "ExpiresAfter": expires_after,
         }
 
+        # Note: ConfidenceAlertCount is NOT in CreateDocumentInput schema —
+        # it gets persisted via the update path in processresults after assessment.
+
         # Add trace_id if available
         if document.trace_id:
             input_data["TraceId"] = document.trace_id
@@ -163,6 +166,13 @@ class DocumentAppSyncService:
                     "OutputJSONUri": section.extraction_result_uri or "",
                 }
 
+                # Propagate excluded-class flags so the UI can show "Skipped"
+                # badges and suppress empty extraction/summary panels.
+                if getattr(section, "excluded", False):
+                    section_data["Excluded"] = True
+                    if section.exclusion_reason:
+                        section_data["ExclusionReason"] = section.exclusion_reason
+
                 # Convert confidence threshold alerts
                 if section.confidence_threshold_alerts:
                     alerts_data = []
@@ -234,6 +244,9 @@ class DocumentAppSyncService:
         if document.hitl_sections_completed:
             input_data["HITLSectionsCompleted"] = document.hitl_sections_completed
 
+        # Always include ConfidenceAlertCount so it persists to DynamoDB GSI
+        input_data["ConfidenceAlertCount"] = document.confidence_alert_count
+
         # Add trace_id if available
         if document.trace_id:
             input_data["TraceId"] = document.trace_id
@@ -278,8 +291,9 @@ class DocumentAppSyncService:
                 request_id=doc.id or "", output_uri=rule_validation_uri
             )
 
-        # Handle HITL fields - create HITL metadata if HITL fields are present
+        # Set Review Status fields from AppSync response
         hitl_status = appsync_data.get("HITLStatus")
+        doc.hitl_status = hitl_status
         hitl_review_url = appsync_data.get("HITLReviewURL")
         hitl_triggered = appsync_data.get("HITLTriggered")
         hitl_completed = appsync_data.get("HITLCompleted")
@@ -396,6 +410,8 @@ class DocumentAppSyncService:
                         page_ids=page_ids,
                         extraction_result_uri=section_data.get("OutputJSONUri"),
                         confidence_threshold_alerts=confidence_threshold_alerts,
+                        excluded=bool(section_data.get("Excluded", False)),
+                        exclusion_reason=section_data.get("ExclusionReason"),
                     )
                 )
 
@@ -560,6 +576,13 @@ class DocumentAppSyncService:
             "Class": section.classification,
             "OutputJSONUri": section.extraction_result_uri or "",
         }
+
+        # Propagate excluded-class flags so the UI can show "Skipped"
+        # badges and suppress empty extraction/summary panels.
+        if getattr(section, "excluded", False):
+            section_data["Excluded"] = True
+            if section.exclusion_reason:
+                section_data["ExclusionReason"] = section.exclusion_reason
 
         # Convert confidence threshold alerts
         if section.confidence_threshold_alerts:
