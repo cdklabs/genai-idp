@@ -1,3 +1,7 @@
+---
+title: "Lambda Hook Inference (Custom LLM Integration)"
+---
+
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
@@ -161,6 +165,7 @@ Ready-to-deploy sample Lambda hook functions are provided in [`samples/lambda-ho
 |--------|-------------|
 | **GENAIIDP-bedrock-proxy** | Forwards to Bedrock Converse API — use as a starting template for custom hooks with pre/post processing |
 | **GENAIIDP-sagemaker-hook** | Calls a SageMaker real-time inference endpoint — shows format conversion between Converse API and SageMaker |
+| **GENAIIDP-chandra-ocr-hook** | Calls the [Datalab Chandra OCR 2](https://github.com/datalab-to/chandra) hosted API for high-quality OCR — converts page images to structured Markdown, JSON, or HTML |
 
 Each sample includes:
 - Well-commented Python code with clearly marked customization points
@@ -174,6 +179,61 @@ sam build && sam deploy --guided --stack-name GENAIIDP-lambda-hooks
 ```
 
 See the [samples README](../samples/lambda-hook-inference/README.md) for full deployment instructions.
+
+## Chandra OCR Integration
+
+[Chandra OCR 2](https://github.com/datalab-to/chandra) by [Datalab](https://www.datalab.to) is a state-of-the-art VLM-based OCR model that converts images into structured Markdown, JSON, or HTML. It supports 90+ languages, math, tables, forms (including checkboxes), handwriting, and complex layouts.
+
+The **GENAIIDP-chandra-ocr-hook** sample integrates the Datalab hosted API with the LambdaHook feature for OCR. The Datalab API uses an asynchronous pattern:
+
+1. **Submit**: `POST /api/v1/convert` with the page image (multipart form) → returns a `request_check_url`
+2. **Poll**: `GET request_check_url` until `status: "complete"` → returns OCR result
+
+### Configuration
+
+```yaml
+ocr:
+  backend: bedrock
+  model_id: "LambdaHook"
+  model_lambda_hook_arn: "arn:aws:lambda:us-east-1:123456789012:function:GENAIIDP-chandra-ocr-hook"
+```
+
+### Deployment
+
+```bash
+cd samples/lambda-hook-inference/GENAIIDP-chandra-ocr-hook
+sam build
+sam deploy --guided \
+  --stack-name GENAIIDP-chandra-ocr-hook \
+  --parameter-overrides \
+    IDPWorkingBucket=<your-idp-working-bucket-name> \
+    CustomerManagedEncryptionKeyArn=<your-kms-key-arn> \
+    ChandraApiKey=<your-datalab-api-key>
+```
+
+**Getting an API key**: Sign up at [datalab.to](https://www.datalab.to) to get your API key.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHANDRA_API_KEY` | (required) | Datalab API key |
+| `CHANDRA_API_URL` | `https://www.datalab.to` | Datalab API base URL |
+| `OUTPUT_FORMAT` | `markdown` | Output format: `markdown`, `json`, or `html` |
+| `CONVERSION_MODE` | `accurate` | Quality mode: `fast`, `balanced`, or `accurate` |
+| `POLL_INTERVAL` | `3` | Seconds between polling attempts |
+| `MAX_POLL_ATTEMPTS` | `60` | Maximum polling attempts before timeout |
+
+### Local Testing
+
+Test locally before deploying:
+
+```bash
+cd samples/lambda-hook-inference/GENAIIDP-chandra-ocr-hook
+pip install pdf2image Pillow
+export CHANDRA_API_KEY="your-api-key"
+python test_local.py ../../insurance_package.pdf --pages 1,2
+```
 
 ## Example Implementations
 

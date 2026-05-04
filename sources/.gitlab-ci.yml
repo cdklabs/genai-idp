@@ -42,10 +42,9 @@ developer_tests:
     # Create virtual environment
     - uv venv .venv
     - source .venv/bin/activate
-    # Install Node.js and npm for basedpyright
-    - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    - apt-get install -y nodejs
-    - npm install -g npm@11
+    # Install pinned Node.js 22.14.0 and npm 11.1.0 for basedpyright
+    - curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
+    - npm install -g npm@11.1.0 || { echo "npm upgrade failed"; exit 1; }
     - npm install -g basedpyright
     - uv pip install ruff
     # Install dependencies needed by publish.py for test imports

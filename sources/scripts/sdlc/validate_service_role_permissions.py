@@ -3,11 +3,18 @@
 Validate CloudFormation service role has sufficient permissions for IDP deployment
 """
 
-import yaml
-import sys
 import os
+import sys
 
-# Custom YAML loader that ignores CloudFormation intrinsic functions
+import yaml
+
+
+# Custom YAML loader that ignores CloudFormation intrinsic functions.
+# CFNLoader subclasses yaml.SafeLoader (NOT yaml.Loader), so no unsafe
+# Python-object constructors are ever enabled. The only customization is
+# a no-op multi-constructor for `!`-prefixed tags (e.g. !Ref, !Sub, !GetAtt)
+# so that real CloudFormation templates parse. This is the standard pattern
+# for inspecting CFN templates with PyYAML.
 class CFNLoader(yaml.SafeLoader):
     pass
 
@@ -21,7 +28,12 @@ def extract_aws_services_from_template(template_path):
     """Extract AWS services used in a CloudFormation template"""
     try:
         with open(template_path, 'r') as f:
-            template = yaml.load(f, Loader=CFNLoader)
+            # nosec B506 - CFNLoader extends yaml.SafeLoader; it is NOT the
+            # default unsafe yaml.Loader. Input is a developer-committed
+            # CloudFormation template supplied by the caller (CLI path arg),
+            # not untrusted user input.
+            template = yaml.load(f, Loader=CFNLoader)  # nosec B506
+
         
         services = set()
         if template and 'Resources' in template:
@@ -40,7 +52,7 @@ def extract_permissions_from_role(role_template_path):
     """Extract permissions from CloudFormation service role template"""
     try:
         with open(role_template_path, 'r') as f:
-            role_template = yaml.load(f, Loader=CFNLoader)
+            role_template = yaml.load(f, Loader=CFNLoader)  # nosec B506
         
         permissions = set()
         if role_template and 'Resources' in role_template:
@@ -68,7 +80,7 @@ def extract_iam_actions_from_template(template_path):
     """Extract IAM actions used in a CloudFormation template"""
     try:
         with open(template_path, 'r') as f:
-            template = yaml.load(f, Loader=CFNLoader)
+            template = yaml.load(f, Loader=CFNLoader)  # nosec B506
         
         iam_actions = set()
         if template and 'Resources' in template:
@@ -131,7 +143,7 @@ def extract_iam_permissions_from_role(role_template_path):
     """Extract actual IAM permissions from service role template"""
     try:
         with open(role_template_path, 'r') as f:
-            role_template = yaml.load(f, Loader=CFNLoader)
+            role_template = yaml.load(f, Loader=CFNLoader)  # nosec B506
         
         iam_permissions = set()
         if role_template and 'Resources' in role_template:
@@ -170,10 +182,7 @@ def main():
     # Templates to check
     templates = [
         'template.yaml',  # Main template
-        'patterns/pattern-1/template.yaml',
-        'patterns/pattern-2/template.yaml', 
-        'patterns/pattern-3/template.yaml',
-        'nested/bda-lending-project/template.yaml',
+        'patterns/unified/template.yaml',
         'nested/bedrockkb/template.yaml'
     ]
     

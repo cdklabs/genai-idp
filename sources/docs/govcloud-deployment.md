@@ -1,3 +1,7 @@
+---
+title: "GovCloud Deployment Guide"
+---
+
 # GovCloud Deployment Guide
 
 ## Overview
@@ -6,6 +10,44 @@ The GenAI IDP Accelerator now supports "headless" deployment to AWS GovCloud reg
 
 1. **ARN Partition Compatibility**: All ARN references use `arn:${AWS::Partition}:` instead of `arn:aws:` to work in both commercial and GovCloud regions
 2. **Service Compatibility**: Removes services not available in GovCloud (AppSync, CloudFront, WAF, Cognito UI components)
+
+For details on what services are removed vs. retained, see [GovCloud Architecture](./govcloud-architecture.md).
+
+## Deployment Packages
+
+The GovCloud template supports four deployment configurations. Choose the one that matches your use case:
+
+| | Vanilla | Headless API | Headless API + VPC Secured Mode | Headless API + VPC Secured Mode + Bastion |
+|---|---|---|---|---|
+| **Use Case** | Simplest deployment; manual document processing via S3 upload or IDP CLI | Programmatic API access; only headless resources in VPC | Production workloads with all compute in VPC for full network isolation | Development/testing with private API access from local machine via bastion tunnel |
+| **Access Methods** | S3 direct upload, IDP CLI, SDK | All vanilla methods + REST API (`/jobs` endpoints) | Same as Headless API | All API methods + local access via SSM tunnel |
+| **Networking** | No VPC required | Private API Gateway + headless Lambdas in VPC; core Lambdas outside VPC | All Lambda functions + Private API Gateway in VPC | Same as VPC Secured Mode, plus an EC2 bastion host for tunneling |
+| **Authentication** | IAM only | Cognito client credentials (OAuth2 bearer tokens) | Same as Headless API | Same as Headless API |
+| **Key Parameters** | None | Auto-set by `--headless` | Same as Headless API + `DeployInVPC=true` | Same as VPC Secured Mode + `DeployBastionHost=true` |
+| **VPC Parameters** | None | `VpcId`, `PrivateSubnetIds`, `ApiGatewayVpcEndpointId`, `LambdaSecurityGroupId` | Same as Headless API | Same as Headless API |
+| **Bastion Parameters** | None | None | None | `BastionHostSubnetId`, `BastionHostSecurityGroupId` |
+| **When to Choose** | You have your own integration layer, or are evaluating the solution | You need API access but don't require full network isolation for core processing | You need API access with all compute isolated in your VPC | You need to call the API from your laptop during development |
+
+### What Gets Deployed in Each Package
+
+**Vanilla (all packages include this):**
+- Core document processing engine (unified pattern with pipeline mode)
+- Step Functions workflows
+- S3 buckets, DynamoDB tables, SQS queues, EventBridge rules
+- CloudWatch dashboards, alarms, SNS notifications
+- KMS encryption keys
+
+**Headless API adds:**
+- Private API Gateway with `/jobs` endpoints (POST, GET)
+- Cognito User Pool with machine-to-machine client credentials
+- VPC-enabled Lambda functions for API handling and batch pre-processing
+
+**VPC Secured Mode adds:**
+- Deploys all core document processing Lambda functions into the VPC
+
+**Bastion adds:**
+- EC2 instance in a public subnet for SSM Session Manager tunneling
+- No inbound security group rules required — access is via AWS SSM
 
 ## Architecture Differences
 
@@ -46,38 +88,83 @@ You need to have the following packages installed on your computer:
 5. Node.js >=22.12.0
 6. npm >=10.0.0
 7. A local Docker daemon
-8. Python packages for publish.py.  You are encouraged to configure a virtual environment for dependency management, ie. `python -m venv .venv`.  Activate the environment (`. .venv/bin/activate`) and then install dependencies via `pip install boto3 rich PyYAML botocore setuptools docker ruff build`
+8. Python packages for the IDP CLI and SDK. Run `make setup-venv` from the project root to create a `.venv` and install all required packages (idp-cli, idp-sdk, idp_common). Activate with `source .venv/bin/activate`.
 
-### Step 1: Generate GovCloud Template
+### Deploy to GovCloud
 
-First, generate the GovCloud-compatible template - this run the standard build process first to create all Lambda functions and artifacts, and then creates a stripped down version for GovCloud:
+Build and deploy to GovCloud with a single command. The `--from-code .` flag builds from your local source code (required for GovCloud since public templates are not published for GovCloud regions), and `--headless` strips UI, AppSync, Cognito, and WAF resources.
 
-```bash
-# Note: The Python script will create an S3 bucket automatically by concatenating the provided bucket name and region, ie. my-govcloud-bucket-us-gov-west-1.  You can change the bucket base name as desired.  Files will be placed under [my-prefix] prefix within the generated bucket.
-# Build for GovCloud region
-python scripts/generate_govcloud_template.py my-bucket-govcloud my-prefix us-gov-west-1
+Choose the command that matches your desired [deployment package](#deployment-packages).
 
-# Or build for commercial region first (for testing)
-python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1
-```
+> **Note**: The CLI creates an S3 bucket automatically. Customize with `--bucket-basename` and `--prefix`.
 
-### Step 2: Deploy to GovCloud
+> **Legacy**: The `scripts/generate_govcloud_template.py` script is deprecated. Use `idp-cli deploy --headless --from-code .` instead.
 
-Deploy the generated template to GovCloud using the AWS CloudFormation console (recommended) or deploy using AWS CLI e.g:
+> **Note on `--headless`**: The CLI flag both strips UI/AppSync/Cognito/WAF resources from the template and automatically sets the `EnableHeadless=true` stack parameter (which enables the Jobs REST API). You do not need to pass `EnableHeadless=true` in `--parameters` — it's set for you.
+
+#### Option A: Vanilla (no API, no VPC)
 
 ```bash
-# Populate {s3-bucket-govcloud} with the bucket name where you'd like the template to be uploaded
-aws cloudformation deploy \
-  --template-file .aws-sam/idp-govcloud.yaml \
-  --s3-bucket <S3BUCKET> \
-  --s3-prefix idp-headless \
+idp-cli deploy \
   --stack-name my-idp-headless-stack \
   --region us-gov-west-1 \
-  --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-  --parameter-overrides \
-    IDPPattern="Pattern2 - Packet processing with Textract and Bedrock" \
-  --s3-bucket {s3-bucket-govcloud}
+  --from-code . \
+  --headless \
+  --wait
 ```
+
+With this deployment, interact with the system via:
+- Direct S3 upload to the input bucket
+- IDP CLI (`idp-cli`)
+- SDK integration
+
+#### Option B: Headless API
+
+```bash
+idp-cli deploy \
+  --stack-name my-idp-headless-stack \
+  --region us-gov-west-1 \
+  --from-code . \
+  --headless \
+  --wait \
+  --parameters "VpcId=vpc-xxxxxxxxx,PrivateSubnetIds=subnet-xxxxx,subnet-xxxxx,subnet-xxxxx,ApiGatewayVpcEndpointId=vpce-xxxxxxxxx,LambdaSecurityGroupId=sg-xxxxxxxxx,ApiStageName=beta"
+```
+
+This enables the `/jobs` REST API as a Private API Gateway accessible only from within your VPC. Core document processing Lambdas remain outside the VPC. See [Batch Jobs REST API](./govcloud-batch-api.md) for usage.
+
+#### Option C: Headless API + VPC Secured Mode (full isolation)
+
+Make sure that all prerequisites defined [here](./vpc-secured-mode.md) are met before deploying into a managed VPC.
+
+```bash
+idp-cli deploy \
+  --stack-name my-idp-headless-stack \
+  --region us-gov-west-1 \
+  --from-code . \
+  --headless \
+  --wait \
+  --parameters "DeployInVPC=true,VpcId=vpc-xxxxxxxxx,PrivateSubnetIds=subnet-xxxxx,subnet-xxxxx,subnet-xxxxx,ApiGatewayVpcEndpointId=vpce-xxxxxxxxx,LambdaSecurityGroupId=sg-xxxxxxxxx,ApiStageName=beta"
+```
+
+This deploys all Lambda functions (headless and core processing) into the VPC for full network isolation. See [Batch Jobs REST API](./govcloud-batch-api.md) for usage.
+
+#### Option D: Headless API + VPC Secured Mode + Bastion (development)
+
+Make sure that all prerequisites defined [here](./vpc-secured-mode.md) are met before deploying into a managed VPC.
+
+```bash
+idp-cli deploy \
+  --stack-name my-idp-headless-stack \
+  --region us-gov-west-1 \
+  --from-code . \
+  --headless \
+  --wait \
+  --parameters "DeployInVPC=true,VpcId=vpc-xxxxxxxxx,PrivateSubnetIds=subnet-xxxxx,subnet-xxxxx,subnet-xxxxx,ApiGatewayVpcEndpointId=vpce-xxxxxxxxx,LambdaSecurityGroupId=sg-xxxxxxxxx,ApiStageName=beta,DeployBastionHost=true,BastionHostSubnetId=subnet-xxxxxxxxx,BastionHostSecurityGroupId=sg-xxxxxxxxx"
+```
+
+This adds a bastion host for local API access via SSM tunnel. See [Private API Access via Bastion Tunnel](./govcloud-batch-api.md#private-api-access-via-bastion-tunnel) for setup.
+
+> **Note on `--parameters` formatting**: Commas inside multi-value parameters (like `PrivateSubnetIds`) don't need escaping — the CLI parses `--parameters` by looking for the next `key=` pattern, so commas within values are preserved automatically.
 
 ## Services Removed in GovCloud
 

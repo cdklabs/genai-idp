@@ -294,7 +294,7 @@ export const DocumentsCommonHeader = ({
       props.setCustomDateRange(null);
       localStorage.removeItem(CUSTOM_DATE_RANGE_STORAGE_KEY);
     }
-    props.setPeriodsToLoad(shardCount);
+    props.setPeriodsToLoad?.(shardCount);
     localStorage.setItem(PERIODS_TO_LOAD_STORAGE_KEY, JSON.stringify(shardCount));
   };
 
@@ -310,7 +310,6 @@ export const DocumentsCommonHeader = ({
     return TIME_PERIOD_DROPDOWN_ITEMS.filter((i) => i.count === props.periodsToLoad)[0]?.text || '';
   };
 
-  // eslint-disable-next-line
   const periodText = getDisplayText();
 
   const hasSelectedItems = selectedItems.length > 0;
@@ -334,7 +333,7 @@ export const DocumentsCommonHeader = ({
               iconName="refresh"
               variant="normal"
               loading={props.loading}
-              onClick={() => props.setIsLoading(true)}
+              onClick={() => props.setIsLoading?.(true)}
               ariaLabel="Refresh"
             />
           </span>
@@ -343,7 +342,7 @@ export const DocumentsCommonHeader = ({
               iconName="download"
               variant="normal"
               loading={props.loading}
-              onClick={() => props.downloadToExcel()}
+              onClick={() => props.downloadToExcel?.()}
               ariaLabel="Download"
             />
           </span>

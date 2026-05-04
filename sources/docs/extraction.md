@@ -1,3 +1,7 @@
+---
+title: "Customizing Extraction"
+---
+
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
@@ -106,6 +110,45 @@ classes:
       DueDate:
         type: string
         description: "The date by which payment is due, typically labeled as 'Due Date', 'Payment Due', or similar"
+```
+
+### Per-Class Extraction Model Override
+
+By default, all document classes use the model specified in `extraction.model`. You can override this on a per-class basis using the `x-aws-idp-extraction-model` extension on any class schema. This is useful when certain document types benefit from a different model — for example, using a more powerful model for complex financial forms while keeping a faster, cheaper model for simpler documents.
+
+Classes without the override continue to use the global `extraction.model`. The override works with both **traditional** and **agentic** extraction modes.
+
+```yaml
+extraction:
+  model: us.amazon.nova-pro-v1:0  # Default for most classes
+
+classes:
+  # This class uses the default model (us.amazon.nova-pro-v1:0)
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: simple-receipt
+    x-aws-idp-document-type: simple-receipt
+    type: object
+    properties:
+      total:
+        type: string
+        description: "Total amount"
+
+  # This class overrides the extraction model
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: complex-financial-form
+    x-aws-idp-document-type: complex-financial-form
+    x-aws-idp-extraction-model: us.anthropic.claude-sonnet-4-20250514-v1:0  # Override!
+    type: object
+    properties:
+      account_number:
+        type: string
+        description: "Account number"
+```
+
+When a per-class model override is active, it is logged at INFO level:
+
+```
+Using per-class extraction model override for 'complex-financial-form': us.anthropic.claude-sonnet-4-20250514-v1:0
 ```
 
 ### Extraction Instructions
@@ -743,7 +786,7 @@ classes:
             "InvoiceNumber": "INV-12345"
             "InvoiceDate": "2023-04-15"
             "TotalAmount": "$1,234.56"
-        x-aws-idp-image-path: "config_library/pattern-2/examples/invoice-samples/invoice1.jpg"
+        x-aws-idp-image-path: "config_library/unified/examples/invoice-samples/invoice1.jpg"
       # Additional examples...
 ```
 
@@ -1012,7 +1055,45 @@ The YAML version uses approximately 25% fewer tokens while maintaining the same 
 The main performance difference is in the schema adherence over multiple invocations as the agent is required to validate against a
 pydantic model and has a retry and review mechanisms over the single invocation of the traditional method.
 
+## Skipping Extraction for Excluded Classes
+
+If a document class is marked with
+`x-aws-idp-exclude-from-processing: true` (see
+[Excluding Static Pages in the Classification docs](classification.md#excluding-static-pages-eg-instructions-legal-boilerplate)),
+`ExtractionService.process_document_section` short-circuits for any
+section classified as that class:
+
+- **No** extraction prompt is built and **no** LLM call is made — saving
+  tokens and latency on boilerplate pages.
+- A small stub `result.json` is written at
+  `s3://<output_bucket>/<input_key>/sections/<section_id>/result.json`
+  with shape:
+
+  ```json
+  {
+    "status": "skipped_excluded_class",
+    "stage": "extraction",
+    "section_id": "1",
+    "classification": "PassportApplicationInstructions",
+    "excluded": true,
+    "exclusion_reason": "instructions",
+    "page_ids": ["1", "2", "3", "4"],
+    "message": "Section 1 classified as 'PassportApplicationInstructions' ..."
+  }
+  ```
+
+- `section.extraction_result_uri` is set to the stub URI so downstream
+  stages (assessment, summarization, evaluation, reporting DB) behave
+  exactly as they would for a real section.
+
+The stub shape is provided by `idp_common.section_exclusion.build_skipped_stub_result`
+and written by `idp_common.section_exclusion.write_skipped_stub`.
+
+See the end-to-end demo at
+`notebooks/usecase-specific-examples/ds11-passport-application/demo.ipynb`.
+
 ## Best Practices
+
 
 1. **Enable Agentic**:
 
