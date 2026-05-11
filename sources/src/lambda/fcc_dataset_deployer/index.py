@@ -12,8 +12,8 @@ from typing import Dict, Any
 import cfnresponse
 
 # Set HuggingFace cache to /tmp (Lambda's writable directory)
-os.environ['HF_HOME'] = '/tmp/huggingface'
-os.environ['HUGGINGFACE_HUB_CACHE'] = '/tmp/huggingface/hub'
+os.environ['HF_HOME'] = '/tmp/huggingface'  # nosec B108 - isolated Lambda environment
+os.environ['HUGGINGFACE_HUB_CACHE'] = '/tmp/huggingface/hub'  # nosec B108
 
 # Lightweight HuggingFace access
 from huggingface_hub import hf_hub_download
@@ -76,8 +76,19 @@ def handler(event, context):
         
     except Exception as e:
         logger.error(f"Error deploying dataset: {str(e)}", exc_info=True)
-        cfnresponse.send(event, context, cfnresponse.FAILED, {}, 
-                        reason=f"Error deploying dataset: {str(e)}")
+        # Graceful degradation: don't fail the stack due to test set download issues.
+        # Instead, create a FAILED test set record visible in the Test Studio UI.
+        try:
+            create_failed_testset_record(
+                version=properties.get('DatasetVersion', '1.0') if 'properties' in dir() else '1.0',
+                error_message=str(e)
+            )
+        except Exception as record_err:
+            logger.error(f"Failed to create error test set record: {record_err}")
+        cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+            'Status': 'DEPLOYMENT_FAILED',
+            'Message': f'Test set deployment failed (non-blocking): {str(e)[:200]}'
+        })
 
 
 def update_description_only(description: str):
@@ -119,8 +130,12 @@ def check_existing_version(version: str) -> bool:
             existing_version = response['Item'].get('datasetVersion', '')
             logger.info(f"Found existing dataset version: {existing_version}")
             
-            # Check if version matches and files exist
+            # Check if version matches, status is not FAILED, and files exist
             if existing_version == version:
+                existing_status = response['Item'].get('status', '')
+                if existing_status == 'FAILED':
+                    logger.info("Previous deployment failed, retrying deployment")
+                    return False
                 # Verify at least some files exist in S3
                 try:
                     response = s3_client.list_objects_v2(
@@ -170,14 +185,14 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
     """
     try:
         # Ensure cache directory exists in /tmp (Lambda's writable directory)
-        cache_dir = '/tmp/huggingface/hub'
+        cache_dir = '/tmp/huggingface/hub'  # nosec B108
         os.makedirs(cache_dir, exist_ok=True)
         logger.info(f"Using cache directory: {cache_dir}")
         
         logger.info(f"Downloading dataset from HuggingFace: amazon-agi/RealKIE-FCC-Verified")
         
         # Download the parquet file with metadata using hf_hub_download
-        parquet_path = hf_hub_download(
+        parquet_path = hf_hub_download(  # nosec B615 - trusted HuggingFace dataset
             repo_id="amazon-agi/RealKIE-FCC-Verified",
             filename="data/test-00000-of-00001.parquet",
             repo_type="dataset",
@@ -242,7 +257,7 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
                 
                 # Download PDF file from HuggingFace repository using hf_hub_download
                 try:
-                    pdf_path = hf_hub_download(
+                    pdf_path = hf_hub_download(  # nosec B615
                         repo_id="amazon-agi/RealKIE-FCC-Verified",
                         filename=f"pdfs/{document_id}",
                         repo_type="dataset",
@@ -325,6 +340,38 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
         raise
 
 
+def create_failed_testset_record(version: str, error_message: str):
+    """
+    Create a FAILED test set record in DynamoDB so the error is visible in Test Studio UI.
+    On the next stack update, check_existing_version will detect the FAILED status and retry.
+    """
+    table = dynamodb.Table(TRACKING_TABLE)  # type: ignore[attr-defined]
+    timestamp = datetime.utcnow().isoformat() + 'Z'
+
+    item = {
+        'PK': f'testset#{TEST_SET_ID}',
+        'SK': 'metadata',
+        'ItemType': 'testset',
+        'InitialEventTime': timestamp,
+        'id': TEST_SET_ID,
+        'name': DATASET_NAME,
+        'filePattern': '',
+        'fileCount': 0,
+        'status': 'FAILED',
+        'createdAt': timestamp,
+        'datasetVersion': version,
+        'source': 'huggingface:amazon-agi/RealKIE-FCC-Verified',
+        'description': (
+            f'⚠️ Deployment failed: {error_message[:500]}. '
+            f'This test set could not be downloaded from its source. '
+            f'It will be retried on the next stack update.'
+        ),
+    }
+
+    table.put_item(Item=item)
+    logger.info(f"Created FAILED test set record in DynamoDB: {TEST_SET_ID}")
+
+
 def create_testset_record(version: str, description: str, file_count: int):
     """
     Create or update the test set record in DynamoDB.
@@ -335,6 +382,8 @@ def create_testset_record(version: str, description: str, file_count: int):
     item = {
         'PK': f'testset#{TEST_SET_ID}',
         'SK': 'metadata',
+        'ItemType': 'testset',
+        'InitialEventTime': timestamp,
         'id': TEST_SET_ID,
         'name': DATASET_NAME,
         'description': description,

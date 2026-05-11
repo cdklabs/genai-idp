@@ -12,6 +12,7 @@ See [docs/lambda-hook-inference.md](../../docs/lambda-hook-inference.md) for ful
 |--------|-------------|
 | **GENAIIDP-bedrock-proxy** | Forwards to Bedrock Converse API. Use as a starting template for custom hooks with pre/post processing. |
 | **GENAIIDP-sagemaker-hook** | Calls a SageMaker real-time inference endpoint. Shows format conversion between Converse API and SageMaker. |
+| **GENAIIDP-chandra-ocr-hook** | Calls the [Chandra OCR 2](https://github.com/datalab-to/chandra) hosted API for high-quality OCR. Converts page images to structured Markdown, JSON, or HTML. |
 
 ## Naming Convention
 
@@ -49,6 +50,18 @@ sam deploy --guided \
     SageMakerEndpointName=<your-endpoint-name>
 ```
 
+```bash
+# Deploy the Chandra OCR hook sample
+cd samples/lambda-hook-inference/GENAIIDP-chandra-ocr-hook
+sam build
+sam deploy --guided \
+  --stack-name GENAIIDP-chandra-ocr-hook \
+  --parameter-overrides \
+    IDPWorkingBucket=<your-idp-working-bucket-name> \
+    CustomerManagedEncryptionKeyArn=<your-kms-key-arn> \
+    ChandraApiKey=<your-datalab-api-key>
+```
+
 > **Note:** The `CustomerManagedEncryptionKeyArn` is optional but required if the IDP stack's working bucket uses KMS encryption (which it does by default). You can find the KMS key ARN in the IDP stack's CloudFormation **Outputs** tab → `CustomerManagedEncryptionKeyArn`.
 
 ### Deploy All Samples Together
@@ -81,6 +94,29 @@ Or in config YAML:
 extraction:
   model: "LambdaHook"
   model_lambda_hook_arn: "arn:aws:lambda:us-east-1:123456789012:function:GENAIIDP-bedrock-proxy"
+```
+
+### Chandra OCR Configuration
+
+To use Chandra OCR 2 as the OCR engine, set the OCR backend to `bedrock` with `LambdaHook` as the model:
+
+```yaml
+ocr:
+  backend: bedrock
+  model_id: "LambdaHook"
+  model_lambda_hook_arn: "arn:aws:lambda:us-east-1:123456789012:function:GENAIIDP-chandra-ocr-hook"
+```
+
+[Chandra OCR 2](https://github.com/datalab-to/chandra) is a state-of-the-art VLM-based OCR model by [Datalab](https://www.datalab.to) that converts images into structured Markdown, JSON, or HTML. It supports 90+ languages, math, tables, forms (including checkboxes), handwriting, and complex layouts.
+
+**Getting an API key:** Sign up at [datalab.to](https://www.datalab.to) to get your API key, then provide it when deploying the Lambda function.
+
+**Local testing:** You can test Chandra OCR locally before deploying:
+```bash
+cd samples/lambda-hook-inference/GENAIIDP-chandra-ocr-hook
+pip install pdf2image Pillow
+export CHANDRA_API_KEY="your-api-key"
+python test_local.py ../../insurance_package.pdf
 ```
 
 ## Request/Response Format

@@ -1,3 +1,7 @@
+---
+title: "Amazon Bedrock Service Tiers"
+---
+
 # Amazon Bedrock Service Tiers
 
 The GenAI IDP solution supports Amazon Bedrock service tiers through model ID suffixes, allowing you to optimize for performance and cost by selecting different service tiers for model inference operations.

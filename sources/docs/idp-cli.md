@@ -1,3 +1,7 @@
+---
+title: "IDP CLI - Command Line Interface for Batch Document Processing"
+---
+
 # IDP CLI - Command Line Interface for Batch Document Processing
 
 A command-line tool for batch document processing with the GenAI IDP Accelerator.
@@ -10,7 +14,8 @@ A command-line tool for batch document processing with the GenAI IDP Accelerator
 📁 **Flexible Input** - Support for local files and S3 references  
 🔍 **Comprehensive Status** - Track queued, running, completed, and failed documents  
 📈 **Batch Analytics** - Success rates, durations, and detailed error reporting  
-🎯 **Evaluation Framework** - Validate accuracy against baselines with detailed metrics
+🎯 **Evaluation Framework** - Validate accuracy against baselines with detailed metrics  
+💬 **Agent Chat** - Interactive Agent Companion Chat from the terminal with Analytics, Error Analyzer, and more
 
 Demo:
 
@@ -24,9 +29,10 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
 - [Quick Start](#quick-start)
 - [Commands Reference](#commands-reference)
   - [deploy](#deploy)
+  - [publish](#publish)
   - [delete](#delete)
-  - [process](#process)
-  - [reprocess](#reprocess)
+  - [process](#process--run-inference)
+  - [reprocess](#reprocess--rerun-inference)
   - [status](#status)
   - [download-results](#download-results)
   - [delete-documents](#delete-documents)
@@ -35,6 +41,8 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
   - [list-batches](#list-batches)
   - [stop-workflows](#stop-workflows)
   - [load-test](#load-test)
+  - [discover](#discover)
+  - [discover-multidoc](#discover-multidoc)
   - [remove-deleted-stack-resources](#remove-deleted-stack-resources)
   - [config-create](#config-create)
   - [config-validate](#config-validate)
@@ -43,6 +51,9 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
   - [config-list](#config-list)
   - [config-activate](#config-activate)
   - [config-delete](#config-delete)
+  - [test-result](#test-result)
+  - [test-compare](#test-compare)
+  - [chat](#chat)
 - [Complete Evaluation Workflow](#complete-evaluation-workflow)
   - [Step 1: Deploy Your Stack](#step-1-deploy-your-stack)
   - [Step 2: Initial Processing from Local Directory](#step-2-initial-processing-from-local-directory)
@@ -62,15 +73,15 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.12 or higher
 - AWS credentials configured (via AWS CLI or environment variables)
 - An active IDP Accelerator CloudFormation stack
 
 ### Install from source
 
 ```bash
-cd lib/idp_cli_pkg
-pip install -e .
+make setup-venv
+source .venv/bin/activate
 ```
 
 ### Install with test dependencies
@@ -80,7 +91,82 @@ cd lib/idp_cli_pkg
 pip install -e ".[test]"
 ```
 
+## Makefile Shortcuts
+
+The root `Makefile` provides convenience wrappers for the most common `idp-cli` commands. These use the project's `.venv` Python automatically — no need to `source .venv/bin/activate` first.
+
+```bash
+# Publish artifacts to S3
+make publish REGION=us-east-1
+make publish REGION=us-east-1 BUCKET_BASENAME=my-artifacts PREFIX=v1
+make publish REGION=us-gov-west-1 HEADLESS=1
+
+# Deploy / update a stack (--wait is the default)
+make deploy STACK_NAME=my-idp ADMIN_EMAIL=me@example.com
+make deploy STACK_NAME=my-idp-dev ADMIN_EMAIL=me@example.com FROM_CODE=1
+make deploy STACK_NAME=my-idp CUSTOM_CONFIG=./my-config.yaml
+
+# Delete a stack
+make delete-stack STACK_NAME=test-stack FORCE=1 FORCE_DELETE_ALL=1
+```
+
+**First-class Make variables** (common flags):
+
+| Variable | Target(s) | Maps to CLI flag |
+|---|---|---|
+| `REGION` | publish, deploy, delete-stack | `--region` |
+| `STACK_NAME` | deploy, delete-stack | `--stack-name` |
+| `ADMIN_EMAIL` | deploy | `--admin-email` |
+| `FROM_CODE=1` | deploy | `--from-code .` |
+| `HEADLESS=1` | publish, deploy | `--headless` |
+| `PUBLIC=1` | publish | `--public` |
+| `BUCKET_BASENAME` | publish | `--bucket-basename` |
+| `PREFIX` | publish | `--prefix` |
+| `CUSTOM_CONFIG` | deploy | `--custom-config` |
+| `TEMPLATE_URL` | deploy | `--template-url` |
+| `TEMPLATE_FILE` | deploy | `--template-file` |
+| `NO_WAIT=1` | deploy, delete-stack | omits `--wait` |
+| `FORCE=1` | delete-stack | `--force` |
+| `EMPTY_BUCKETS=1` | delete-stack | `--empty-buckets` |
+| `FORCE_DELETE_ALL=1` | delete-stack | `--force-delete-all` |
+
+**Uncommon flags** — pass anything else via `EXTRA_ARGS`:
+
+```bash
+make deploy STACK_NAME=my-idp EXTRA_ARGS="--role-arn arn:aws:iam::123:role/Foo --no-rollback"
+make publish REGION=us-east-1 EXTRA_ARGS="--clean-build --verbose"
+```
+
+Run `make help` to see all available targets, or `idp-cli <command> --help` for the full option reference.
+
+---
+
 ## Quick Start
+
+### Global Options
+
+The CLI supports an optional `--profile` parameter to specify which AWS credentials profile to use:
+
+```bash
+idp-cli --profile my-profile <command> [options]
+```
+
+- Can be placed anywhere in the command
+- Only affects that specific command execution
+- Automatically applies to all AWS SDK calls
+- If not specified, uses default AWS credentials
+
+**Examples:**
+```bash
+# Profile before command
+idp-cli --profile production deploy --stack-name my-stack ...
+
+# Profile after command
+idp-cli deploy --profile production --stack-name my-stack ...
+
+# Profile at the end
+idp-cli deploy --stack-name my-stack --profile production ...
+```
 
 ### Deploy a stack and process documents in 3 commands:
 
@@ -88,7 +174,6 @@ pip install -e ".[test]"
 # 1. Deploy stack (10-15 minutes)
 idp-cli deploy \
     --stack-name my-idp-stack \
-    --pattern pattern-2 \
     --admin-email your.email@example.com \
     --wait
 
@@ -124,24 +209,37 @@ idp-cli deploy [OPTIONS]
 
 **Required for New Stacks:**
 - `--stack-name`: CloudFormation stack name
-- `--pattern`: IDP pattern architecture to deploy (`pattern-1`, `pattern-2`, or `pattern-3`)
 - `--admin-email`: Admin user email
 
 **Optional Parameters:**
-- `--from-code`: Deploy from local code by building with publish.py (path to project root)
+- `--from-code`: Deploy from local code by building and publishing artifacts (path to project root)
 - `--template-url`: URL to CloudFormation template in S3 (optional, auto-selected based on region)
+- `--template-file`: Local path to a pre-built CloudFormation template (from a previous `publish`)
 - `--custom-config`: Path to local config file or S3 URI
 - `--max-concurrent`: Maximum concurrent workflows (default: 100)
 - `--log-level`: Logging level (`DEBUG`, `INFO`, `WARN`, `ERROR`) (default: INFO)
 - `--enable-hitl`: Enable Human-in-the-Loop (`true` or `false`)
-- `--pattern-config`: Pattern-specific configuration preset (optional, distinct from --pattern)
 - `--parameters`: Additional parameters as `key=value,key2=value2`
 - `--wait`: Wait for stack operation to complete
 - `--no-rollback`: Disable rollback on stack creation failure
 - `--region`: AWS region (optional, auto-detected)
 - `--role-arn`: CloudFormation service role ARN (optional)
+- `--headless`: Deploy a **headless (no-UI) stack** — removes CloudFront, AppSync, Cognito, WAF, agents, HITL, and Test Studio. Required for GovCloud; also valid in Commercial regions for API-only / pipeline integrations. See [Headless Deployment](./headless-deployment.md).
+- `--bucket-basename`: S3 bucket basename for build artifacts (used with `--from-code`; region is appended automatically)
+- `--prefix`: S3 key prefix for build artifacts (default: `idp-cli`, used with `--from-code`)
+- `--public`: Make published S3 artifacts publicly readable (used with `--from-code`)
+- `--build-max-workers`: Maximum concurrent build workers (used with `--from-code`)
+- `--clean-build`: Force full rebuild by deleting checksum files (used with `--from-code`)
+- `--no-validate-template`: Skip CloudFormation template validation
 
-**Note:** `--from-code` and `--template-url` are mutually exclusive. Use `--from-code` for development/testing from local source, or `--template-url` for production deployments.
+**Note:** `--from-code`, `--template-url`, and `--template-file` are mutually exclusive. Use `--from-code` for development/testing from local source, `--template-url` for production deployments from a pre-published template, and `--template-file` to deploy a locally-built template.
+
+**Headless mode:**
+
+- `--headless` can be combined with `--from-code .` (builds both variants and deploys the headless one) or used standalone against a pre-published template (the CLI downloads, transforms to headless, uploads to a temporary S3 location in your account, and deploys).
+- When `--headless` is used without `--from-code`, the region **must** have a pre-published `idp-main.yaml`. For GovCloud (`us-gov-*`) or any unsupported region, add `--from-code .`.
+- GovCloud regions are auto-detected and receive GovCloud-appropriate configuration defaults (ARN partition fixes, GovCloud Bedrock models, `lending-package-sample-govcloud` configuration preset).
+- See the [Headless Deployment Guide](./headless-deployment.md) and [GovCloud Deployment Guide](./govcloud-deployment.md) for details.
 
 **Auto-Monitoring for In-Progress Operations:**
 
@@ -149,7 +247,7 @@ If you run `deploy` on a stack that already has an operation in progress (CREATE
 
 ```bash
 # First run without --wait starts the deployment
-$ idp-cli deploy --stack-name my-stack --pattern pattern-2 --admin-email user@example.com
+$ idp-cli deploy --stack-name my-stack --admin-email user@example.com
 ✓ Stack CREATE initiated successfully!
 
 # Second run - automatically monitors the in-progress operation
@@ -172,7 +270,6 @@ Supported in-progress states: `CREATE_IN_PROGRESS`, `UPDATE_IN_PROGRESS`, `DELET
 # Create new stack
 idp-cli deploy \
     --stack-name my-idp \
-    --pattern pattern-2 \
     --admin-email user@example.com \
     --wait
 
@@ -192,7 +289,6 @@ idp-cli deploy \
 # Deploy with custom template URL (for regions not auto-supported)
 idp-cli deploy \
     --stack-name my-idp \
-    --pattern pattern-2 \
     --admin-email user@example.com \
     --template-url https://s3.eu-west-1.amazonaws.com/my-bucket/idp-main.yaml \
     --region eu-west-1 \
@@ -201,7 +297,6 @@ idp-cli deploy \
 # Deploy with CloudFormation service role and permissions boundary
 idp-cli deploy \
     --stack-name my-idp \
-    --pattern pattern-2 \
     --admin-email user@example.com \
     --role-arn arn:aws:iam::123456789012:role/IDP-Cloudformation-Service-Role \
     --parameters "PermissionsBoundaryArn=arn:aws:iam::123456789012:policy/MyPermissionsBoundary" \
@@ -211,7 +306,6 @@ idp-cli deploy \
 idp-cli deploy \
     --stack-name my-idp-dev \
     --from-code . \
-    --pattern pattern-2 \
     --admin-email user@example.com \
     --wait
 
@@ -224,11 +318,116 @@ idp-cli deploy \
 # Deploy with rollback disabled (useful for debugging failed deployments)
 idp-cli deploy \
     --stack-name my-idp \
-    --pattern pattern-2 \
     --admin-email user@example.com \
     --no-rollback \
     --wait
+
+# Deploy a HEADLESS stack in a commercial region (no UI — API-only)
+# The CLI downloads the published template, transforms it to headless,
+# uploads to a temporary S3 location, and deploys.
+idp-cli deploy \
+    --stack-name my-idp-headless \
+    --region us-east-1 \
+    --headless \
+    --wait
+
+# Deploy a HEADLESS stack from local source (development iteration)
+idp-cli deploy \
+    --stack-name my-idp-headless-dev \
+    --region us-east-1 \
+    --from-code . \
+    --headless \
+    --wait
+
+# Deploy to GovCloud (headless + from-code are both required)
+idp-cli deploy \
+    --stack-name my-idp-govcloud \
+    --region us-gov-west-1 \
+    --from-code . \
+    --headless \
+    --wait
 ```
+
+> **Headless?** See the [Headless Deployment Guide](./headless-deployment.md) for when to use it (not just GovCloud — also API-only / pipeline integrations in Commercial regions) and the [GovCloud Deployment Guide](./govcloud-deployment.md) for GovCloud-specific considerations.
+
+---
+
+### `publish`
+
+Build IDP CloudFormation artifacts locally and publish them to S3. Produces a `template_url` and a 1-click CloudFormation launch URL. Optionally also produces a **headless** (no-UI) template variant.
+
+Use `publish` when you want to build and stage artifacts without deploying immediately — for example, to share the template with other accounts, keep a known-good build, or run a separate deploy step later.
+
+**Usage:**
+```bash
+idp-cli publish [OPTIONS]
+```
+
+**Options:**
+- `--source-dir` (default: `.`): Path to the IDP project root directory
+- `--region` (required): AWS region where artifacts will be uploaded and deployed
+- `--bucket-basename`: S3 bucket basename for artifacts (region is appended automatically; auto-generated if not provided)
+- `--prefix`: S3 key prefix for artifacts (default: `idp-cli`)
+- `--headless`: Also generate a **headless (no-UI) template variant**. For commercial regions this produces `idp-main.yaml` **and** `idp-headless.yaml`; for GovCloud (`us-gov-*`) the headless template is additionally updated with GovCloud configuration defaults (ARN partition, GovCloud Bedrock models, `lending-package-sample-govcloud` preset).
+- `--public`: Make S3 artifacts publicly readable (for shared deployments)
+- `--max-workers`: Maximum concurrent build workers (default: auto-detect)
+- `--clean-build`: Force full rebuild by deleting all checksum files
+- `--no-validate`: Skip CloudFormation template validation
+- `--lint / --no-lint`: Enable/disable ruff linting and cfn-lint (default: enabled)
+- `--verbose`, `-v`: Enable verbose build output
+
+**Prerequisites** (same as `--from-code` deployments):
+- AWS SAM CLI, Docker (for container-image Lambdas), Node.js ≥ 22.12, npm ≥ 10, Python 3.12.
+
+**Examples:**
+
+```bash
+# Standard build and publish (UI + backend)
+idp-cli publish --source-dir . --region us-east-1
+
+# With custom bucket and prefix
+idp-cli publish \
+    --source-dir . \
+    --region us-east-1 \
+    --bucket-basename my-idp-artifacts \
+    --prefix v1
+
+# Build BOTH standard and headless templates
+idp-cli publish --source-dir . --region us-east-1 --headless
+
+# Build a headless template for GovCloud (GovCloud-specific config applied automatically)
+idp-cli publish --source-dir . --region us-gov-west-1 --headless
+
+# Full rebuild with verbose output
+idp-cli publish --source-dir . --region us-east-1 --clean-build --verbose
+
+# Make artifacts publicly readable (shared template)
+idp-cli publish --source-dir . --region us-east-1 --public
+```
+
+**Output:**
+
+On success, `publish` prints:
+
+```
+📦 Template URL (for updating existing stack):
+  https://s3.us-east-1.amazonaws.com/<bucket>/<prefix>/idp-main.yaml
+
+🚀 1-Click Launch (creates new stack):
+  https://us-east-1.console.aws.amazon.com/cloudformation/home?...
+
+🔧 Headless Template URL:                    # only with --headless
+  https://s3.us-east-1.amazonaws.com/<bucket>/<prefix>/idp-headless.yaml
+
+🚀 Headless 1-Click Launch:                  # only with --headless
+  https://us-east-1.console.aws.amazon.com/cloudformation/home?...
+```
+
+**Relationship to `deploy --from-code`:**
+
+`deploy --from-code .` internally runs the same build + publish pipeline and then creates/updates the CloudFormation stack. Use `publish` when you want to decouple the build from the deployment step or share the template with other accounts/regions.
+
+> **Legacy**: The standalone `publish.py` script and `scripts/generate_govcloud_template.py` are deprecated. Use `idp-cli publish` (with or without `--headless`) instead.
 
 ---
 
@@ -248,7 +447,7 @@ idp-cli delete [OPTIONS]
 - `--force`: Skip confirmation prompt
 - `--empty-buckets`: Empty S3 buckets before deletion (required if buckets contain data)
 - `--force-delete-all`: Force delete ALL remaining resources after CloudFormation deletion (S3 buckets, CloudWatch logs, DynamoDB tables)
-- `--wait / --no-wait`: Wait for deletion to complete (default: wait)
+- `--wait`: Wait for deletion to complete (default: no-wait)
 - `--region`: AWS region (optional)
 
 **S3 Bucket Behavior:**
@@ -630,7 +829,7 @@ https://github.com/user-attachments/assets/28deadbb-378b-42b7-a5e2-f929af9b0e41
 
 ### `status`
 
-Check status of a batch or single document.
+Check status of documents by batch ID, document ID, or search criteria.
 
 **Usage:**
 ```bash
@@ -638,40 +837,129 @@ idp-cli status [OPTIONS]
 ```
 
 **Document Source (choose ONE):**
-- `--batch-id`: Batch identifier (check all documents in batch)
+- `--batch-id`: Batch identifier or PK substring to search for (searches tracking table)
 - `--document-id`: Single document ID (check individual document)
 
-**Options:**
+**Optional Filters and Display:**
+- `--object-status`: Filter by status (COMPLETED, FAILED, QUEUED, RUNNING, PROCESSING)
+- `--show-details`: Show detailed document information in table format
+- `--get-time`: Calculate and display timing statistics (processing time, queue time, total time)
+- `--include-metering`: Include Lambda metering statistics (GB-seconds by stage) - requires `--get-time`
+
+**Other Options:**
 - `--stack-name` (required): CloudFormation stack name
 - `--wait`: Wait for all documents to complete
 - `--refresh-interval`: Seconds between status checks (default: 5)
 - `--format`: Output format - `table` (default) or `json`
 - `--region`: AWS region (optional)
 
+**How --batch-id Works:**
+
+The `--batch-id` option performs a PK substring search in the DynamoDB tracking table. This means:
+- It searches for all documents where the PK (Primary Key) contains your search string
+- You can search for exact batch IDs: `cli-batch-20251015-143000`
+- You can search for partial matches: `batch-123` finds all documents with "batch-123" in their path
+- You can search across multiple batches: `invoice` finds all documents with "invoice" in their name
+
 **Examples:**
 
 ```bash
-# Check batch status
+# Search for all documents in a batch (PK substring search)
 idp-cli status \
     --stack-name my-stack \
     --batch-id cli-batch-20251015-143000
+
+# Search for documents across batches with partial match
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123
+
+# Search for completed documents only
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123 \
+    --object-status COMPLETED
+
+# Search for failed documents with details
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123 \
+    --object-status FAILED \
+    --show-details
+
+# Search with timing statistics
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id batch-123 \
+    --object-status COMPLETED \
+    --get-time
+
+# Search with timing and Lambda metering data
+idp-cli status \
+    --stack-name my-stack \
+    --batch-id test \
+    --object-status COMPLETED \
+    --get-time \
+    --include-metering
 
 # Check single document status
 idp-cli status \
     --stack-name my-stack \
     --document-id batch-123/invoice.pdf
 
-# Monitor single document until completion
+# Monitor documents until completion
 idp-cli status \
     --stack-name my-stack \
-    --document-id batch-123/invoice.pdf \
+    --batch-id batch-123 \
     --wait
 
 # Get JSON output for scripting
 idp-cli status \
     --stack-name my-stack \
-    --document-id batch-123/invoice.pdf \
+    --batch-id batch-123 \
     --format json
+```
+
+**Timing Statistics:**
+
+When using `--get-time`, the command calculates:
+- **Processing Time**: WorkflowStartTime → CompletionTime (actual processing duration)
+- **Queue Time**: QueuedTime → WorkflowStartTime (time waiting in queue)
+- **Total Time**: QueuedTime → CompletionTime (end-to-end duration)
+
+For each metric, you'll see:
+- Average, Median, Min, Max, Standard Deviation, Total
+- ObjectKey for min/max values (helps identify outliers)
+
+**Lambda Metering:**
+
+When using `--include-metering` with `--get-time`, you'll see GB-seconds usage by stage:
+- Assessment, OCR, Classification, Extraction, Summarization
+- Statistics: Average, Median, Min, Max, Std Dev, Total
+- Cost estimates based on AWS Lambda pricing ($0.0000166667 per GB-second)
+
+**Example Output with Timing:**
+
+```bash
+$ idp-cli status --stack-name my-stack --batch-id test-batch --object-status COMPLETED --get-time
+
+Searching for documents with PK containing 'test-batch'...
+✓ Found 25 matching documents
+
+Timing Statistics:
+  Valid documents: 25
+
+Processing Time (WorkflowStartTime → CompletionTime):
+┏━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Metric   ┃ Value       ┃ ObjectKey                    ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ Average  │ 45.23s      │                              │
+│ Median   │ 43.10s      │                              │
+│ Minimum  │ 32.45s      │ test-batch/small-doc.pdf     │
+│ Maximum  │ 78.90s      │ test-batch/large-doc.pdf     │
+│ Std Dev  │ 12.34s      │                              │
+│ Total    │ 18m 50.75s  │                              │
+└──────────┴─────────────┴──────────────────────────────┘
 ```
 
 **Programmatic Use:**
@@ -821,10 +1109,11 @@ idp-cli delete-documents [OPTIONS]
 **Document Selection (choose ONE):**
 - `--document-ids`: Comma-separated list of document IDs (S3 object keys) to delete
 - `--batch-id`: Delete all documents in this batch
+- `--pattern`: Wildcard pattern to match document keys (e.g. `"batch-123/*.pdf"`, `"*invoice*"`)
 
 **Options:**
 - `--stack-name` (required): CloudFormation stack name
-- `--status-filter`: Only delete documents with this status (use with --batch-id)
+- `--status-filter`: Only delete documents with this status (use with --batch-id or --pattern)
   - Options: `FAILED`, `COMPLETED`, `PROCESSING`, `QUEUED`
 - `--dry-run`: Show what would be deleted without actually deleting
 - `--force`, `-y`: Skip confirmation prompt
@@ -859,6 +1148,23 @@ idp-cli delete-documents \
 idp-cli delete-documents \
     --stack-name my-stack \
     --batch-id cli-batch-20250123 \
+    --dry-run
+
+# Delete documents matching a wildcard pattern
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --pattern "batch-123/*.pdf"
+
+# Delete all failed invoice documents across batches
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --pattern "*invoice*" \
+    --status-filter FAILED
+
+# Dry run with pattern to preview matches
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --pattern "*2024*" \
     --dry-run
 
 # Force delete without confirmation
@@ -975,7 +1281,20 @@ Validate a manifest file without processing.
 
 **Usage:**
 ```bash
+idp-cli validate-manifest [OPTIONS]
+```
+
+**Options:**
+- `--manifest` (required): Path to manifest file to validate (CSV or JSON)
+
+**Examples:**
+
+```bash
+# Validate a CSV manifest
 idp-cli validate-manifest --manifest documents.csv
+
+# Validate a JSON manifest
+idp-cli validate-manifest --manifest documents.json
 ```
 
 ---
@@ -986,7 +1305,25 @@ List recent batch processing jobs.
 
 **Usage:**
 ```bash
-idp-cli list-batches --stack-name my-stack --limit 10
+idp-cli list-batches [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--limit`: Maximum number of batches to list (default: 10)
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# List last 10 batches (default)
+idp-cli list-batches --stack-name my-stack
+
+# List last 5 batches
+idp-cli list-batches --stack-name my-stack --limit 5
+
+# List with specific region
+idp-cli list-batches --stack-name my-stack --limit 20 --region us-west-2
 ```
 
 ---
@@ -1002,7 +1339,6 @@ Deploy an IDP stack if you haven't already:
 ```bash
 idp-cli deploy \
     --stack-name eval-testing \
-    --pattern pattern-2 \
     --admin-email your.email@example.com \
     --max-concurrent 50 \
     --wait
@@ -1512,6 +1848,7 @@ idp-cli load-test [OPTIONS]
 - `--duration`: Duration in minutes (default: 1)
 - `--schedule`: CSV schedule file (minute,count) - overrides --rate and --duration
 - `--dest-prefix`: Destination prefix in input bucket (default: load-test)
+- `--config-version`: Configuration version to use for processing (default: active version)
 - `--region`: AWS region (optional)
 
 **Examples:**
@@ -1528,6 +1865,9 @@ idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --sche
 
 # Use S3 source file
 idp-cli load-test --stack-name my-stack --source-file s3://my-bucket/test.pdf --rate 500
+
+# Load test with a specific config version
+idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 100 --config-version v2
 ```
 
 **Schedule File Format (CSV):**
@@ -1657,7 +1997,6 @@ idp-cli config-create [OPTIONS]
   - `core`: min + ocr, assessment
   - `all`: all sections with full defaults
   - Or comma-separated list: `"classification,extraction,summarization"`
-- `--pattern`: Pattern to use for defaults (default: `pattern-2`)
 - `--output`, `-o`: Output file path (default: stdout)
 - `--include-prompts`: Include full prompt templates (default: stripped for readability)
 - `--no-comments`: Omit explanatory header comments
@@ -1667,9 +2006,6 @@ idp-cli config-create [OPTIONS]
 ```bash
 # Generate minimal config to stdout
 idp-cli config-create
-
-# Generate minimal config for Pattern-1
-idp-cli config-create --pattern pattern-1 --output config.yaml
 
 # Generate full config with all sections
 idp-cli config-create --features all --output full-config.yaml
@@ -1682,7 +2018,19 @@ idp-cli config-create --features "classification,extraction,summarization" --out
 
 ### `config-validate`
 
-Validate a configuration file against system defaults and Pydantic models.
+Validate a configuration file against system defaults and Pydantic models. Catches common configuration errors that cause silent pipeline failures.
+
+**Validation Checks:**
+- **YAML/JSON Syntax** - Ensures file is well-formed
+- **Schema Validation** - Validates against Pydantic models
+- **Model IDs** - Verifies Bedrock model IDs are valid (checked against pricing.yaml)
+- **Placeholder Validation** - Ensures required placeholders are present in custom task_prompts:
+  - `ocr.task_prompt` (bedrock only): Requires `{DOCUMENT_IMAGE}`
+  - `classification.task_prompt`: Requires `{DOCUMENT_TEXT}` OR `{DOCUMENT_IMAGE}`
+  - `extraction.task_prompt`: Requires `{DOCUMENT_TEXT}` OR `{DOCUMENT_IMAGE}`
+  - `assessment.task_prompt`: Requires `{DOCUMENT_IMAGE}`, `{OCR_TEXT_CONFIDENCE}`, `{EXTRACTION_RESULTS}`
+  - `summarization.task_prompt`: Requires `{DOCUMENT_TEXT}`, `{EXTRACTION_RESULTS}`
+- **JSON Schema Fields** - Warns about non-standard fields (e.g., `data_type`)
 
 **Usage:**
 ```bash
@@ -1690,22 +2038,26 @@ idp-cli config-validate [OPTIONS]
 ```
 
 **Options:**
-- `--custom-config` (required): Path to configuration file to validate
-- `--pattern`: Pattern to validate against (default: `pattern-2`)
+- `--config-file`, `-f` (required): Path to configuration file to validate
 - `--show-merged`: Show the full merged configuration
+- `--strict`: Fail validation if config contains unknown or deprecated fields
 
 **Examples:**
 
 ```bash
 # Validate a config file
-idp-cli config-validate --custom-config ./my-config.yaml
-
-# Validate against Pattern-1 defaults
-idp-cli config-validate --custom-config ./config.yaml --pattern pattern-1
+idp-cli config-validate --config-file ./my-config.yaml
 
 # Show full merged config
-idp-cli config-validate --custom-config ./config.yaml --show-merged
+idp-cli config-validate --config-file ./config.yaml --show-merged
+
+# Strict mode (fails if config has unknown or deprecated fields — useful for CI/CD)
+idp-cli config-validate --config-file ./config.yaml --strict
 ```
+
+**Notes:**
+- The `config-upload` command runs validation by default before uploading to protect production stacks.
+- Model ID validation requires `config_library/pricing.yaml`. Ensure `idp-cli` is run from the repository root, or set the `IDP_PROJECT_ROOT` environment variable to the repo root for validation to work correctly.
 
 ---
 
@@ -1722,7 +2074,6 @@ idp-cli config-download [OPTIONS]
 - `--stack-name` (required): CloudFormation stack name
 - `--output`, `-o`: Output file path (default: stdout)
 - `--format`: Output format - `full` (default) or `minimal` (only differences from defaults)
-- `--pattern`: Pattern for minimal diff (auto-detected if not specified)
 - `--config-version`: Configuration version to download (e.g., v1, v2). If not specified, downloads active version
 - `--region`: AWS region (optional)
 
@@ -1748,6 +2099,8 @@ idp-cli config-download --stack-name my-stack
 
 Upload a configuration file to a deployed IDP stack.
 
+> **Note:** Configurations with `managed: true` cannot be uploaded via CLI. Managed configurations are stack-controlled and automatically overwritten during stack updates. Remove `managed: true` from your configuration file before uploading.
+
 **Usage:**
 ```bash
 idp-cli config-upload [OPTIONS]
@@ -1757,8 +2110,7 @@ idp-cli config-upload [OPTIONS]
 - `--stack-name` (required): CloudFormation stack name
 - `--config-file`, `-f` (required): Path to configuration file (YAML or JSON)
 - `--validate/--no-validate`: Validate config before uploading (default: validate)
-- `--pattern`: Pattern for validation (auto-detected if not specified)
-- `--config-version`: Configuration version to update (e.g., v1, v2). If version doesn't exist, it will be created
+- `--config-version` (required): Configuration version to update (e.g., `default`, `v1`, `v2`). If the version doesn't exist, it will be created automatically.
 - `--version-description`: Description for the configuration version (used when creating new versions)
 - `--region`: AWS region (optional)
 
@@ -1766,7 +2118,7 @@ idp-cli config-upload [OPTIONS]
 
 ```bash
 # Upload config to active version
-idp-cli config-upload --stack-name my-stack --config-file ./config.yaml
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version default
 
 # Update existing version
 idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version Production
@@ -1776,9 +2128,6 @@ idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config
 
 # Skip validation (use with caution)
 idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-validate
-
-# Explicit pattern for validation
-idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --pattern pattern-2
 ```
 
 ---
@@ -1811,6 +2160,8 @@ Shows a table with version names, active status, creation/update timestamps, and
 
 Activate a configuration version in a deployed IDP stack.
 
+**Automatic BDA Sync:** If the configuration version has `use_bda` enabled, this command will automatically sync the configuration to BDA (Bedrock Data Automation) before activation. This ensures BDA blueprints are up-to-date and matches the UI behavior.
+
 **Usage:**
 ```bash
 idp-cli config-activate [OPTIONS]
@@ -1828,6 +2179,18 @@ idp-cli config-activate --stack-name my-stack --config-version v2
 
 # Activate default version
 idp-cli config-activate --stack-name my-stack --config-version default
+```
+
+**Behavior:**
+1. Validates the configuration version exists
+2. If `use_bda` is enabled in the configuration:
+   - Syncs IDP document classes to BDA blueprints
+   - Creates a new BDA project if none exists
+   - Updates BDA sync status
+3. Activates the configuration version
+4. All new document processing will use this configuration
+
+**Note:** If BDA sync fails (when `use_bda` is enabled), the activation will be aborted to prevent processing errors.
 ```
 
 **Notes:**
@@ -1874,7 +2237,6 @@ idp-cli config-delete --stack-name my-stack --config-version old-version --force
 6. Configuration is immediately available for document processing
 
 **Configuration Versioning:**
-- **No version specified**: Updates the currently active version
 - **Existing version**: Saves the uploaded configuration as the full version snapshot
 - **New version**: Creates a new independent version with the uploaded configuration
 - **Version descriptions**: Can be added to new versions for better organization
@@ -1882,6 +2244,357 @@ idp-cli config-delete --stack-name my-stack --config-version old-version --force
 For full details on configuration versioning, see [configuration-versions.md](configuration-versions.md).
 
 This uses the same mechanism as the Web UI configuration management system.
+
+---
+
+### `test-result`
+
+Get test results for a specific Test Studio test run with automatic evaluation triggering.
+
+**Usage:**
+```bash
+idp-cli test-result [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--test-run-id` (required): Test run ID to retrieve results for
+- `--wait`: Wait for evaluation to complete (polls until metrics are calculated)
+- `--timeout`: Timeout in seconds when using `--wait` (default: 600)
+- `--output-dir`: Directory to save results as JSON file
+- `--region`: AWS region (optional)
+
+**Examples:**
+```bash
+# Get results immediately (may show "EVALUATING" status if metrics not ready)
+idp-cli test-result \
+  --stack-name my-stack \
+  --test-run-id fake-w2-20260409-123456
+
+# Wait for evaluation to complete (recommended for CI/CD)
+idp-cli test-result \
+  --stack-name my-stack \
+  --test-run-id fake-w2-20260409-123456 \
+  --wait --timeout 900
+
+# Save results to JSON file
+idp-cli test-result \
+  --stack-name my-stack \
+  --test-run-id fake-w2-20260409-123456 \
+  --wait --output-dir ./results
+```
+
+**Output:**
+- Overall accuracy, precision, recall, F1 score
+- Total cost
+- Files completed/failed
+- Created/completed timestamps
+- JSON file: `<test-run-id>-result.json` (when `--output-dir` specified)
+
+**Behavior:**
+- Triggers lazy evaluation if metrics not yet calculated (first call after test run completes)
+- Polls Lambda every 10 seconds when `--wait` is used
+- Returns complete test run data including field-level metrics and cost breakdown
+
+---
+
+### `test-compare`
+
+Compare metrics and configurations from multiple Test Studio test runs.
+
+**Usage:**
+```bash
+idp-cli test-compare [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--test-run-ids` (required): Comma-separated list of test run IDs to compare (minimum 2)
+- `--output-dir`: Directory to save comparison as JSON and CSV files
+- `--region`: AWS region (optional)
+
+**Examples:**
+```bash
+# Compare two test runs
+idp-cli test-compare \
+  --stack-name my-stack \
+  --test-run-ids "fake-w2-20260409-123456,fake-w2-20260409-234567"
+
+# Compare multiple runs and export to files
+idp-cli test-compare \
+  --stack-name my-stack \
+  --test-run-ids "run1,run2,run3" \
+  --output-dir ./comparisons
+```
+
+**Output:**
+- **Console**: Side-by-side table with accuracy, precision, recall, F1 score, and cost for each test run
+- **JSON file**: `comparison-<timestamp>.json` - Complete comparison data with full test results and config differences
+- **CSV file**: `comparison-<timestamp>.csv` - Metrics table suitable for spreadsheets
+
+**Configuration Differences:**
+- Automatically detects and displays configuration differences between test runs
+- Shows nested config paths (e.g., `classification.model`, `extraction.temperature`)
+- Highlights values that differ across test runs
+
+**Requirements:**
+- All test runs must be in `COMPLETE` or `PARTIAL_COMPLETE` status
+- Minimum 2 test runs required for comparison
+
+---
+
+### `discover`
+
+Discover document class schemas from sample documents using Amazon Bedrock.
+
+**Two modes:**
+- **Stack-connected** (`--stack-name`): Uses stack's discovery config and saves schema to DynamoDB configuration
+- **Local** (no `--stack-name`): Uses system default Bedrock settings, prints schema to stdout without saving
+
+**Ground truth matching:** Ground truth files (`-g`) are auto-matched to documents (`-d`) by filename stem. For example, `invoice.pdf` matches `invoice.json`. Unmatched documents run without ground truth.
+
+- **Single document + single ground truth:** When exactly one `-d` and one `-g` are provided, they are paired by position regardless of filename stem. This supports the common case where ground truth files have generic names (e.g., `baseline/<doc>/sections/1/result.json`).
+- **Batch mode (multiple `-d` or multiple `-g`):** Files are matched by stem. If any `-g` file cannot be matched to a document, `discover` exits non-zero with a clear error. This prevents silently running without-GT discovery when the user explicitly requested ground-truth-guided discovery. See [issue #310](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/310).
+
+**Output behavior:**
+- Single document: `-o` writes the schema to the specified file
+- Batch + `-o` is a directory (or has no extension): writes one `{class_name}.json` per schema
+- Batch + `-o` is a file: writes all schemas as a JSON array
+
+```bash
+# Single document (local mode — no stack needed)
+idp-cli discover -d ./invoice.pdf
+
+# With ground truth (matched by filename stem)
+idp-cli discover -d ./invoice.pdf -g ./invoice.json
+
+# Save schema to file
+idp-cli discover -d ./form.pdf -o ./form-schema.json
+
+# With class name hint (guides LLM to use specific class name)
+idp-cli discover -d ./form.pdf --class-hint "W2 Tax Form"
+
+# Batch with auto-matched ground truth
+idp-cli discover -d ./invoice.pdf -d ./w2.pdf -g ./invoice.json -g ./w2.json
+
+# Batch output to directory (one file per schema)
+idp-cli discover -d ./invoice.pdf -d ./w2.pdf -o ./schemas/
+
+# Batch output to single file (JSON array)
+idp-cli discover -d ./invoice.pdf -d ./w2.pdf -o ./all-schemas.json
+
+# Multi-section: discover specific page ranges from a single PDF
+idp-cli discover -d ./lending_package.pdf \
+    --page-range "1-2" --page-label "Cover Letter" \
+    --page-range "3-5" --page-label "W2 Form" \
+    --page-range "6-8" --page-label "Bank Statement" \
+    -o ./schemas/
+
+# Auto-detect sections then discover each
+idp-cli discover -d ./lending_package.pdf --auto-detect -o ./schemas/
+
+# Only detect section boundaries (no discovery)
+idp-cli discover -d ./lending_package.pdf --auto-detect --detect-only
+
+# Auto-detect with output to file
+idp-cli discover -d ./lending_package.pdf --auto-detect --detect-only -o sections.json
+
+# Stack mode (saves to config)
+idp-cli discover --stack-name my-stack -d ./invoice.pdf --config-version v2
+
+# Override the Bedrock model (e.g. use Claude Opus instead of the configured default)
+idp-cli discover -d ./invoice.pdf -g ./invoice.json \
+    --model-id us.anthropic.claude-opus-4-6-v1
+```
+
+| Option | Description |
+|--------|-------------|
+| `--stack-name` | CloudFormation stack name (optional — omit for local mode) |
+| `-d, --document` | Path to document file (required, repeatable for batch) |
+| `-g, --ground-truth` | Path to JSON ground truth file(s) (repeatable, auto-matched by filename stem) |
+| `--config-version` | Config version to save to (stack mode only) |
+| `-o, --output` | Output path: file (single/JSON array) or directory (one file per schema) |
+| `--class-hint` | Hint for the document class name (e.g., "W2 Form"). The LLM will use this as `$id`. |
+| `--page-range` | Page range to discover (e.g., "1-3"). Repeatable for multi-section. Requires PDF. |
+| `--page-label` | Label for corresponding `--page-range` (e.g., "W2 Form"). Used as class name hint per range. |
+| `--auto-detect` | Auto-detect document section boundaries using AI, then discover each section. |
+| `--detect-only` | Only detect section boundaries (use with `--auto-detect`). Prints boundaries without running discovery. |
+| `--model-id` | Override the Bedrock model ID used for discovery (e.g., `us.anthropic.claude-opus-4-6-v1`). When omitted, the discovery model from the stack config (stack mode) or system defaults (local mode) is used. Applies to with-ground-truth, without-ground-truth, `--auto-detect`, and `--page-range` modes. |
+| `--region` | AWS region |
+
+---
+
+### `discover-multidoc`
+
+Discover document classes from a collection of documents using embedding-based clustering and agentic analysis.
+
+Unlike `discover` (which analyzes one document at a time), `discover-multidoc` analyzes a directory of mixed documents to automatically identify document types, cluster similar documents, and generate JSON Schemas for each discovered class.
+
+**Requires:** `pip install idp-common[multi_document_discovery]` (scikit-learn, scipy, numpy, strands-agents)
+
+**Note:** Requires at least **2 documents per expected class**. Clusters with fewer than 2 documents are filtered as noise. For discovering schemas from individual documents, use [`discover`](#discover) instead.
+
+**Usage:**
+```bash
+idp-cli discover-multidoc [OPTIONS]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--dir` | Directory containing documents to analyze (recursive scan) |
+| `-d, --document` | Individual document files (repeatable: `-d doc1.pdf -d doc2.png`) |
+| `--embedding-model` | Bedrock embedding model ID (default: `us.cohere.embed-v4:0`) |
+| `--analysis-model` | Bedrock LLM for cluster analysis (default: `us.anthropic.claude-sonnet-4-6`) |
+| `-o, --output` | Output directory for discovered JSON schemas |
+| `--stack-name` | CloudFormation stack name (required for `--save-to-config`) |
+| `--config-version` | Configuration version to save schemas to |
+| `--save-to-config` | Save discovered schemas to the stack's configuration |
+| `--region` | AWS region |
+
+**Examples:**
+
+```bash
+# Discover from a directory of documents
+idp-cli discover-multidoc --dir ./samples/
+
+# Discover with explicit files
+idp-cli discover-multidoc -d doc1.pdf -d doc2.png -d doc3.jpg
+
+# Save schemas to output directory
+idp-cli discover-multidoc --dir ./samples/ -o ./schemas/
+
+# Save to stack configuration
+idp-cli discover-multidoc --dir ./samples/ --save-to-config \
+    --stack-name IDP --config-version v2
+
+# Use custom models
+idp-cli discover-multidoc --dir ./samples/ \
+    --embedding-model us.amazon.titan-embed-image-v1 \
+    --analysis-model us.anthropic.claude-sonnet-4-6
+```
+
+**Pipeline stages** (shown in Rich progress output):
+1. **Document scan** — Finds PDF, PNG, JPG, TIFF files in the directory
+2. **Embedding** — Generates image embeddings via Bedrock (Cohere Embed v4)
+3. **Clustering** — KMeans + silhouette analysis to find optimal number of clusters
+4. **Analysis** — Strands agent analyzes each cluster to identify the document class and generate a JSON Schema
+5. **Reflection** — Agent generates a summary report of all discovered classes
+
+**Output:** Results table showing cluster ID, classification, document count, field count, and status. Optionally writes individual JSON schema files and a reflection report.
+
+---
+
+### `config-sync-bda`
+
+Synchronize IDP document class schemas with BDA (Bedrock Data Automation) blueprints.
+
+**Usage:**
+```bash
+idp-cli config-sync-bda [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--direction`: Sync direction — `bidirectional` (default), `bda-to-idp`, or `idp-to-bda`
+- `--mode`: Sync mode — `replace` (default, full alignment) or `merge` (additive, don't delete)
+- `--config-version`: Configuration version to sync (default: active version)
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# Bidirectional sync (default)
+idp-cli config-sync-bda --stack-name my-stack
+
+# Import BDA blueprints into IDP config
+idp-cli config-sync-bda --stack-name my-stack --direction bda-to-idp
+
+# Push IDP classes to BDA blueprints
+idp-cli config-sync-bda --stack-name my-stack --direction idp-to-bda
+
+# Merge mode (additive — don't remove existing items)
+idp-cli config-sync-bda --stack-name my-stack --direction bda-to-idp --mode merge
+
+# Sync specific config version
+idp-cli config-sync-bda --stack-name my-stack --config-version v2
+```
+
+---
+
+### `chat`
+
+Interactive Agent Companion Chat from the terminal. Provides access to the full multi-agent orchestrator including Analytics, Error Analyzer, Code Intelligence, and any configured External MCP Agents.
+
+The chat command runs the same orchestrator as the Web UI's Agent Companion Chat, but locally in your terminal — with real-time streaming and multi-turn conversation support.
+
+**Usage:**
+```bash
+idp-cli chat [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--region`: AWS region (optional)
+- `--prompt`: Single-shot prompt — sends one message, prints the response, and exits. Useful for scripts and CI/CD.
+- `--enable-code-intelligence`: Enable the Code Intelligence Agent (disabled by default because it uses external third-party services)
+
+**Examples:**
+
+```bash
+# Interactive mode — multi-turn conversation
+idp-cli chat --stack-name my-stack
+
+# Single-shot mode — for scripts and automation
+idp-cli chat --stack-name my-stack --prompt "What is the avg accuracy for the last test run?"
+
+# With Code Intelligence enabled
+idp-cli chat --stack-name my-stack --enable-code-intelligence
+
+# Pipe output in scripts
+idp-cli chat --stack-name my-stack --prompt "How many documents failed today?" 2>/dev/null
+```
+
+**Interactive session example:**
+```
+IDP Agent Chat
+Stack: my-stack
+
+✓ Ready  Agents: Analytics Agent · Error Analyzer Agent · Code Intelligence Agent
+Type /quit to exit
+
+You: What is the avg accuracy for test run Fake-W2-Tax-Forms-20260320?
+⟶ Analytics Agent
+The average accuracy for test run Fake-W2-Tax-Forms-20260320 is 0.867 (86.7%) across 95 documents.
+
+You: Break that down by document type
+⟶ Analytics Agent
+...
+
+You: /quit
+Goodbye.
+```
+
+**SDK usage:**
+```python
+from idp_sdk import IDPClient
+
+client = IDPClient(stack_name="my-stack")
+
+# Single message
+resp = client.chat.send_message("How many documents were processed today?")
+print(resp.response)
+
+# Multi-turn conversation
+resp2 = client.chat.send_message("Break down by type", session_id=resp.session_id)
+print(resp2.response)
+```
+
+**Prerequisites:**
+- Requires `idp_common[agents]` to be installed: `pip install -e 'lib/idp_common_pkg[agents]'`
+- Requires Amazon Bedrock model access (Claude or Nova models)
+- Stack must be deployed with Agent Companion Chat resources (DynamoDB tables, Athena database)
 
 ---
 

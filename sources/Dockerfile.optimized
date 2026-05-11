@@ -22,6 +22,7 @@ ENV UV_LINK_MODE=copy
 # Build argument for function path
 ARG FUNCTION_PATH
 ARG INSTALL_IDP_COMMON=true
+ARG INSTALL_GIT=false
 
 # Create working directory
 WORKDIR /build
@@ -43,6 +44,10 @@ RUN --mount=from=uv,source=/uv,target=/bin/uv \
 
 # Final stage - minimal runtime
 FROM public.ecr.aws/lambda/python:3.12-arm64
+
+# Conditionally install git (required for mlflow/gitpython)
+ARG INSTALL_GIT=false
+RUN if [ "$INSTALL_GIT" = "true" ]; then dnf install -y git && dnf clean all; fi
 
 # Copy the runtime dependencies from the builder stage
 COPY --from=builder ${LAMBDA_TASK_ROOT} ${LAMBDA_TASK_ROOT}
