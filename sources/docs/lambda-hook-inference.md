@@ -121,6 +121,74 @@ Your Lambda function receives a **Converse API-compatible** payload:
 
 3. **`context` field is added** — Indicates which pipeline step is calling (OCR, Classification, Extraction, Assessment, Summarization).
 
+### Page Output URI (`pageOutputUri`)
+
+The payload may include an optional top-level `pageOutputUri` field — a string containing the S3 prefix for the page's output directory in the **output bucket**.
+
+```json
+{
+  "modelId": "LambdaHook",
+  "messages": [...],
+  "system": [...],
+  "inferenceConfig": {...},
+  "context": "Classification",
+  "pageOutputUri": "s3://output-bucket/doc123/pages/page_001/"
+}
+```
+
+**What it represents:** `pageOutputUri` points to the directory in the output bucket where the previous pipeline step wrote its artifacts for this page (e.g., `s3://{outputBucket}/{input_key}/pages/{page_id}/`). Artifacts typically include the page image, OCR results, and other intermediate outputs.
+
+**How hooks can use it:** Your Lambda hook can use `pageOutputUri` to discover and read artifacts written by previous pipeline steps — such as page images, raw OCR text, or parsed structured data — directly from the output bucket. This is useful when your hook needs access to artifacts beyond what is included in the Converse API `messages` content.
+
+**Example — reading artifacts from `pageOutputUri`:**
+
+```python
+import json
+import boto3
+
+s3_client = boto3.client('s3')
+
+def lambda_handler(event, context):
+    """Hook that reads page artifacts from pageOutputUri."""
+
+    page_output_uri = event.get('pageOutputUri')
+
+    if page_output_uri:
+        # Parse the S3 prefix
+        # e.g. "s3://output-bucket/doc123/pages/page_001/"
+        without_protocol = page_output_uri.replace('s3://', '')
+        bucket = without_protocol.split('/')[0]
+        prefix = '/'.join(without_protocol.split('/')[1:])
+
+        # Read the page image
+        image_key = prefix + 'image.jpg'
+        image_obj = s3_client.get_object(Bucket=bucket, Key=image_key)
+        image_bytes = image_obj['Body'].read()
+
+        # Read raw OCR text
+        raw_text_key = prefix + 'rawText.json'
+        raw_text_obj = s3_client.get_object(Bucket=bucket, Key=raw_text_key)
+        raw_text = json.loads(raw_text_obj['Body'].read())
+
+        # Use the artifacts for your inference logic...
+        result = my_inference(image_bytes, raw_text)
+    else:
+        # pageOutputUri not provided — fall back to Converse API content
+        result = process_from_messages(event['messages'])
+
+    return {
+        "output": {
+            "message": {
+                "role": "assistant",
+                "content": [{"text": json.dumps(result)}]
+            }
+        },
+        "usage": {"inputTokens": 0, "outputTokens": 0}
+    }
+```
+
+**Backward compatibility:** Existing hooks can safely ignore the `pageOutputUri` field. If your hook only uses the Converse API payload content (`messages`, `system`, images via S3 references), no changes are needed — the field is purely additive and does not affect any other payload fields.
+
 ## Expected Response
 
 Your Lambda function must return a **Converse API-compatible** response:

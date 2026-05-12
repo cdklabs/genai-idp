@@ -190,6 +190,7 @@ class BedrockClient:
         context: str = "Unspecified",
         service_tier: Optional[str] = None,
         model_lambda_hook_arn: Optional[str] = None,
+        page_output_uri: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Make the instance callable with the same signature as the original function.
@@ -206,6 +207,9 @@ class BedrockClient:
             max_tokens: Optional max_tokens parameter (int or string)
             max_retries: Optional override for the instance's max_retries setting
             service_tier: Optional service tier (priority, standard, flex)
+            model_lambda_hook_arn: Lambda function ARN (required when model_id is 'LambdaHook')
+            page_output_uri: Optional S3 prefix pointing to the page's output directory
+                            in the output bucket where the previous pipeline step wrote artifacts
 
         Returns:
             Bedrock response object with metering information
@@ -227,6 +231,7 @@ class BedrockClient:
             context=context,
             service_tier=service_tier,
             model_lambda_hook_arn=model_lambda_hook_arn,
+            page_output_uri=page_output_uri,
         )
 
     def _preprocess_content_for_cachepoint(
@@ -318,7 +323,7 @@ class BedrockClient:
         context: str = "Unspecified",
         service_tier: Optional[str] = None,
         model_lambda_hook_arn: Optional[str] = None,
-        work_location_uri: Optional[str] = None,
+        page_output_uri: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Invoke a Bedrock model or custom Lambda hook with retry logic.
@@ -339,9 +344,10 @@ class BedrockClient:
             max_retries: Optional override for the instance's max_retries setting
             service_tier: Optional service tier (priority, standard, flex)
             model_lambda_hook_arn: Lambda function ARN (required when model_id is 'LambdaHook')
-            work_location_uri: Optional S3 prefix where the hook reads inputs and writes outputs.
-                              Enables hooks to access page artifacts (image, textract JSON, etc.)
-                              without embedding them in the payload.
+            page_output_uri: Optional S3 prefix pointing to the page's output directory
+                            in the output bucket. Enables hooks to access page artifacts
+                            (image, textract JSON, etc.) written by the previous pipeline
+                            step without embedding them in the payload.
 
         Returns:
             Response object with metering information (same format for both Bedrock and Lambda)
@@ -358,7 +364,7 @@ class BedrockClient:
                 max_tokens=max_tokens,
                 max_retries=max_retries,
                 context=context,
-                work_location_uri=work_location_uri,
+                page_output_uri=page_output_uri,
             )
 
         # Track total requests
@@ -1056,7 +1062,7 @@ class BedrockClient:
         max_tokens: Optional[Union[int, str]] = None,
         max_retries: Optional[int] = None,
         context: str = "Unspecified",
-        work_location_uri: Optional[str] = None,
+        page_output_uri: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Invoke a custom Lambda function instead of Bedrock for LLM inference.
@@ -1075,7 +1081,8 @@ class BedrockClient:
             max_tokens: Optional max_tokens parameter
             max_retries: Optional override for retry count
             context: Context prefix for metering key
-            work_location_uri: Optional S3 prefix where the hook reads inputs and writes outputs
+            page_output_uri: Optional S3 prefix pointing to the page's output directory
+                in the output bucket where the previous pipeline step wrote its artifacts
 
         Returns:
             Response object with metering information (same format as Bedrock responses)
@@ -1173,10 +1180,10 @@ class BedrockClient:
             "context": context,
         }
 
-        # Include workLocationUri if provided — enables hooks to access
-        # page artifacts (image, textract JSON, etc.) from S3
-        if work_location_uri:
-            lambda_payload["workLocationUri"] = work_location_uri
+        # Include pageOutputUri if provided — enables hooks to access
+        # page artifacts (image, textract JSON, etc.) from the output bucket
+        if page_output_uri:
+            lambda_payload["pageOutputUri"] = page_output_uri
 
         # Invoke Lambda with retry logic
         effective_max_retries = max_retries if max_retries is not None else self.max_retries

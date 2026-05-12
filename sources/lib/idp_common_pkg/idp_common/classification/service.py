@@ -153,8 +153,8 @@ class ClassificationService:
         # Get classification method from typed config
         self.classification_method = self.config.classification.classificationMethod
 
-        # Work location URI for LambdaHook — set per-page before invoke
-        self._current_work_location_uri: Optional[str] = None
+        # Page output URI for LambdaHook — set per-page before invoke
+        self._current_page_output_uri: Optional[str] = None
 
         # Get max pages for classification (1 to ALL)
         self.max_pages_for_classification = (
@@ -1279,8 +1279,8 @@ class ClassificationService:
 
         # Invoke Bedrock model
         try:
-            # Set work location URI for LambdaHook — derived from page image URI
-            self._current_work_location_uri = (
+            # Set page output URI for LambdaHook — derived from page image URI
+            self._current_page_output_uri = (
                 image_uri.rsplit("/", 1)[0] + "/" if image_uri else None
             )
             response_with_metering = self._invoke_bedrock_model(
@@ -1574,7 +1574,7 @@ class ClassificationService:
             max_tokens=config["max_tokens"],
             context="Classification",
             model_lambda_hook_arn=self.config.classification.model_lambda_hook_arn,
-            work_location_uri=self._current_work_location_uri,
+            page_output_uri=self._current_page_output_uri,
         )
 
     def _create_unclassified_result(

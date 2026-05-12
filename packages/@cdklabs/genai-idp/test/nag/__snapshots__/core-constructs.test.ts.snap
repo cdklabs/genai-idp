@@ -32,7 +32,7 @@ exports[`Core Constructs CDK Nag Compliance IdpPythonLayerVersion satisfies CDK 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "891feee326d4d1d2de953c4325d5d1b79f81069ec47240c84945a440459fcc38.zip",
+          "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: core (x86_64)",
       },
@@ -101,7 +101,7 @@ exports[`Core Constructs CDK Nag Compliance IdpPythonLayerVersion satisfies CDK 
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
           },
-          "S3Key": "4032ae981804d911b952cb0d368fbe8cb8f8772c48b3e2e54be717283040cfa2.zip",
+          "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
         },
         "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, classification, ocr (x86_64)",
       },

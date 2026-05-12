@@ -199,9 +199,9 @@ Exposed so that additional S3 bucket permissions can be granted
 
 SageMaker UDOP document processor facade over UnifiedDocumentProcessor.
 
-Uses the unified processor's native SageMaker classification backend
-to route classification requests to a SageMaker endpoint while delegating
-all other processing to the pipeline path.
+Creates a LambdaHook bridge that uses `pageOutputUri` to read page
+artifacts (image, Textract JSON) from S3 and calls the SageMaker endpoint
+for classification. All other stages delegate to the unified processor.
 
 #### Initializers <a name="Initializers" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.Initializer"></a>
 
@@ -243,13 +243,16 @@ new SagemakerUdopProcessor(scope: Construct, id: string, props: SagemakerUdopPro
 | --- | --- |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.toString">toString</a></code> | Returns a string representation of this construct. |
 | <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.with">with</a></code> | Applies one or more mixins to this construct. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricBedrockRequestsFailed">metricBedrockRequestsFailed</a></code> | Failed Bedrock model invocation requests. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricBedrockRequestsSucceeded">metricBedrockRequestsSucceeded</a></code> | Successful Bedrock model invocation requests. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricBedrockRequestsTotal">metricBedrockRequestsTotal</a></code> | Total Bedrock model invocation requests. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocumentPages">metricInputDocumentPages</a></code> | Document pages submitted for extraction. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocuments">metricInputDocuments</a></code> | Documents submitted for extraction. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputTokens">metricInputTokens</a></code> | Input tokens consumed. |
-| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricOutputTokens">metricOutputTokens</a></code> | Output tokens generated. |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricBedrockRequestsFailed">metricBedrockRequestsFailed</a></code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricBedrockRequestsSucceeded">metricBedrockRequestsSucceeded</a></code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricBedrockRequestsTotal">metricBedrockRequestsTotal</a></code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocumentPages">metricInputDocumentPages</a></code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocuments">metricInputDocuments</a></code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputTokens">metricInputTokens</a></code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricLambdaHookRequestsFailed">metricLambdaHookRequestsFailed</a></code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricLambdaHookRequestsSucceeded">metricLambdaHookRequestsSucceeded</a></code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricLambdaHookRequestsTotal">metricLambdaHookRequestsTotal</a></code> | *No description.* |
+| <code><a href="#@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricOutputTokens">metricOutputTokens</a></code> | *No description.* |
 
 ---
 
@@ -288,8 +291,6 @@ The mixins to apply.
 public metricBedrockRequestsFailed(props?: MetricOptions): Metric
 ```
 
-Failed Bedrock model invocation requests.
-
 ###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricBedrockRequestsFailed.parameter.props"></a>
 
 - *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
@@ -301,8 +302,6 @@ Failed Bedrock model invocation requests.
 ```typescript
 public metricBedrockRequestsSucceeded(props?: MetricOptions): Metric
 ```
-
-Successful Bedrock model invocation requests.
 
 ###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricBedrockRequestsSucceeded.parameter.props"></a>
 
@@ -316,8 +315,6 @@ Successful Bedrock model invocation requests.
 public metricBedrockRequestsTotal(props?: MetricOptions): Metric
 ```
 
-Total Bedrock model invocation requests.
-
 ###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricBedrockRequestsTotal.parameter.props"></a>
 
 - *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
@@ -329,8 +326,6 @@ Total Bedrock model invocation requests.
 ```typescript
 public metricInputDocumentPages(props?: MetricOptions): Metric
 ```
-
-Document pages submitted for extraction.
 
 ###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocumentPages.parameter.props"></a>
 
@@ -344,8 +339,6 @@ Document pages submitted for extraction.
 public metricInputDocuments(props?: MetricOptions): Metric
 ```
 
-Documents submitted for extraction.
-
 ###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputDocuments.parameter.props"></a>
 
 - *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
@@ -358,9 +351,43 @@ Documents submitted for extraction.
 public metricInputTokens(props?: MetricOptions): Metric
 ```
 
-Input tokens consumed.
-
 ###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricInputTokens.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricLambdaHookRequestsFailed` <a name="metricLambdaHookRequestsFailed" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricLambdaHookRequestsFailed"></a>
+
+```typescript
+public metricLambdaHookRequestsFailed(props?: MetricOptions): Metric
+```
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricLambdaHookRequestsFailed.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricLambdaHookRequestsSucceeded` <a name="metricLambdaHookRequestsSucceeded" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricLambdaHookRequestsSucceeded"></a>
+
+```typescript
+public metricLambdaHookRequestsSucceeded(props?: MetricOptions): Metric
+```
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricLambdaHookRequestsSucceeded.parameter.props"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
+
+---
+
+##### `metricLambdaHookRequestsTotal` <a name="metricLambdaHookRequestsTotal" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricLambdaHookRequestsTotal"></a>
+
+```typescript
+public metricLambdaHookRequestsTotal(props?: MetricOptions): Metric
+```
+
+###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricLambdaHookRequestsTotal.parameter.props"></a>
 
 - *Type:* aws-cdk-lib.aws_cloudwatch.MetricOptions
 
@@ -371,8 +398,6 @@ Input tokens consumed.
 ```typescript
 public metricOutputTokens(props?: MetricOptions): Metric
 ```
-
-Output tokens generated.
 
 ###### `props`<sup>Optional</sup> <a name="props" id="@cdklabs/genai-idp-sagemaker-udop-processor.SagemakerUdopProcessor.metricOutputTokens.parameter.props"></a>
 
@@ -820,8 +845,8 @@ public readonly classifierEndpoint: IEndpoint;
 
 The SageMaker endpoint used for document classification.
 
-The unified processor's classification function uses the SageMaker backend
-to invoke this endpoint directly for document classification.
+A LambdaHook bridge reads page artifacts from `pageOutputUri`
+and calls this endpoint for classification.
 
 ---
 

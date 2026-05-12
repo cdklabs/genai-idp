@@ -3,10 +3,9 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-import * as fs from "fs";
 import path from "path";
 import { PythonLayerVersion } from "@aws-cdk/aws-lambda-python-alpha";
-import { AssetHashType, Stack } from "aws-cdk-lib";
+import { Stack } from "aws-cdk-lib";
 import { Architecture, ILayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { md5hash } from "aws-cdk-lib/core/lib/helpers-internal";
 import { Construct } from "constructs";
@@ -78,18 +77,6 @@ export class IdpPythonLayerVersion {
       "lib",
       "idp_common_pkg",
     );
-    const pyprojectContent = fs.readFileSync(
-      path.join(entryPath, "pyproject.toml"),
-      "utf8",
-    );
-    const assetHash = md5hash(
-      JSON.stringify({
-        pyproject: pyprojectContent,
-        modules: sortedModules,
-        arch: architecture.name,
-        pipCommand: pipInstallCommand,
-      }),
-    );
 
     // Create a new instance if one doesn't exist
     const newLayer = new PythonLayerVersion(stack, layerId, {
@@ -98,8 +85,6 @@ export class IdpPythonLayerVersion {
       compatibleArchitectures: [architecture],
       description: `Lambda Layer containing the idp_common Python package with modules: ${modules.length > 0 ? modules.join(", ") : "core (base only)"} (${architecture.name})`,
       bundling: {
-        assetHashType: AssetHashType.CUSTOM,
-        assetHash,
         command: [
           "bash",
           "-c",
