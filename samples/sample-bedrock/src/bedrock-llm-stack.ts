@@ -171,9 +171,9 @@ export class BedrockLlmStack extends Stack {
       },
     });
 
-    const configurationBucket = new Bucket(this, 'ConfigurationBucket', {
+    const configurationBucket = new Bucket(this, "ConfigurationBucket", {
       removalPolicy: RemovalPolicy.DESTROY,
-      autoDeleteObjects: true
+      autoDeleteObjects: true,
     });
     // 4.    Creating the processor, the actual engine for performing the IDP function.
 

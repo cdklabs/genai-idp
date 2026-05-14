@@ -268,11 +268,15 @@ export class BdaLendingStack extends Stack {
     webApplication.enable(documentDiscovery);
 
     // 7.6.  Evaluation baseline management for accuracy measurement against ground truth
-    const evaluationBaselineBucket = new Bucket(this, "EvaluationBaselineBucket", {
-      encryptionKey: this.encryptionKey,
-      removalPolicy: RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-    });
+    const evaluationBaselineBucket = new Bucket(
+      this,
+      "EvaluationBaselineBucket",
+      {
+        encryptionKey: this.encryptionKey,
+        removalPolicy: RemovalPolicy.DESTROY,
+        autoDeleteObjects: true,
+      },
+    );
     const evaluation = this.createEvaluation(
       evaluationBaselineBucket,
       outputBucket,
