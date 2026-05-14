@@ -6633,14 +6633,11 @@
   "ProcessorUnifiedAssessmentFunction0AF8071C": {
    "Type": "AWS::Lambda::Function",
    "Properties": {
-    "Architectures": [
-     "arm64"
-    ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "5d9cf0f7381c430e447ac6509642b5b0f839ea8a217319e9b21e2c7608c932d6.zip"
+     "S3Key": "970ab876965f38637eecfd21da9d8f68a73003efa504dcca373ee1e8facf23ad.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -6672,7 +6669,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer4e59397475D84A5C"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer9849d28bBF6E59A5"
      }
     ],
     "MemorySize": 4096,
@@ -9619,11 +9616,11 @@
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "comamazonawscdkcdklabsgenaiidpidpcommonlayer4e59397475D84A5C": {
+  "comamazonawscdkcdklabsgenaiidpidpcommonlayer9849d28bBF6E59A5": {
    "Type": "AWS::Lambda::LayerVersion",
    "Properties": {
     "CompatibleArchitectures": [
-     "arm64"
+     "x86_64"
     ],
     "CompatibleRuntimes": [
      "python3.12"
@@ -9632,9 +9629,9 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "ca2d894477d545ee77a7db4eaccbce3572c82df41db8387782b58563a388733c.zip"
+     "S3Key": "b1664fe1d3eb399679c93972b5a943904bea5d4ce73e8f2331587b3b66a1dde5.zip"
     },
-    "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service (arm64)"
+    "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service (x86_64)"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
