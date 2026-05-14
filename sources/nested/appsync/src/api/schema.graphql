@@ -263,7 +263,7 @@ input CreateDocumentInput {
   TraceId: String
 }
 
-type CreateDocumentOutput @aws_iam {
+type CreateDocumentOutput @aws_cognito_user_pools @aws_iam {
   ObjectKey: ID
 }
 
