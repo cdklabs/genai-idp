@@ -1,12 +1,10 @@
 import { App, Aspects, CfnResource, RemovalPolicy } from "aws-cdk-lib";
 import { CfnUserPool } from "aws-cdk-lib/aws-cognito";
 import { BedrockLlmStack } from "./bedrock-llm-stack";
-import { UnifiedProcessorStack } from "./unified-processor-stack";
 
 const app = new App();
 
 new BedrockLlmStack(app, "GenAI-IDP-Sample-Pattern2");
-new UnifiedProcessorStack(app, "GenAI-IDP-Sample-Unified");
 
 // INFO: clean up all the resources after deletion
 Aspects.of(app).add({
