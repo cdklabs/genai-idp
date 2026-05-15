@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 import path from "path";
 import { PythonLayerVersion } from "@aws-cdk/aws-lambda-python-alpha";
 import { Stack } from "aws-cdk-lib";
-import { ILayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
+import { Architecture, ILayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { md5hash } from "aws-cdk-lib/core/lib/helpers-internal";
 import { Construct } from "constructs";
 
@@ -25,11 +25,33 @@ export class IdpPythonLayerVersion {
     scope: Construct,
     ...modules: string[]
   ): ILayerVersion {
+    return IdpPythonLayerVersion.getOrCreateForArchitecture(
+      scope,
+      Architecture.X86_64,
+      ...modules,
+    );
+  }
+
+  /**
+   * Gets or creates a singleton instance of the IdpPythonLayerVersion for a specific architecture.
+   *
+   * @param scope The construct scope where the layer should be created if it doesn't exist
+   * @param architecture The Lambda architecture to build the layer for
+   * @param modules The modules to install
+   * @returns The singleton layer instance
+   */
+  public static getOrCreateForArchitecture(
+    scope: Construct,
+    architecture: Architecture,
+    ...modules: string[]
+  ): ILayerVersion {
     // Sort modules to ensure consistent hash generation
     const sortedModules = modules.sort();
 
-    // Create a unique hash based on the selected modules
-    const moduleHash = md5hash(JSON.stringify(sortedModules)).substring(0, 8);
+    // Create a unique hash based on the selected modules and architecture
+    const moduleHash = md5hash(
+      JSON.stringify({ modules: sortedModules, arch: architecture.name }),
+    ).substring(0, 8);
     const layerId = `${IdpPythonLayerVersion.BASE_LAYER_ID}-${moduleHash}`;
 
     // Try to find an existing instance in the stack's construct tree
@@ -46,11 +68,22 @@ export class IdpPythonLayerVersion {
         ? `python -m pip install -e .[${modules.join(",")}] -t /asset-output/python`
         : `python -m pip install -e .[core] -t /asset-output/python`;
 
+    // Compute a stable asset hash based on pyproject.toml content + modules + architecture
+    // This prevents unnecessary rebuilds when only file timestamps change
+    const entryPath = path.join(
+      __dirname,
+      "..",
+      "assets",
+      "lib",
+      "idp_common_pkg",
+    );
+
     // Create a new instance if one doesn't exist
     const newLayer = new PythonLayerVersion(stack, layerId, {
-      entry: path.join(__dirname, "..", "assets", "lib", "idp_common_pkg"),
+      entry: entryPath,
       compatibleRuntimes: [Runtime.PYTHON_3_12],
-      description: `Lambda Layer containing the idp_common Python package with modules: ${modules.length > 0 ? modules.join(", ") : "core (base only)"}`,
+      compatibleArchitectures: [architecture],
+      description: `Lambda Layer containing the idp_common Python package with modules: ${modules.length > 0 ? modules.join(", ") : "core (base only)"} (${architecture.name})`,
       bundling: {
         command: [
           "bash",

@@ -47,6 +47,8 @@ junit.xml
 tsconfig.json
 !/tsconfig.json
 !/API.md
+/assets/
+!/src/sagemaker-classification-hook-function.ts
 test/integ/.tmp
 test/integ/pattern.integ.snapshot/asset.*
 test/integ/pattern.integ.snapshot/**/asset.*

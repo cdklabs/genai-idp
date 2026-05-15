@@ -53,6 +53,11 @@
       "type": "build"
     },
     {
+      "name": "aws-cdk",
+      "version": "^2",
+      "type": "build"
+    },
+    {
       "name": "cdk-nag",
       "type": "build"
     },
@@ -120,6 +125,10 @@
     },
     {
       "name": "ts-jest",
+      "type": "build"
+    },
+    {
+      "name": "ts-node",
       "type": "build"
     },
     {

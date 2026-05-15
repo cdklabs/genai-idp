@@ -10,7 +10,7 @@ import DOMPurify from 'dompurify';
 import useSettingsContext from '../../contexts/settings';
 import generateS3PresignedUrl from '../common/generate-s3-presigned-url';
 import useAppContext from '../../contexts/app';
-import getFileContents from '../../graphql/queries/getFileContents';
+import { getFileContents } from '../../graphql/generated';
 
 interface FileViewerProps {
   objectKey: string;
@@ -54,7 +54,7 @@ const detectFileType = (objectKey: string, contentType: string | null): string =
   }
   // Fallback to checking file extension
   if (objectKey) {
-    const extension = objectKey.split('.').pop()?.toLowerCase();
+    const extension = objectKey.split('.').pop()?.toLowerCase() ?? '';
     if (extension === 'pdf') return 'pdf';
     if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(extension)) return 'image';
     if (extension === 'html' || extension === 'htm') return 'html';
@@ -83,7 +83,7 @@ const FileViewer = ({ objectKey }: FileViewerProps): React.JSX.Element => {
     try {
       logger.info('Fetching file contents via GraphQL for:', s3Url);
       const response = await client.graphql({
-        query: getFileContents as unknown as string,
+        query: getFileContents,
         variables: { s3Uri: s3Url },
       });
 
@@ -109,7 +109,7 @@ const FileViewer = ({ objectKey }: FileViewerProps): React.JSX.Element => {
       setContentType(result.contentType);
 
       // Determine view method based on content type and binary flag
-      let selectedViewMethod;
+      let selectedViewMethod: 'content' | 'presigned';
       if (
         fileType === 'pdf' ||
         fileType === 'excel' ||

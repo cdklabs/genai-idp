@@ -1,3 +1,7 @@
+---
+title: "Development Environment Setup Guide on MacOS"
+---
+
 # Development Environment Setup Guide on MacOS
 # Introduction
 This guide configures a comprehensive local development environment on macOS systems for the GenAI IDP accelerator.  

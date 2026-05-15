@@ -186,3 +186,75 @@ The format is flexible - focus on capturing valuable insights that help me work 
 REMEMBER: After every memory reset, I begin completely fresh. The Memory Bank is my only link to previous work. It must be maintained with precision and clarity, as my effectiveness depends entirely on its accuracy.
 
 REMEMBER: I always use mermaid diagrams when I want to visualize any concepts.
+
+## Mandatory QA Review
+
+Before calling `attempt_completion` on ANY task that involves code changes, I MUST perform a QA review. This is not optional — it is a required step in every implementation workflow.
+
+```mermaid
+flowchart TD
+    Done[Implementation Complete] --> QA{QA Review Gate}
+    
+    QA --> C1[1. Code Review]
+    QA --> C2[2. Test Verification]
+    QA --> C3[3. Consistency Check]
+    QA --> C4[4. Side Effect Analysis]
+    
+    C1 --> Pass{All Checks Pass?}
+    C2 --> Pass
+    C3 --> Pass
+    C4 --> Pass
+    
+    Pass -->|Yes| Complete[attempt_completion]
+    Pass -->|No| Fix[Fix Issues]
+    Fix --> QA
+```
+
+### QA Review Checklist
+
+For every code change, I must review and verify:
+
+#### 1. Code Quality
+- [ ] No syntax errors or typos in changed files
+- [ ] Consistent code style with existing codebase (ruff/formatting conventions)
+- [ ] No hardcoded values that should be configurable
+- [ ] Error handling is appropriate (no bare excepts, meaningful error messages)
+- [ ] No commented-out code left behind unless intentional
+
+#### 2. Test Coverage
+- [ ] **MANDATORY**: Run `make test-cicd -C lib/idp_common_pkg` (or `make test` from project root) and verify ALL tests pass — do NOT skip this step
+- [ ] **MANDATORY**: Run `ruff check` (or `make lint`) on changed Python files and verify no new lint errors
+- [ ] New functionality has corresponding tests (or note why tests weren't added)
+- [ ] Test assertions are meaningful, not just "it doesn't crash"
+
+#### 3. Cross-Module Consistency
+- [ ] Changes to shared interfaces (Document model, config schemas) are reflected in all consumers
+- [ ] If config format changed, config_library examples are updated
+- [ ] If API changed, docs are updated
+- [ ] CHANGELOG.md is updated for user-facing changes
+
+#### 4. Side Effect Analysis
+- [ ] Review imports — no circular dependencies introduced
+- [ ] Check if changed functions/methods are called elsewhere (use `search_files` to verify)
+- [ ] Backward compatibility is maintained (or breaking changes are documented)
+- [ ] No unintended changes to files outside the scope of the task
+
+#### 5. Documentation
+- [ ] Code comments for complex logic
+- [ ] docstrings for new public functions/classes
+- [ ] Memory Bank updated if significant patterns or decisions were made
+
+### QA Review Output Format
+
+After completing the QA review, I will include a brief summary in my completion message:
+
+```
+## QA Review ✅
+- **Code Quality**: [pass/issues found and fixed]
+- **Tests**: [ran X tests, all passing / N tests added]
+- **Consistency**: [cross-module impacts checked]
+- **Side Effects**: [none found / details]
+- **Docs**: [updated / not needed]
+```
+
+If any issues are found during QA, I MUST fix them before completing the task. I do NOT present incomplete or unreviewed work.

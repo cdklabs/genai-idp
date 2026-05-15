@@ -5,5 +5,5 @@ SPDX-License-Identifier: Apache-2.0
 
 export * from "./classification-method";
 export * from "./configuration";
-export * from "./invokable";
+export { IInvokable, Invokable, InvokableType } from "@cdklabs/genai-idp";
 export * from "./processor";

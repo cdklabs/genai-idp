@@ -46,146 +46,28 @@
     },
     "bundle": {
       "name": "bundle",
+      "description": "Prepare assets",
       "steps": [
         {
-          "spawn": "bundle:lambda:assessment_function"
-        },
-        {
-          "spawn": "bundle:lambda:classification_function"
-        },
-        {
-          "spawn": "bundle:lambda:evaluation_function"
-        },
-        {
-          "spawn": "bundle:lambda:extraction_function"
-        },
-        {
-          "spawn": "bundle:lambda:ocr_function"
-        },
-        {
-          "spawn": "bundle:lambda:processresults_function"
-        },
-        {
-          "spawn": "bundle:lambda:summarization_function"
-        },
-        {
-          "spawn": "bundle:config:rvl-cdip-package-sample"
-        },
-        {
-          "spawn": "bundle:state-machine"
-        },
-        {
-          "spawn": "bundle:schema"
+          "spawn": "bundle:sagemaker-classification-hook.lambda"
         }
       ]
     },
-    "bundle:config:rvl-cdip-package-sample": {
-      "name": "bundle:config:rvl-cdip-package-sample",
+    "bundle:sagemaker-classification-hook.lambda": {
+      "name": "bundle:sagemaker-classification-hook.lambda",
+      "description": "Create a JavaScript bundle from src/sagemaker-classification-hook.lambda.ts",
       "steps": [
         {
-          "exec": "mkdir -p assets/configs/rvl-cdip-package-sample"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/config_library/pattern-3/rvl-cdip/config.yaml assets/configs/rvl-cdip-package-sample/."
+          "exec": "esbuild --bundle src/sagemaker-classification-hook.lambda.ts --target=\"node22\" --platform=\"node\" --outfile=\"assets/sagemaker-classification-hook.lambda/index.js\" --tsconfig=\"tsconfig.dev.json\" --external:@aws-sdk/*"
         }
       ]
     },
-    "bundle:lambda:assessment_function": {
-      "name": "bundle:lambda:assessment_function",
+    "bundle:sagemaker-classification-hook.lambda:watch": {
+      "name": "bundle:sagemaker-classification-hook.lambda:watch",
+      "description": "Continuously update the JavaScript bundle from src/sagemaker-classification-hook.lambda.ts",
       "steps": [
         {
-          "exec": "mkdir -p assets/lambdas/assessment_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-3/src/assessment_function/* assets/lambdas/assessment_function/."
-        }
-      ]
-    },
-    "bundle:lambda:classification_function": {
-      "name": "bundle:lambda:classification_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/classification_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-3/src/classification_function/* assets/lambdas/classification_function/."
-        }
-      ]
-    },
-    "bundle:lambda:evaluation_function": {
-      "name": "bundle:lambda:evaluation_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/evaluation_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-3/src/evaluation_function/* assets/lambdas/evaluation_function/."
-        }
-      ]
-    },
-    "bundle:lambda:extraction_function": {
-      "name": "bundle:lambda:extraction_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/extraction_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-3/src/extraction_function/* assets/lambdas/extraction_function/."
-        }
-      ]
-    },
-    "bundle:lambda:ocr_function": {
-      "name": "bundle:lambda:ocr_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/ocr_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-3/src/ocr_function/* assets/lambdas/ocr_function/."
-        }
-      ]
-    },
-    "bundle:lambda:processresults_function": {
-      "name": "bundle:lambda:processresults_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/processresults_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-3/src/processresults_function/* assets/lambdas/processresults_function/."
-        }
-      ]
-    },
-    "bundle:lambda:summarization_function": {
-      "name": "bundle:lambda:summarization_function",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/lambdas/summarization_function"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-3/src/summarization_function/* assets/lambdas/summarization_function/."
-        }
-      ]
-    },
-    "bundle:schema": {
-      "name": "bundle:schema",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/schema"
-        },
-        {
-          "exec": "rsync -rLct ../../../schemas/pattern-3/schema.json assets/schema/."
-        }
-      ]
-    },
-    "bundle:state-machine": {
-      "name": "bundle:state-machine",
-      "steps": [
-        {
-          "exec": "mkdir -p assets/sfn"
-        },
-        {
-          "exec": "rsync -rLct ../../../sources/patterns/pattern-3/statemachine/workflow.asl.json assets/sfn/."
+          "exec": "esbuild --bundle src/sagemaker-classification-hook.lambda.ts --target=\"node22\" --platform=\"node\" --outfile=\"assets/sagemaker-classification-hook.lambda/index.js\" --tsconfig=\"tsconfig.dev.json\" --external:@aws-sdk/* --watch"
         }
       ]
     },
@@ -196,7 +78,7 @@
       },
       "steps": [
         {
-          "exec": "npx npm-check-updates@18 --upgrade --target=minor --peer --no-deprecated --dep=dev,peer,prod,optional --filter=@aws-cdk/cx-api,@types/jest,@types/node,cdk-nag,eslint-config-prettier,eslint-import-resolver-typescript,eslint-plugin-import,eslint-plugin-prettier,jest,jsii-diff,jsii-docgen,jsii-pacmak,prettier,ts-jest,ts-node,typescript"
+          "exec": "npx npm-check-updates@18 --upgrade --target=minor --peer --no-deprecated --dep=dev,peer,prod,optional --filter=@aws-cdk/cx-api,@aws-sdk/client-sagemaker-runtime,@types/jest,@types/node,cdk-nag,esbuild,eslint-config-prettier,eslint-import-resolver-typescript,eslint-plugin-import,eslint-plugin-prettier,jest,jsii-diff,jsii-docgen,jsii-pacmak,prettier,ts-jest,ts-node,typescript"
         }
       ]
     },

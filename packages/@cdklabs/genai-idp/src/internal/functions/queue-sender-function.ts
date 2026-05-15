@@ -10,6 +10,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
+import { IConfigurationTable } from "../../configuration-table";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
 import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
 import { LogLevel } from "../../log-level";
@@ -57,6 +58,12 @@ export interface QueueSenderFunctionProps extends IdpPythonFunctionOptions {
    * When provided, the function will use GraphQL mutations to update document status.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * The DynamoDB table that stores configuration settings.
+   * Used to read config version metadata for document routing.
+   */
+  readonly configurationTable?: IConfigurationTable;
 }
 
 /**
@@ -116,6 +123,9 @@ export class QueueSenderFunction extends lambda_python.PythonFunction {
         OUTPUT_BUCKET: props.outputBucket.bucketName,
         DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
         ...(props.api && { APPSYNC_API_URL: props.api.graphqlUrl }),
+        ...(props.configurationTable && {
+          CONFIG_TABLE: props.configurationTable.tableName,
+        }),
       },
     });
 
@@ -125,5 +135,8 @@ export class QueueSenderFunction extends lambda_python.PythonFunction {
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);
+
+    // Grant read access to configuration table if provided
+    props.configurationTable?.grantReadData(this);
   }
 }

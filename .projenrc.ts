@@ -167,6 +167,56 @@ genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:system-defaults`, {
   ]
 }));
 
+// Bundle unified pattern Lambda functions
+genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:unified:lambdas`, {
+  steps: [
+    { exec: `mkdir -p assets/lambdas/unified` },
+    { exec: `rsync -av ../../../sources/patterns/unified/src/ assets/lambdas/unified/` }
+  ]
+}));
+
+// Bundle unified pattern state machine
+genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:unified:statemachine`, {
+  steps: [
+    { exec: `mkdir -p assets/statemachine/unified` },
+    { exec: `rsync -av ../../../sources/patterns/unified/statemachine/ assets/statemachine/unified/` }
+  ]
+}));
+
+// Bundle unified pattern configuration schema
+genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:unified:schema`, {
+  steps: [
+    { exec: `mkdir -p assets/schemas/unified` },
+    { exec: `cp ../../../schemas/unified/schema.json assets/schemas/unified/schema.json` }
+  ]
+}));
+
+// Bundle unified pattern configuration presets
+const unifiedConfigsDir = 'sources/config_library/unified';
+const unifiedConfigs = [
+  "bank-statement-sample",
+  "docsplit",
+  "fake-w2",
+  "healthcare-multisection-package",
+  "lending-package-sample",
+  "lending-package-sample-govcloud",
+  "ocr-benchmark",
+  "realkie-fcc-verified",
+  "rule-extraction",
+  "rule-validation",
+  "rvl-cdip",
+  "rvl-cdip-with-few-shot-examples",
+];
+
+unifiedConfigs.forEach((configName) => {
+  genaiIdp.bundleTask.spawn(genaiIdp.addTask(`bundle:unified:config:${configName}`, {
+    steps: [
+      { exec: `mkdir -p assets/configs/unified/${configName}` },
+      { exec: `rsync -rLct ../../../${unifiedConfigsDir}/${configName}/config.yaml assets/configs/unified/${configName}/.` }
+    ]
+  }));
+});
+
 buildPackages.exec(`yarn workspace ${genaiIdp.name} build`);
 
 const idpPattern1 = new AwsCdkTypeScriptWorkspace({
@@ -198,49 +248,23 @@ const idpPattern1 = new AwsCdkTypeScriptWorkspace({
 });
 
 // Bundle lambdas for Pattern 1 (BDA Processor) - read dynamically
+// Guard: pattern-1 sources removed in v0.5.2 (consolidated into unified pattern)
 const pattern1LambdasDir = 'sources/patterns/pattern-1/src';
-fs.readdirSync(pattern1LambdasDir).forEach((lambdaName) => {
-  const lambdaSrcDir = path.join('../../../', pattern1LambdasDir, lambdaName);
-  idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:lambda:${lambdaName}`, {
-    steps: [
-      { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-      { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
-    ]
-  }));
-});
+if (fs.existsSync(pattern1LambdasDir)) {
+  fs.readdirSync(pattern1LambdasDir).forEach((lambdaName) => {
+    const lambdaSrcDir = path.join('../../../', pattern1LambdasDir, lambdaName);
+    idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:lambda:${lambdaName}`, {
+      steps: [
+        { exec: `mkdir -p assets/lambdas/${lambdaName}` },
+        { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
+      ]
+    }));
+  });
+}
 
-const pattern1_configs = [
-  "lending-package-sample",
-  "lending-package-sample-govcloud",
-  "docsplit",
-  "ocr-benchmark",
-  "realkie-fcc-verified",
-  "rvl-cdip"
-]
-
-pattern1_configs.forEach((configName) => {
-  idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:config:${configName}`, {
-    steps: [
-      { exec: `mkdir -p assets/configs/${configName}` },
-      { exec: `rsync -rLct ../../../sources/config_library/pattern-1/${configName}/config.yaml assets/configs/${configName}/.` }
-    ]
-  }))
-});
-
-idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:state-machine`, {
-  steps: [
-    { exec: `mkdir -p assets/sfn` },
-    { exec: `rsync -rLct ../../../sources/patterns/pattern-1/statemachine/workflow.asl.json assets/sfn/.` }
-  ]
-}));
-
-// Bundle schema for Pattern 1 (BDA Processor)
-idpPattern1.bundleTask.spawn(idpPattern1.addTask(`bundle:schema`, {
-  steps: [
-    { exec: `mkdir -p assets/schema` },
-    { exec: `rsync -rLct ../../../schemas/pattern-1/schema.json assets/schema/.` }
-  ]
-}));
+// BDA processor no longer bundles its own configs, state machine, or schema.
+// It delegates to UnifiedDocumentProcessor from @cdklabs/genai-idp which
+// bundles these assets itself.
 
 buildPackages.exec(`yarn workspace ${idpPattern1.name} build`);
 
@@ -272,55 +296,9 @@ const idpPattern2 = new AwsCdkTypeScriptWorkspace({
   releasableCommits: ReleasableCommits.featuresAndFixes('.'),
 });
 
-// Bundle lambdas for Pattern 2 (Bedrock LLM Processor) - read dynamically
-const pattern2LambdasDir = 'sources/patterns/pattern-2/src';
-fs.readdirSync(pattern2LambdasDir).forEach((lambdaName) => {
-  const lambdaSrcDir = path.join('../../../', pattern2LambdasDir, lambdaName);
-  idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:lambda:${lambdaName}`, {
-    steps: [
-      { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-      { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
-    ]
-  }));
-});
-
-const pattern2_configs = [
-  "bank-statement-sample",
-  "docsplit",
-  "healthcare-multisection-package",
-  "lending-package-sample",
-  "lending-package-sample-govcloud",
-  "ocr-benchmark",
-  "realkie-fcc-verified",
-  "rule-extraction",
-  "rule-validation",
-  "rvl-cdip",
-  "rvl-cdip-with-few-shot-examples",
-]
-
-pattern2_configs.forEach((configName) => {
-  idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:config:${configName}`, {
-    steps: [
-      { exec: `mkdir -p assets/configs/${configName}` },
-      { exec: `rsync -rLct ../../../sources/config_library/pattern-2/${configName}/config.yaml assets/configs/${configName}/.` }
-    ]
-  }))
-});
-
-idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:state-machine`, {
-  steps: [
-    { exec: `mkdir -p assets/sfn` },
-    { exec: `rsync -rLct ../../../sources/patterns/pattern-2/statemachine/workflow.asl.json assets/sfn/.` }
-  ]
-}));
-
-// Bundle schema for Pattern 2 (Bedrock LLM Processor)
-idpPattern2.bundleTask.spawn(idpPattern2.addTask(`bundle:schema`, {
-  steps: [
-    { exec: `mkdir -p assets/schema` },
-    { exec: `rsync -rLct ../../../schemas/pattern-2/schema.json assets/schema/.` }
-  ]
-}));
+// Bedrock LLM Processor no longer bundles its own configs, lambdas, state machine, or schema.
+// It delegates to UnifiedDocumentProcessor from @cdklabs/genai-idp which
+// bundles these assets itself.
 
 buildPackages.exec(`yarn workspace ${idpPattern2.name} build`);
 
@@ -331,7 +309,7 @@ const idpPattern3 = new AwsCdkTypeScriptWorkspace({
   authorEmail: "aws-cdk-dev@amazon.com",
   name: "@cdklabs/genai-idp-sagemaker-udop-processor",
   repository: "https://github.com/cdklabs/genai-idp",
-  devDeps: [...idpDeps, '@aws-cdk/cx-api', 'cdk-nag'],
+  devDeps: [...idpDeps, '@aws-cdk/cx-api', 'cdk-nag', '@aws-sdk/client-sagemaker-runtime'],
   peerDeps: [...idpDeps, genaiIdp],
   prettier: true,
   jest: true,
@@ -352,50 +330,9 @@ const idpPattern3 = new AwsCdkTypeScriptWorkspace({
   releasableCommits: ReleasableCommits.featuresAndFixes('.'),
 });
 
-const p3BundleTask = idpPattern3.tasks.tryFind("bundle") ?? idpPattern3.tasks.addTask("bundle");
-const p3PreCompileTask = idpPattern3.tasks.tryFind("pre-compile") ?? idpPattern3.tasks.addTask("pre-compile");
-
-p3PreCompileTask.spawn(p3BundleTask);
-
-// Bundle lambdas for Pattern 3 (SageMaker UDOP Processor) - read dynamically
-const pattern3LambdasDir = 'sources/patterns/pattern-3/src';
-fs.readdirSync(pattern3LambdasDir).forEach((lambdaName) => {
-  const lambdaSrcDir = path.join('../../../', pattern3LambdasDir, lambdaName);
-  p3BundleTask.spawn(idpPattern3.addTask(`bundle:lambda:${lambdaName}`, {
-    steps: [
-      { exec: `mkdir -p assets/lambdas/${lambdaName}` },
-      { exec: `rsync -rLct ${lambdaSrcDir}/* assets/lambdas/${lambdaName}/.` }
-    ]
-  }));
-});
-
-const pattern3_configs = [
-  { source: "rvl-cdip", target: "rvl-cdip-package-sample" }
-]
-
-pattern3_configs.forEach((config) => {
-  idpPattern3.bundleTask.spawn(idpPattern3.addTask(`bundle:config:${config.target}`, {
-    steps: [
-      { exec: `mkdir -p assets/configs/${config.target}` },
-      { exec: `rsync -rLct ../../../sources/config_library/pattern-3/${config.source}/config.yaml assets/configs/${config.target}/.` }
-    ]
-  }))
-});
-
-p3BundleTask.spawn(idpPattern3.addTask(`bundle:state-machine`, {
-  steps: [
-    { exec: `mkdir -p assets/sfn` },
-    { exec: `rsync -rLct ../../../sources/patterns/pattern-3/statemachine/workflow.asl.json assets/sfn/.` }
-  ]
-}));
-
-// Bundle schema for Pattern 3 (SageMaker UDOP Processor)
-p3BundleTask.spawn(idpPattern3.addTask(`bundle:schema`, {
-  steps: [
-    { exec: `mkdir -p assets/schema` },
-    { exec: `rsync -rLct ../../../schemas/pattern-3/schema.json assets/schema/.` }
-  ]
-}));
+// SageMaker UDOP Processor no longer bundles its own configs, lambdas, state machine, or schema.
+// It delegates to UnifiedDocumentProcessor from @cdklabs/genai-idp.
+// Only the SageMaker classification bridge Lambda is bundled as a local asset.
 
 buildPackages.exec(`yarn workspace ${idpPattern3.name} build`);
 

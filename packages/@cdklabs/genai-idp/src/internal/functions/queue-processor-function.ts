@@ -12,6 +12,7 @@ import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
 import { IConcurrencyTable } from "../../concurrency-table";
+import { IConfigurationTable } from "../../configuration-table";
 import { IdpPythonFunctionOptions } from "../../functions/idp-python-function-options";
 import { IdpPythonLayerVersion } from "../../idp-python-layer-version";
 import { LogLevel } from "../../log-level";
@@ -72,6 +73,12 @@ export interface QueueProcessorFunctionProps extends IdpPythonFunctionOptions {
    * When provided, the function will use GraphQL mutations to update document status.
    */
   readonly api?: IProcessingEnvironmentApi;
+
+  /**
+   * The DynamoDB table that stores configuration settings.
+   * Used to read the `use_bda` flag and `bda_project_arn` for runtime routing.
+   */
+  readonly configurationTable?: IConfigurationTable;
 }
 
 /**
@@ -136,6 +143,9 @@ export class QueueProcessorFunction extends lambda_python.PythonFunction {
         WORKING_BUCKET: props.workingBucket.bucketName,
         DOCUMENT_TRACKING_MODE: props.api ? "appsync" : "dynamodb",
         ...(props.api && { APPSYNC_API_URL: props.api.graphqlUrl }),
+        ...(props.configurationTable && {
+          CONFIG_TABLE: props.configurationTable.tableName,
+        }),
       },
     });
 
@@ -148,5 +158,8 @@ export class QueueProcessorFunction extends lambda_python.PythonFunction {
 
     // Grant AppSync permissions if API is provided
     props.api?.grantMutation(this);
+
+    // Grant read access to configuration table if provided
+    props.configurationTable?.grantReadData(this);
   }
 }

@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 import * as path from "path";
 import * as cdk from "aws-cdk-lib";
 import * as appsync from "aws-cdk-lib/aws-appsync";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
@@ -136,6 +137,16 @@ export interface ProcessingEnvironmentApiProps extends ProcessingEnvironmentApiB
    * When provided, deploys processing components within a VPC with specified settings.
    */
   readonly vpcConfiguration?: VpcConfiguration;
+
+  /**
+   * Optional users table for RBAC-based document filtering.
+   * When provided, the GSI-based listDocuments resolver checks user's
+   * allowedConfigVersions to scope document visibility per user role.
+   *
+   * @default - No RBAC filtering by config version
+   * @since 0.5.2
+   */
+  readonly usersTable?: dynamodb.ITable;
 }
 
 /**
@@ -164,6 +175,8 @@ export class ProcessingEnvironmentApi
   private readonly _encryptionKey?: kms.IKey;
   private readonly _logRetention?: logs.RetentionDays;
   private readonly _vpcConfiguration?: VpcConfiguration;
+  private readonly _trackingTable: ITrackingTable;
+  private readonly _usersTable?: dynamodb.ITable;
 
   /**
    * Creates a new ProcessingEnvironmentApi.
@@ -201,6 +214,8 @@ export class ProcessingEnvironmentApi
     this._encryptionKey = props.encryptionKey;
     this._logRetention = props.logRetention;
     this._vpcConfiguration = props.vpcConfiguration;
+    this._trackingTable = props.trackingTable;
+    this._usersTable = props.usersTable;
 
     // Add file contents resolver
     const getFileContentsDataSource = this.addGetFileContentsDataSource(
@@ -470,6 +485,80 @@ export class ProcessingEnvironmentApi
       ),
     });
 
+    // updateDocumentStatus — lightweight status-only update (IAM auth, backend only)
+    trackingTableDataSource.createResolver("UpdateDocumentStatusResolver", {
+      typeName: "Mutation",
+      fieldName: "updateDocumentStatus",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        #set( $PK = "doc#\${ctx.args.input.ObjectKey}" )
+        #set( $expNames = {} )
+        #set( $expValues = {} )
+        #set( $expSet = {} )
+        #foreach( $entry in $ctx.args.input.entrySet() )
+            #if( !$util.isNullOrBlank($entry.value) && $entry.key != "ObjectKey" )
+                $util.qr( $expSet.put("#\${entry.key}", ":\${entry.key}") )
+                $util.qr( $expNames.put("#\${entry.key}", "\${entry.key}") )
+                $util.qr( $expValues.put(":\${entry.key}", $util.dynamodb.toDynamoDB($entry.value)) )
+            #end
+        #end
+        #set( $expression = "" )
+        #if( !$\{expSet.isEmpty()} )
+            #set( $expression = "SET" )
+            #foreach( $entry in $expSet.entrySet() )
+                #set( $expression = "\${expression} \${entry.key} = \${entry.value}" )
+                #if ( $foreach.hasNext )
+                    #set( $expression = "\${expression}," )
+                #end
+            #end
+        #end
+        {
+            "version" : "2018-05-29",
+            "operation" : "UpdateItem",
+            "key" : {
+              "PK": $util.dynamodb.toDynamoDBJson($PK),
+              "SK": $util.dynamodb.toDynamoDBJson("none"),
+            },
+            "update" : {
+                "expression": "$expression"
+                #if( !$\{expNames.isEmpty()} )
+                , "expressionNames": $utils.toJson($expNames)
+                #end
+                #if( !$\{expValues.isEmpty()} )
+                , "expressionValues": $utils.toJson($expValues)
+                #end
+            }
+        }`),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(
+        "$util.toJson($ctx.result)",
+      ),
+    });
+
+    // updateDocumentSection — atomic section update within Map operations (IAM auth, backend only)
+    trackingTableDataSource.createResolver("UpdateDocumentSectionResolver", {
+      typeName: "Mutation",
+      fieldName: "updateDocumentSection",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        #set( $PK = "doc#\${ctx.args.input.ObjectKey}" )
+        #set( $idx = $ctx.args.input.SectionIndex )
+        {
+            "version" : "2018-05-29",
+            "operation" : "UpdateItem",
+            "key" : {
+              "PK": $util.dynamodb.toDynamoDBJson($PK),
+              "SK": $util.dynamodb.toDynamoDBJson("none"),
+            },
+            "update" : {
+                "expression": "SET Sections[$idx] = :section",
+                "expressionValues": {
+                    ":section": $util.dynamodb.toDynamoDBJson($ctx.args.input.Section)
+                }
+            }
+        }`),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(
+        "$util.toJson($ctx.result)",
+      ),
+    });
+
     trackingTableDataSource.createResolver("GetDocumentResolver", {
       typeName: "Query",
       fieldName: "getDocument",
@@ -488,45 +577,71 @@ export class ProcessingEnvironmentApi
       ),
     });
 
-    trackingTableDataSource.createResolver("ListDocumentResolver", {
+    // ========================================
+    // GSI-based listDocuments and getDocumentCount (replaces VTL Scan)
+    // ========================================
+    const listDocumentsGSIFunction =
+      new functions.ListDocumentsGSIResolverFunction(
+        this,
+        "ListDocumentsGSIResolverFunction",
+        {
+          trackingTable: this._trackingTable,
+          usersTable: this._usersTable,
+          encryptionKey: this._encryptionKey,
+          ...this._vpcConfiguration,
+        },
+      );
+
+    const listDocumentsGSIDataSource = this.addLambdaDataSource(
+      "ListDocumentsGSIDataSource",
+      listDocumentsGSIFunction,
+      {
+        name: "ListDocumentsGSIDataSource",
+        description:
+          "Lambda function for GSI-based document listing and counting",
+      },
+    );
+
+    listDocumentsGSIDataSource.createResolver("ListDocumentResolver", {
       typeName: "Query",
       fieldName: "listDocuments",
-      requestMappingTemplate: appsync.MappingTemplate.fromString(`
-        {
-            "version": "2018-05-29",
-            "operation": "Scan",
-            "filter": {
-                #if($context.arguments.startDateTime && $context.arguments.endDateTime)
-                    "expression": "InitialEventTime BETWEEN :startDateTime AND :endDateTime",
-                    "expressionValues": {
-                        ":startDateTime": { "S": "$context.arguments.startDateTime" },
-                        ":endDateTime": { "S": "$context.arguments.endDateTime" }
-                    }
-                #elseif($context.arguments.startDateTime)
-                    "expression": "InitialEventTime >= :startDateTime",
-                    "expressionValues": {
-                        ":startDateTime": { "S": "$context.arguments.startDateTime" }
-                    }
-                #elseif($context.arguments.endDateTime)
-                    "expression": "InitialEventTime <= :endDateTime",
-                    "expressionValues": {
-                        ":endDateTime": { "S": "$context.arguments.endDateTime" }
-                    }
-                #end
-            },
-            #if($context.prev.result)
-                "nextToken": "$context.prev.result.nextToken",
-            #end
-            "limit": 50,
-            "consistentRead": false,
-            "select": "ALL_ATTRIBUTES"
-        }`),
-      responseMappingTemplate: appsync.MappingTemplate.fromString(`
-            {
-                "Documents": $util.toJson($ctx.result.items),
-                "nextToken": $util.toJson($ctx.result.nextToken)
-            }`),
     });
+
+    listDocumentsGSIDataSource.createResolver("GetDocumentCountResolver", {
+      typeName: "Query",
+      fieldName: "getDocumentCount",
+    });
+
+    // ========================================
+    // listDocumentsByDateRange — separate Lambda resolver
+    // ========================================
+    const listDocumentsRangeFunction =
+      new functions.ListDocumentsByDateRangeResolverFunction(
+        this,
+        "ListDocumentsByDateRangeResolverFunction",
+        {
+          trackingTable: this._trackingTable,
+          encryptionKey: this._encryptionKey,
+          ...this._vpcConfiguration,
+        },
+      );
+
+    const listDocumentsRangeDataSource = this.addLambdaDataSource(
+      "ListDocumentsByDateRangeDataSource",
+      listDocumentsRangeFunction,
+      {
+        name: "ListDocumentsByDateRangeDataSource",
+        description: "Lambda function for listing documents by date range",
+      },
+    );
+
+    listDocumentsRangeDataSource.createResolver(
+      "ListDocumentsByDateRangeResolver",
+      {
+        typeName: "Query",
+        fieldName: "listDocumentsByDateRange",
+      },
+    );
 
     trackingTableDataSource.createResolver("ListDocumentDateHourResolver", {
       typeName: "Query",
@@ -600,6 +715,43 @@ export class ProcessingEnvironmentApi
             "Documents": $util.toJson($ctx.result.items),
             "nextToken": $util.toJson($ctx.result.nextToken)
         }`),
+    });
+
+    // ========================================
+    // Subscription resolvers (None data source)
+    // ========================================
+    const subscriptionDataSource = this.addNoneDataSource(
+      "SubscriptionNoneDataSource",
+      {
+        name: "SubscriptionNoneDataSource",
+        description: "None data source for subscription resolvers",
+      },
+    );
+
+    subscriptionDataSource.createResolver("OnCreateDocumentResolver", {
+      typeName: "Subscription",
+      fieldName: "onCreateDocument",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "version": "2018-05-29",
+          "payload": {}
+        }`),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(
+        "$util.toJson($context.result)",
+      ),
+    });
+
+    subscriptionDataSource.createResolver("OnUpdateDocumentResolver", {
+      typeName: "Subscription",
+      fieldName: "onUpdateDocument",
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "version": "2018-05-29",
+          "payload": {}
+        }`),
+      responseMappingTemplate: appsync.MappingTemplate.fromString(
+        "$util.toJson($context.result)",
+      ),
     });
   }
 

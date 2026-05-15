@@ -63,6 +63,9 @@
           "spawn": "bundle:handler:agentcore_gateway_manager"
         },
         {
+          "spawn": "bundle:handler:backfill_gsi_attributes"
+        },
+        {
           "spawn": "bundle:handler:calculate_capacity"
         },
         {
@@ -108,6 +111,9 @@
           "spawn": "bundle:handler:queue_sender"
         },
         {
+          "spawn": "bundle:handler:read_previous_idp_pattern"
+        },
+        {
           "spawn": "bundle:handler:save_reporting_data"
         },
         {
@@ -133,6 +139,9 @@
         },
         {
           "spawn": "bundle:handler:user_sync"
+        },
+        {
+          "spawn": "bundle:handler:w2_dataset_deployer"
         },
         {
           "spawn": "bundle:handler:workflow_tracker"
@@ -186,6 +195,9 @@
           "spawn": "bundle:handler:list_available_agents"
         },
         {
+          "spawn": "bundle:handler:list_documents_gsi_resolver"
+        },
+        {
           "spawn": "bundle:handler:list_documents_range_resolver"
         },
         {
@@ -220,6 +232,51 @@
         },
         {
           "spawn": "bundle:system-defaults"
+        },
+        {
+          "spawn": "bundle:unified:lambdas"
+        },
+        {
+          "spawn": "bundle:unified:statemachine"
+        },
+        {
+          "spawn": "bundle:unified:schema"
+        },
+        {
+          "spawn": "bundle:unified:config:bank-statement-sample"
+        },
+        {
+          "spawn": "bundle:unified:config:docsplit"
+        },
+        {
+          "spawn": "bundle:unified:config:fake-w2"
+        },
+        {
+          "spawn": "bundle:unified:config:healthcare-multisection-package"
+        },
+        {
+          "spawn": "bundle:unified:config:lending-package-sample"
+        },
+        {
+          "spawn": "bundle:unified:config:lending-package-sample-govcloud"
+        },
+        {
+          "spawn": "bundle:unified:config:ocr-benchmark"
+        },
+        {
+          "spawn": "bundle:unified:config:realkie-fcc-verified"
+        },
+        {
+          "spawn": "bundle:unified:config:rule-extraction"
+        },
+        {
+          "spawn": "bundle:unified:config:rule-validation"
+        },
+        {
+          "spawn": "bundle:unified:config:rvl-cdip"
+        },
+        {
+          "spawn": "bundle:unified:config:rvl-cdip-with-few-shot-examples"
         }
       ]
     },
@@ -308,6 +365,17 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/src/lambda/agentcore_gateway_manager/ assets/lambdas/agentcore_gateway_manager/."
+        }
+      ]
+    },
+    "bundle:handler:backfill_gsi_attributes": {
+      "name": "bundle:handler:backfill_gsi_attributes",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/backfill_gsi_attributes"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/backfill_gsi_attributes/ assets/lambdas/backfill_gsi_attributes/."
         }
       ]
     },
@@ -564,6 +632,17 @@
         }
       ]
     },
+    "bundle:handler:list_documents_gsi_resolver": {
+      "name": "bundle:handler:list_documents_gsi_resolver",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/list_documents_gsi_resolver"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/nested/appsync/src/lambda/list_documents_gsi_resolver/ assets/lambdas/list_documents_gsi_resolver/."
+        }
+      ]
+    },
     "bundle:handler:list_documents_range_resolver": {
       "name": "bundle:handler:list_documents_range_resolver",
       "steps": [
@@ -649,6 +728,17 @@
         },
         {
           "exec": "rsync -rLct ../../../sources/src/lambda/queue_sender/ assets/lambdas/queue_sender/."
+        }
+      ]
+    },
+    "bundle:handler:read_previous_idp_pattern": {
+      "name": "bundle:handler:read_previous_idp_pattern",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/read_previous_idp_pattern"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/read_previous_idp_pattern/ assets/lambdas/read_previous_idp_pattern/."
         }
       ]
     },
@@ -817,6 +907,17 @@
         }
       ]
     },
+    "bundle:handler:w2_dataset_deployer": {
+      "name": "bundle:handler:w2_dataset_deployer",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/w2_dataset_deployer"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/src/lambda/w2_dataset_deployer/ assets/lambdas/w2_dataset_deployer/."
+        }
+      ]
+    },
     "bundle:handler:workflow_tracker": {
       "name": "bundle:handler:workflow_tracker",
       "steps": [
@@ -850,6 +951,171 @@
         }
       ]
     },
+    "bundle:unified:config:bank-statement-sample": {
+      "name": "bundle:unified:config:bank-statement-sample",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/bank-statement-sample"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/bank-statement-sample/config.yaml assets/configs/unified/bank-statement-sample/."
+        }
+      ]
+    },
+    "bundle:unified:config:docsplit": {
+      "name": "bundle:unified:config:docsplit",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/docsplit"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/docsplit/config.yaml assets/configs/unified/docsplit/."
+        }
+      ]
+    },
+    "bundle:unified:config:fake-w2": {
+      "name": "bundle:unified:config:fake-w2",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/fake-w2"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/fake-w2/config.yaml assets/configs/unified/fake-w2/."
+        }
+      ]
+    },
+    "bundle:unified:config:healthcare-multisection-package": {
+      "name": "bundle:unified:config:healthcare-multisection-package",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/healthcare-multisection-package"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/healthcare-multisection-package/config.yaml assets/configs/unified/healthcare-multisection-package/."
+        }
+      ]
+    },
+    "bundle:unified:config:lending-package-sample": {
+      "name": "bundle:unified:config:lending-package-sample",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/lending-package-sample"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/lending-package-sample/config.yaml assets/configs/unified/lending-package-sample/."
+        }
+      ]
+    },
+    "bundle:unified:config:lending-package-sample-govcloud": {
+      "name": "bundle:unified:config:lending-package-sample-govcloud",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/lending-package-sample-govcloud"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/lending-package-sample-govcloud/config.yaml assets/configs/unified/lending-package-sample-govcloud/."
+        }
+      ]
+    },
+    "bundle:unified:config:ocr-benchmark": {
+      "name": "bundle:unified:config:ocr-benchmark",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/ocr-benchmark"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/ocr-benchmark/config.yaml assets/configs/unified/ocr-benchmark/."
+        }
+      ]
+    },
+    "bundle:unified:config:realkie-fcc-verified": {
+      "name": "bundle:unified:config:realkie-fcc-verified",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/realkie-fcc-verified"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/realkie-fcc-verified/config.yaml assets/configs/unified/realkie-fcc-verified/."
+        }
+      ]
+    },
+    "bundle:unified:config:rule-extraction": {
+      "name": "bundle:unified:config:rule-extraction",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/rule-extraction"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/rule-extraction/config.yaml assets/configs/unified/rule-extraction/."
+        }
+      ]
+    },
+    "bundle:unified:config:rule-validation": {
+      "name": "bundle:unified:config:rule-validation",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/rule-validation"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/rule-validation/config.yaml assets/configs/unified/rule-validation/."
+        }
+      ]
+    },
+    "bundle:unified:config:rvl-cdip": {
+      "name": "bundle:unified:config:rvl-cdip",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/rvl-cdip"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/rvl-cdip/config.yaml assets/configs/unified/rvl-cdip/."
+        }
+      ]
+    },
+    "bundle:unified:config:rvl-cdip-with-few-shot-examples": {
+      "name": "bundle:unified:config:rvl-cdip-with-few-shot-examples",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/configs/unified/rvl-cdip-with-few-shot-examples"
+        },
+        {
+          "exec": "rsync -rLct ../../../sources/config_library/unified/rvl-cdip-with-few-shot-examples/config.yaml assets/configs/unified/rvl-cdip-with-few-shot-examples/."
+        }
+      ]
+    },
+    "bundle:unified:lambdas": {
+      "name": "bundle:unified:lambdas",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/lambdas/unified"
+        },
+        {
+          "exec": "rsync -av ../../../sources/patterns/unified/src/ assets/lambdas/unified/"
+        }
+      ]
+    },
+    "bundle:unified:schema": {
+      "name": "bundle:unified:schema",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/schemas/unified"
+        },
+        {
+          "exec": "cp ../../../schemas/unified/schema.json assets/schemas/unified/schema.json"
+        }
+      ]
+    },
+    "bundle:unified:statemachine": {
+      "name": "bundle:unified:statemachine",
+      "steps": [
+        {
+          "exec": "mkdir -p assets/statemachine/unified"
+        },
+        {
+          "exec": "rsync -av ../../../sources/patterns/unified/statemachine/ assets/statemachine/unified/"
+        }
+      ]
+    },
     "bundle:webapp:ui": {
       "name": "bundle:webapp:ui",
       "steps": [
@@ -868,7 +1134,7 @@
       },
       "steps": [
         {
-          "exec": "npx npm-check-updates@18 --upgrade --target=minor --peer --no-deprecated --dep=dev,peer,prod,optional --filter=@aws-cdk/cx-api,@types/jest,@types/node,cdk-nag,eslint-config-prettier,eslint-import-resolver-typescript,eslint-plugin-import,eslint-plugin-prettier,jest,jsii-diff,jsii-docgen,jsii-pacmak,prettier,ts-jest,typescript,yaml"
+          "exec": "npx npm-check-updates@18 --upgrade --target=minor --peer --no-deprecated --dep=dev,peer,prod,optional --filter=@aws-cdk/cx-api,@types/jest,@types/node,cdk-nag,eslint-config-prettier,eslint-import-resolver-typescript,eslint-plugin-import,eslint-plugin-prettier,jest,jsii-diff,jsii-docgen,jsii-pacmak,prettier,ts-jest,ts-node,typescript,yaml"
         }
       ]
     },
@@ -946,6 +1212,78 @@
       "steps": [
         {
           "exec": "yarn install --check-files --frozen-lockfile"
+        }
+      ]
+    },
+    "integ:snapshot-all": {
+      "name": "integ:snapshot-all",
+      "description": "update snapshot for all integration tests",
+      "steps": [
+        {
+          "spawn": "integ:unified-processor:snapshot"
+        }
+      ]
+    },
+    "integ:unified-processor:assert": {
+      "name": "integ:unified-processor:assert",
+      "description": "assert the snapshot of integration test 'unified-processor'",
+      "steps": [
+        {
+          "exec": "[ -d \"test/integ/unified-processor.integ.snapshot\" ] || (echo \"No snapshot available for integration test 'unified-processor'. Run 'projen integ:unified-processor:deploy' to capture.\" && exit 1)"
+        },
+        {
+          "exec": "cdk synth --app \"ts-node -P tsconfig.dev.json test/integ/unified-processor.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata -o test/integ/.tmp/unified-processor.integ/assert.cdk.out > /dev/null"
+        },
+        {
+          "exec": "diff -r -x asset.* -x cdk.out -x manifest.json -x tree.json test/integ/unified-processor.integ.snapshot/ test/integ/.tmp/unified-processor.integ/assert.cdk.out/"
+        }
+      ]
+    },
+    "integ:unified-processor:deploy": {
+      "name": "integ:unified-processor:deploy",
+      "description": "deploy integration test 'unified-processor' and capture snapshot",
+      "steps": [
+        {
+          "exec": "rm -fr test/integ/.tmp/unified-processor.integ/deploy.cdk.out"
+        },
+        {
+          "exec": "cdk deploy --app \"ts-node -P tsconfig.dev.json test/integ/unified-processor.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata '**' --require-approval=never -o test/integ/.tmp/unified-processor.integ/deploy.cdk.out"
+        },
+        {
+          "exec": "rm -fr test/integ/unified-processor.integ.snapshot"
+        },
+        {
+          "exec": "mv test/integ/.tmp/unified-processor.integ/deploy.cdk.out test/integ/unified-processor.integ.snapshot"
+        },
+        {
+          "spawn": "integ:unified-processor:destroy"
+        }
+      ]
+    },
+    "integ:unified-processor:destroy": {
+      "name": "integ:unified-processor:destroy",
+      "description": "destroy integration test 'unified-processor'",
+      "steps": [
+        {
+          "exec": "cdk destroy --app test/integ/unified-processor.integ.snapshot '**' --no-version-reporting"
+        }
+      ]
+    },
+    "integ:unified-processor:snapshot": {
+      "name": "integ:unified-processor:snapshot",
+      "description": "update snapshot for integration test \"unified-processor\"",
+      "steps": [
+        {
+          "exec": "cdk synth --app \"ts-node -P tsconfig.dev.json test/integ/unified-processor.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata -o test/integ/unified-processor.integ.snapshot > /dev/null"
+        }
+      ]
+    },
+    "integ:unified-processor:watch": {
+      "name": "integ:unified-processor:watch",
+      "description": "watch integration test 'unified-processor' (without updating snapshots)",
+      "steps": [
+        {
+          "exec": "cdk watch --app \"ts-node -P tsconfig.dev.json test/integ/unified-processor.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata '**' -o test/integ/.tmp/unified-processor.integ/deploy.cdk.out"
         }
       ]
     },
@@ -1045,6 +1383,9 @@
         },
         {
           "spawn": "eslint"
+        },
+        {
+          "spawn": "integ:unified-processor:assert"
         }
       ]
     },

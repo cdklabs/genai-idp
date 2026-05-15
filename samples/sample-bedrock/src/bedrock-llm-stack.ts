@@ -171,11 +171,16 @@ export class BedrockLlmStack extends Stack {
       },
     });
 
+    const configurationBucket = new Bucket(this, "ConfigurationBucket", {
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
     // 4.    Creating the processor, the actual engine for performing the IDP function.
 
     // 4.1   Creating the Bedrock LLM processor that uses Amazon Bedrock foundation models for document processing.
     const processor = new BedrockLlmProcessor(this, "Processor", {
       environment,
+      configurationBucket,
       configuration: BedrockLlmProcessorConfiguration.lendingPackageSample(),
     });
 

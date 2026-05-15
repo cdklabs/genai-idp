@@ -100,9 +100,14 @@ export class RvlCdipStack extends Stack {
       instanceType: InstanceType.G5_2XLARGE,
     });
 
+    const configurationBucket = new Bucket(this, "ConfigurationBucket", {
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
     // 4.3   Creating the processor that runs document classification via the SageMaker UDOP endpoint.
     const processor = new SagemakerUdopProcessor(this, "Processor", {
       environment,
+      configurationBucket,
       classifierEndpoint: classifier.endpoint,
       configuration: SagemakerUdopProcessorConfiguration.rvlCdipPackageSample(),
     });

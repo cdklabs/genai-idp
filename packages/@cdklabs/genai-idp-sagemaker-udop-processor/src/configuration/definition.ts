@@ -3,296 +3,115 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-import path from "path";
-import { IBedrockInvokable as IInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
+import { IBedrockInvokable } from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import {
-  ConfigurationDefinition,
-  ConfigurationDefinitionLoader,
   IConfigurationDefinition,
-  modelNameToInvokable,
-  mergeConfigWithDefaults,
+  IInvokable,
+  IUnifiedDocumentProcessorConfigurationDefinition,
+  Invokable,
+  UnifiedDocumentProcessorConfigurationDefinition,
 } from "@cdklabs/genai-idp";
-import { Arn, ArnFormat } from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 
 /**
  * Options for configuring the SageMaker UDOP processor configuration definition.
- * Allows customization of extraction, evaluation, and summarization stages.
  */
 export interface SagemakerUdopProcessorConfigurationDefinitionOptions {
-  /**
-   * Optional configuration for the extraction stage.
-   * Defines the model and parameters used for information extraction.
-   */
-  readonly extractionModel?: IInvokable;
-
-  /**
-   * Optional configuration for the evaluation stage.
-   * Defines the model and parameters used for evaluating extraction accuracy.
-   */
-  readonly evaluationModel?: IInvokable;
-
-  /**
-   * Optional configuration for the summarization stage.
-   * Defines the model and parameters used for generating document summaries.
-   */
-  readonly summarizationModel?: IInvokable;
-
-  /**
-   * Optional invokable model used for evaluating assessment results.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * Used to assess the quality and accuracy of extracted information by
-   * comparing assessment results against expected values.
-   *
-   * @default - as defined in the definition file
-   */
-  readonly assessmentModel?: IInvokable;
-
-  /**
-   * Optional custom prompt generator Lambda function.
-   * When provided, the function ARN will be injected into the configuration
-   * at `extraction.custom_prompt_lambda_arn`.
-   */
+  /** Optional model for the extraction stage. */
+  readonly extractionModel?: IBedrockInvokable;
+  /** Optional model for the evaluation stage. */
+  readonly evaluationModel?: IBedrockInvokable;
+  /** Optional model for the summarization stage. */
+  readonly summarizationModel?: IBedrockInvokable;
+  /** Optional model for the assessment stage. */
+  readonly assessmentModel?: IBedrockInvokable;
+  /** Optional custom prompt generator Lambda function. */
   readonly customPromptGeneratorFunction?: lambda.IFunction;
 }
 
 /**
  * Interface for SageMaker UDOP processor configuration definition.
- * Defines the structure and capabilities of configuration for SageMaker UDOP processing.
- *
- * @deprecated This processor pattern is deprecated and will be removed in v0.5.0.
- * Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
  */
 export interface ISagemakerUdopProcessorConfigurationDefinition extends IConfigurationDefinition {
-  /**
-   * The invokable model used for information extraction.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * Extracts structured data from documents based on defined schemas,
-   * transforming unstructured content into structured information.
-   */
-  readonly extractionModel: IInvokable;
-
-  /**
-   * Optional invokable model used for evaluating extraction results.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * Used to assess the quality and accuracy of extracted information by
-   * comparing extraction results against expected values.
-   */
-  readonly evaluationModel?: IInvokable;
-
-  /**
-   * Optional invokable model used for document summarization.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   * When provided, enables automatic generation of document summaries
-   * that capture key information from processed documents.
-   */
-  readonly summarizationModel?: IInvokable;
-
-  /**
-   * Optional invokable model used for document assessment.
-   * Can be a Bedrock foundation model, Bedrock inference profile, or custom model.
-   */
-  readonly assessmentModel?: IInvokable;
-
-  /**
-   * Optional custom prompt generator Lambda function.
-   * When provided, this function will be invoked during extraction to customize prompts.
-   * This is either the function provided via configuration options, or imported from
-   * the ARN specified in the configuration file.
-   *
-   * @default - undefined
-   */
+  readonly extractionInferenceProvider?: IInvokable;
+  readonly evaluationModel?: IBedrockInvokable;
+  readonly summarizationInferenceProvider?: IInvokable;
+  readonly assessmentInferenceProvider?: IInvokable;
+  readonly ocrBackend: "textract" | "bedrock" | "none";
   readonly customPromptGenerator?: lambda.IFunction;
 }
 
 /**
  * Configuration definition for SageMaker UDOP document processing.
- * Provides methods to create and customize configuration for SageMaker UDOP processing.
  *
- * @deprecated This processor pattern is deprecated and will be removed in v0.5.0.
- * Please migrate to Pattern 1 (BDA Processor) or Pattern 2 (Bedrock LLM Processor).
+ * Delegates to `UnifiedDocumentProcessorConfigurationDefinition` for loading
+ * configs from the unified config library. Maps SageMaker-specific options
+ * to unified options. Classification is handled by the SageMaker endpoint
+ * via LambdaHook, not by a Bedrock model.
  */
 export class SagemakerUdopProcessorConfigurationDefinition {
-  /**
-   * Creates a default configuration definition for SageMaker UDOP processing.
-   * This configuration includes basic settings for extraction, evaluation, and summarization
-   * when using SageMaker for document classification.
-   *
-   * @param options Optional customization for processing stages
-   * @returns A configuration definition with default settings
-   */
+  /** RVL-CDIP package sample preset. */
   static rvlCdipPackageSample(
     options?: SagemakerUdopProcessorConfigurationDefinitionOptions,
-  ) {
-    return this._fromFile(
-      path.join(
-        __dirname,
-        "..",
-        "..",
-        "assets",
-        "configs",
-        "rvl-cdip-package-sample",
-        "config.yaml",
+  ): ISagemakerUdopProcessorConfigurationDefinition {
+    return this._wrap(
+      UnifiedDocumentProcessorConfigurationDefinition.rvlCdip(
+        this._toUnifiedOptions(options),
       ),
       options,
     );
   }
 
-  /**
-   * Creates a configuration definition from a YAML file.
-   * Allows users to provide custom configuration files for document processing.
-   *
-   * @param filePath Path to the YAML configuration file
-   * @param options Optional customization for processing stages
-   * @returns A configuration definition loaded from the file
-   */
+  /** Creates a configuration from a custom YAML file. */
   static fromFile(
     filePath: string,
     options?: SagemakerUdopProcessorConfigurationDefinitionOptions,
   ): ISagemakerUdopProcessorConfigurationDefinition {
-    return this._fromFile(filePath, options);
+    return this._wrap(
+      UnifiedDocumentProcessorConfigurationDefinition.fromFile(
+        filePath,
+        this._toUnifiedOptions(options),
+      ),
+      options,
+    );
   }
 
-  /**
-   * Creates a configuration definition from a file.
-   *
-   * @param filePath Path to the configuration file
-   * @param options Optional customization for processing stages
-   * @returns A loaded configuration definition
-   * @private
-   */
-  private static _fromFile(
-    filePath: string,
+  /** Maps SageMaker options to unified options. Classification is excluded — handled by LambdaHook. */
+  private static _toUnifiedOptions(
     options?: SagemakerUdopProcessorConfigurationDefinitionOptions,
+  ) {
+    if (!options) return undefined;
+    return {
+      extractionInvokable: options.extractionModel
+        ? Invokable.fromModel(options.extractionModel)
+        : undefined,
+      assessmentInvokable: options.assessmentModel
+        ? Invokable.fromModel(options.assessmentModel)
+        : undefined,
+      summarizationInvokable: options.summarizationModel
+        ? Invokable.fromModel(options.summarizationModel)
+        : undefined,
+      evaluationModel: options.evaluationModel,
+      customPromptGenerator: options.customPromptGeneratorFunction,
+    };
+  }
+
+  /** Wraps a unified definition with SageMaker-specific interface. */
+  private static _wrap(
+    unified: IUnifiedDocumentProcessorConfigurationDefinition,
+    _options?: SagemakerUdopProcessorConfigurationDefinitionOptions,
   ): ISagemakerUdopProcessorConfigurationDefinition {
-    let _extractionInvokable: IInvokable;
-    let _evaluationInvokable: IInvokable | undefined;
-    let _assessmentInvokable: IInvokable | undefined;
-    let _summarizationInvokable: IInvokable | undefined;
-    let _customPromptGenerator: lambda.IFunction | undefined;
-    let _customPromptLambdaArn: string | undefined;
-
-    // Load user config from file
-    const userConfig = ConfigurationDefinitionLoader.fromFile(filePath);
-
-    // Merge with system defaults for pattern-3
-    const mergedConfig = mergeConfigWithDefaults(userConfig, "pattern-3");
-
-    const def = new ConfigurationDefinition({
-      configurationObject: mergedConfig,
-      transforms: [
-        {
-          flatPath: "assessment.model",
-          transform: (modelName?: string) => {
-            if (options?.assessmentModel) {
-              _assessmentInvokable = options.assessmentModel;
-              return Arn.split(
-                options.assessmentModel.invokableArn,
-                ArnFormat.SLASH_RESOURCE_NAME,
-              ).resourceName;
-            } else {
-              if (modelName) {
-                _assessmentInvokable = modelNameToInvokable(modelName);
-              }
-              return modelName;
-            }
-          },
-        },
-        {
-          flatPath: "extraction.model",
-          transform: (modelName?: string) => {
-            if (options?.extractionModel) {
-              _extractionInvokable = options.extractionModel;
-              return Arn.split(
-                options.extractionModel.invokableArn,
-                ArnFormat.SLASH_RESOURCE_NAME,
-              ).resourceName;
-            } else {
-              if (modelName) {
-                _extractionInvokable = modelNameToInvokable(modelName);
-              } else {
-                throw new Error(
-                  "extraction.model is required in configuration",
-                );
-              }
-              return modelName;
-            }
-          },
-        },
-        {
-          flatPath: "evaluation.llm_method.model",
-          transform: (modelName?: string) => {
-            if (options?.evaluationModel) {
-              _evaluationInvokable = options.evaluationModel;
-              return Arn.split(
-                options.evaluationModel.invokableArn,
-                ArnFormat.SLASH_RESOURCE_NAME,
-              ).resourceName;
-            } else {
-              if (modelName) {
-                _evaluationInvokable = modelNameToInvokable(modelName);
-              }
-              return modelName;
-            }
-          },
-        },
-        {
-          flatPath: "summarization.model",
-          transform: (modelName?: string) => {
-            if (options?.summarizationModel) {
-              _summarizationInvokable = options?.summarizationModel;
-              return Arn.split(
-                options?.summarizationModel.invokableArn,
-                ArnFormat.SLASH_RESOURCE_NAME,
-              ).resourceName;
-            } else {
-              if (modelName) {
-                _summarizationInvokable = modelNameToInvokable(modelName);
-              }
-              return modelName;
-            }
-          },
-        },
-        {
-          flatPath: "extraction.custom_prompt_lambda_arn",
-          transform: (configValue?: string) => {
-            // If user provided a Lambda function via options, use it and store its ARN
-            if (options?.customPromptGeneratorFunction) {
-              _customPromptGenerator = options.customPromptGeneratorFunction;
-              _customPromptLambdaArn =
-                options.customPromptGeneratorFunction.functionArn;
-              return _customPromptLambdaArn;
-            }
-            // Otherwise, store the ARN from config file (will be imported by processor)
-            _customPromptLambdaArn = configValue;
-            return configValue;
-          },
-        },
-      ],
-    });
-
-    class LoadedDefinition implements ISagemakerUdopProcessorConfigurationDefinition {
-      public readonly extractionModel = _extractionInvokable;
-      public readonly summarizationModel = _summarizationInvokable;
-      public readonly evaluationModel = _evaluationInvokable;
-      public readonly assessmentModel = _assessmentInvokable;
-      public readonly customPromptGenerator = _customPromptGenerator;
-      raw(): { [key: string]: any } {
-        return def.raw();
-      }
-
-      validate() {
-        return def.validate();
-      }
-
-      isLegacyFormat(): boolean {
-        return def.isLegacyFormat();
-      }
-
-      isJsonSchemaFormat(): boolean {
-        return def.isJsonSchemaFormat();
-      }
-    }
-    return new LoadedDefinition();
+    return {
+      extractionInferenceProvider: unified.extractionInferenceProvider,
+      evaluationModel: unified.evaluationModel,
+      summarizationInferenceProvider: unified.summarizationInferenceProvider,
+      assessmentInferenceProvider: unified.assessmentInferenceProvider,
+      ocrBackend: unified.ocrBackend,
+      customPromptGenerator: unified.customPromptGenerator,
+      raw: () => unified.raw(),
+      validate: () => unified.validate(),
+      isLegacyFormat: () => unified.isLegacyFormat(),
+      isJsonSchemaFormat: () => unified.isJsonSchemaFormat(),
+    };
   }
 }

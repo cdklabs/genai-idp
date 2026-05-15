@@ -9,15 +9,12 @@ import { ProcessingEnvironment } from "@cdklabs/genai-idp";
 import { App, Stack } from "aws-cdk-lib";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import { BdaProcessor, BdaProcessorConfiguration } from "../../src";
-import { MockDataAutomationProject } from "../test-helpers";
 
 describe("BdaProcessor - Optional Features", () => {
   let app: App;
   let stack: Stack;
-  let inputBucket: Bucket;
-  let outputBucket: Bucket;
-  let workingBucket: Bucket;
   let environment: ProcessingEnvironment;
+  let configurationBucket: Bucket;
 
   beforeEach(() => {
     app = new App({
@@ -30,363 +27,107 @@ describe("BdaProcessor - Optional Features", () => {
     stack = new Stack(app, "TestStack");
     expect(stack.bundlingRequired).toBe(false);
 
-    inputBucket = new Bucket(stack, "InputBucket");
-    outputBucket = new Bucket(stack, "OutputBucket");
-    workingBucket = new Bucket(stack, "WorkingBucket");
+    configurationBucket = new Bucket(stack, "ConfigurationBucket");
 
     environment = new ProcessingEnvironment(stack, "Environment", {
-      inputBucket,
-      outputBucket,
-      workingBucket,
+      inputBucket: new Bucket(stack, "InputBucket"),
+      outputBucket: new Bucket(stack, "OutputBucket"),
+      workingBucket: new Bucket(stack, "WorkingBucket"),
       metricNamespace: "TestNamespace",
     });
   });
 
-  describe("basic processor creation", () => {
-    test("creates processor with minimal configuration", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
+  describe("configuration presets", () => {
+    test("creates processor with lendingPackageSample", () => {
       const processor = new BdaProcessor(stack, "Processor", {
         environment,
-        configuration,
-        dataAutomationProject,
+        configurationBucket,
+        configuration: BdaProcessorConfiguration.lendingPackageSample(),
       });
-
       expect(processor).toBeDefined();
     });
 
-    test("creates processor with lendingPackageSampleGovCloud configuration", () => {
-      const configuration =
-        BdaProcessorConfiguration.lendingPackageSampleGovCloud();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const processor = new BdaProcessor(stack, "ProcessorGovCloud", {
+    test("creates processor with lendingPackageSampleGovCloud", () => {
+      const processor = new BdaProcessor(stack, "GovCloud", {
         environment,
-        configuration,
-        dataAutomationProject,
+        configurationBucket,
+        configuration: BdaProcessorConfiguration.lendingPackageSampleGovCloud(),
       });
-
       expect(processor).toBeDefined();
     });
 
-    test("creates processor with docSplit configuration", () => {
-      const configuration = BdaProcessorConfiguration.docSplit();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const processor = new BdaProcessor(stack, "ProcessorDocSplit", {
+    test("creates processor with docSplit", () => {
+      const processor = new BdaProcessor(stack, "DocSplit", {
         environment,
-        configuration,
-        dataAutomationProject,
+        configurationBucket,
+        configuration: BdaProcessorConfiguration.docSplit(),
       });
-
       expect(processor).toBeDefined();
     });
 
-    test("creates processor with ocrBenchmark configuration", () => {
-      const configuration = BdaProcessorConfiguration.ocrBenchmark();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const processor = new BdaProcessor(stack, "ProcessorOcrBenchmark", {
+    test("creates processor with ocrBenchmark", () => {
+      const processor = new BdaProcessor(stack, "OcrBenchmark", {
         environment,
-        configuration,
-        dataAutomationProject,
+        configurationBucket,
+        configuration: BdaProcessorConfiguration.ocrBenchmark(),
       });
-
       expect(processor).toBeDefined();
     });
 
-    test("creates processor with realkieFccVerified configuration", () => {
-      const configuration = BdaProcessorConfiguration.realkieFccVerified();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const processor = new BdaProcessor(stack, "ProcessorRealkieFcc", {
+    test("creates processor with realkieFccVerified", () => {
+      const processor = new BdaProcessor(stack, "RealkieFcc", {
         environment,
-        configuration,
-        dataAutomationProject,
+        configurationBucket,
+        configuration: BdaProcessorConfiguration.realkieFccVerified(),
       });
-
       expect(processor).toBeDefined();
     });
 
-    test("creates processor with rvlCdip configuration", () => {
-      const configuration = BdaProcessorConfiguration.rvlCdip();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const processor = new BdaProcessor(stack, "ProcessorRvlCdip", {
+    test("creates processor with rvlCdip", () => {
+      const processor = new BdaProcessor(stack, "RvlCdip", {
         environment,
-        configuration,
-        dataAutomationProject,
+        configurationBucket,
+        configuration: BdaProcessorConfiguration.rvlCdip(),
       });
-
       expect(processor).toBeDefined();
     });
   });
 
   describe("summarization model configuration", () => {
     test("accepts summarization model from options", () => {
-      const mockSummarizationModel =
-        bedrock.CrossRegionInferenceProfile.fromConfig({
-          geoRegion: bedrock.CrossRegionInferenceProfileRegion.US,
-          model: bedrock.BedrockFoundationModel.AMAZON_NOVA_PRO_V1,
-        });
-
-      const configuration = BdaProcessorConfiguration.lendingPackageSample({
-        summarizationModel: mockSummarizationModel,
-      });
-
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
       const processor = new BdaProcessor(stack, "Processor", {
         environment,
-        configuration,
-        dataAutomationProject,
-      });
-
-      expect(processor).toBeDefined();
-
-      // Verify the configuration was created with the summarization model
-      // The model is set in the definition, which is accessed through the configuration
-      // We can't call bind() again as it's already called in the processor constructor
-      // Instead, we verify the model was passed correctly by checking it was used
-      expect(mockSummarizationModel).toBeDefined();
-    });
-  });
-
-  describe("summarization guardrail configuration", () => {
-    test("works without summarization guardrail", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const processor = new BdaProcessor(stack, "Processor", {
-        environment,
-        configuration,
-        dataAutomationProject,
-      });
-
-      expect(processor).toBeDefined();
-    });
-
-    test("accepts summarization guardrail when provided", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      // Create a mock guardrail
-      const mockGuardrail = {
-        guardrailArn:
-          "arn:aws:bedrock:us-east-1:123456789012:guardrail/test-guardrail",
-        guardrailId: "test-guardrail-id",
-        guardrailVersion: "1",
-        grantApply: jest.fn(),
-        grant: jest.fn(),
-        metric: jest.fn(),
-        metricInvocations: jest.fn(),
-        metricInvocationLatency: jest.fn(),
-        metricInvocationClientErrors: jest.fn(),
-        metricInvocationServerErrors: jest.fn(),
-        metricInvocationThrottles: jest.fn(),
-        metricInputTokenCount: jest.fn(),
-        metricOutputTokenCount: jest.fn(),
-        metricInvocationInputTokenCount: jest.fn(),
-        metricInvocationOutputTokenCount: jest.fn(),
-        metricGuardrailAction: jest.fn(),
-        metricGuardrailAssessment: jest.fn(),
-      } as unknown as bedrock.IGuardrail;
-
-      const processor = new BdaProcessor(stack, "Processor", {
-        environment,
-        configuration,
-        dataAutomationProject,
-        summarizationGuardrail: mockGuardrail,
+        configurationBucket,
+        configuration: BdaProcessorConfiguration.lendingPackageSample({
+          summarizationModel: bedrock.CrossRegionInferenceProfile.fromConfig({
+            geoRegion: bedrock.CrossRegionInferenceProfileRegion.US,
+            model: bedrock.BedrockFoundationModel.AMAZON_NOVA_PRO_V1,
+          }),
+        }),
       });
 
       expect(processor).toBeDefined();
     });
   });
 
-  describe("evaluation baseline bucket configuration", () => {
-    test("works without evaluation baseline bucket", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const processor = new BdaProcessor(stack, "Processor", {
-        environment,
-        configuration,
-        dataAutomationProject,
-      });
-
-      expect(processor).toBeDefined();
-    });
-
-    test("accepts evaluation baseline bucket when provided", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const evaluationBucket = new Bucket(stack, "EvaluationBucket");
-
-      const processor = new BdaProcessor(stack, "Processor", {
-        environment,
-        configuration,
-        dataAutomationProject,
-        evaluationBaselineBucket: evaluationBucket,
-      });
-
-      expect(processor).toBeDefined();
-    });
-  });
-
-  describe("advanced configuration combinations", () => {
-    test("handles all optional features enabled together", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const evaluationBucket = new Bucket(stack, "EvaluationBucket");
-      const mockGuardrail = {
-        guardrailArn:
-          "arn:aws:bedrock:us-east-1:123456789012:guardrail/test-guardrail",
-        guardrailId: "test-guardrail-id",
-        guardrailVersion: "1",
-        grantApply: jest.fn(),
-        grant: jest.fn(),
-        metric: jest.fn(),
-        metricInvocations: jest.fn(),
-        metricInvocationLatency: jest.fn(),
-        metricInvocationClientErrors: jest.fn(),
-        metricInvocationServerErrors: jest.fn(),
-        metricInvocationThrottles: jest.fn(),
-        metricInputTokenCount: jest.fn(),
-        metricOutputTokenCount: jest.fn(),
-        metricInvocationInputTokenCount: jest.fn(),
-        metricInvocationOutputTokenCount: jest.fn(),
-        metricGuardrailAction: jest.fn(),
-        metricGuardrailAssessment: jest.fn(),
-      } as unknown as bedrock.IGuardrail;
-
-      const processor = new BdaProcessor(stack, "Processor", {
-        environment,
-        configuration,
-        dataAutomationProject,
-        maxProcessingConcurrency: 75,
-        summarizationGuardrail: mockGuardrail,
-        evaluationBaselineBucket: evaluationBucket,
-      });
-
-      expect(processor).toBeDefined();
-      expect(processor.maxProcessingConcurrency).toBe(75);
-    });
-
-    test("handles partial optional feature configuration", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const evaluationBucket = new Bucket(stack, "EvaluationBucket");
-
-      const processor = new BdaProcessor(stack, "Processor", {
-        environment,
-        configuration,
-        dataAutomationProject,
-        evaluationBaselineBucket: evaluationBucket,
-        // No guardrail
-      });
-
-      expect(processor).toBeDefined();
-    });
-  });
-
-  describe("configuration flexibility", () => {
+  describe("concurrency configuration", () => {
     test("supports different concurrency levels", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const lowConcurrencyProcessor = new BdaProcessor(
-        stack,
-        "LowConcurrency",
-        {
-          environment,
-          configuration,
-          dataAutomationProject,
-          maxProcessingConcurrency: 10,
-        },
-      );
-
-      const highConcurrencyProcessor = new BdaProcessor(
-        stack,
-        "HighConcurrency",
-        {
-          environment,
-          configuration,
-          dataAutomationProject,
-          maxProcessingConcurrency: 500,
-        },
-      );
-
-      expect(lowConcurrencyProcessor.maxProcessingConcurrency).toBe(10);
-      expect(highConcurrencyProcessor.maxProcessingConcurrency).toBe(500);
-    });
-
-    test("validates configuration binding", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const processor = new BdaProcessor(stack, "Processor", {
+      const low = new BdaProcessor(stack, "Low", {
         environment,
-        configuration,
-        dataAutomationProject,
+        configurationBucket,
+        configuration: BdaProcessorConfiguration.lendingPackageSample(),
+        maxProcessingConcurrency: 10,
       });
 
-      expect(processor).toBeDefined();
-      // Configuration should be bound during processor creation
-    });
-  });
-
-  describe("resource integration with optional features", () => {
-    test("integrates evaluation bucket with environment", () => {
-      const configuration = BdaProcessorConfiguration.lendingPackageSample();
-      const dataAutomationProject = new MockDataAutomationProject(
-        "arn:aws:bedrock:us-east-1:123456789012:data-automation-project/test-project",
-      );
-
-      const evaluationBucket = new Bucket(stack, "EvaluationBucket");
-
-      const processor = new BdaProcessor(stack, "Processor", {
+      const high = new BdaProcessor(stack, "High", {
         environment,
-        configuration,
-        dataAutomationProject,
-        evaluationBaselineBucket: evaluationBucket,
+        configurationBucket,
+        configuration: BdaProcessorConfiguration.lendingPackageSample(),
+        maxProcessingConcurrency: 500,
       });
 
-      expect(processor).toBeDefined();
-      expect(processor.environment).toBe(environment);
+      expect(low.maxProcessingConcurrency).toBe(10);
+      expect(high.maxProcessingConcurrency).toBe(500);
     });
   });
 });

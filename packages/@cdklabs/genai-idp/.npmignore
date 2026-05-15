@@ -22,4 +22,6 @@ tsconfig.tsbuildinfo
 /dist/changelog.md
 /dist/version.txt
 !.jsii
+test/integ/.tmp
+test/integ/unified-processor.integ.snapshot
 /.gitattributes

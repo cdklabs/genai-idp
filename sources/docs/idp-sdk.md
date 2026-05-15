@@ -1,3 +1,7 @@
+---
+title: "IDP SDK Documentation"
+---
+
 # IDP SDK Documentation
 
 The IDP SDK provides programmatic Python access to all IDP Accelerator capabilities with a clean, namespaced API.
@@ -941,6 +945,80 @@ else:
 ```
 
 **Note:** Cannot delete 'default' or currently active versions.
+
+---
+
+## Discovery Operations
+
+Discover document class schemas from sample documents using Amazon Bedrock.
+
+**Two modes:**
+- **Stack-connected** (with `stack_name`): Uses the stack's discovery config from DynamoDB, saves discovered schema to config
+- **Local** (without `stack_name`): Uses system default Bedrock settings, returns schema without saving
+
+### discovery.run()
+
+Analyze a document to generate a JSON Schema definition for a document class.
+
+```python
+# Local mode — no stack needed
+client = IDPClient()
+result = client.discovery.run("./invoice.pdf")
+print(json.dumps(result.json_schema, indent=2))
+
+# Stack mode — uses stack config, saves schema
+client = IDPClient(stack_name="my-stack")
+result = client.discovery.run("./w2-form.pdf")
+
+# With ground truth for better accuracy
+result = client.discovery.run(
+    "./invoice.pdf",
+    ground_truth_path="./invoice-expected.json"
+)
+
+# Save to specific config version
+result = client.discovery.run(
+    "./form.pdf",
+    config_version="v2"
+)
+```
+
+**Parameters:**
+- `document_path` (str, required): Local path to document file (PDF, PNG, JPG, TIFF)
+- `ground_truth_path` (str, optional): Path to JSON ground truth file
+- `config_version` (str, optional): Config version to save to (stack mode only)
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `DiscoveryResult` with `status`, `document_class`, `json_schema`, `config_version`, `document_path`, `error`
+
+### discovery.run_batch()
+
+Run discovery on multiple documents sequentially. Ground truth paths are
+auto-matched to documents by filename stem.
+
+```python
+# Batch without ground truth
+result = client.discovery.run_batch([
+    "./invoice.pdf",
+    "./w2-form.pdf",
+    "./paystub.png",
+])
+print(f"Succeeded: {result.succeeded}/{result.total}")
+
+# Batch with selective ground truth (matched by position)
+result = client.discovery.run_batch(
+    ["./invoice.pdf", "./w2.pdf"],
+    ground_truth_paths=[None, "./w2.json"],
+)
+```
+
+**Parameters:**
+- `document_paths` (list, required): List of local file paths
+- `ground_truth_paths` (list, optional): Parallel list of ground truth paths (use None for docs without GT)
+- `config_version` (str, optional): Config version to save to
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `DiscoveryBatchResult` with `total`, `succeeded`, `failed`, `results`
 
 ---
 

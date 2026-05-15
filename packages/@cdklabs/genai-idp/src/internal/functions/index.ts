@@ -15,4 +15,3 @@ export * from "./evaluation-function";
 // - test-* functions moved to src/test-studio/functions/
 // - agent-chat-* functions moved to src/agent-companion-chat/functions/
 // - agentcore-* functions moved to src/mcp-integration/functions/
-// - error-analyzer-* functions moved to src/error-analyzer/functions/

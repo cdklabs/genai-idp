@@ -3,633 +3,309 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-import * as path from "path";
-import * as bedrock from "@aws-cdk/aws-bedrock-alpha/bedrock";
 import {
   DocumentProcessorProps,
+  EvaluationFunction,
   IDocumentProcessor,
   IProcessingEnvironment,
-  SectionSplittingStrategy,
+  IUnifiedDocumentProcessor,
+  IUnifiedDocumentProcessorConfiguration,
+  IUnifiedDocumentProcessorConfigurationDefinition,
+  UnifiedDocumentProcessor,
 } from "@cdklabs/genai-idp";
-import { EvaluationFunction } from "@cdklabs/genai-idp/lib/internal/functions/evaluation-function";
-import * as cdk from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
-import * as events from "aws-cdk-lib/aws-events";
-import * as eventtargets from "aws-cdk-lib/aws-events-targets";
-import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
-import { BdaMetadataTable } from "./bda-metadata-table";
-import { IBdaProcessorConfiguration } from "./configuration/configuration";
-import { BdaProcessorConfigurationSchema } from "./configuration/schema";
-import { IDataAutomationProject } from "./data-automation-project";
-import { BdaCompletionFunction } from "./internal/bda-completion-function";
-import { BdaInvokeFunction } from "./internal/bda-invoke-function";
-import { ProcessResultsFunction } from "./internal/process-results-function";
-import { SummarizationFunction } from "./internal/summarization-function";
+import { IBdaProcessorConfiguration } from "./configuration";
+import {
+  Blueprint,
+  BlueprintType,
+  DataAutomationProject,
+  IDataAutomationProject,
+} from "./internal/bedrock";
+import { translateClassToBlueprint } from "./internal/blueprint-translator";
 
 /**
  * Interface for BDA document processor implementation.
  *
- * BDA Processor uses Amazon Bedrock Data Automation for document processing,
- * leveraging pre-built extraction capabilities for common document types.
- * This processor is ideal for standard documents with well-defined structures
- * and requires minimal custom code to implement.
- *
- * Use BDA Processor when:
- * - Processing standard document types like invoices, receipts, or forms
- * - You need a managed solution with minimal custom code
- * - You want to leverage Amazon Bedrock's pre-built extraction capabilities
+ * @since 0.5.2
  */
 export interface IBdaProcessor extends IDocumentProcessor {}
 
 /**
- * Configuration properties for the BDA document processor.
+ * Configuration properties for the BDA document processor facade.
  *
- * BDA Processor uses Amazon Bedrock Data Automation for document processing,
- * providing a managed solution for extracting structured data from documents
- * with minimal custom code. This processor leverages Amazon Bedrock's pre-built
- * document processing capabilities through Data Automation projects.
- *
- * BDA Processor is the simplest implementation path for common document types
- * that are well-supported by Amazon Bedrock's extraction capabilities.
+ * @since 0.5.2
  */
 export interface BdaProcessorProps extends DocumentProcessorProps {
   /**
    * Configuration for the BDA document processor.
-   * Provides customization options for the processing workflow,
-   * including schema definitions and evaluation settings.
+   * The `use_bda: true` flag is forced automatically.
    */
   readonly configuration: IBdaProcessorConfiguration;
 
   /**
-   * Optional Bedrock guardrail to apply to summarization model interactions.
-   * Helps ensure model outputs adhere to content policies and guidelines
-   * by filtering inappropriate content and enforcing usage policies.
-   *
-   * @default - No guardrail is applied
+   * The S3 bucket containing configuration files.
    */
-  readonly summarizationGuardrail?: bedrock.IGuardrail;
-
-  /**
-   * The Bedrock Data Automation Project used for document processing.
-   * This project defines the document processing workflow in Amazon Bedrock,
-   * including document types, extraction schemas, and processing rules.
-   */
-  readonly dataAutomationProject: IDataAutomationProject;
-
-  /**
-   * Optional S3 bucket containing baseline evaluation data for model performance assessment.
-   * Used to store reference documents and expected outputs for evaluating
-   * the accuracy and quality of document processing results.
-   *
-   * @default - No evaluation baseline bucket is configured
-   */
-  readonly evaluationBaselineBucket?: s3.IBucket;
-
-  /**
-   * Section splitting strategy configuration.
-   *
-   * Controls how multi-page documents are divided into sections during classification.
-   * This affects how documents of the same type are grouped together and processed.
-   *
-   * Options:
-   * - DISABLED: Entire document treated as single section with first detected class
-   * - PAGE: One section per page preventing automatic joining of same-type documents
-   * - LLM_DETERMINED: Uses LLM boundary detection with "Start"/"Continue" indicators
-   *
-   * @default SectionSplittingStrategy.LLM_DETERMINED
-   *    */
-  readonly sectionSplittingStrategy?: SectionSplittingStrategy;
-
-  /**
-   * Enable discovery integration for BDA blueprint generation.
-   *
-   * When enabled, allows the discovery module to automatically generate
-   * BDA blueprints from document samples, streamlining the configuration process.
-   *
-   * @default false
-   *    */
-  readonly enableDiscovery?: boolean;
+  readonly configurationBucket: s3.IBucket;
 }
 
 /**
- * BDA document processor using Amazon Bedrock Data Automation.
+ * BDA document processor facade over UnifiedDocumentProcessor.
  *
- * Orchestrates document processing through a Step Functions state machine that
- * invokes BDA for extraction, processes results, generates summaries, and
- * evaluates accuracy. Automatically attaches to the processing environment
- * for queue-based document ingestion.
+ * Creates BDA blueprints and a Data Automation Project from the configuration's
+ * class definitions at CDK synth time, then delegates all processing to the
+ * unified processor with `use_bda: true`.
  *
+ * @since 0.5.2
  */
 export class BdaProcessor extends Construct implements IBdaProcessor {
-  /** The processing environment this processor is attached to. */
   public readonly environment: IProcessingEnvironment;
-  /** Maximum number of documents that can be processed concurrently. */
   public readonly maxProcessingConcurrency: number;
-  /** The Step Functions state machine that orchestrates the processing workflow. */
   public readonly stateMachine: sfn.IStateMachine;
+  public readonly evaluationFunction?: EvaluationFunction;
+  /** The BDA Data Automation Project used by this processor. */
+  public readonly project: IDataAutomationProject;
+
+  private readonly innerProcessor: UnifiedDocumentProcessor;
 
   constructor(scope: Construct, id: string, props: BdaProcessorProps) {
     super(scope, id);
 
-    this.maxProcessingConcurrency = props.maxProcessingConcurrency ?? 100;
-    this.environment = props.environment;
+    const rawConfig = props.configuration.definition.raw();
 
-    const schema = new BdaProcessorConfigurationSchema();
-    schema.bind(this);
+    // Create BDA project from config classes
+    this.project = this.createProject(rawConfig);
 
-    // Create BDA Metadata Table for tracking BDA process records
-    const bdaMetadataTable = new BdaMetadataTable(this, "BDAMetadataTable", {
-      encryptionKey: this.environment.encryptionKey,
-      pointInTimeRecoverySpecification: {
-        pointInTimeRecoveryEnabled: true,
+    // Bind configuration — writes default config + BDA project ARN to config table
+    const bdaDefinition = props.configuration.bind(
+      this,
+      props.environment,
+      this.project.arn,
+    );
+
+    // Pass-through configuration for the unified processor
+    const unifiedConfig: IUnifiedDocumentProcessorConfiguration = {
+      bind: (
+        _processor: IUnifiedDocumentProcessor,
+      ): IUnifiedDocumentProcessorConfigurationDefinition => {
+        return {
+          ocrInferenceProvider: undefined,
+          classificationInferenceProvider: undefined,
+          extractionInferenceProvider: undefined,
+          assessmentInferenceProvider: undefined,
+          summarizationInferenceProvider:
+            bdaDefinition._summarizationInferenceProvider,
+          evaluationModel: bdaDefinition.evaluationModel,
+          ocrBackend: "textract" as const,
+          customPromptGenerator: undefined,
+          raw: () => rawConfig,
+          validate: () => bdaDefinition.validate(),
+          isLegacyFormat: () => bdaDefinition.isLegacyFormat(),
+          isJsonSchemaFormat: () => bdaDefinition.isJsonSchemaFormat(),
+        };
       },
+    };
+
+    // Create the UnifiedDocumentProcessor
+    this.innerProcessor = new UnifiedDocumentProcessor(this, "Unified", {
+      environment: props.environment,
+      configurationBucket: props.configurationBucket,
+      maxProcessingConcurrency: props.maxProcessingConcurrency,
+      configuration: unifiedConfig,
     });
 
-    const renderedDefinition = props.configuration.bind(this);
-
-    const invokeBDAFunction = new BdaInvokeFunction(this, "InvokeBDAFunction", {
-      metricNamespace: this.environment.metricNamespace,
-      logLevel: this.environment.logLevel,
-      inputBucket: this.environment.inputBucket,
-      outputBucket: this.environment.outputBucket,
-      workingBucket: this.environment.workingBucket,
-      trackingTable: this.environment.trackingTable,
-      project: props.dataAutomationProject,
-      logGroup: new logs.LogGroup(this, "InvokeBDAFunctionLogGroup", {
-        encryptionKey: this.environment.encryptionKey,
-        retention: this.environment.logRetention,
-      }),
-      ...this.environment.vpcConfiguration,
-    });
-
-    const processResultsFunction = new ProcessResultsFunction(
-      this,
-      "ProcessResultsFunction",
-      {
-        trackingTable: this.environment.trackingTable,
-        configurationTable: this.environment.configurationTable,
-        bdaMetadataTable: bdaMetadataTable,
-        inputBucket: this.environment.inputBucket,
-        outputBucket: this.environment.outputBucket,
-        workingBucket: this.environment.workingBucket,
-        dataAutomationProject: props.dataAutomationProject,
-        encryptionKey: this.environment.encryptionKey,
-        metricNamespace: this.environment.metricNamespace,
-        logLevel: this.environment.logLevel,
-        api: this.environment.api,
-        logGroup: new logs.LogGroup(this, "ProcessResultsFunctionLogGroup", {
-          encryptionKey: this.environment.encryptionKey,
-          retention: this.environment.logRetention,
-        }),
-        ...this.environment.vpcConfiguration,
-      },
-    );
-
-    const summarizationFunction = new SummarizationFunction(
-      this,
-      "SummarizationFunction",
-      {
-        metricNamespace: this.environment.metricNamespace,
-        logLevel: this.environment.logLevel,
-        trackingTable: this.environment.trackingTable,
-        configurationTable: this.environment.configurationTable,
-        inputBucket: this.environment.inputBucket,
-        outputBucket: this.environment.outputBucket,
-        workingBucket: this.environment.workingBucket,
-        encryptionKey: this.environment.encryptionKey,
-        summarizationModel: renderedDefinition.summarizationModel,
-        summarizationGuardrail: props.summarizationGuardrail,
-        api: this.environment.api,
-        logGroup: new logs.LogGroup(this, "SummarizationFunctionLogGroup", {
-          encryptionKey: this.environment.encryptionKey,
-          retention: this.environment.logRetention,
-        }),
-        ...this.environment.vpcConfiguration,
-      },
-    );
-
-    // Workaround: Explicitly grant invoke permissions for cross-region inference profiles
-    // The grantInvoke() method on CrossRegionInferenceProfile.fromConfig() doesn't add IAM permissions
-    if (renderedDefinition.summarizationModel) {
-      summarizationFunction.addToRolePolicy(
-        new cdk.aws_iam.PolicyStatement({
-          actions: ["bedrock:InvokeModel", "bedrock:GetInferenceProfile"],
-          resources: [
-            cdk.Stack.of(this).formatArn({
-              service: "bedrock",
-              resource: "inference-profile",
-              resourceName: "*",
-              arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
-            }),
-          ],
-        }),
-      );
-    }
-
-    // Always create evaluation function
-    const evaluationFunction = new EvaluationFunction(
-      this,
-      "EvaluationFunction",
-      {
-        entry: path.join(
-          __dirname,
-          "..",
-          "assets",
-          "lambdas",
-          "evaluation_function",
-        ),
-        metricNamespace: this.environment.metricNamespace,
-        logLevel: this.environment.logLevel,
-        outputBucket: this.environment.outputBucket,
-        workingBucket: this.environment.workingBucket,
-        trackingTable: this.environment.trackingTable,
-        configurationTable: this.environment.configurationTable,
-        baselineBucket: props.evaluationBaselineBucket,
-        reportingEnvironment: this.environment.reportingEnvironment,
-        saveReportingDataFunction: this.environment.saveReportingDataFunction,
-        api: this.environment.api,
-        encryptionKey: this.environment.encryptionKey,
-        evaluationModel: renderedDefinition.evaluationModel,
-        logGroup: new logs.LogGroup(this, "EvaluationFunctionLogGroup", {
-          encryptionKey: this.environment.encryptionKey,
-          retention: this.environment.logRetention,
-        }),
-        ...this.environment.vpcConfiguration,
-      },
-    );
-
-    this.stateMachine = new sfn.StateMachine(
-      this,
-      "DocumentProcessingStateMachine",
-      {
-        definitionBody: sfn.DefinitionBody.fromFile(
-          path.join(__dirname, "..", "assets", "sfn", "workflow.asl.json"),
-        ),
-        definitionSubstitutions: {
-          InvokeBDALambdaArn: invokeBDAFunction.functionArn,
-          ProcessResultsLambdaArn: processResultsFunction.functionArn,
-          SummarizationLambdaArn: summarizationFunction.functionArn,
-          EvaluationLambdaArn: evaluationFunction.functionArn,
-          OutputBucket: this.environment.outputBucket.bucketName,
-          WorkingBucket: this.environment.workingBucket.bucketName,
-          BDAProjectArn: props.dataAutomationProject.arn,
-        },
-        logs: {
-          destination: new logs.LogGroup(this, "StateMachineLogGroup", {
-            encryptionKey: this.environment.encryptionKey,
-            retention: this.environment.logRetention,
-          }),
-          level: sfn.LogLevel.ALL,
-          includeExecutionData: true,
-        },
-      },
-    );
-
-    invokeBDAFunction.grantInvoke(this.stateMachine);
-    processResultsFunction.grantInvoke(this.stateMachine);
-    summarizationFunction.grantInvoke(this.stateMachine);
-    evaluationFunction.grantInvoke(this.stateMachine);
-
-    const bdaCompletionFunction = new BdaCompletionFunction(
-      this,
-      "BDACompletionFunction",
-      {
-        metricNamespace: this.environment.metricNamespace,
-        logLevel: this.environment.logLevel,
-        trackingTable: this.environment.trackingTable,
-        stateMachine: this.stateMachine,
-        encryptionKey: this.environment.encryptionKey,
-        logGroup: new logs.LogGroup(this, "BDACompletionFunctionLogGroup", {
-          encryptionKey: this.environment.encryptionKey,
-          retention: this.environment.logRetention,
-        }),
-        ...this.environment.vpcConfiguration,
-      },
-    );
-
-    this.addEvent(bdaCompletionFunction);
-
-    // Attach processor to environment (creates queue processor and event rules)
-    this.environment.attach(this);
-  }
-
-  private addEvent(bdaCompletionFunction: BdaCompletionFunction) {
-    // Create EventBridge rule for BDA events
-    const bdaEventRule = new events.Rule(this, "BDAEventRule", {
-      eventPattern: {
-        source: ["aws.bedrock"],
-        detailType: [
-          "Bedrock Data Automation Job Succeeded",
-          "Bedrock Data Automation Job Failed With Client Error",
-          "Bedrock Data Automation Job Failed With Service Error",
-        ],
-      },
-    });
-
-    // Add Lambda function as a target for the EventBridge rule
-    bdaEventRule.addTarget(
-      new eventtargets.LambdaFunction(bdaCompletionFunction, {
-        maxEventAge: cdk.Duration.hours(2),
-        retryAttempts: 3,
-      }),
-    );
+    // Delegate IDocumentProcessor properties
+    this.environment = this.innerProcessor.environment;
+    this.maxProcessingConcurrency =
+      this.innerProcessor.maxProcessingConcurrency;
+    this.stateMachine = this.innerProcessor.stateMachine;
+    this.evaluationFunction = this.innerProcessor.evaluationFunction;
   }
 
   // ========================================
-  // CloudWatch Metrics Methods
+  // CloudWatch Metrics — BDA Requests
   // ========================================
 
-  /**
-   * Creates a CloudWatch metric for total BDA requests.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for total BDA requests
-   */
-  public metricBdaRequestsTotal(
+  /** Total BDA Data Automation invocation requests. */
+  public metricBDARequestsTotal(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDARequestsTotal",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDARequestsTotal(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for successful BDA requests.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for successful BDA requests
-   */
-  public metricBdaRequestsSucceeded(
+  /** Successful BDA invocation requests. */
+  public metricBDARequestsSucceeded(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDARequestsSucceeded",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDARequestsSucceeded(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for failed BDA requests.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for failed BDA requests
-   */
-  public metricBdaRequestsFailed(
+  /** Failed BDA invocation requests. */
+  public metricBDARequestsFailed(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDARequestsFailed",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDARequestsFailed(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for BDA request latency.
-   * Measures individual request processing time.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for BDA request latency in milliseconds
-   */
-  public metricBdaRequestLatency(
+  /** BDA single-request latency in milliseconds. */
+  public metricBDARequestsLatency(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDARequestsLatency",
-      unit: cloudwatch.Unit.MILLISECONDS,
-      ...props,
-    });
+    return this.innerProcessor.metricBDARequestsLatency(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for total BDA request latency.
-   * Measures total request processing time including retries.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for total BDA request latency in milliseconds
-   */
-  public metricBdaRequestsTotalLatency(
+  /** BDA total latency including retries in milliseconds. */
+  public metricBDARequestsTotalLatency(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDARequestsTotalLatency",
-      unit: cloudwatch.Unit.MILLISECONDS,
-      ...props,
-    });
+    return this.innerProcessor.metricBDARequestsTotalLatency(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for BDA request throttles.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for BDA request throttles
-   */
-  public metricBdaRequestsThrottles(
+  /** BDA requests that succeeded after retry. */
+  public metricBDARequestsRetrySuccess(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDARequestsThrottles",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDARequestsRetrySuccess(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for successful BDA request retries.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for successful BDA request retries
-   */
-  public metricBdaRequestsRetrySuccess(
+  /** BDA request throttles. */
+  public metricBDARequestsThrottles(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDARequestsRetrySuccess",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDARequestsThrottles(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for BDA requests that exceeded max retries.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for BDA requests that exceeded max retries
-   */
-  public metricBdaRequestsMaxRetriesExceeded(
+  /** BDA requests that exceeded max retries. */
+  public metricBDARequestsMaxRetriesExceeded(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDARequestsMaxRetriesExceeded",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDARequestsMaxRetriesExceeded(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for BDA non-retryable errors.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for BDA non-retryable errors
-   */
-  public metricBdaRequestsNonRetryableErrors(
+  /** BDA non-retryable errors. */
+  public metricBDARequestsNonRetryableErrors(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDARequestsNonRetryableErrors",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDARequestsNonRetryableErrors(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for BDA unexpected errors.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for BDA unexpected errors
-   */
-  public metricBdaRequestsUnexpectedErrors(
+  /** BDA unexpected errors. */
+  public metricBDARequestsUnexpectedErrors(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDARequestsUnexpectedErrors",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDARequestsUnexpectedErrors(props);
   }
 
-  /**
-   * Creates a CloudWatch metric for total BDA jobs.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for total BDA jobs
-   */
-  public metricBdaJobsTotal(
+  // ========================================
+  // CloudWatch Metrics — BDA Jobs
+  // ========================================
+
+  /** Total BDA async jobs submitted. */
+  public metricBDAJobsTotal(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDAJobsTotal",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDAJobsTotal(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for successful BDA jobs.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for successful BDA jobs
-   */
-  public metricBdaJobsSucceeded(
+  /** Successful BDA async jobs. */
+  public metricBDAJobsSucceeded(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDAJobsSucceeded",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDAJobsSucceeded(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for failed BDA jobs.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for failed BDA jobs
-   */
-  public metricBdaJobsFailed(
+  /** Failed BDA async jobs. */
+  public metricBDAJobsFailed(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "BDAJobsFailed",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricBDAJobsFailed(props);
   }
 
-  /**
-   * Creates a CloudWatch metric for processed documents.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for processed documents
-   */
+  // ========================================
+  // CloudWatch Metrics — Document Processing
+  // ========================================
+
+  /** Documents processed by BDA. */
   public metricProcessedDocuments(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "ProcessedDocuments",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricProcessedDocuments(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for processed pages.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for processed pages
-   */
+  /** Total pages processed. */
   public metricProcessedPages(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "ProcessedPages",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricProcessedPages(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for processed custom pages.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for processed custom pages
-   */
+  /** Custom blueprint pages processed. */
   public metricProcessedCustomPages(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "ProcessedCustomPages",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
-    });
+    return this.innerProcessor.metricProcessedCustomPages(props);
   }
-
-  /**
-   * Creates a CloudWatch metric for processed standard pages.
-   *
-   * @param props - Optional metric configuration properties
-   * @returns CloudWatch Metric for processed standard pages
-   */
+  /** Standard pages processed. */
   public metricProcessedStandardPages(
     props?: cloudwatch.MetricOptions,
   ): cloudwatch.Metric {
-    return new cloudwatch.Metric({
-      namespace: this.environment.metricNamespace,
-      metricName: "ProcessedStandardPages",
-      unit: cloudwatch.Unit.COUNT,
-      ...props,
+    return this.innerProcessor.metricProcessedStandardPages(props);
+  }
+  /** Documents flagged for human-in-the-loop review. */
+  public metricHITLTriggered(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricHITLTriggered(props);
+  }
+
+  // ========================================
+  // CloudWatch Metrics — Bedrock (summarization/evaluation)
+  // ========================================
+
+  /** Total Bedrock model invocation requests (summarization, evaluation). */
+  public metricBedrockRequestsTotal(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBedrockRequestsTotal(props);
+  }
+  /** Successful Bedrock model invocation requests. */
+  public metricBedrockRequestsSucceeded(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBedrockRequestsSucceeded(props);
+  }
+  /** Failed Bedrock model invocation requests. */
+  public metricBedrockRequestsFailed(
+    props?: cloudwatch.MetricOptions,
+  ): cloudwatch.Metric {
+    return this.innerProcessor.metricBedrockRequestsFailed(props);
+  }
+
+  /**
+   * Creates BDA blueprints and a Data Automation Project from config classes.
+   */
+  private createProject(rawConfig: any): IDataAutomationProject {
+    const classes: any[] = rawConfig.classes || [];
+    const blueprints: Blueprint[] = classes.map((idpClass, i) => {
+      const className =
+        idpClass.$id || idpClass["x-aws-idp-document-type"] || `Class${i}`;
+      return new Blueprint(this, `Blueprint${sanitizeId(className)}`, {
+        type: BlueprintType.DOCUMENT,
+        schema: translateClassToBlueprint(idpClass),
+      });
+    });
+
+    return new DataAutomationProject(this, "Project", {
+      standardOutputConfiguration: {
+        document: {
+          extraction: {
+            granularity: { types: ["PAGE", "ELEMENT"] },
+            boundingBox: { state: "DISABLED" },
+          },
+          generativeField: { state: "DISABLED" },
+          outputFormat: {
+            textFormat: { types: ["MARKDOWN"] },
+            additionalFileFormat: { state: "DISABLED" },
+          },
+        },
+      },
+      overrideConfiguration: {
+        document: { splitter: { state: "ENABLED" } },
+      },
+      blueprints,
     });
   }
+}
+
+function sanitizeId(name: string): string {
+  return name.replace(/[^a-zA-Z0-9]/g, "");
 }

@@ -11,7 +11,6 @@ export * from "./agent-analytics";
 export * from "./test-studio";
 export * from "./agent-companion-chat";
 export * from "./mcp-integration";
-export * from "./error-analyzer";
 export * from "./capacity-planning";
 export * from "./user-management";
 export * from "./document-discovery";

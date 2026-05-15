@@ -45,7 +45,7 @@ describe("IdpPythonLayerVersion", () => {
         template.hasResourceProperties("AWS::Lambda::LayerVersion", {
           CompatibleRuntimes: ["python3.12"],
           Description:
-            "Lambda Layer containing the idp_common Python package with modules: core (base only)",
+            "Lambda Layer containing the idp_common Python package with modules: core (base only) (x86_64)",
           Content: {
             S3Bucket: Match.anyValue(),
             S3Key: Match.anyValue(),
@@ -78,7 +78,7 @@ describe("IdpPythonLayerVersion", () => {
         template.hasResourceProperties("AWS::Lambda::LayerVersion", {
           CompatibleRuntimes: ["python3.12"],
           Description:
-            "Lambda Layer containing the idp_common Python package with modules: classification, ocr",
+            "Lambda Layer containing the idp_common Python package with modules: classification, ocr (x86_64)",
           Content: {
             S3Bucket: Match.anyValue(),
             S3Key: Match.anyValue(),

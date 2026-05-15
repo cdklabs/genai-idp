@@ -55,6 +55,7 @@ interface UseSchemaDesignerReturn {
   setSelectedAttributeId: React.Dispatch<React.SetStateAction<string | null>>;
   isDirty: boolean;
   addClass: (name: string, description?: string) => SchemaClass;
+  addStandardClasses: (schemas: JsonSchemaProperty[]) => void;
   updateClass: (classId: string, updates: Record<string, unknown>) => void;
   removeClass: (classId: string) => void;
   addAttribute: (classId: string, attributeName: string, attributeType: string) => SchemaAttribute;
@@ -344,6 +345,18 @@ export const useSchemaDesigner = (
     return newClass;
   }, []);
 
+  const addStandardClasses = useCallback((schemas: JsonSchemaProperty[]) => {
+    // Convert the standard JSON schemas to internal SchemaClass format
+    // This reuses the same convertJsonSchemaToClasses logic used for import
+    const newClasses = convertJsonSchemaToClasses(schemas);
+    if (newClasses.length > 0) {
+      setClasses((prev) => [...prev, ...newClasses]);
+      setSelectedClassId(newClasses[0].id);
+      setSelectedAttributeId(null);
+      setIsDirty(true);
+    }
+  }, []);
+
   const updateClass = useCallback((classId: string, updates: Record<string, unknown>) => {
     setClasses((prev) =>
       produce(prev, (draft) => {
@@ -357,8 +370,9 @@ export const useSchemaDesigner = (
               if (!cls.attributes) {
                 cls.attributes = { type: 'object', properties: {}, required: [] };
               }
-              Object.keys(updates.attributes).forEach((attrKey) => {
-                cls.attributes[attrKey] = updates.attributes[attrKey];
+              const updatesAttrs = updates.attributes as Record<string, unknown>;
+              Object.keys(updatesAttrs).forEach((attrKey) => {
+                (cls.attributes as Record<string, unknown>)[attrKey] = updatesAttrs[attrKey];
               });
             } else {
               // Direct assignment for top-level properties
@@ -777,6 +791,7 @@ export const useSchemaDesigner = (
     setSelectedAttributeId,
     isDirty,
     addClass,
+    addStandardClasses,
     updateClass,
     removeClass,
     addAttribute,
