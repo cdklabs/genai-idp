@@ -6181,14 +6181,11 @@
   "Pattern1UnifiedBdaInvokeFunctionD225AC41": {
    "Type": "AWS::Lambda::Function",
    "Properties": {
-    "Architectures": [
-     "arm64"
-    ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "ff2c46603faeede9dfde188cefa7b7402b3d075c497f7e330ce0583b7a60792a.zip"
+     "S3Key": "2176d0a4e599e8274d4fb835db38d0e5954ba06bce4fcb511f30bb90e040753e.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -6211,7 +6208,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer84a1da422FECE337"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer53df11dfFA40802E"
      }
     ],
     "MemorySize": 4096,
@@ -6398,14 +6395,11 @@
   "Pattern1UnifiedBdaCompletionFunctionF080809A": {
    "Type": "AWS::Lambda::Function",
    "Properties": {
-    "Architectures": [
-     "arm64"
-    ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "9bcf1ee3b0c307087744ad0c7d17fcc404a7513b6269ebbf9cdba94dd5c867e6.zip"
+     "S3Key": "8dedd35a9110d771e43c744ed5a24d1239bfc47ff6c5ec9303cef0834d12d7a5.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -6427,7 +6421,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer84a1da422FECE337"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer53df11dfFA40802E"
      }
     ],
     "MemorySize": 4096,
@@ -6783,14 +6777,11 @@
   "Pattern1UnifiedBdaProcessResultsFunction0AC2BAC2": {
    "Type": "AWS::Lambda::Function",
    "Properties": {
-    "Architectures": [
-     "arm64"
-    ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "54aff41c7b7964d950255f05ca544bf1ca26045d915591028435dc247362bc86.zip"
+     "S3Key": "2255345f4c6d9466e59c2c9a7ebc30c933e97b96ede1c91e9d921912a1979e93.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -6822,7 +6813,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer1ac3e1fcE47A9F4B"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer6d4bd3e1307E2EBE"
      }
     ],
     "MemorySize": 4096,
@@ -7141,13 +7132,13 @@
    "Type": "AWS::Lambda::Function",
    "Properties": {
     "Architectures": [
-     "arm64"
+     "x86_64"
     ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "15872cfbc1ddd8abc79aa16c465295674ff0eebd7a2bcdbc6425759874728e27.zip"
+     "S3Key": "c5f304b84d6e72e1d8d771894d2b87003197065109121bf39ecc991db1882a63.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -7177,7 +7168,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer68376a87368E3BA5"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerdcd2683bD23DFB83"
      }
     ],
     "MemorySize": 4096,
@@ -7517,14 +7508,11 @@
   "Pattern1UnifiedClassificationFunctionFB38057C": {
    "Type": "AWS::Lambda::Function",
    "Properties": {
-    "Architectures": [
-     "arm64"
-    ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "090b16ffcb8be92008400496f48ba299af188da801b29ff0f1da3e722428eb1a.zip"
+     "S3Key": "b515bd86d979075c8f785fdf4776831c271b0dbbd70475c27d7eadf8cb6e2aaa.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -7557,7 +7545,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerfd94b2242AE92367"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer979cb1eb01B8FE5C"
      }
     ],
     "MemorySize": 4096,
@@ -7898,13 +7886,13 @@
    "Type": "AWS::Lambda::Function",
    "Properties": {
     "Architectures": [
-     "arm64"
+     "x86_64"
     ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "76b0b8a109b9e127fa5319b05203e5430820c82385ead018b5845f123b699477.zip"
+     "S3Key": "c1740f90e17b6d3c9869017e32fe51caa1cc597c0b43c3aa9c961a0f8d68269b.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -7937,7 +7925,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer5a1f7075D7E23595"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerf8e86ad1AFB8C4A0"
      }
     ],
     "MemorySize": 4096,
@@ -8624,13 +8612,13 @@
    "Type": "AWS::Lambda::Function",
    "Properties": {
     "Architectures": [
-     "arm64"
+     "x86_64"
     ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "7a31cddb9236cfc98b9da901f11385a0a81c022fee5d1a69ac734767a218de40.zip"
+     "S3Key": "24bba3fe9e6a0cd75d519a90128da641a4d1261dca17564b9ef0ca9d7e7cf43f.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -8662,7 +8650,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerd35b0ffe8AFB865F"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer7995fe3dA5893FB0"
      }
     ],
     "MemorySize": 4096,
@@ -9019,13 +9007,13 @@
    "Type": "AWS::Lambda::Function",
    "Properties": {
     "Architectures": [
-     "arm64"
+     "x86_64"
     ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "5a21e4ebc7a5c66b134f35124b6d5bf2d0fff612864e5429e8bc39991055b698.zip"
+     "S3Key": "a0a9a167646bd3e7a8ce9480a7a26ca2f2c6acdc0cfa95656f301d1f2ba09cf2.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -9055,7 +9043,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2f1562600979845C"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer69429ba653DBF7C8"
      }
     ],
     "MemorySize": 4096,
@@ -9380,13 +9368,13 @@
    "Type": "AWS::Lambda::Function",
    "Properties": {
     "Architectures": [
-     "arm64"
+     "x86_64"
     ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "73984eb209b135c0fa54540227962f0ae2988bfa1df945dde6811d90c82142d0.zip"
+     "S3Key": "cc758a0a5b0e193edbbbeda51c80af97306e818123f9a48a47261dc8de2c59df.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -9416,7 +9404,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer1597d09178F77C56"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer1a08f80f68316423"
      }
     ],
     "MemorySize": 4096,
@@ -9741,13 +9729,13 @@
    "Type": "AWS::Lambda::Function",
    "Properties": {
     "Architectures": [
-     "arm64"
+     "x86_64"
     ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "8164965bb4abbb6c0a0e9a4dedb55ae408938137f537284e076491981593c84e.zip"
+     "S3Key": "7e1a29ad05469778d1740247b7c158ff8764ea7f2e4837dd9fe0dfeb5e5b83eb.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -9781,7 +9769,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer1597d09178F77C56"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer1a08f80f68316423"
      }
     ],
     "MemorySize": 4096,
@@ -10182,13 +10170,13 @@
    "Type": "AWS::Lambda::Function",
    "Properties": {
     "Architectures": [
-     "arm64"
+     "x86_64"
     ],
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "4c1ae2a845323e0866ae9d8565fb5df6e02152c254fbfbf7a9865461ddb9c2e0.zip"
+     "S3Key": "4852f21a3a624904875c4036c1c5fa614a5576c2a2c2e5270b8efb5ee3a3b27c.zip"
     },
     "DeadLetterConfig": {
      "TargetArn": {
@@ -10230,7 +10218,7 @@
     "Handler": "index.handler",
     "Layers": [
      {
-      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerc30fe73608185EC7"
+      "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayera9451ec4118FD055"
      }
     ],
     "MemorySize": 4096,
@@ -11160,11 +11148,11 @@
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "comamazonawscdkcdklabsgenaiidpidpcommonlayer84a1da422FECE337": {
+  "comamazonawscdkcdklabsgenaiidpidpcommonlayer6d4bd3e1307E2EBE": {
    "Type": "AWS::Lambda::LayerVersion",
    "Properties": {
     "CompatibleArchitectures": [
-     "arm64"
+     "x86_64"
     ],
     "CompatibleRuntimes": [
      "python3.12"
@@ -11173,18 +11161,18 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "4ca3bfea1e4f84ab0b70fdea8fdb32615813bb30353aa92bfb16cf2188ae794b.zip"
+     "S3Key": "790ae03366834ef7df031cc7d7ab828ca50d09754f11f1fe58600e27d6b859c5.zip"
     },
-    "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only) (arm64)"
+    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, image (x86_64)"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "comamazonawscdkcdklabsgenaiidpidpcommonlayer1ac3e1fcE47A9F4B": {
+  "comamazonawscdkcdklabsgenaiidpidpcommonlayerdcd2683bD23DFB83": {
    "Type": "AWS::Lambda::LayerVersion",
    "Properties": {
     "CompatibleArchitectures": [
-     "arm64"
+     "x86_64"
     ],
     "CompatibleRuntimes": [
      "python3.12"
@@ -11193,18 +11181,18 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "0ab73da9b63b595f4af9d5ea689ca127c8a56d3aae7395046cc9804de72f1bb8.zip"
+     "S3Key": "810ad773522ab4bfbffa3f92fdb08c7c04c61233c02e30f0db097d21e284d71e.zip"
     },
-    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, image (arm64)"
+    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr (x86_64)"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "comamazonawscdkcdklabsgenaiidpidpcommonlayer68376a87368E3BA5": {
+  "comamazonawscdkcdklabsgenaiidpidpcommonlayer979cb1eb01B8FE5C": {
    "Type": "AWS::Lambda::LayerVersion",
    "Properties": {
     "CompatibleArchitectures": [
-     "arm64"
+     "x86_64"
     ],
     "CompatibleRuntimes": [
      "python3.12"
@@ -11213,18 +11201,18 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "bad9c32b428ba91d7bdd2486dd415b113db0723cbb562db229f1fbd8b88f25f8.zip"
+     "S3Key": "7d9f45b66b4012cdb993928911e0fe006f562fe6e4b0d16da4577e2f0e8b457b.zip"
     },
-    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr (arm64)"
+    "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service (x86_64)"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "comamazonawscdkcdklabsgenaiidpidpcommonlayerfd94b2242AE92367": {
+  "comamazonawscdkcdklabsgenaiidpidpcommonlayerf8e86ad1AFB8C4A0": {
    "Type": "AWS::Lambda::LayerVersion",
    "Properties": {
     "CompatibleArchitectures": [
-     "arm64"
+     "x86_64"
     ],
     "CompatibleRuntimes": [
      "python3.12"
@@ -11233,29 +11221,9 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "79e437409fc4480cd34dc8ab3f82f54824cf3af2fe4694eb809d28a0409cf7ec.zip"
+     "S3Key": "323dedcdf58753068574850b61f767611284f817ff639c29b08c6157e1871393.zip"
     },
-    "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service (arm64)"
-   },
-   "UpdateReplacePolicy": "Delete",
-   "DeletionPolicy": "Delete"
-  },
-  "comamazonawscdkcdklabsgenaiidpidpcommonlayer5a1f7075D7E23595": {
-   "Type": "AWS::Lambda::LayerVersion",
-   "Properties": {
-    "CompatibleArchitectures": [
-     "arm64"
-    ],
-    "CompatibleRuntimes": [
-     "python3.12"
-    ],
-    "Content": {
-     "S3Bucket": {
-      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
-     },
-     "S3Key": "52b8bd24e20e4cc88d9f6e682dc3d85fc475f17a470dcb8dfb825c51fb8b164a.zip"
-    },
-    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction (arm64)"
+    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction (x86_64)"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
@@ -11280,11 +11248,11 @@
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "comamazonawscdkcdklabsgenaiidpidpcommonlayerd35b0ffe8AFB865F": {
+  "comamazonawscdkcdklabsgenaiidpidpcommonlayer69429ba653DBF7C8": {
    "Type": "AWS::Lambda::LayerVersion",
    "Properties": {
     "CompatibleArchitectures": [
-     "arm64"
+     "x86_64"
     ],
     "CompatibleRuntimes": [
      "python3.12"
@@ -11293,18 +11261,18 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "9e5d9b5a8f2d87abcd0a7ff9133511ec61a5e94f404460e36ec7a158913c543d.zip"
+     "S3Key": "34f06410ff503084ca6ac5c0d24a8cb81fdc37f6ba7876ac6aef0b0f3a5d0739.zip"
     },
-    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service (arm64)"
+    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, summarization (x86_64)"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "comamazonawscdkcdklabsgenaiidpidpcommonlayer2f1562600979845C": {
+  "comamazonawscdkcdklabsgenaiidpidpcommonlayer1a08f80f68316423": {
    "Type": "AWS::Lambda::LayerVersion",
    "Properties": {
     "CompatibleArchitectures": [
-     "arm64"
+     "x86_64"
     ],
     "CompatibleRuntimes": [
      "python3.12"
@@ -11313,18 +11281,18 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "324ae82f61831772216364bbff3e46a3196152adcaff80b24f32d96d9016c9ed.zip"
+     "S3Key": "6139cae1bd23528b07c31a16505fd3abd55c3af69b6eeaa0f82762627ab3e71f.zip"
     },
-    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, summarization (arm64)"
+    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, rule_validation (x86_64)"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "comamazonawscdkcdklabsgenaiidpidpcommonlayer1597d09178F77C56": {
+  "comamazonawscdkcdklabsgenaiidpidpcommonlayera9451ec4118FD055": {
    "Type": "AWS::Lambda::LayerVersion",
    "Properties": {
     "CompatibleArchitectures": [
-     "arm64"
+     "x86_64"
     ],
     "CompatibleRuntimes": [
      "python3.12"
@@ -11333,29 +11301,9 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "8fb10578830a91aef6bead87e1d5b2fe228d80c41289f0e81393e8b7fa5e975f.zip"
+     "S3Key": "a08afb19795908ffef9c503ab58d604c05c1c1fbb640aeb7db709051f1b7f830.zip"
     },
-    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, rule_validation (arm64)"
-   },
-   "UpdateReplacePolicy": "Delete",
-   "DeletionPolicy": "Delete"
-  },
-  "comamazonawscdkcdklabsgenaiidpidpcommonlayerc30fe73608185EC7": {
-   "Type": "AWS::Lambda::LayerVersion",
-   "Properties": {
-    "CompatibleArchitectures": [
-     "arm64"
-    ],
-    "CompatibleRuntimes": [
-     "python3.12"
-    ],
-    "Content": {
-     "S3Bucket": {
-      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
-     },
-     "S3Key": "ebd46ddea9e0e5fc7c396b8c8ba35fe46241fbb282ea098d1eadcdc3a54f2e6e.zip"
-    },
-    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, evaluation (arm64)"
+    "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, evaluation (x86_64)"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"

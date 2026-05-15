@@ -1224,9 +1224,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "ProcessorUnifiedAssessmentFunctionServiceRole4E70A683",
       ],
       "Properties": {
-        "Architectures": [
-          "arm64",
-        ],
         "Code": {
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
@@ -1263,7 +1260,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer4e59397475D84A5C",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer9849d28bBF6E59A5",
           },
         ],
         "MemorySize": 4096,
@@ -1745,9 +1742,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "ProcessorUnifiedBdaCompletionFunctionServiceRoleE8F04456",
       ],
       "Properties": {
-        "Architectures": [
-          "arm64",
-        ],
         "Code": {
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
@@ -1774,7 +1768,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer84a1da422FECE337",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer53df11dfFA40802E",
           },
         ],
         "MemorySize": 4096,
@@ -1934,9 +1928,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "ProcessorUnifiedBdaInvokeFunctionServiceRoleF8CF3461",
       ],
       "Properties": {
-        "Architectures": [
-          "arm64",
-        ],
         "Code": {
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
@@ -1964,7 +1955,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer84a1da422FECE337",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer53df11dfFA40802E",
           },
         ],
         "MemorySize": 4096,
@@ -2248,9 +2239,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "ProcessorUnifiedBdaProcessResultsFunctionServiceRole297BF4A0",
       ],
       "Properties": {
-        "Architectures": [
-          "arm64",
-        ],
         "Code": {
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
@@ -2287,7 +2275,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer1ac3e1fcE47A9F4B",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer6d4bd3e1307E2EBE",
           },
         ],
         "MemorySize": 4096,
@@ -2635,9 +2623,6 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "ProcessorUnifiedClassificationFunctionServiceRole21B00312",
       ],
       "Properties": {
-        "Architectures": [
-          "arm64",
-        ],
         "Code": {
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
@@ -2675,7 +2660,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerfd94b2242AE92367",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer979cb1eb01B8FE5C",
           },
         ],
         "MemorySize": 4096,
@@ -3500,7 +3485,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
       ],
       "Properties": {
         "Architectures": [
-          "arm64",
+          "x86_64",
         ],
         "Code": {
           "S3Bucket": {
@@ -3548,7 +3533,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerc30fe73608185EC7",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayera9451ec4118FD055",
           },
         ],
         "MemorySize": 4096,
@@ -3941,7 +3926,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
       ],
       "Properties": {
         "Architectures": [
-          "arm64",
+          "x86_64",
         ],
         "Code": {
           "S3Bucket": {
@@ -3980,7 +3965,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer5a1f7075D7E23595",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerf8e86ad1AFB8C4A0",
           },
         ],
         "MemorySize": 4096,
@@ -4359,7 +4344,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
       ],
       "Properties": {
         "Architectures": [
-          "arm64",
+          "x86_64",
         ],
         "Code": {
           "S3Bucket": {
@@ -4395,7 +4380,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer68376a87368E3BA5",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerdcd2683bD23DFB83",
           },
         ],
         "MemorySize": 4096,
@@ -4752,7 +4737,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
       ],
       "Properties": {
         "Architectures": [
-          "arm64",
+          "x86_64",
         ],
         "Code": {
           "S3Bucket": {
@@ -4790,7 +4775,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayerd35b0ffe8AFB865F",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer7995fe3dA5893FB0",
           },
         ],
         "MemorySize": 4096,
@@ -5349,7 +5334,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
       ],
       "Properties": {
         "Architectures": [
-          "arm64",
+          "x86_64",
         ],
         "Code": {
           "S3Bucket": {
@@ -5385,7 +5370,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer1597d09178F77C56",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer1a08f80f68316423",
           },
         ],
         "MemorySize": 4096,
@@ -5702,7 +5687,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
       ],
       "Properties": {
         "Architectures": [
-          "arm64",
+          "x86_64",
         ],
         "Code": {
           "S3Bucket": {
@@ -5742,7 +5727,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer1597d09178F77C56",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer1a08f80f68316423",
           },
         ],
         "MemorySize": 4096,
@@ -6120,7 +6105,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
       ],
       "Properties": {
         "Architectures": [
-          "arm64",
+          "x86_64",
         ],
         "Code": {
           "S3Bucket": {
@@ -6156,7 +6141,7 @@ exports[`BedrockLlmProcessor CDK Nag Compliance satisfies CDK NAG with proper su
         "Handler": "index.handler",
         "Layers": [
           {
-            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer2f1562600979845C",
+            "Ref": "comamazonawscdkcdklabsgenaiidpidpcommonlayer69429ba653DBF7C8",
           },
         ],
         "MemorySize": 4096,
@@ -9882,10 +9867,10 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
       "Type": "AWS::S3::Bucket",
       "UpdateReplacePolicy": "Retain",
     },
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayer1597d09178F77C56": {
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer1a08f80f68316423": {
       "Properties": {
         "CompatibleArchitectures": [
-          "arm64",
+          "x86_64",
         ],
         "CompatibleRuntimes": [
           "python3.12",
@@ -9896,61 +9881,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           },
           "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
         },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, rule_validation (arm64)",
-      },
-      "Type": "AWS::Lambda::LayerVersion",
-    },
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayer1ac3e1fcE47A9F4B": {
-      "Properties": {
-        "CompatibleArchitectures": [
-          "arm64",
-        ],
-        "CompatibleRuntimes": [
-          "python3.12",
-        ],
-        "Content": {
-          "S3Bucket": {
-            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
-          },
-          "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
-        },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, image (arm64)",
-      },
-      "Type": "AWS::Lambda::LayerVersion",
-    },
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayer2f1562600979845C": {
-      "Properties": {
-        "CompatibleArchitectures": [
-          "arm64",
-        ],
-        "CompatibleRuntimes": [
-          "python3.12",
-        ],
-        "Content": {
-          "S3Bucket": {
-            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
-          },
-          "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
-        },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, summarization (arm64)",
-      },
-      "Type": "AWS::Lambda::LayerVersion",
-    },
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayer4e59397475D84A5C": {
-      "Properties": {
-        "CompatibleArchitectures": [
-          "arm64",
-        ],
-        "CompatibleRuntimes": [
-          "python3.12",
-        ],
-        "Content": {
-          "S3Bucket": {
-            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
-          },
-          "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
-        },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service (arm64)",
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, rule_validation (x86_64)",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },
@@ -9972,10 +9903,10 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
       },
       "Type": "AWS::Lambda::LayerVersion",
     },
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayer5a1f7075D7E23595": {
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer69429ba653DBF7C8": {
       "Properties": {
         "CompatibleArchitectures": [
-          "arm64",
+          "x86_64",
         ],
         "CompatibleRuntimes": [
           "python3.12",
@@ -9986,14 +9917,14 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           },
           "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
         },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction (arm64)",
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, summarization (x86_64)",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayer68376a87368E3BA5": {
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer6d4bd3e1307E2EBE": {
       "Properties": {
         "CompatibleArchitectures": [
-          "arm64",
+          "x86_64",
         ],
         "CompatibleRuntimes": [
           "python3.12",
@@ -10004,7 +9935,7 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           },
           "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
         },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr (arm64)",
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, image (x86_64)",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },
@@ -10026,10 +9957,10 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
       },
       "Type": "AWS::Lambda::LayerVersion",
     },
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayer84a1da422FECE337": {
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer979cb1eb01B8FE5C": {
       "Properties": {
         "CompatibleArchitectures": [
-          "arm64",
+          "x86_64",
         ],
         "CompatibleRuntimes": [
           "python3.12",
@@ -10040,14 +9971,14 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           },
           "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
         },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: core (base only) (arm64)",
+        "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service (x86_64)",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayerc30fe73608185EC7": {
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayer9849d28bBF6E59A5": {
       "Properties": {
         "CompatibleArchitectures": [
-          "arm64",
+          "x86_64",
         ],
         "CompatibleRuntimes": [
           "python3.12",
@@ -10058,14 +9989,14 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           },
           "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
         },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, evaluation (arm64)",
+        "Description": "Lambda Layer containing the idp_common Python package with modules: assessment, docs_service (x86_64)",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayerd35b0ffe8AFB865F": {
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayera9451ec4118FD055": {
       "Properties": {
         "CompatibleArchitectures": [
-          "arm64",
+          "x86_64",
         ],
         "CompatibleRuntimes": [
           "python3.12",
@@ -10076,14 +10007,14 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           },
           "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
         },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service (arm64)",
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, evaluation (x86_64)",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },
-    "comamazonawscdkcdklabsgenaiidpidpcommonlayerfd94b2242AE92367": {
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayerdcd2683bD23DFB83": {
       "Properties": {
         "CompatibleArchitectures": [
-          "arm64",
+          "x86_64",
         ],
         "CompatibleRuntimes": [
           "python3.12",
@@ -10094,7 +10025,25 @@ Do not include any text, explanations, or notes outside of this JSON structure. 
           },
           "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
         },
-        "Description": "Lambda Layer containing the idp_common Python package with modules: classification, docs_service (arm64)",
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, ocr (x86_64)",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "comamazonawscdkcdklabsgenaiidpidpcommonlayerf8e86ad1AFB8C4A0": {
+      "Properties": {
+        "CompatibleArchitectures": [
+          "x86_64",
+        ],
+        "CompatibleRuntimes": [
+          "python3.12",
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "56e3f94fe185c7d11ec6e2694834808a66c5e680bb6843e8912939d0bf9fc2b1.zip",
+        },
+        "Description": "Lambda Layer containing the idp_common Python package with modules: docs_service, extraction (x86_64)",
       },
       "Type": "AWS::Lambda::LayerVersion",
     },

@@ -125,7 +125,6 @@ export class BdaProcessResultsFunction extends lambda_python.PythonFunction {
     super(scope, id, {
       ...props,
       runtime: lambda.Runtime.PYTHON_3_12,
-      architecture: lambda.Architecture.ARM_64,
       entry: path.join(
         __dirname,
         "..",
@@ -160,7 +159,7 @@ export class BdaProcessResultsFunction extends lambda_python.PythonFunction {
       layers: [
         IdpPythonLayerVersion.getOrCreateForArchitecture(
           scope,
-          lambda.Architecture.ARM_64,
+          lambda.Architecture.X86_64,
           "docs_service",
           "image",
         ),
