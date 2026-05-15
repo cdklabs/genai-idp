@@ -1,6 +1,6 @@
 # GenAI IDP Accelerator for AWS CDK
 
-[![Compatible with version: 0.4.16](https://img.shields.io/badge/Compatible%20with-0.4.16-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.4.16)
+[![Compatible with version: 0.5.2](https://img.shields.io/badge/Compatible%20with-0.5.2-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.5.2)
 
 A modular AWS CDK implementation of the GenAI Intelligent Document Processing (IDP) Accelerator, designed to transform unstructured documents into structured data at scale using AWS's latest AI/ML services.
 
