@@ -173,8 +173,9 @@ const TestResultsList = ({
   const getContextCell = (item: TestRunItem) => <TextCell text={item.context || 'N/A'} />;
 
   const getStatusCell = (item: TestRunItem) => {
-    if (item.isActive) {
-      return <TestRunnerStatus testRunId={item.testRunId} onComplete={() => onTestComplete(item.testRunId)} />;
+    const terminalStatuses = ['COMPLETE', 'PARTIAL_COMPLETE', 'FAILED'];
+    if (!terminalStatuses.includes(item.status || '')) {
+      return <TestRunnerStatus testRunId={item.testRunId} createdAt={item.createdAt} onComplete={() => onTestComplete(item.testRunId)} />;
     }
     return item.status;
   };

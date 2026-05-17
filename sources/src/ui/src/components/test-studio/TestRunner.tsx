@@ -215,6 +215,23 @@ const TestRunner = ({
             onChange={({ detail }) => {
               setSelectedTestSet(detail.selectedOption);
               setNumberOfFiles(''); // Reset numberOfFiles when test set changes
+              // Auto-select matching config version for known test sets, otherwise reset to active.
+              // Convention: each managed test set (e.g. "fake-w2", "docsplit") has a corresponding
+              // managed config version with the same name as the test set ID. If the matching
+              // version exists in the dropdown options, select it; otherwise fall back to active.
+              const testSetData = testSets.find((ts) => ts.id === detail.selectedOption.value);
+              const matchingVersion = testSetData?.id;
+              const versionOptions = getVersionOptions();
+              if (matchingVersion) {
+                const matchOption = versionOptions.find((opt) => opt.value === matchingVersion);
+                if (matchOption) {
+                  setSelectedVersion(matchOption);
+                  return;
+                }
+              }
+              const activeVersion = versions.find((v) => v.isActive);
+              const activeOption = activeVersion ? versionOptions.find((opt) => opt.value === activeVersion.versionName) : null;
+              setSelectedVersion(activeOption ?? versionOptions[0] ?? null);
             }}
             options={testSetOptions}
             placeholder="Choose a test set..."

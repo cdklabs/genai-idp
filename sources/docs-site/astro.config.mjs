@@ -1,12 +1,13 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import remarkGithubVideo from "./plugins/remark-github-video.mjs";
+import remarkRewriteDocsLinks from "./plugins/remark-rewrite-docs-links.mjs";
 
 export default defineConfig({
   site: "https://aws-solutions-library-samples.github.io",
   base: "/accelerated-intelligent-document-processing-on-aws",
   markdown: {
-    remarkPlugins: [remarkGithubVideo],
+    remarkPlugins: [remarkGithubVideo, remarkRewriteDocsLinks],
   },
   integrations: [
     starlight({
@@ -36,6 +37,10 @@ export default defineConfig({
           items: [
             { label: "Architecture", slug: "architecture" },
             { label: "Deployment", slug: "deployment" },
+            { label: "Headless Deployment", slug: "headless-deployment" },
+            { label: "ALB Hosting", slug: "alb-hosting" },
+            { label: "Private Network Deployment", slug: "deployment-private-network" },
+            { label: "VPC-Secured Mode", slug: "vpc-secured-mode" },
             { label: "Configuration", slug: "configuration" },
             {
               label: "Configuration Versions",
@@ -52,6 +57,7 @@ export default defineConfig({
             { label: "Web UI", slug: "web-ui" },
             { label: "IDP CLI", slug: "idp-cli" },
             { label: "IDP SDK", slug: "idp-sdk" },
+            { label: "idp_common API Reference", slug: "idpcommon-api-reference" },
             { label: "Demo Videos", slug: "demo-videos" },
             { label: "Troubleshooting", slug: "troubleshooting" },
             { label: "Error Analyzer", slug: "error-analyzer" },
@@ -63,6 +69,7 @@ export default defineConfig({
             { label: "BDA Mode Reference", slug: "pattern-1" },
             { label: "Pipeline Mode Reference", slug: "pattern-2" },
             { label: "Discovery", slug: "discovery" },
+            { label: "Policy Discovery", slug: "policy-discovery" },
           ],
         },
         {
@@ -95,6 +102,8 @@ export default defineConfig({
               slug: "evaluation-enhanced-reporting",
             },
             { label: "Test Studio", slug: "test-studio" },
+            { label: "Creating Custom Test Sets", slug: "creating-custom-test-sets" },
+            { label: "MLflow Experiment Tracking", slug: "mlflow-integration" },
           ],
         },
         {
@@ -105,7 +114,8 @@ export default defineConfig({
             { label: "Code Intelligence", slug: "code-intelligence" },
             { label: "Knowledge Base", slug: "knowledge-base" },
             { label: "Custom MCP Agent", slug: "custom-mcp-agent" },
-            { label: "MCP Integration", slug: "mcp-integration" },
+            { label: "MCP Connector", slug: "mcp-connector" },
+            { label: "MCP Server", slug: "mcp-server" },
           ],
         },
         {
@@ -120,6 +130,7 @@ export default defineConfig({
               slug: "lambda-hook-inference",
             },
             { label: "Nova Fine-Tuning", slug: "nova-finetuning" },
+            { label: "Custom Model Fine-Tuning", slug: "custom-model-finetuning" },
             { label: "Service Tiers", slug: "service-tiers" },
           ],
         },
@@ -130,6 +141,7 @@ export default defineConfig({
             { label: "Reporting Database", slug: "reporting-database" },
             { label: "Capacity Planning", slug: "capacity-planning" },
             { label: "Cost Calculator", slug: "cost-calculator" },
+            { label: "Circuit Breaker", slug: "circuit-breaker" },
           ],
         },
         {
@@ -143,7 +155,21 @@ export default defineConfig({
               label: "AWS Services & IAM Roles",
               slug: "aws-services-and-roles",
             },
-            { label: "GovCloud Deployment", slug: "govcloud-deployment" },
+            {
+              label: "Role-Based Access Control (RBAC)",
+              slug: "rbac",
+            },
+            { label: "External Identity Provider", slug: "external-idp" },
+            {
+              label: "GovCloud",
+              collapsed: false,
+              items: [
+                { label: "Deployment", slug: "govcloud-deployment" },
+                { label: "Architecture", slug: "govcloud-architecture" },
+                { label: "Operations", slug: "govcloud-operations" },
+                { label: "Batch API", slug: "govcloud-batch-api" },
+              ],
+            },
             {
               label: "EU Region Model Support",
               slug: "eu-region-model-support",
@@ -168,6 +194,14 @@ export default defineConfig({
             { label: "v0.4 → v0.5 Migration", slug: "migration-v04-to-v05" },
           ],
         },
+        // AUTO-SIDEBAR-START
+        {
+          label: "New & Uncategorized",
+          items: [
+            { label: "Setup Development Env Windows", slug: "setup-development-env-windows" },
+          ],
+        },
+        // AUTO-SIDEBAR-END
       ],
     }),
   ],

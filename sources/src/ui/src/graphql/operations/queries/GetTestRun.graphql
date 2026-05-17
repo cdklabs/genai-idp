@@ -11,6 +11,8 @@ query GetTestRun($testRunId: String!) {
     weightedOverallScores
     averageConfidence
     accuracyBreakdown
+    confusionMatrix
+    fieldMetrics
     splitClassificationMetrics
     totalCost
     costBreakdown

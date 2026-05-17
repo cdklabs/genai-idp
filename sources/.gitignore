@@ -23,13 +23,17 @@ __pycache__
 .kiro
 notebooks/examples/data
 .idea/
-.dsr/
+.srt/
 *tmp-dev-assets*
 scratch/
+.mcp.json
 
 # Node.js / npm
 node_modules/
 package-lock.json
+
+# Jupyter
+.ipynb_checkpoints/
 
 # Docs site (Astro Starlight) - build artifacts and symlinks
 docs-site/.astro/
@@ -57,3 +61,6 @@ notebooks/doc-split-metrics-exp/
 samconfig.toml
 ..bfg-report
 .git-rewrite
+
+# Cline memory bank (session-specific, not project source)
+memory-bank/

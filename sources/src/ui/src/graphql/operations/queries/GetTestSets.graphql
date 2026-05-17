@@ -8,5 +8,6 @@ query GetTestSets {
     status
     createdAt
     error
+    lastAddResult
   }
 }

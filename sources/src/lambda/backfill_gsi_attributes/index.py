@@ -273,7 +273,7 @@ def _apply_update(table, pk, sk, updates):
         expr_names[placeholder_name] = attr_name
         expr_values[placeholder_value] = attr_value
 
-    update_expression = "SET " + ", ".join(set_parts)
+    update_expression = "SET " + ", ".join(set_parts)  # nosemgrep: python.aws-lambda.security.tainted-sql-string.tainted-sql-string - DynamoDB UpdateExpression, not SQL; values parameterised via ExpressionAttributeValues
 
     # Build condition: at least one of the attributes doesn't exist yet OR
     # ConfidenceAlertCount is 0 (repair case for serialization bug).
@@ -353,7 +353,7 @@ def handler(event, context):
         
         # Scan for one doc# item to check which attributes need backfilling
         response = table.scan(
-            FilterExpression="begins_with(PK, :prefix)",
+            FilterExpression="begins_with(PK, :prefix)",  # nosemgrep: python.aws-lambda.security.tainted-sql-string.tainted-sql-string - DynamoDB FilterExpression with hardcoded value, not SQL
             ExpressionAttributeValues={":prefix": "doc#"},
             Limit=1,
             ProjectionExpression="PK, ItemType, ConfidenceAlertCount",

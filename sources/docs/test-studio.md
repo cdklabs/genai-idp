@@ -24,7 +24,7 @@ The accelerator automatically deploys **four benchmark datasets** from HuggingFa
 3. **DocSplit-Poly-Seq**: 500 multi-page packets with 13 document types
 4. **Fake-W2-Tax-Forms**: 2,000 synthetic US W-2 tax form images with 45-field ground truth
 
-All datasets are deployed automatically with zero manual steps required.
+All datasets are deployed automatically with zero manual steps required. Each test set has a corresponding **managed configuration version** (e.g., `fake-w2`, `docsplit`) that is auto-selected in Test Studio when the test set is chosen. See [Configuration — Managed Configuration Versions](configuration.md#managed-configuration-versions) for details.
 
 ---
 
@@ -328,10 +328,15 @@ All datasets share these deployment characteristics:
 - **Purpose**: Handles GraphQL operations for test set management
 - **Features**: Creates test sets, scans TestSetBucket for direct uploads, validates file matching, manages test set status
 
+#### TestSetFileCopier Lambda
+- **Location**: `src/lambda/test_set_file_copier/index.py`
+- **Purpose**: Copies files from source buckets to the test set bucket
+- **Features**: Pattern-based file matching, baseline validation, automatic baseline filtering for Input Bucket sources, time-based file filtering, file count recount, supports both create and append modes
+
 #### TestSetZipExtractor Lambda
 - **Location**: `src/lambda/test_set_zip_extractor/index.py`
 - **Purpose**: Extracts and validates uploaded zip files
-- **Features**: S3 event triggered extraction, file validation, status updates
+- **Features**: S3 event triggered extraction, file validation, status updates, file count recount for accurate totals
 
 #### TestRunner Lambda
 - **Location**: `src/lambda/test_runner/index.py`
@@ -363,7 +368,7 @@ All datasets share these deployment characteristics:
 
 ### GraphQL Schema
 - **Location**: `src/api/schema.graphql`
-- **Operations**: `getTestSets`, `addTestSet`, `addTestSetFromUpload`, `deleteTestSets`, `getTestRuns`, `startTestRun`, `compareTestRuns`
+- **Operations**: `getTestSets`, `addTestSet`, `addTestSetFromUpload`, `addDocumentsToTestSet`, `addDocumentsToTestSetFromUpload`, `deleteTestSets`, `getTestRuns`, `startTestRun`, `compareTestRuns`
 
 ### Frontend Components
 
@@ -372,9 +377,9 @@ All datasets share these deployment characteristics:
 - **Purpose**: Main container with two-tab navigation and global state management
 
 #### TestSets
-- **Location**: `src/ui/src/components/test-studio/TestSets.jsx`
+- **Location**: `src/ui/src/components/test-studio/TestSets.tsx`
 - **Purpose**: Manage test set collections
-- **Features**: Pattern-based creation, zip upload, direct upload detection, dual polling (3s active, 30s discovery)
+- **Features**: Pattern-based creation, zip upload, direct upload detection, incremental document addition, time-based file filtering, dual polling (3s active, 60s discovery)
 
 #### TestExecutions
 - **Location**: `src/ui/src/components/test-studio/TestExecutions.jsx`
@@ -405,9 +410,27 @@ components/
    - **Input Bucket**: Scan main processing bucket for matching files
    - **Test Set Bucket**: Scan dedicated test set bucket for matching files
    - **Description**: Optional description field to document the test set purpose
+   - **Modified after filter**: Optional time filter to include only recently modified files — choose a preset (Last 1 hour, 24 hours, 7 days, etc.) or pick a custom date/time (useful for incremental workflows)
 2. **Zip Upload**: Upload zip containing `input/` and `baseline/` folders
    - **Description**: Optional description field to document the test set purpose
 3. **Direct Upload**: Files uploaded directly to TestSetBucket are auto-detected
+
+### Adding Documents to Existing Test Sets
+
+You can incrementally add documents to a COMPLETED test set — useful for building up test sets over time as new documents are processed and human-reviewed.
+
+1. Select a single COMPLETED test set in the table
+2. Click **Add Documents** and choose a source:
+   - **From Existing Files**: Select a bucket, enter a file pattern, and optionally filter by modification time
+   - **From Upload**: Upload a zip file containing new documents and their baselines
+3. The test set shows an "Updating..." status while files are being added
+4. After completion, the file count is updated and a result message is displayed
+
+**Key behaviors:**
+- **Automatic baseline filtering** (Input Bucket): Files without matching baseline data in the evaluation bucket are automatically excluded rather than failing. A result message reports the counts (e.g., "Added 8 of 12 files (4 excluded - no baseline data)").
+- **Idempotent**: Adding a document that already exists overwrites it. File counts are always recounted from S3 for accuracy.
+- **Prepopulated file pattern**: The file pattern field is pre-filled with the pattern used to create the test set, so you can reuse or adjust it.
+- **Time filter**: Use the "Modified after" filter — choose a preset (Last 1 hour, 4 hours, 24 hours, 7 days, 30 days) or select "Custom date/time" with a date picker to specify an exact cutoff. This makes it easy to pick up recently reviewed documents without crafting complex patterns.
 
 ### File Structure Requirements
 ```
@@ -425,7 +448,8 @@ my-test-set/
 ### Validation Rules
 - Each input file must have corresponding baseline folder
 - Baseline folder name must match input filename exactly
-- Status: COMPLETED (valid), FAILED (validation errors), PROCESSING (uploading)
+- When using Input Bucket as source, files without baselines are automatically excluded (not treated as an error)
+- Status: COMPLETED (valid), FAILED (validation errors), QUEUED/COPYING (creating), UPDATING (adding documents)
 
 ### Upload Methods
 1. **UI Zip Upload**: S3 event → Lambda extraction → Validation → Status update
@@ -484,7 +508,9 @@ For full details on configuration versioning, see [configuration-versions.md](co
 - Comprehensive metrics display including:
   - **Test run metadata**: Configuration version, duration, context, file counts
   - **Overall accuracy and confidence metrics**
+  - **Cost metrics**: Total cost and average cost per page
   - **Accuracy breakdown** (precision, recall, F1-score, false alarm rate, false discovery rate)
+  - **Field-Level Metrics**: Per-field extraction performance table with columns: Field Name, Accuracy, Precision, Recall, TP, FP, TN, FN
   - **Average Document Split Classification Metrics**:
     - Page Level Accuracy (average across documents)
     - Split Accuracy Without Order (average across documents)
@@ -495,3 +521,55 @@ For full details on configuration versioning, see [configuration-versions.md](co
 - Side-by-side test comparison with all metrics including configuration versions
 - Export capabilities (JSON/CSV downloads include all metrics)
 - Integrated delete operations
+
+### Bulk Aggregation with Stickler
+
+Test Studio uses Stickler's `BulkStructuredModelEvaluator` for accurate metric aggregation across multiple documents:
+
+**How It Works:**
+1. **Individual Evaluation**: Each document is evaluated with `include_confusion_matrix=True` to capture detailed field-level metrics
+2. **Storage**: Raw Stickler comparison results are stored in S3 at `{doc_path}/evaluation/results.json` under the `stickler_comparison_result` field
+3. **Aggregation**: When viewing test results, the system:
+   - Scans DynamoDB for all documents in the test run (PK pattern: `doc#{test_run_id}*`)
+   - Loads evaluation results from S3
+   - Extracts `stickler_comparison_result` from each document
+   - Uses `aggregate_from_comparisons()` to compute aggregate metrics
+4. **Fallback**: Athena-based aggregation remains available for backward compatibility with older data
+
+**Benefits:**
+- **More Accurate**: Uses Stickler's confusion matrix for precise field-level metrics
+- **Consistent**: Same evaluation engine for single documents and bulk aggregation
+- **Efficient**: No Athena queries needed for new data
+- **Cost Effective**: Reduces Athena query costs
+
+### Field-Level Metrics
+
+Test results include detailed per-field extraction performance metrics displayed in an interactive table:
+
+**Displayed Columns:**
+1. **Field Name**: The name of the extracted field
+2. **Accuracy**: `(TP + TN) / (TP + FP + TN + FN)` - Overall correctness
+3. **Precision**: `TP / (TP + FP)` - Accuracy of positive predictions
+4. **Recall**: `TP / (TP + FN)` - Coverage of actual positives
+5. **TP** (True Positives): Correctly extracted values
+6. **FP** (False Positives): Incorrectly extracted values
+7. **TN** (True Negatives): Correctly identified as absent
+8. **FN** (False Negatives): Missed extractions
+
+**Features:**
+- **Searchable**: Filter fields by name to quickly find specific metrics
+- **Sortable**: Click any column header to sort by that metric
+- **Expandable Section**: Collapsed by default to keep results view clean
+- **Paginated**: 10 fields per page for easy navigation
+- **Resizable Columns**: Adjust column widths as needed
+
+**How It Works:**
+- Backend stores confusion matrix values (TP, FP, TN, FN) from Stickler aggregation
+- UI calculates Accuracy, Precision, and Recall on-the-fly from these values
+- Metrics displayed with 3 decimal precision (e.g., 0.850)
+
+**Use Cases:**
+- Identify which fields have low extraction accuracy
+- Compare field-level performance across test runs
+- Prioritize prompt engineering efforts on problematic fields
+- Track improvement in specific fields after configuration changes

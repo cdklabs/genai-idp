@@ -233,7 +233,7 @@ def safe_extract_tar(tar: tarfile.TarFile, extract_dir: Path) -> None:
             logger.warning(f"Skipping unsafe tar member: {member.name}")
     
     logger.info(f"Extracting {len(safe_members)} safe members from tar archive")
-    tar.extractall(path=extract_dir, members=safe_members)
+    tar.extractall(path=extract_dir, members=safe_members)  # nosec B202 - members validated by is_safe_tar_member
 
 
 def download_and_extract_dataset(extract_dir: Path) -> Path:

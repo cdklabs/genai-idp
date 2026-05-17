@@ -8,6 +8,7 @@ import type { TableProps } from '@cloudscape-design/components';
 import { TableHeader } from '../common/table';
 import { DOCUMENTS_PATH } from '../../routes/constants';
 import { renderHitlStatus } from '../common/hitl-status-renderer';
+import CircuitBreakerBadge from './CircuitBreakerBadge';
 import { formatConfigVersionLink } from '../test-studio/utils/configVersionUtils';
 import type { ConfigVersion } from '../test-studio/utils/configVersionUtils';
 
@@ -310,7 +311,6 @@ export const DocumentsCommonHeader = ({
     return TIME_PERIOD_DROPDOWN_ITEMS.filter((i) => i.count === props.periodsToLoad)[0]?.text || '';
   };
 
-  // eslint-disable-next-line
   const periodText = getDisplayText();
 
   const hasSelectedItems = selectedItems.length > 0;
@@ -378,6 +378,7 @@ export const DocumentsCommonHeader = ({
               />
             </span>
           )}
+          <CircuitBreakerBadge />
         </SpaceBetween>
       }
       {...props}

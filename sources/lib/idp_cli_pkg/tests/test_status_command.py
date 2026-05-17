@@ -20,13 +20,25 @@ def runner():
 
 @pytest.fixture
 def mock_batch_processor():
-    """Mock BatchProcessor."""
-    with patch("idp_cli.cli.BatchProcessor") as mock:
+    """Mock IDPClient (replaces BatchProcessor — cli.py now uses IDPClient)."""
+    with patch("idp_sdk.IDPClient") as mock:
         mock_instance = Mock()
         mock_instance.resources = {
             "DocumentsTable": "test-table",
             "InputBucket": "test-input-bucket",
         }
+        # batch.get_status() must return a BatchStatus-like object so that
+        # _batch_status_to_display_dicts() in cli.py doesn't blow up.
+        mock_batch_status = Mock()
+        mock_batch_status.documents = []
+        mock_batch_status.total = 0
+        mock_batch_status.completed = 0
+        mock_batch_status.failed = 0
+        mock_batch_status.in_progress = 0
+        mock_batch_status.queued = 0
+        mock_batch_status.success_rate = 0.0
+        mock_batch_status.all_complete = True
+        mock_instance.batch.get_status.return_value = mock_batch_status
         mock.return_value = mock_instance
         yield mock_instance
 
@@ -42,11 +54,9 @@ def mock_tracking_searcher():
 
 @pytest.fixture
 def mock_progress_monitor():
-    """Mock ProgressMonitor."""
-    with patch("idp_cli.cli.ProgressMonitor") as mock:
-        mock_instance = Mock()
-        mock.return_value = mock_instance
-        yield mock_instance
+    """Dummy fixture — ProgressMonitor is no longer used directly in cli.py status command.
+    IDPClient.batch.get_status() is used instead. Kept so test signatures don't need changing."""
+    yield Mock()
 
 
 class TestStatusCommandBasic:
@@ -385,20 +395,7 @@ class TestStatusCommandDocumentId:
     def test_status_with_document_id(
         self, runner, mock_batch_processor, mock_progress_monitor
     ):
-        """Test status command with document-id uses existing flow."""
-        # Mock progress monitor
-        mock_progress_monitor.get_batch_status.return_value = [
-            {
-                "document_id": "batch-123/doc1.pdf",
-                "status": "COMPLETED",
-                "duration": 45.5,
-            }
-        ]
-        mock_progress_monitor.calculate_statistics.return_value = {
-            "total": 1,
-            "completed": 1,
-        }
-
+        """Test status command with document-id uses IDPClient.batch.get_status()."""
         with patch("idp_cli.cli.display") as mock_display:
             mock_display.show_final_status_summary.return_value = 0
 
@@ -413,9 +410,9 @@ class TestStatusCommandDocumentId:
                 ],
             )
 
-            # Verify progress monitor was used (not searcher)
-            mock_progress_monitor.get_batch_status.assert_called_once_with(
-                ["batch-123/doc1.pdf"]
+            # Verify IDPClient.batch.get_status() was called with the document id
+            mock_batch_processor.batch.get_status.assert_called_once_with(
+                "batch-123/doc1.pdf"
             )
 
 

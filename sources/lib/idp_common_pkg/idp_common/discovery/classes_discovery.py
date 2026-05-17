@@ -1,10 +1,11 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
+import io
 import json
 import logging
 import os
 import re
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional, Tuple, cast
 
 import jsonschema
 from jsonschema import Draft202012Validator
@@ -55,12 +56,202 @@ class ClassesDiscovery:
 
         return
 
+    @staticmethod
+    def parse_page_range(page_range: str) -> Tuple[int, int]:
+        """
+        Parse a page range string like "3-5" into (start, end) 1-based page numbers.
+
+        Args:
+            page_range: String in format "start-end" (e.g., "1-3", "5-5")
+
+        Returns:
+            Tuple of (start_page, end_page), both 1-based inclusive
+
+        Raises:
+            ValueError: If the format is invalid
+        """
+        page_range = page_range.strip()
+        match = re.match(r"^(\d+)\s*-\s*(\d+)$", page_range)
+        if not match:
+            raise ValueError(
+                f"Invalid page range format: '{page_range}'. Expected 'start-end' (e.g., '1-3')"
+            )
+        start = int(match.group(1))
+        end = int(match.group(2))
+        if start < 1:
+            raise ValueError(f"Page numbers must be >= 1, got start={start}")
+        if end < start:
+            raise ValueError(f"End page ({end}) must be >= start page ({start})")
+        return start, end
+
+    @staticmethod
+    def extract_pdf_pages(pdf_bytes: bytes, start_page: int, end_page: int) -> bytes:
+        """
+        Extract a range of pages from a PDF and return as new PDF bytes.
+
+        Uses pypdfium2 to read the source PDF and create a new PDF containing
+        only the specified page range.
+
+        Args:
+            pdf_bytes: The full PDF document as bytes
+            start_page: 1-based start page number (inclusive)
+            end_page: 1-based end page number (inclusive)
+
+        Returns:
+            bytes: A new PDF containing only the specified pages
+
+        Raises:
+            ValueError: If page range is out of bounds
+        """
+        import pypdfium2 as pdfium  # Lazy import — not available in all Lambda environments
+
+        pdf_doc = pdfium.PdfDocument(pdf_bytes)
+        try:
+            num_pages = len(pdf_doc)
+            if start_page < 1 or end_page > num_pages:
+                raise ValueError(
+                    f"Page range {start_page}-{end_page} is out of bounds. "
+                    f"Document has {num_pages} pages."
+                )
+
+            # Convert to 0-based indices for pypdfium2
+            page_indices = list(range(start_page - 1, end_page))
+
+            # Create a new PDF with only the selected pages
+            new_pdf = pdfium.PdfDocument.new()
+            new_pdf.import_pages(pdf_doc, page_indices)
+
+            # Write to bytes
+            output_buffer = io.BytesIO()
+            new_pdf.save(output_buffer)
+            new_pdf.close()
+
+            result_bytes = output_buffer.getvalue()
+            logger.info(
+                f"Extracted pages {start_page}-{end_page} from {num_pages}-page PDF "
+                f"({len(pdf_bytes)} bytes -> {len(result_bytes)} bytes)"
+            )
+            return result_bytes
+        finally:
+            pdf_doc.close()
+
+    def auto_detect_sections(
+        self,
+        input_bucket: str,
+        input_prefix: str,
+        file_bytes: Optional[bytes] = None,
+        model_id: Optional[str] = None,
+    ) -> list:
+        """
+        Use an LLM to automatically detect document section boundaries in a multi-page PDF.
+
+        Sends the full document to Bedrock and asks it to identify where different
+        document types begin and end, returning a list of page ranges with type labels.
+
+        Args:
+            input_bucket: S3 bucket name
+            input_prefix: S3 key for the PDF document
+            file_bytes: Optional document bytes. If provided, skips S3 read.
+            model_id: Optional Bedrock model ID override. When provided, this
+                replaces the ``auto_split.model_id`` from the discovery config
+                for this call only. Useful for callers (e.g. ``idp-cli``) that
+                want to use a more capable model than the configured default.
+
+        Returns:
+            list of dicts: [{"start": 1, "end": 3, "type": "W2 Form"}, ...]
+
+        Raises:
+            Exception: If auto-detection fails
+        """
+        logger.info(f"Auto-detecting sections in: s3://{input_bucket}/{input_prefix}")
+
+        try:
+            if file_bytes is not None:
+                file_in_bytes = file_bytes
+            else:
+                file_in_bytes = S3Util.get_bytes(bucket=input_bucket, key=input_prefix)
+
+            file_extension = os.path.splitext(input_prefix)[1].lower()[1:]
+
+            # Use the auto_split config (falls back to defaults from base-discovery.yaml)
+            auto_split_config = self.discovery_config.auto_split
+            # Caller-supplied override takes precedence over configured model_id
+            model_id = model_id or auto_split_config.model_id
+            top_p = auto_split_config.top_p
+            max_tokens = auto_split_config.max_tokens
+
+            system_prompt = (
+                auto_split_config.system_prompt
+                or "You are an expert document analyst. Your task is to identify "
+                "distinct document sections within a multi-page document package."
+            )
+
+            user_prompt = (
+                auto_split_config.user_prompt
+                or "Analyze this multi-page document package. Identify the page boundaries "
+                "where different document types or sections begin and end.\n\n"
+                "For each distinct document section, provide:\n"
+                '- "start": the first page number (1-based)\n'
+                '- "end": the last page number (1-based)\n'
+                '- "type": a short label for the document type (e.g., "W2 Form", "Letter", "Invoice")\n\n'
+                "Return ONLY a JSON array, no other text:\n"
+                '[{"start": 1, "end": 2, "type": "Letter"}, {"start": 3, "end": 3, "type": "Invoice"}]'
+            )
+
+            content = self._create_content_list(
+                prompt=user_prompt,
+                document_content=file_in_bytes,
+                file_extension=file_extension,
+            )
+
+            response = self.bedrock_client.invoke_model(
+                model_id=model_id,
+                system_prompt=system_prompt,
+                content=content,
+                temperature=0.0,  # Low temperature for consistent results
+                top_p=top_p,
+                max_tokens=max_tokens,
+                context="AutoDetectSections",
+            )
+
+            from idp_common import bedrock as bedrock_mod
+
+            content_text = bedrock_mod.extract_text_from_response(response)
+            logger.info(f"Auto-detect response: {content_text}")
+
+            # Parse the JSON response
+            sections = json.loads(self._extract_json(content_text))
+
+            if not isinstance(sections, list):
+                raise ValueError(
+                    f"Expected a JSON array, got: {type(sections).__name__}"
+                )
+
+            # Validate each section
+            for section in sections:
+                if not isinstance(section, dict):
+                    raise ValueError(
+                        f"Each section must be a dict, got: {type(section).__name__}"
+                    )
+                if "start" not in section or "end" not in section:
+                    raise ValueError(f"Section missing 'start' or 'end': {section}")
+
+            logger.info(f"Auto-detected {len(sections)} sections")
+            return sections
+
+        except Exception as e:
+            logger.error(f"Error auto-detecting sections: {e}", exc_info=True)
+            raise Exception(f"Failed to auto-detect sections: {str(e)}")
+
     def discovery_classes_with_document(
         self,
         input_bucket: str,
         input_prefix: str,
         file_bytes: Optional[bytes] = None,
         save_to_config: bool = True,
+        page_range: Optional[str] = None,
+        class_name_hint: Optional[str] = None,
+        model_id: Optional[str] = None,
     ):
         """
         Create blueprint for document discovery.
@@ -75,6 +266,14 @@ class ClassesDiscovery:
             file_bytes: Optional document bytes. If provided, skips S3 read.
             save_to_config: If True (default), saves schema to DynamoDB config.
                 If False, returns the schema without saving.
+            page_range: Optional page range string (e.g., "1-3") to extract
+                specific pages from a PDF before discovery. If None, the
+                entire document is used.
+            class_name_hint: Optional hint for the document class name. When provided,
+                the LLM will use this as the $id and x-aws-idp-document-type values.
+            model_id: Optional Bedrock model ID override. When provided, this
+                replaces the ``without_ground_truth.model_id`` from the discovery
+                config for this call only.
 
         Returns:
             dict with status and optionally the discovered schema
@@ -82,8 +281,10 @@ class ClassesDiscovery:
         Raises:
             Exception: If blueprint creation fails
         """
+        range_label = f" (pages {page_range})" if page_range else ""
         logger.info(
-            f"Creating blueprint for document discovery: s3://{input_bucket}/{input_prefix}"
+            f"Creating blueprint for document discovery: "
+            f"s3://{input_bucket}/{input_prefix}{range_label}"
         )
 
         try:
@@ -97,10 +298,20 @@ class ClassesDiscovery:
             # remove the .
             file_extension = file_extension[1:]
 
+            # If a page range is specified and the file is a PDF, extract only those pages
+            if page_range and file_extension == "pdf":
+                start_page, end_page = self.parse_page_range(page_range)
+                file_in_bytes = self.extract_pdf_pages(
+                    file_in_bytes, start_page, end_page
+                )
+
             logger.info(f" document len: {len(file_in_bytes)}")
 
             model_response = self._extract_data_from_document(
-                file_in_bytes, file_extension
+                file_in_bytes,
+                file_extension,
+                class_name_hint=class_name_hint,
+                model_id=model_id,
             )
             logger.info(f"Extracted data from document: {model_response}")
 
@@ -133,6 +344,8 @@ class ClassesDiscovery:
         file_bytes: Optional[bytes] = None,
         ground_truth_data: Optional[dict] = None,
         save_to_config: bool = True,
+        page_range: Optional[str] = None,
+        model_id: Optional[str] = None,
     ):
         """
         Create optimized blueprint using ground truth data.
@@ -145,6 +358,12 @@ class ClassesDiscovery:
             ground_truth_data: Optional ground truth dict. If provided, skips S3 read for GT.
             save_to_config: If True (default), saves schema to DynamoDB config.
                 If False, returns the schema without saving.
+            page_range: Optional page range string (e.g., "1-3") to extract
+                specific pages from a PDF before discovery. If None, the
+                entire document is used.
+            model_id: Optional Bedrock model ID override. When provided, this
+                replaces the ``with_ground_truth.model_id`` from the discovery
+                config for this call only.
 
         Returns:
             dict with status and optionally the discovered schema
@@ -152,8 +371,10 @@ class ClassesDiscovery:
         Raises:
             Exception: If blueprint creation fails
         """
+        range_label = f" (pages {page_range})" if page_range else ""
         logger.info(
-            f"Creating optimized blueprint with ground truth: s3://{input_bucket}/{input_prefix}"
+            f"Creating optimized blueprint with ground truth: "
+            f"s3://{input_bucket}/{input_prefix}{range_label}"
         )
 
         try:
@@ -170,8 +391,18 @@ class ClassesDiscovery:
 
             file_extension = os.path.splitext(input_prefix)[1].lower()[1:]
 
+            # If a page range is specified and the file is a PDF, extract only those pages
+            if page_range and file_extension == "pdf":
+                start_page, end_page = self.parse_page_range(page_range)
+                file_in_bytes = self.extract_pdf_pages(
+                    file_in_bytes, start_page, end_page
+                )
+
             model_response = self._extract_data_from_document_with_ground_truth(
-                file_in_bytes, file_extension, ground_truth_data
+                file_in_bytes,
+                file_extension,
+                ground_truth_data,
+                model_id=model_id,
             )
 
             if model_response is None:
@@ -320,11 +551,17 @@ class ClassesDiscovery:
             raise
 
     def _extract_data_from_document(
-        self, document_content, file_extension, max_retries: int = 3
+        self,
+        document_content,
+        file_extension,
+        max_retries: int = 3,
+        class_name_hint: Optional[str] = None,
+        model_id: Optional[str] = None,
     ):
         """Extract data from document with retry logic for invalid schemas."""
         # Get configuration for without ground truth
-        model_id = self.without_gt_config.model_id
+        # Caller-supplied override takes precedence over configured model_id
+        model_id = model_id or self.without_gt_config.model_id
         system_prompt = (
             self.without_gt_config.system_prompt
             or "You are an expert in processing forms. Extracting data from images and documents"
@@ -350,7 +587,15 @@ class ClassesDiscovery:
                 if attempt > 0 and validation_feedback:
                     retry_prompt = f"\n\nPREVIOUS ATTEMPT FAILED: {validation_feedback}\nPlease fix the issue and generate a valid JSON Schema.\n\n"
 
-                full_prompt = f"{retry_prompt}{user_prompt}\nFormat the extracted data using the below JSON format:\n{sample_format}"
+                # If class_name_hint is provided, instruct the LLM to use it as the class name
+                class_hint_instruction = ""
+                if class_name_hint:
+                    class_hint_instruction = (
+                        f'\nIMPORTANT: Use "{class_name_hint}" as the document class name. '
+                        f'Set "$id" and "x-aws-idp-document-type" to "{class_name_hint}".\n'
+                    )
+
+                full_prompt = f"{retry_prompt}{user_prompt}{class_hint_instruction}\nFormat the extracted data using the below JSON format:\n{sample_format}"
                 # Create content for the user message
                 content = self._create_content_list(
                     prompt=full_prompt,
@@ -437,11 +682,17 @@ class ClassesDiscovery:
         return content
 
     def _extract_data_from_document_with_ground_truth(
-        self, document_content, file_extension, ground_truth_data, max_retries: int = 3
+        self,
+        document_content,
+        file_extension,
+        ground_truth_data,
+        max_retries: int = 3,
+        model_id: Optional[str] = None,
     ):
         """Extract data from document using ground truth as reference with retry logic."""
         # Get configuration for with ground truth
-        model_id = self.with_gt_config.model_id
+        # Caller-supplied override takes precedence over configured model_id
+        model_id = model_id or self.with_gt_config.model_id
         system_prompt = (
             self.with_gt_config.system_prompt
             or "You are an expert in processing forms. Extracting data from images and documents"

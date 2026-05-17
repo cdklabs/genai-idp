@@ -247,7 +247,7 @@ Test system capacity and identify bottlenecks:
 
 | Issue                               | Resolution                                                                                               |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| **Generic "Failed to build" error** | Use `--verbose` flag to see detailed error messages: `python3 publish.py bucket prefix region --verbose` |
+| **Generic "Failed to build" error** | Use `--verbose` flag to see detailed error messages: `idp-cli publish --source-dir . --region <region> --verbose` |
 | **Python version mismatch**         | Ensure Python 3.13 is installed and available in PATH. Check with `python3 --version`                    |
 | **SAM build fails**                 | Verify SAM CLI is installed and up to date. Check Docker is running if using containerized builds        |
 | **Missing dependencies**            | Install required packages: `pip install boto3 typer rich botocore`                                       |
@@ -285,10 +285,10 @@ For detailed debugging information, always use the `--verbose` flag when trouble
 
 ```bash
 # Standard usage
-python3 publish.py my-bucket idp us-east-1
+idp-cli publish --source-dir . --region us-east-1
 
 # Verbose mode for troubleshooting
-python3 publish.py my-bucket idp us-east-1 --verbose
+idp-cli publish --source-dir . --region us-east-1 --verbose
 ```
 
 Verbose mode provides:

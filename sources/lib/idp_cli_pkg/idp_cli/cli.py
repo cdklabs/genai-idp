@@ -7,24 +7,48 @@ IDP CLI - Main Command Line Interface
 Command-line tool for batch document processing with the IDP Accelerator.
 """
 
+import json
 import logging
 import os
-import subprocess
 import sys
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-import boto3
-import click
-from idp_sdk.core.batch_processor import BatchProcessor
-from idp_sdk.core.manifest_parser import validate_manifest
-from idp_sdk.core.progress_monitor import ProgressMonitor
-from idp_sdk.core.stack import StackDeployer, build_parameters
-from rich.console import Console
-from rich.live import Live
-from rich.table import Table
+_SETUP_HELP = """\
+Error: Required packages not found.
 
-from . import display
+idp-cli requires idp-sdk, idp_common, and their dependencies to be installed.
+
+To fix this, run one of:
+  make setup          Install into your current Python environment
+  make setup-venv     Create a .venv and install into it
+
+If you already ran 'make setup-venv', activate it first:
+  source .venv/bin/activate
+
+See docs/idp-cli.md for details.
+"""
+
+try:
+    import boto3
+    import click
+    from idp_sdk import IDPClient
+    from rich.console import Console
+    from rich.live import Live
+    from rich.table import Table
+
+    from . import display
+except ImportError:
+    # Dependencies not installed — main() will print a helpful message and exit.
+    # Define minimal stubs so the module can still be imported for entry point resolution.
+    if not TYPE_CHECKING:
+        click = None
+        IDPClient = None
+        Console = None
+        Live = None
+        Table = None
+        display = None
+        boto3 = None
 
 # Configure logging
 logging.basicConfig(
@@ -32,108 +56,100 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-console = Console()
+console = Console() if Console is not None else None
 
 
-def _build_from_local_code(from_code_dir: str, region: str, stack_name: str) -> tuple:
+def _build_from_local_code(
+    from_code_dir: str,
+    region: str,
+    stack_name: str,
+    *,
+    headless: bool = False,
+    bucket_basename: Optional[str] = None,
+    prefix: Optional[str] = None,
+    public: bool = False,
+    max_workers: Optional[int] = None,
+    clean_build: bool = False,
+    no_validate: bool = False,
+    verbose: bool = False,
+    lint: bool = True,
+) -> tuple:
     """
-    Build project from local code using publish.py
+    Build project from local code using the SDK publish operation.
 
     Args:
         from_code_dir: Path to project root directory
         region: AWS region
         stack_name: CloudFormation stack name (unused but kept for signature compatibility)
+        headless: If True, also generate a headless template variant.
+        bucket: S3 bucket basename for artifacts (auto-generated if not provided).
+        prefix: S3 key prefix for artifacts (default: idp-cli).
+        public: If True, make artifacts publicly readable.
+        max_workers: Max concurrent build workers.
+        clean_build: Force full rebuild.
+        no_validate: Skip CloudFormation template validation.
+        verbose: Enable verbose output.
+        lint: Enable linting (default: True).
 
     Returns:
-        Tuple of (template_path, None) on success
+        Tuple of (template_path, template_url) on success.
+        If headless, returns the headless template path/url instead.
 
     Raises:
         SystemExit: On build failure
     """
-    # Verify publish.py exists
-    publish_script = os.path.join(from_code_dir, "publish.py")
-    if not os.path.isfile(publish_script):
-        console.print(f"[red]✗ Error: publish.py not found in {from_code_dir}[/red]")
-        console.print(
-            "[yellow]Tip: --from-code should point to the project root directory[/yellow]"
-        )
-        sys.exit(1)
-
-    # Get AWS account ID
-    try:
-        sts = boto3.client("sts", region_name=region)
-        account_id = sts.get_caller_identity()["Account"]
-    except Exception as e:
-        console.print(f"[red]✗ Error: Failed to get AWS account ID: {e}[/red]")
-        sys.exit(1)
-
-    # Set parameters for publish.py
-    cfn_bucket_basename = f"idp-accelerator-artifacts-{account_id}"
-    cfn_prefix = "idp-cli"
-
     console.print("[bold cyan]Building project from source...[/bold cyan]")
-    console.print(f"[dim]Bucket: {cfn_bucket_basename}[/dim]")
-    console.print(f"[dim]Prefix: {cfn_prefix}[/dim]")
+    console.print(f"[dim]Source: {from_code_dir}[/dim]")
     console.print(f"[dim]Region: {region}[/dim]")
+    if headless:
+        console.print("[dim]Mode: headless[/dim]")
+    if bucket_basename:
+        console.print(f"[dim]Bucket: {bucket_basename}[/dim]")
+    if prefix:
+        console.print(f"[dim]Prefix: {prefix}[/dim]")
     console.print()
 
-    # Build command
-    cmd = [
-        sys.executable,  # Use same Python interpreter
-        publish_script,
-        cfn_bucket_basename,
-        cfn_prefix,
-        region,
-    ]
-
-    console.print(f"[dim]Running: {' '.join(cmd)}[/dim]")
-    console.print()
-
-    # Run with streaming output
     try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            cwd=from_code_dir,
+        client = IDPClient(region=region)
+        result = client.publish.build(
+            source_dir=from_code_dir,
+            bucket=bucket_basename,
+            prefix=prefix,
+            region=region,
+            headless=headless,
+            public=public,
+            max_workers=max_workers,
+            clean_build=clean_build,
+            no_validate=no_validate,
+            verbose=verbose,
+            lint=lint,
         )
 
-        # Stream output line by line
-        for line in process.stdout or []:  # type: ignore
-            # Print each line immediately (preserve formatting from publish.py)
-            print(line, end="")
-
-        process.wait()
-
-        if process.returncode != 0:
-            console.print("[red]✗ Build failed. See output above for details.[/red]")
+        if not result.success:
+            console.print(f"[red]✗ Build failed: {result.error}[/red]")
             sys.exit(1)
 
+        console.print()
+
+        # Return headless template if headless mode
+        if headless and result.headless_template_path:
+            console.print(
+                f"[green]✓ Build complete (headless). Template: {result.headless_template_path}[/green]"
+            )
+            return result.headless_template_path, result.headless_template_url
+
+        console.print(
+            f"[green]✓ Build complete. Template: {result.template_path}[/green]"
+        )
+        console.print()
+        return result.template_path, result.template_url
+
     except Exception as e:
-        console.print(f"[red]✗ Error running publish.py: {e}[/red]")
+        console.print(f"[red]✗ Error during build: {e}[/red]")
         sys.exit(1)
 
-    # Verify template was created
-    template_path = os.path.join(from_code_dir, ".aws-sam", "idp-main.yaml")
-    if not os.path.isfile(template_path):
-        console.print(
-            f"[red]✗ Error: Built template not found at {template_path}[/red]"
-        )
-        console.print(
-            "[yellow]The build may have failed or the template was not generated.[/yellow]"
-        )
-        sys.exit(1)
 
-    console.print()
-    console.print(f"[green]✓ Build complete. Using template: {template_path}[/green]")
-    console.print()
-
-    return template_path, None
-
-
-def _display_deployment_failure(deployer, stack_name: str, result: dict):
+def _display_deployment_failure(client, stack_name: str, result):
     """
     Display detailed failure analysis when a deployment fails.
 
@@ -141,62 +157,74 @@ def _display_deployment_failure(deployer, stack_name: str, result: dict):
     to identify and display root causes.
 
     Args:
-        deployer: StackDeployer instance
+        client: IDPClient instance
         stack_name: Stack name
-        result: Deployment result dictionary
+        result: StackMonitorResult or StackDeploymentResult
     """
-    console.print(f"\n[red]✗ Stack {result['operation']} failed![/red]")
-    console.print(f"Status: {result.get('status')}")
+    operation = (
+        result.operation
+        if hasattr(result, "operation")
+        else result.get("operation", "UNKNOWN")
+    )
+    status = (
+        result.status if hasattr(result, "status") else result.get("status", "UNKNOWN")
+    )
+    error = result.error if hasattr(result, "error") else result.get("error", "Unknown")
+
+    console.print(f"\n[red]✗ Stack {operation} failed![/red]")
+    console.print(f"Status: {status}")
     console.print()
 
     # Get detailed failure analysis
+    # Pass deploy_start_time if available to filter stale events from previous deployments
     try:
-        analysis = deployer.get_deployment_failure_analysis(stack_name)
-        root_causes = analysis.get("root_causes", [])
-        all_failures = analysis.get("all_failures", [])
+        deploy_start_time = (
+            result.deploy_start_time
+            if hasattr(result, "deploy_start_time")
+            else result.get("deploy_start_time")
+            if isinstance(result, dict)
+            else None
+        )
+        analysis = client.stack.get_failure_analysis(
+            stack_name, deploy_start_time=deploy_start_time
+        )
 
-        if root_causes:
+        if analysis.root_causes:
             console.print("[bold red]Root Cause Analysis:[/bold red]")
             console.print("━" * 70)
-            for i, rc in enumerate(root_causes, 1):
-                stack_path = rc.get("stack_path", "")
-                resource = rc.get("resource", "Unknown")
-                resource_type = rc.get("resource_type", "")
-                reason = rc.get("reason", "Unknown")
-
+            for i, cause in enumerate(analysis.root_causes, 1):
                 # Build the location string
-                if stack_path:
-                    location = f"{stack_path} → {resource}"
+                if cause.stack_path:
+                    location = f"{cause.stack_path} → {cause.resource}"
                 else:
-                    location = resource
+                    location = cause.resource
 
                 # Add resource type if available
-                type_hint = f" ({resource_type})" if resource_type else ""
+                type_hint = f" ({cause.resource_type})" if cause.resource_type else ""
 
                 console.print(f"  [red]✗[/red] {location}{type_hint}")
-                console.print(f"    [yellow]{reason}[/yellow]")
-                if i < len(root_causes):
+                console.print(f"    [yellow]{cause.reason}[/yellow]")
+                if i < len(analysis.root_causes):
                     console.print()
 
             console.print("━" * 70)
 
             # Show count of cascade/other failures for context
-            cascade_count = sum(1 for f in all_failures if f.get("is_cascade"))
-            if cascade_count > 0:
+            if analysis.cascade_count > 0:
                 console.print(
-                    f"[dim]  ({cascade_count} additional resource(s) cancelled due to the above failure(s))[/dim]"
+                    f"[dim]  ({analysis.cascade_count} additional resource(s) cancelled due to the above failure(s))[/dim]"
                 )
 
             console.print()
         else:
             # No root causes found - fall back to simple error
-            console.print(f"Error: {result.get('error', 'Unknown')}")
+            console.print(f"Error: {error or 'Unknown'}")
             console.print()
 
     except Exception as e:
         # If analysis fails, fall back to simple error message
         logger.debug(f"Failure analysis error: {e}")
-        console.print(f"Error: {result.get('error', 'Unknown')}")
+        console.print(f"Error: {error or 'Unknown'}")
         console.print()
 
 
@@ -209,7 +237,7 @@ TEMPLATE_URLS = {
 
 
 @click.group()
-@click.version_option(version="0.5.2")
+@click.version_option(version="0.5.10")
 def cli():
     """
     IDP CLI - Batch document processing for IDP Accelerator
@@ -244,6 +272,11 @@ def cli():
     help="URL to CloudFormation template in S3 (default: auto-selected based on region)",
 )
 @click.option(
+    "--template-file",
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to a local CloudFormation template file (e.g., .aws-sam/idp-main.yaml from a previous publish)",
+)
+@click.option(
     "--max-concurrent",
     default=100,
     type=int,
@@ -272,11 +305,48 @@ def cli():
 )
 @click.option("--region", help="AWS region (optional)")
 @click.option("--role-arn", help="CloudFormation service role ARN")
+@click.option(
+    "--headless",
+    is_flag=True,
+    help="Deploy headless (no UI/AppSync/Cognito/WAF) — for API-only or GovCloud deployments",
+)
+@click.option(
+    "--bucket-basename",
+    default=None,
+    help="S3 bucket basename for artifacts — region is appended automatically (auto-generated if not provided, used with --from-code)",
+)
+@click.option(
+    "--prefix",
+    default=None,
+    help="S3 key prefix for artifacts (default: idp-cli, used with --from-code)",
+)
+@click.option(
+    "--public",
+    is_flag=True,
+    help="Make S3 artifacts publicly readable (used with --from-code)",
+)
+@click.option(
+    "--build-max-workers",
+    type=int,
+    default=None,
+    help="Concurrent build workers (used with --from-code)",
+)
+@click.option(
+    "--clean-build",
+    is_flag=True,
+    help="Force full rebuild by deleting checksums (used with --from-code)",
+)
+@click.option(
+    "--no-validate-template",
+    is_flag=True,
+    help="Skip CloudFormation template validation (used with --from-code)",
+)
 def deploy(
     stack_name: str,
     admin_email: str,
     from_code: Optional[str],
     template_url: str,
+    template_file: Optional[str],
     max_concurrent: int,
     log_level: str,
     enable_hitl: str,
@@ -286,12 +356,24 @@ def deploy(
     no_rollback: bool,
     region: Optional[str],
     role_arn: Optional[str],
+    headless: bool,
+    bucket_basename: Optional[str],
+    prefix: Optional[str],
+    public: bool,
+    build_max_workers: Optional[int],
+    clean_build: bool,
+    no_validate_template: bool,
 ):
     """
     Deploy or update IDP stack from command line
     
     For new stacks, --admin-email is required.
     For existing stacks, only specify parameters you want to update.
+    
+    Headless mode (--headless) deploys without UI, AppSync, Cognito, WAF,
+    Agents, HITL, and Knowledge Base — suitable for API-only or GovCloud use.
+    
+    To build templates without deploying, use 'idp-cli publish' instead.
     
     Examples:
     
@@ -301,14 +383,14 @@ def deploy(
       # Deploy from local code
       idp-cli deploy --stack-name my-idp --from-code . --admin-email user@example.com --wait
       
-      # Update existing stack with local config file
-      idp-cli deploy --stack-name my-idp --custom-config ./my-config.yaml
+      # Deploy headless from local code
+      idp-cli deploy --stack-name my-idp --from-code . --headless --wait
       
-      # Update existing stack from local code
-      idp-cli deploy --stack-name my-idp --from-code . --wait
+      # Deploy headless from pre-built template
+      idp-cli deploy --stack-name my-idp --headless --wait
       
-      # Update existing stack with custom settings
-      idp-cli deploy --stack-name my-idp --max-concurrent 200 --wait
+      # Deploy from code with custom bucket/prefix
+      idp-cli deploy --stack-name my-idp --from-code . --bucket my-artifacts --prefix v1 --wait
       
       # Create with additional parameters
       idp-cli deploy --stack-name my-idp \\
@@ -317,9 +399,10 @@ def deploy(
     """
     try:
         # Validate mutually exclusive options
-        if from_code and template_url:
+        exclusive_count = sum(1 for x in [from_code, template_url, template_file] if x)
+        if exclusive_count > 1:
             console.print(
-                "[red]✗ Error: Cannot specify both --from-code and --template-url[/red]"
+                "[red]✗ Error: Cannot specify more than one of --from-code, --template-url, --template-file[/red]"
             )
             sys.exit(1)
 
@@ -338,8 +421,87 @@ def deploy(
         template_path = None
         if from_code:
             template_path, template_url = _build_from_local_code(
-                from_code, region, stack_name
+                from_code,
+                region,
+                stack_name,
+                headless=headless,
+                bucket_basename=bucket_basename,
+                prefix=prefix,
+                public=public,
+                max_workers=build_max_workers,
+                clean_build=clean_build,
+                no_validate=no_validate_template,
             )
+
+        # Handle local template file (from a previous publish)
+        elif template_file:
+            template_path = os.path.abspath(template_file)
+            console.print(f"[bold]Using local template: {template_path}[/bold]")
+
+        # Handle headless mode for pre-built templates (no --from-code)
+        elif headless and not template_url:
+            # Download default template, transform to headless, upload to temp bucket
+            console.print("[bold cyan]Generating headless template...[/bold cyan]")
+            if region in TEMPLATE_URLS:
+                source_url = TEMPLATE_URLS[region]
+            else:
+                supported_regions = ", ".join(TEMPLATE_URLS.keys())
+                raise ValueError(
+                    f"Region '{region}' is not supported for headless mode. "
+                    f"Supported regions: {supported_regions}. "
+                    f"Please use --from-code or --template-url explicitly."
+                )
+
+            # Download template, transform, upload
+            import tempfile
+
+            import boto3 as _boto3
+            import requests
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Download
+                local_template = os.path.join(tmpdir, "idp-main.yaml")
+                console.print(f"[dim]Downloading template from {source_url}...[/dim]")
+                resp = requests.get(source_url, timeout=60)
+                resp.raise_for_status()
+                with open(local_template, "wb") as f:
+                    f.write(resp.content)
+
+                # Transform
+                headless_template = os.path.join(tmpdir, "idp-headless.yaml")
+                client_tmp = IDPClient(region=region)
+                is_govcloud = region and region.startswith("us-gov-")
+                transform_result = client_tmp.publish.transform_template_headless(
+                    source_template=local_template,
+                    output_path=headless_template,
+                    update_govcloud_config=is_govcloud,
+                )
+                if not transform_result.success:
+                    console.print(
+                        f"[red]✗ Headless transformation failed: {transform_result.error}[/red]"
+                    )
+                    sys.exit(1)
+
+                # Upload to per-account bucket
+                sts = _boto3.client("sts", region_name=region)
+                account_id = sts.get_caller_identity()["Account"]
+                bucket_name = f"idp-accelerator-artifacts-{account_id}-{region}"
+                s3 = _boto3.client("s3", region_name=region)
+                s3_key = "idp-cli/idp-headless.yaml"
+                s3.upload_file(
+                    headless_template,
+                    bucket_name,
+                    s3_key,
+                    ExtraArgs={"ContentType": "text/yaml"},
+                )
+                template_url = (
+                    f"https://s3.{region}.amazonaws.com/{bucket_name}/{s3_key}"
+                )
+                # Note: template_path left as None — the temp file will be deleted
+                # when this `with` block exits. Deploy will use template_url instead.
+                console.print(
+                    f"[green]✓ Headless template uploaded: {template_url}[/green]"
+                )
 
         # Determine template URL (user-provided takes precedence)
         elif not template_url:
@@ -354,15 +516,15 @@ def deploy(
                     f"Please provide --template-url explicitly for other regions."
                 )
 
-        # Initialize deployer
-        deployer = StackDeployer(region=region)
+        # Initialize SDK client
+        client = IDPClient(stack_name=stack_name, region=region)
 
         # Check if stack has an operation in progress
-        in_progress = deployer.get_stack_operation_in_progress(stack_name)
+        in_progress = client.stack.check_in_progress()
         if in_progress:
             # Stack has an operation in progress - switch to monitoring mode
-            operation = in_progress["operation"]
-            status = in_progress["status"]
+            operation = in_progress.operation
+            status = in_progress.status
 
             console.print(
                 f"[bold yellow]Stack '{stack_name}' has an operation in progress[/bold yellow]"
@@ -373,19 +535,18 @@ def deploy(
             console.print()
 
             # Monitor the existing operation
-            result = deployer.monitor_stack_progress(stack_name, operation)
+            with console.status(f"[bold cyan]Monitoring {operation}...[/bold cyan]"):
+                result = client.stack.monitor(operation=operation)
 
             # Show results
-            is_success = result.get("success", False)
-
-            if is_success:
+            if result.success:
                 console.print(
-                    f"\n[green]✓ Stack {result['operation']} completed successfully![/green]\n"
+                    f"\n[green]✓ Stack {result.operation} completed successfully![/green]\n"
                 )
 
                 # Show outputs for non-delete operations
                 if operation != "DELETE":
-                    outputs = result.get("outputs", {})
+                    outputs = result.outputs
                     if outputs:
                         console.print("[bold]Important Outputs:[/bold]")
                         console.print(
@@ -408,13 +569,13 @@ def deploy(
                 )
                 console.print()
             else:
-                _display_deployment_failure(deployer, stack_name, result)
+                _display_deployment_failure(client, stack_name, result)
                 sys.exit(1)
 
             return  # Exit after monitoring
 
         # Check if stack exists
-        stack_exists = deployer._stack_exists(stack_name)
+        stack_exists = client.stack.exists()
 
         if stack_exists:
             # Stack exists - updating (all parameters are optional)
@@ -424,84 +585,87 @@ def deploy(
             if admin_email:
                 console.print(f"Admin Email: {admin_email}")
         else:
-            # New stack - require admin_email
+            # New stack - require admin_email unless --headless (headless template
+            # strips Cognito and has no AdminEmail parameter, so the value is
+            # unused and would cause a CFN ValidationError if passed through).
             console.print(
                 f"[bold blue]Creating new IDP stack: {stack_name}[/bold blue]"
             )
 
-            if not admin_email:
-                console.print(
-                    "[red]✗ Error: --admin-email is required when creating a new stack[/red]"
-                )
-                sys.exit(1)
+            if headless:
+                # Drop any user-supplied admin_email so it doesn't reach CFN.
+                if admin_email:
+                    console.print(
+                        "[yellow]--admin-email is ignored with --headless "
+                        "(no Cognito in headless template)[/yellow]"
+                    )
+                admin_email = None
+            else:
+                if not admin_email:
+                    console.print(
+                        "[red]✗ Error: --admin-email is required when creating a new stack[/red]"
+                    )
+                    sys.exit(1)
 
-            console.print(f"Admin Email: {admin_email}")
+                console.print(f"Admin Email: {admin_email}")
 
         console.print()
 
         # Parse additional parameters
         additional_params = {}
         if parameters:
-            for param in parameters.split(","):
-                if "=" in param:
-                    key, value = param.split("=", 1)
-                    additional_params[key.strip()] = value.strip()
+            # Parse key=value pairs separated by commas, but handle values
+            # that themselves contain commas (e.g., subnet lists).
+            # Strategy: split on commas that are followed by a key= pattern.
+            import re
 
-        # Build parameters - only pass explicitly provided values
-        # Convert Click defaults to None when not explicitly provided by user
-        cfn_parameters = build_parameters(
-            admin_email=admin_email,
-            max_concurrent=max_concurrent if max_concurrent != 100 else None,
-            log_level=log_level if log_level != "INFO" else None,
-            enable_hitl=enable_hitl if enable_hitl != "false" else None,
-            custom_config=custom_config,
-            additional_params=additional_params,
-            region=region,
-            stack_name=stack_name,
-        )
+            for match in re.finditer(
+                r"([A-Za-z][A-Za-z0-9]*)=((?:(?![A-Za-z][A-Za-z0-9]*=).)*)",
+                parameters,
+            ):
+                key = match.group(1).strip()
+                value = match.group(2).strip().rstrip(",")
+                additional_params[key] = value
 
-        # Debug: Show CustomConfigPath if present
-        if "CustomConfigPath" in cfn_parameters:
-            console.print(
-                f"[yellow]DEBUG: CustomConfigPath = {cfn_parameters['CustomConfigPath']}[/yellow]"
-            )
+        # When --headless is used, auto-set EnableHeadless=true stack parameter so
+        # users don't need to pass it twice. Explicit --parameters values win.
+        if headless and "EnableHeadless" not in additional_params:
+            additional_params["EnableHeadless"] = "true"
+
+        # Deploy stack via SDK (build_parameters is called internally by client.stack.deploy)
+        # Debug: show custom config path hint before deploy
+        if custom_config:
+            console.print(f"[yellow]DEBUG: CustomConfig = {custom_config}[/yellow]")
 
         # Deploy stack
         with console.status("[bold green]Deploying stack..."):
-            if template_path:
-                # Deploy from local template (built from code)
-                result = deployer.deploy_stack(
-                    stack_name=stack_name,
-                    template_path=template_path,
-                    parameters=cfn_parameters,
-                    wait=wait,
-                    no_rollback=no_rollback,
-                    role_arn=role_arn,
-                )
-            else:
-                # Deploy from template URL
-                result = deployer.deploy_stack(
-                    stack_name=stack_name,
-                    template_url=template_url,
-                    parameters=cfn_parameters,
-                    wait=wait,
-                    no_rollback=no_rollback,
-                    role_arn=role_arn,
-                )
+            result = client.stack.deploy(
+                template_url=template_url,
+                template_path=template_path,
+                admin_email=admin_email,
+                max_concurrent=max_concurrent if max_concurrent != 100 else None,
+                log_level=log_level if log_level != "INFO" else None,
+                enable_hitl=enable_hitl == "true" if enable_hitl != "false" else None,
+                custom_config=custom_config,
+                parameters=additional_params,
+                wait=wait,
+                no_rollback=no_rollback,
+                role_arn=role_arn,
+            )
 
         # Show results
         # Success if operation completed successfully OR was successfully initiated
-        is_success = result.get("success") or result.get("status") == "INITIATED"
+        is_success = result.success or result.status == "INITIATED"
 
         if is_success:
-            if result.get("success"):
+            if result.success:
                 # Completed (with --wait)
                 console.print(
-                    f"\n[green]✓ Stack {result['operation']} completed successfully![/green]\n"
+                    f"\n[green]✓ Stack {result.operation} completed successfully![/green]\n"
                 )
 
                 # Show outputs
-                outputs = result.get("outputs", {})
+                outputs = result.outputs
                 if outputs:
                     console.print("[bold]Important Outputs:[/bold]")
                     console.print(
@@ -526,7 +690,7 @@ def deploy(
             else:
                 # Initiated (without --wait)
                 console.print(
-                    f"\n[green]✓ Stack {result['operation']} initiated successfully![/green]\n"
+                    f"\n[green]✓ Stack {result.operation} initiated successfully![/green]\n"
                 )
                 console.print("[bold]Monitor progress:[/bold]")
                 console.print(f"  AWS Console: CloudFormation → Stacks → {stack_name}")
@@ -537,7 +701,7 @@ def deploy(
                 )
                 console.print()
         else:
-            _display_deployment_failure(deployer, stack_name, result)
+            _display_deployment_failure(client, stack_name, result)
             sys.exit(1)
 
     except FileNotFoundError as e:
@@ -603,13 +767,13 @@ def delete(
       idp-cli delete --stack-name test-stack --force --wait
     """
     try:
-        deployer = StackDeployer(region=region)
+        client = IDPClient(stack_name=stack_name, region=region)
 
         # Check if stack has an operation in progress
-        in_progress = deployer.get_stack_operation_in_progress(stack_name)
+        in_progress = client.stack.check_in_progress()
         if in_progress:
-            operation = in_progress["operation"]
-            status = in_progress["status"]
+            operation = in_progress.operation
+            status = in_progress.status
 
             if operation == "DELETE":
                 # Delete already in progress - monitor it
@@ -622,16 +786,17 @@ def delete(
                 console.print()
 
                 # Monitor the deletion
-                result = deployer.monitor_stack_progress(stack_name, "DELETE")
+                with console.status("[bold cyan]Monitoring DELETE...[/bold cyan]"):
+                    result = client.stack.monitor(operation="DELETE")
 
-                if result.get("success"):
+                if result.success:
                     console.print("\n[green]✓ Stack deleted successfully![/green]")
                     console.print(f"Stack: {stack_name}")
-                    console.print(f"Status: {result.get('status')}")
+                    console.print(f"Status: {result.status}")
                 else:
                     console.print("\n[red]✗ Stack deletion failed![/red]")
-                    console.print(f"Status: {result.get('status')}")
-                    console.print(f"Error: {result.get('error', 'Unknown')}")
+                    console.print(f"Status: {result.status}")
+                    console.print(f"Error: {result.error or 'Unknown'}")
                     sys.exit(1)
 
                 return  # Exit after monitoring
@@ -668,11 +833,14 @@ def delete(
                         console.print()
 
                         # Monitor the current operation
-                        result = deployer.monitor_stack_progress(stack_name, operation)
+                        with console.status(
+                            f"[bold cyan]Monitoring {operation}...[/bold cyan]"
+                        ):
+                            monitor_result = client.stack.monitor(operation=operation)
 
-                        if not result.get("success"):
+                        if not monitor_result.success:
                             console.print(f"\n[red]✗ {operation} failed![/red]")
-                            console.print(f"Status: {result.get('status')}")
+                            console.print(f"Status: {monitor_result.status}")
                             # Continue to deletion - user may still want to delete failed stack
                         else:
                             console.print(f"\n[green]✓ {operation} completed![/green]")
@@ -696,36 +864,39 @@ def delete(
                     console.print()
 
                     if operation == "UPDATE":
-                        cancel_result = deployer.cancel_update_stack(stack_name)
-                        if not cancel_result.get("success"):
+                        cancel_result = client.stack.cancel_update()
+                        if not cancel_result.success:
                             console.print(
-                                f"[yellow]Warning: Could not cancel update: {cancel_result.get('error')}[/yellow]"
+                                f"[yellow]Warning: Could not cancel update: {cancel_result.error}[/yellow]"
                             )
 
                     # Wait for stable state
-                    stable_result = deployer.wait_for_stable_state(
-                        stack_name, timeout_seconds=1200
-                    )
+                    with console.status(
+                        "[bold cyan]Waiting for stable state...[/bold cyan]"
+                    ):
+                        stable_result = client.stack.wait_for_stable_state(
+                            timeout_seconds=1200
+                        )
 
-                    if not stable_result.get("success"):
+                    if not stable_result.success:
                         console.print(
-                            f"[red]✗ Timeout waiting for stable state: {stable_result.get('error')}[/red]"
+                            f"[red]✗ Timeout waiting for stable state: {stable_result.message}[/red]"
                         )
                         sys.exit(1)
 
                     console.print(
-                        f"[green]✓ Stack reached stable state: {stable_result.get('status')}[/green]"
+                        f"[green]✓ Stack reached stable state: {stable_result.status}[/green]"
                     )
                     console.print()
 
         # Check if stack exists
-        if not deployer._stack_exists(stack_name):
+        if not client.stack.exists():
             console.print(f"[red]✗ Stack '{stack_name}' does not exist[/red]")
             sys.exit(1)
 
         # Get bucket information
         console.print(f"[bold blue]Analyzing stack: {stack_name}[/bold blue]")
-        bucket_info = deployer.get_bucket_info(stack_name)
+        bucket_info = client.stack.get_bucket_info()
 
         # Show warning with bucket details
         console.print()
@@ -742,9 +913,9 @@ def delete(
             console.print("[bold]S3 Buckets:[/bold]")
             has_data = False
             for bucket in bucket_info:
-                obj_count = bucket.get("object_count", 0)
-                size = bucket.get("size_display", "Unknown")
-                logical_id = bucket.get("logical_id", "Unknown")
+                obj_count = bucket.object_count
+                size = bucket.size_display
+                logical_id = bucket.logical_id
 
                 if obj_count > 0:
                     has_data = True
@@ -812,23 +983,40 @@ def delete(
         # Perform deletion
         console.print()
         with console.status("[bold red]Deleting stack..."):
-            result = deployer.delete_stack(
-                stack_name=stack_name,
+            result = client.stack.delete(
                 empty_buckets=empty_buckets,
+                force_delete_all=force_delete_all,
                 wait=wait,
             )
 
-        # Show CloudFormation deletion results
-        if result.get("success"):
+        # Show CloudFormation deletion results.
+        # success=True  → deletion completed (waited to DELETE_COMPLETE)
+        # success=False + status=INITIATED → deletion started but not waited on
+        # success=False + other status    → genuine failure
+        initiated_only = not result.success and result.status == "INITIATED"
+
+        if result.success:
             console.print("\n[green]✓ Stack deleted successfully![/green]")
             console.print(f"Stack: {stack_name}")
-            console.print(f"Status: {result.get('status')}")
+            console.print(f"Status: {result.status}")
+        elif initiated_only:
+            console.print("\n[green]✓ Stack deletion initiated![/green]")
+            console.print(f"Stack: {stack_name}")
+            console.print(f"Region: {region or 'default'}")
+            console.print()
+            console.print("[bold]Monitor progress in the AWS Console:[/bold]")
+            console.print(f"  CloudFormation → Stacks → {stack_name}")
+            console.print()
+            console.print("[bold]Or wait for it with:[/bold]")
+            console.print(
+                f"  [cyan]idp-cli delete --stack-name {stack_name} --force --wait[/cyan]"
+            )
         else:
             console.print("\n[red]✗ Stack deletion failed![/red]")
-            console.print(f"Status: {result.get('status')}")
-            console.print(f"Error: {result.get('error', 'Unknown')}")
+            console.print(f"Status: {result.status}")
+            console.print(f"Error: {result.error or 'Unknown'}")
 
-            if "bucket" in result.get("error", "").lower():
+            if result.error and "bucket" in result.error.lower():
                 console.print()
                 console.print(
                     "[yellow]Tip: Try again with --empty-buckets or --force-delete-all flag[/yellow]"
@@ -842,8 +1030,8 @@ def delete(
                     "[yellow]Stack deletion failed, but continuing with force cleanup...[/yellow]"
                 )
 
-        # Post-deletion cleanup if --force-delete-all
-        cleanup_result = None
+        # Post-deletion cleanup results from --force-delete-all.
+        # The SDK already ran cleanup_retained_resources(); we just display the results.
         if force_delete_all:
             console.print()
             console.print("[bold blue]━" * 60 + "[/bold blue]")
@@ -853,9 +1041,7 @@ def delete(
             console.print("[bold blue]━" * 60 + "[/bold blue]")
 
             try:
-                # Use stack ID for deleted stacks (CloudFormation requires ID for deleted stacks)
-                stack_identifier = result.get("stack_id", stack_name)
-                cleanup_result = deployer.cleanup_retained_resources(stack_identifier)
+                cleanup_result = result.cleanup_result or {}
 
                 # Show cleanup summary
                 console.print()
@@ -909,18 +1095,15 @@ def delete(
                 console.print(
                     "[yellow]Some resources may remain - check AWS Console[/yellow]"
                 )
-        else:
-            # Standard deletion without force-delete-all
-            if result.get("success"):
-                console.print()
-                console.print(
-                    "[bold]Note:[/bold] LoggingBucket (if exists) is retained by design."
-                )
-                console.print("Delete it manually if no longer needed:")
-                console.print(
-                    "  [cyan]aws s3 rb s3://<logging-bucket-name> --force[/cyan]"
-                )
-                console.print()
+        elif result.success:
+            # Standard deletion without force-delete-all — stack was fully deleted
+            console.print()
+            console.print(
+                "[bold]Note:[/bold] LoggingBucket (if exists) is retained by design."
+            )
+            console.print("Delete it manually if no longer needed:")
+            console.print("  [cyan]aws s3 rb s3://<logging-bucket-name> --force[/cyan]")
+            console.print()
 
     except Exception as e:
         logger.error(f"Error deleting stack: {e}", exc_info=True)
@@ -939,9 +1122,13 @@ def delete(
     help="Delete all documents in this batch (alternative to --document-ids)",
 )
 @click.option(
+    "--pattern",
+    help='Wildcard pattern to match document keys (e.g. "batch-123/*.pdf", "*invoice*")',
+)
+@click.option(
     "--status-filter",
     type=click.Choice(["FAILED", "COMPLETED", "PROCESSING", "QUEUED"]),
-    help="Only delete documents with this status (use with --batch-id)",
+    help="Only delete documents with this status (use with --batch-id or --pattern)",
 )
 @click.option(
     "--dry-run",
@@ -959,6 +1146,7 @@ def delete_documents_cmd(
     stack_name: str,
     document_ids: Optional[str],
     batch_id: Optional[str],
+    pattern: Optional[str],
     status_filter: Optional[str],
     dry_run: bool,
     force: bool,
@@ -987,6 +1175,12 @@ def delete_documents_cmd(
       # Delete only failed documents in a batch
       idp-cli delete-documents --stack-name my-stack --batch-id cli-batch-20250123 --status-filter FAILED
 
+      # Delete documents matching a wildcard pattern
+      idp-cli delete-documents --stack-name my-stack --pattern "batch-123/*.pdf"
+
+      # Delete all failed invoice documents
+      idp-cli delete-documents --stack-name my-stack --pattern "*invoice*" --status-filter FAILED
+
       # Dry run to see what would be deleted
       idp-cli delete-documents --stack-name my-stack --batch-id cli-batch-20250123 --dry-run
 
@@ -995,31 +1189,35 @@ def delete_documents_cmd(
     """
     try:
         import boto3
-        from idp_common.delete_documents import delete_documents, get_documents_by_batch
+        from idp_common.delete_documents import (
+            delete_documents,
+            get_documents_by_batch,
+            get_documents_by_pattern,
+        )
+        from idp_sdk import IDPClient
 
-        # Validate input
-        if not document_ids and not batch_id:
+        # Validate input - exactly one of document_ids, batch_id, or pattern required
+        selector_count = sum(1 for x in [document_ids, batch_id, pattern] if x)
+        if selector_count == 0:
             console.print(
-                "[red]✗ Error: Must specify either --document-ids or --batch-id[/red]"
+                "[red]✗ Error: Must specify one of --document-ids, --batch-id, or --pattern[/red]"
             )
             sys.exit(1)
 
-        if document_ids and batch_id:
+        if selector_count > 1:
             console.print(
-                "[red]✗ Error: Cannot specify both --document-ids and --batch-id[/red]"
+                "[red]✗ Error: Cannot specify more than one of --document-ids, --batch-id, --pattern[/red]"
             )
             sys.exit(1)
 
         # Get stack resources
-        from idp_sdk.core.stack_info import StackInfo
-
         console.print(f"[bold blue]Connecting to stack: {stack_name}[/bold blue]")
-        stack_info = StackInfo(stack_name, region)
-        resources = stack_info.get_resources()
+        client = IDPClient(stack_name=stack_name, region=region)
+        resources = client.stack.get_resources()
 
-        input_bucket = resources.get("InputBucket")
-        output_bucket = resources.get("OutputBucket")
-        tracking_table_name = resources.get("DocumentsTable")
+        input_bucket = resources.input_bucket
+        output_bucket = resources.output_bucket
+        tracking_table_name = resources.documents_table
 
         if not all([input_bucket, output_bucket, tracking_table_name]):
             console.print("[red]✗ Error: Could not find required stack resources[/red]")
@@ -1037,6 +1235,27 @@ def delete_documents_cmd(
         if document_ids:
             doc_list = [d.strip() for d in document_ids.split(",")]
             console.print(f"Selected {len(doc_list)} document(s) for deletion")
+        elif pattern:
+            console.print(
+                f"[bold blue]Finding documents matching pattern: {pattern}[/bold blue]"
+            )
+            doc_list = get_documents_by_pattern(
+                tracking_table=tracking_table,
+                pattern=pattern,
+                status_filter=status_filter,
+            )
+            if not doc_list:
+                console.print(
+                    f"[yellow]No documents found matching pattern: {pattern}[/yellow]"
+                )
+                if status_filter:
+                    console.print(
+                        f"[yellow]  (with status filter: {status_filter})[/yellow]"
+                    )
+                sys.exit(0)
+            console.print(f"Found {len(doc_list)} document(s) matching pattern")
+            if status_filter:
+                console.print(f"  (filtered by status: {status_filter})")
         else:
             console.print(
                 f"[bold blue]Getting documents for batch: {batch_id}[/bold blue]"
@@ -1167,8 +1386,9 @@ def _process_impl(
             console.print("[red]✗ Error: Cannot specify multiple input sources[/red]")
             sys.exit(1)
 
-        # Initialize processor
-        processor = BatchProcessor(stack_name=stack_name, region=region)
+        from idp_sdk import IDPClient
+
+        client = IDPClient(stack_name=stack_name, region=region)
 
         # Handle test set processing
         if test_set:
@@ -1177,69 +1397,73 @@ def _process_impl(
                 test_set_name=test_set,
                 context=context,
                 region=region,
-                processor=processor,
+                client=client,
                 number_of_files=number_of_files,
                 config_version=config_version,
             )
+            # test_set path returns legacy dict — extract fields
+            result_batch_id = batch_result["batch_id"]
+            result_queued = batch_result.get(
+                "queued", batch_result.get("documents_queued", 0)
+            )
+            result_uploaded = batch_result.get("uploaded", 0)
+            result_failed = batch_result.get("failed", 0)
         else:
-            # Handle manifest/directory/S3 processing
+            # Handle manifest/directory/S3 processing via IDPClient
             if manifest:
-                batch_result = processor.process_batch(
-                    manifest_path=manifest,
-                    output_prefix=batch_prefix,
+                result = client.batch.process(
+                    manifest=manifest,
+                    batch_prefix=batch_prefix,
                     batch_id=batch_id,
                     number_of_files=number_of_files,
                     config_version=config_version,
                 )
             elif directory:
-                batch_result = processor.process_batch_from_directory(
-                    dir_path=directory,
+                result = client.batch.process(
+                    directory=directory,
                     file_pattern=file_pattern,
                     recursive=recursive,
-                    output_prefix=batch_prefix,
+                    batch_prefix=batch_prefix,
                     batch_id=batch_id,
                     number_of_files=number_of_files,
                     config_version=config_version,
                 )
             elif s3_uri:
-                batch_result = processor.process_batch_from_s3_uri(
+                result = client.batch.process(
                     s3_uri=s3_uri,
                     file_pattern=file_pattern,
                     recursive=recursive,
-                    output_prefix=batch_prefix,
+                    batch_prefix=batch_prefix,
                     batch_id=batch_id,
+                    number_of_files=number_of_files,
+                    config_version=config_version,
                 )
             else:
                 raise ValueError("No input source specified")
 
+            result_batch_id = result.batch_id
+            result_queued = result.documents_queued
+            result_uploaded = result.documents_uploaded
+            result_failed = result.documents_failed
+
         # Show results
         console.print()
-        console.print(f"[bold blue]Batch ID: {batch_result['batch_id']}[/bold blue]")
-        console.print(
-            f"Documents queued: {batch_result.get('queued', batch_result.get('documents_queued', 0))}"
-        )
+        console.print(f"[bold blue]Batch ID: {result_batch_id}[/bold blue]")
+        console.print(f"Documents queued: {result_queued}")
 
-        if batch_result.get("uploaded", 0) > 0:
-            console.print(f"Files uploaded: {batch_result['uploaded']}")
-        if batch_result.get("skipped", 0) > 0:
-            console.print(f"Files skipped: {batch_result['skipped']}")
-        if batch_result.get("failed", 0) > 0:
-            console.print(f"[red]Files failed: {batch_result['failed']}[/red]")
+        if result_uploaded > 0:
+            console.print(f"Files uploaded: {result_uploaded}")
+        if result_failed > 0:
+            console.print(f"[red]Files failed: {result_failed}[/red]")
 
         console.print()
 
         # Monitor if requested
-        if (
-            monitor
-            and batch_result.get("queued", batch_result.get("documents_queued", 0)) > 0
-        ):
+        if monitor and result_queued > 0:
             _monitor_progress(
-                stack_name=stack_name,
-                batch_id=batch_result["batch_id"],
-                document_ids=batch_result.get("document_ids", []),
+                client=client,
+                batch_id=result_batch_id,
                 refresh_interval=refresh_interval,
-                region=region,
-                resources=processor.resources,
             )
 
     except Exception as e:
@@ -1652,22 +1876,26 @@ def _rerun_inference_impl(
             )
             sys.exit(1)
 
-        from idp_sdk.core.rerun_processor import RerunProcessor
+        from idp_sdk import IDPClient
 
-        # Initialize processor
         console.print(
-            f"[bold blue]Initializing rerun processor for stack: {stack_name}[/bold blue]"
+            f"[bold blue]Initializing reprocess for stack: {stack_name}[/bold blue]"
         )
-        processor = RerunProcessor(stack_name=stack_name, region=region)
+        client = IDPClient(stack_name=stack_name, region=region)
 
-        # Get document IDs
+        # Get document count for confirmation display
         if document_ids:
             doc_id_list = [doc_id.strip() for doc_id in document_ids.split(",")]
             console.print(f"Processing {len(doc_id_list)} specified documents")
+            reprocess_doc_ids = doc_id_list
+            reprocess_batch_id = None
         else:
             console.print(f"Getting document IDs from batch: {batch_id}")
-            doc_id_list = processor.get_batch_document_ids(batch_id)
+            # Pre-fetch IDs for count display (SDK will re-fetch internally if batch_id passed)
+            doc_id_list = client.batch.get_document_ids(batch_id)
             console.print(f"Found {len(doc_id_list)} documents in batch")
+            reprocess_doc_ids = doc_id_list
+            reprocess_batch_id = None  # Pass explicit list so SDK doesn't re-fetch
 
         # Show what will be cleared based on step
         console.print()
@@ -1704,40 +1932,38 @@ def _rerun_inference_impl(
                 console.print("[yellow]Rerun cancelled[/yellow]")
                 return
 
-        # Perform rerun
+        # Perform reprocess via SDK
         console.print()
         with console.status(
             f"[bold green]Reprocessing {len(doc_id_list)} documents..."
         ):
-            results = processor.rerun_documents(
-                document_ids=doc_id_list, step=step, monitor=monitor
+            result = client.batch.reprocess(
+                step=step,
+                document_ids=reprocess_doc_ids,
+                batch_id=reprocess_batch_id,
             )
 
         # Show results
         console.print()
-        if results["documents_queued"] > 0:
+        if result.documents_queued > 0:
             console.print(
-                f"[green]✓ Queued {results['documents_queued']} documents for {step} reprocessing[/green]"
+                f"[green]✓ Queued {result.documents_queued} documents for {step} reprocessing[/green]"
             )
 
-        if results["documents_failed"] > 0:
+        if result.documents_failed > 0:
             console.print(
-                f"[red]✗ Failed to queue {results['documents_failed']} documents[/red]"
+                f"[red]✗ Failed to queue {result.documents_failed} documents[/red]"
             )
-            for failed in results["failed_documents"]:
+            for failed in result.failed_documents:
                 console.print(f"  • {failed['object_key']}: {failed['error']}")
 
         console.print()
 
-        if monitor and results["documents_queued"] > 0:
-            # Monitor progress using existing monitoring function
+        if monitor and result.documents_queued > 0:
             _monitor_progress(
-                stack_name=stack_name,
+                client=client,
                 batch_id=batch_id or "rerun",
-                document_ids=doc_id_list,
                 refresh_interval=refresh_interval,
-                region=region,
-                resources=processor.resources,
             )
 
     except Exception as e:
@@ -1849,9 +2075,6 @@ def status(
             )
             sys.exit(1)
 
-        # Initialize processor to get resources
-        processor = BatchProcessor(stack_name=stack_name, region=region)
-
         # Get document IDs to monitor
         if batch_id:
             # Use TrackingTableSearcher for PK substring search
@@ -1962,22 +2185,22 @@ def status(
                 )
                 console.print()
 
+            from idp_sdk import IDPClient as _IDPClient
+
+            _client = _IDPClient(stack_name=stack_name, region=region)
             # Monitor until completion
             _monitor_progress(
-                stack_name=stack_name,
+                client=_client,
                 batch_id=identifier,
-                document_ids=document_ids,
                 refresh_interval=refresh_interval,
-                region=region,
-                resources=processor.resources,
             )
         else:
-            # Show current status once
-            monitor = ProgressMonitor(
-                stack_name=stack_name, resources=processor.resources, region=region
-            )
-            status_data = monitor.get_batch_status(document_ids)
-            stats = monitor.calculate_statistics(status_data)
+            # Show current status once via IDPClient
+            from idp_sdk import IDPClient as _IDPClient
+
+            _client = _IDPClient(stack_name=stack_name, region=region)
+            batch_status = _client.batch.get_status(identifier)
+            status_data, stats = _batch_status_to_display_dicts(batch_status)
 
             if output_format == "json":
                 # JSON output for programmatic use
@@ -2025,10 +2248,12 @@ def list_batches(stack_name: str, limit: int, region: Optional[str]):
       idp-cli list-batches --stack-name my-stack --limit 5
     """
     try:
-        processor = BatchProcessor(stack_name=stack_name, region=region)
-        batches = processor.list_batches(limit=limit)
+        from idp_sdk import IDPClient
 
-        if not batches:
+        client = IDPClient(stack_name=stack_name, region=region)
+        result = client.batch.list(limit=limit)
+
+        if not result.batches:
             console.print("[yellow]No batches found[/yellow]")
             return
 
@@ -2040,13 +2265,13 @@ def list_batches(stack_name: str, limit: int, region: Optional[str]):
         table.add_column("Failed", justify="right")
         table.add_column("Timestamp")
 
-        for batch in batches:
+        for batch in result.batches:
             table.add_row(
-                batch["batch_id"],
-                str(len(batch["document_ids"])),
-                str(batch["queued"]),
-                str(batch["failed"]),
-                batch["timestamp"][:19],  # Trim timestamp
+                batch.batch_id,
+                str(len(batch.document_ids)),
+                str(batch.queued),
+                str(batch.failed),
+                batch.timestamp[:19],  # Trim timestamp
             )
 
         console.print()
@@ -2096,27 +2321,29 @@ def download_results(
       idp-cli download-results --stack-name my-stack --batch-id <id> --output-dir ./results/ --file-types evaluation
     """
     try:
+        from idp_sdk import IDPClient
+
         console.print(
             f"[bold blue]Downloading results for batch: {batch_id}[/bold blue]"
         )
 
-        processor = BatchProcessor(stack_name=stack_name, region=region)
+        client = IDPClient(stack_name=stack_name, region=region)
 
         # Parse file types
         if file_types == "all":
-            types_list = ["pages", "sections", "summary", "evaluation"]
+            types_list = ["all"]
         else:
             types_list = [t.strip() for t in file_types.split(",")]
 
         # Download results
-        result = processor.download_batch_results(
+        result = client.batch.download_results(
             batch_id=batch_id, output_dir=output_dir, file_types=types_list
         )
 
         console.print(
-            f"\n[green]✓ Downloaded {result['files_downloaded']} files to {output_dir}[/green]"
+            f"\n[green]✓ Downloaded {result.files_downloaded} files to {output_dir}[/green]"
         )
-        console.print(f"  Documents: {result['documents_downloaded']}")
+        console.print(f"  Documents: {result.documents_downloaded}")
         console.print(f"  Output: {output_dir}/{batch_id}/")
         console.print()
 
@@ -2243,10 +2470,9 @@ def generate_manifest(
         s3_client = None
         if test_set:
             import boto3
-            from idp_sdk.core.stack_info import StackInfo
 
-            stack_info = StackInfo(stack_name, region)
-            resources = stack_info.get_resources()
+            _client = IDPClient(stack_name=stack_name, region=region)
+            resources = _client._get_stack_resources(stack_name)
             test_set_bucket = resources.get("TestSetBucket")
             if not test_set_bucket:
                 console.print(
@@ -2414,6 +2640,15 @@ def generate_manifest(
                     f"[yellow]Warning: Could not clear existing files: {e}[/yellow]"
                 )
 
+            # Place .uploading marker to prevent resolver race condition
+            # The test set resolver's auto-detection skips folders with this marker,
+            # preventing premature validation before all files are uploaded.
+            # See: https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/193
+            marker_key = f"{test_set}/.uploading"
+            s3_client.put_object(
+                Bucket=test_set_bucket, Key=marker_key, Body=b"upload-in-progress"
+            )
+
             # Upload input documents
             for i, doc in enumerate(documents):
                 doc_path = doc["document_path"]
@@ -2469,11 +2704,18 @@ def generate_manifest(
             console.print()
 
         if test_set:
-            # Auto-register test set in tracking table
-            from idp_cli.stack_info import StackInfo
+            # Remove .uploading marker now that all files are uploaded
+            marker_key = f"{test_set}/.uploading"
+            try:
+                s3_client.delete_object(Bucket=test_set_bucket, Key=marker_key)
+            except Exception as e:
+                console.print(
+                    f"[yellow]Warning: Could not remove upload marker: {e}[/yellow]"
+                )
 
-            stack_info = StackInfo(stack_name, region=region)
-            resources = stack_info.get_resources()
+            # Auto-register test set in tracking table
+            _client2 = IDPClient(stack_name=stack_name, region=region)
+            resources = _client2._get_stack_resources(stack_name)
             _invoke_test_set_resolver(stack_name, test_set, region, resources)
 
             console.print(
@@ -2534,7 +2776,10 @@ def validate_manifest_cmd(manifest: str):
       idp-cli validate-manifest --manifest documents.csv
     """
     try:
-        is_valid, error = validate_manifest(manifest)
+        _client = IDPClient()
+        result = _client.manifest.validate(manifest_path=manifest)
+        is_valid = result.valid
+        error = result.error
 
         if is_valid:
             console.print(f"[green]✓ Manifest is valid: {manifest}[/green]")
@@ -2549,40 +2794,146 @@ def validate_manifest_cmd(manifest: str):
         sys.exit(1)
 
 
+def _batch_status_to_display_dicts(batch_status):
+    """
+    Convert a BatchStatus Pydantic model to the legacy dict format expected by display.py.
+
+    display.py functions (create_live_display, show_final_summary, etc.) consume:
+      status_data = {"completed": [...], "running": [...], "queued": [...], "failed": [...], "total": N}
+      stats       = {"total": N, "completed": N, "failed": N, "running": N, "queued": N,
+                     "all_complete": bool, "success_rate": float (0-100),
+                     "completion_percentage": float, "avg_duration_seconds": float}
+    """
+    completed_docs = []
+    running_docs = []
+    queued_docs = []
+    failed_docs = []
+
+    total_duration = 0.0
+    duration_count = 0
+
+    for doc in batch_status.documents:
+        doc_dict = {
+            "document_id": doc.document_id,
+            "status": doc.status,
+            "start_time": doc.start_time or "",
+            "end_time": doc.end_time or "",
+            "duration": doc.duration_seconds or 0,
+            "num_pages": doc.num_pages,
+            "num_sections": doc.num_sections,
+            "error": doc.error or "",
+        }
+        status_upper = (doc.status or "").upper()
+        if status_upper == "COMPLETED":
+            completed_docs.append(doc_dict)
+            if doc.duration_seconds:
+                total_duration += doc.duration_seconds
+                duration_count += 1
+        elif status_upper == "FAILED":
+            failed_docs.append(doc_dict)
+        elif status_upper in (
+            "RUNNING",
+            "CLASSIFYING",
+            "EXTRACTING",
+            "ASSESSING",
+            "RULE_VALIDATION",
+            "RULE_VALIDATION_ORCHESTRATOR",
+            "SUMMARIZING",
+            "HITL_IN_PROGRESS",
+            "EVALUATING",
+        ):
+            running_docs.append(doc_dict)
+        else:
+            queued_docs.append(doc_dict)
+
+    total = batch_status.total
+    completed = len(completed_docs)
+    failed = len(failed_docs)
+    running = len(running_docs)
+    queued = len(queued_docs)
+
+    status_data = {
+        "total": total,
+        "completed": completed_docs,
+        "running": running_docs,
+        "queued": queued_docs,
+        "failed": failed_docs,
+    }
+
+    avg_duration = total_duration / duration_count if duration_count > 0 else 0.0
+    completion_pct = (completed + failed) / total * 100.0 if total > 0 else 0.0
+    # SDK returns success_rate as 0.0–1.0; display expects 0–100
+    success_rate = batch_status.success_rate * 100.0
+
+    stats = {
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "running": running,
+        "queued": queued,
+        "all_complete": batch_status.all_complete,
+        "success_rate": success_rate,
+        "completion_percentage": completion_pct,
+        "avg_duration_seconds": avg_duration,
+    }
+
+    return status_data, stats
+
+
 def _monitor_progress(
-    stack_name: str,
+    client,
     batch_id: str,
-    document_ids: list,
     refresh_interval: int,
-    region: Optional[str],
-    resources: dict,
+    # Legacy keyword arguments kept for backward-compat callers not yet migrated
+    stack_name: Optional[str] = None,
+    document_ids: Optional[list] = None,
+    region: Optional[str] = None,
+    resources: Optional[dict] = None,
 ):
     """
-    Monitor batch progress with live updates
+    Monitor batch progress with live updates using IDPClient.
 
     Args:
-        stack_name: CloudFormation stack name
+        client: IDPClient instance (preferred) OR pass stack_name+region for legacy callers
         batch_id: Batch identifier
-        document_ids: List of document IDs to monitor
         refresh_interval: Seconds between status checks
-        region: AWS region
-        resources: Stack resources dictionary
+        stack_name: (legacy) CloudFormation stack name
+        document_ids: (legacy, unused) kept for signature compatibility
+        region: (legacy) AWS region
+        resources: (legacy, unused) kept for signature compatibility
     """
-    monitor = ProgressMonitor(stack_name=stack_name, resources=resources, region=region)
+    from idp_sdk import IDPClient as _IDPClient
+
+    # Support legacy callers that still pass stack_name/region instead of a client
+    if not isinstance(client, _IDPClient):
+        # client arg was actually stack_name (positional from old callers)
+        # Reconstruct: _monitor_progress(stack_name, batch_id, document_ids, ...)
+        # Old signature: _monitor_progress(stack_name, batch_id, document_ids, refresh_interval, region, resources)
+        # New callers pass client= as first arg; legacy code path below handles old callers
+        _stack_name = stack_name or client
+        idp_client = _IDPClient(stack_name=_stack_name, region=region)
+    else:
+        idp_client = client
 
     display.show_monitoring_header(batch_id)
 
     start_time = time.time()
+    status_data = {}
+    stats = {}
+
+    # Minimum wait time before considering batch complete (seconds)
+    # This gives time for documents to be picked up by the queue and tracked in DynamoDB
+    MIN_WAIT_BEFORE_COMPLETE = 60
 
     try:
         with Live(console=console, refresh_per_second=1) as live:
             while True:
-                # Get current status
-                status_data = monitor.get_batch_status(document_ids)
-                stats = monitor.calculate_statistics(status_data)
+                # Get current status via SDK
+                batch_status = idp_client.batch.get_status(batch_id)
+                status_data, stats = _batch_status_to_display_dicts(batch_status)
                 elapsed_time = time.time() - start_time
 
-                # Update display
+                # Update display (display.py receives legacy dict format)
                 layout = display.create_live_display(
                     batch_id=batch_id,
                     status_data=status_data,
@@ -2592,8 +2943,22 @@ def _monitor_progress(
                 live.update(layout)
 
                 # Check if all complete
+                # Add grace period: don't exit early if no documents have completed/failed yet
+                # This handles the case where documents are still being picked up by the queue
                 if stats["all_complete"]:
-                    break
+                    # If we have actual completions or failures, we can exit
+                    has_terminal_docs = stats["completed"] > 0 or stats["failed"] > 0
+                    # Or if we've waited long enough (documents should have started by now)
+                    waited_long_enough = elapsed_time >= MIN_WAIT_BEFORE_COMPLETE
+
+                    if has_terminal_docs or waited_long_enough:
+                        break
+                    else:
+                        # Documents haven't started yet, keep waiting
+                        logger.debug(
+                            f"all_complete=True but no terminal docs yet, waiting... "
+                            f"(elapsed={elapsed_time:.1f}s, min_wait={MIN_WAIT_BEFORE_COMPLETE}s)"
+                        )
 
                 # Wait before next check
                 time.sleep(refresh_interval)
@@ -2604,14 +2969,20 @@ def _monitor_progress(
         console.print(
             "[yellow]Monitoring stopped. Processing continues in background.[/yellow]"
         )
-        display.show_monitoring_instructions(stack_name, batch_id)
+        _sn = stack_name or (
+            client
+            if not isinstance(client, _IDPClient)
+            else getattr(idp_client, "_stack_name", batch_id)
+        )
+        display.show_monitoring_instructions(_sn or batch_id, batch_id)
         return
     except Exception as e:
         logger.error(f"Monitoring error: {e}", exc_info=True)
         console.print()
         console.print(f"[red]Monitoring error: {e}[/red]")
         console.print("[yellow]You can check status later with:[/yellow]")
-        display.show_monitoring_instructions(stack_name, batch_id)
+        _sn = stack_name or batch_id
+        display.show_monitoring_instructions(_sn, batch_id)
         return
 
     # Show final summary
@@ -2625,13 +2996,24 @@ def _process_test_set(
     test_set_name: str,
     context: Optional[str],
     region: Optional[str],
-    processor,
+    client,
     number_of_files: Optional[int] = None,
     config_version: Optional[str] = None,
 ):
     """Common function to process test sets"""
+    # Resolve resources dict from IDPClient for Lambda helper functions
+    _resources_obj = client.stack.get_resources()
+    resources = {
+        "InputBucket": _resources_obj.input_bucket,
+        "OutputBucket": _resources_obj.output_bucket,
+        "DocumentsTable": _resources_obj.documents_table,
+        "TestSetBucket": getattr(_resources_obj, "test_set_bucket", None),
+        "StateMachineArn": getattr(_resources_obj, "state_machine_arn", None),
+        "DocumentQueue": getattr(_resources_obj, "document_queue", None),
+    }
+
     # Auto-detect test set using test_set_resolver lambda
-    _invoke_test_set_resolver(stack_name, test_set_name, region, processor.resources)
+    _invoke_test_set_resolver(stack_name, test_set_name, region, resources)
 
     # Invoke test runner lambda
     test_run_result = _invoke_test_runner(
@@ -2639,7 +3021,7 @@ def _process_test_set(
         test_set_name,
         context,
         region,
-        processor.resources,
+        resources,
         number_of_files,
         config_version,
     )
@@ -2647,7 +3029,7 @@ def _process_test_set(
 
     # Get document IDs from test set for monitoring
     document_ids = _get_test_set_document_ids(
-        stack_name, test_set_name, batch_id, region, processor.resources
+        stack_name, test_set_name, batch_id, region, resources
     )
 
     # If numberOfFiles was specified, limit document_ids to match actual queued count
@@ -2677,8 +3059,6 @@ def _invoke_test_set_resolver(
 ):
     """Invoke test set resolver lambda for auto-detection"""
     import json
-
-    import boto3
 
     lambda_client = boto3.client("lambda", region_name=region)
 
@@ -2738,8 +3118,6 @@ def _invoke_test_runner(
 ):
     """Invoke test runner lambda to start test set processing"""
     import json
-
-    import boto3
 
     # Find test runner function by name pattern
     lambda_client = boto3.client("lambda", region_name=region)
@@ -2811,7 +3189,6 @@ def _get_test_set_document_ids(
     resources: dict,
 ):
     """Get document IDs from test set for monitoring"""
-    import boto3
 
     # Get test set bucket from resources
     test_set_bucket = resources.get("TestSetBucket")
@@ -2871,7 +3248,6 @@ def _create_test_set_from_manifest(
     """Create test set structure from manifest files"""
     import os
 
-    import boto3
     import pandas as pd
 
     # Get test set bucket
@@ -2911,6 +3287,12 @@ def _create_test_set_from_manifest(
     except Exception as e:
         console.print(f"[yellow]Warning: Could not clear existing files: {e}[/yellow]")
 
+    # Place .uploading marker to prevent resolver race condition (issue #193)
+    marker_key = f"{test_set_name}/.uploading"
+    s3_client.put_object(
+        Bucket=test_set_bucket, Key=marker_key, Body=b"upload-in-progress"
+    )
+
     # Copy input files
     for _, row in df.iterrows():
         source_path = row["document_path"]
@@ -2947,6 +3329,12 @@ def _create_test_set_from_manifest(
                     rel_path = os.path.relpath(baseline_file, baseline_path)
                     s3_key = f"{test_set_name}/baseline/{filename}/{rel_path}"
                     s3_client.upload_file(baseline_file, test_set_bucket, s3_key)
+
+    # Remove .uploading marker now that all files are uploaded (issue #193)
+    try:
+        s3_client.delete_object(Bucket=test_set_bucket, Key=marker_key)
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not remove upload marker: {e}[/yellow]")
 
     console.print(
         f"[green]✓ Test set '{test_set_name}' created with {len(df)} files[/green]"
@@ -2990,36 +3378,35 @@ def stop_workflows(
       idp-cli stop-workflows --stack-name my-stack --skip-purge
     """
     try:
-        from idp_sdk.core.stop_workflows import WorkflowStopper
+        from idp_sdk import IDPClient
 
         console.print(
             f"[bold blue]Stopping workflows for stack: {stack_name}[/bold blue]"
         )
         console.print()
 
-        stopper = WorkflowStopper(stack_name=stack_name, region=region)
-        results = stopper.stop_all(skip_purge=skip_purge, skip_stop=skip_stop)
+        client = IDPClient(stack_name=stack_name, region=region)
+        result = client.batch.stop_workflows(skip_purge=skip_purge, skip_stop=skip_stop)
 
-        # Show results
-        if results["executions_stopped"]:
-            exec_result = results["executions_stopped"]
-            if exec_result.get("error"):
-                console.print(f"[red]✗ Failed: {exec_result.get('error')}[/red]")
+        # Show executions stopped result
+        if result.executions_stopped:
+            exec_result = result.executions_stopped
+            if exec_result.error:
+                console.print(f"[red]✗ Failed: {exec_result.error}[/red]")
                 sys.exit(1)
 
             console.print(
-                f"\n[green]✓ Stopped {exec_result['total_stopped']} executions[/green]"
+                f"\n[green]✓ Stopped {exec_result.total_stopped} executions[/green]"
             )
-            if exec_result.get("total_failed", 0) > 0:
+            if exec_result.total_failed > 0:
                 console.print(
-                    f"[yellow]  {exec_result['total_failed']} failed to stop[/yellow]"
+                    f"[yellow]  {exec_result.total_failed} failed to stop[/yellow]"
                 )
 
             # Show verification result
-            remaining = exec_result.get("remaining", 0)
-            if remaining > 0:
+            if exec_result.remaining > 0:
                 console.print(
-                    f"[red]⚠ Warning: {remaining} executions still running[/red]"
+                    f"[red]⚠ Warning: {exec_result.remaining} executions still running[/red]"
                 )
                 console.print(
                     "[yellow]  New executions may have started during stop operation[/yellow]"
@@ -3033,15 +3420,15 @@ def stop_workflows(
                 )
 
         # Show documents aborted result
-        if results.get("documents_aborted"):
-            abort_result = results["documents_aborted"]
-            if abort_result.get("error"):
+        if result.documents_aborted:
+            abort_result = result.documents_aborted
+            if abort_result.error:
                 console.print(
-                    f"[yellow]⚠ Could not abort queued documents: {abort_result.get('error')}[/yellow]"
+                    f"[yellow]⚠ Could not abort queued documents: {abort_result.error}[/yellow]"
                 )
-            elif abort_result.get("documents_aborted", 0) > 0:
+            elif abort_result.documents_aborted > 0:
                 console.print(
-                    f"\n[green]✓ Updated {abort_result['documents_aborted']} queued documents to ABORTED status[/green]"
+                    f"\n[green]✓ Updated {abort_result.documents_aborted} queued documents to ABORTED status[/green]"
                 )
 
     except Exception as e:
@@ -3125,30 +3512,19 @@ def load_test(
       3,500
     """
     try:
-        from idp_sdk.core.load_test import LoadTester
+        _client = IDPClient(stack_name=stack_name, region=region)
+        result = _client.testing.load_test(
+            source_file=source_file,
+            stack_name=stack_name,
+            rate=rate,
+            duration=duration,
+            schedule_file=schedule,
+            dest_prefix=dest_prefix,
+            config_version=config_version,
+        )
 
-        tester = LoadTester(stack_name=stack_name, region=region)
-
-        if schedule:
-            # Run scheduled load test
-            result = tester.run_scheduled_load(
-                source_file=source_file,
-                schedule_file=schedule,
-                dest_prefix=dest_prefix,
-                config_version=config_version,
-            )
-        else:
-            # Run constant rate load test
-            result = tester.run_constant_load(
-                source_file=source_file,
-                rate=rate,
-                duration=duration,
-                dest_prefix=dest_prefix,
-                config_version=config_version,
-            )
-
-        if not result["success"]:
-            console.print(f"[red]✗ Load test failed: {result.get('error')}[/red]")
+        if not result.success:
+            console.print(f"[red]✗ Load test failed: {result.error}[/red]")
             sys.exit(1)
 
     except Exception as e:
@@ -3247,15 +3623,17 @@ def remove_residual_resources_from_deleted_stacks(
       idp-cli remove-deleted-stack-resources --check-stack-regions us-east-1,us-west-2,eu-central-1,eu-west-1
     """
     try:
-        from idp_sdk.core.cleanup_orphaned import OrphanedResourceCleanup
-
         # Parse regions list
         regions_list = [r.strip() for r in check_stack_regions.split(",")]
 
-        cleanup = OrphanedResourceCleanup(region=region, profile=profile)
-        results = cleanup.run_cleanup(
-            dry_run=dry_run, auto_approve=auto_approve, regions=regions_list
+        client = IDPClient(region=region)
+        cleanup_result = client.stack.cleanup_orphaned(
+            dry_run=dry_run,
+            auto_approve=auto_approve,
+            regions=regions_list,
+            profile=profile,
         )
+        results = cleanup_result.results
 
         # Print summary
         console.print()
@@ -3637,168 +4015,50 @@ def config_upload(
       idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-validate
     """
     try:
-        import json
-
-        import boto3
-        import yaml
+        from idp_sdk import IDPClient
 
         console.print(f"[bold blue]Uploading config to stack: {stack_name}[/bold blue]")
         console.print(f"Config file: {config_file}")
         console.print()
 
-        # Load the config file
-        try:
-            with open(config_file, "r", encoding="utf-8") as f:
-                content = f.read()
+        client = IDPClient(stack_name=stack_name, region=region)
 
-            if config_file.endswith(".json"):
-                user_config = json.loads(content)
-            else:
-                user_config = yaml.safe_load(content)
-
-            console.print("[green]✓ Config file loaded[/green]")
-        except Exception as e:
-            console.print(f"[red]✗ Failed to load config file: {e}[/red]")
-            sys.exit(1)
-
-        # Get ConfigurationTable from stack resources
-        cfn = boto3.client("cloudformation", region_name=region)
-
-        try:
-            paginator = cfn.get_paginator("list_stack_resources")
-            config_table = None
-            detected_pattern = None
-
-            for page in paginator.paginate(StackName=stack_name):
-                for resource in page.get("StackResourceSummaries", []):
-                    logical_id = resource.get("LogicalResourceId", "")
-                    if logical_id == "ConfigurationTable":
-                        config_table = resource.get("PhysicalResourceId")
-                    # Try to detect pattern from stack resources
-                    if "Pattern1" in logical_id:
-                        detected_pattern = "pattern-1"
-                    elif "Pattern2" in logical_id:
-                        detected_pattern = "pattern-2"
-
-            if not config_table:
-                console.print("[red]✗ ConfigurationTable not found in stack[/red]")
-                sys.exit(1)
-
-            console.print(f"[dim]ConfigurationTable: {config_table}[/dim]")
-
-        except Exception as e:
-            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
-            sys.exit(1)
-
-        # Auto-detect pattern for validation
-        validation_pattern = detected_pattern or "pattern-2"
-
-        # Validate if requested
-        if validate:
-            try:
-                from idp_common.config.merge_utils import validate_config
-
-                result = validate_config(user_config, pattern=validation_pattern)
-
-                if result["valid"]:
-                    console.print("[green]✓ Config validation passed[/green]")
-                    if result["warnings"]:
-                        for warning in result["warnings"]:
-                            console.print(f"  [yellow]⚠ {warning}[/yellow]")
-                else:
-                    console.print("[red]✗ Config validation failed:[/red]")
-                    for error in result["errors"]:
-                        console.print(f"  [red]• {error}[/red]")
-                    console.print()
-                    console.print(
-                        "[yellow]Use --no-validate to skip validation (not recommended)[/yellow]"
-                    )
-                    sys.exit(1)
-            except ImportError:
-                console.print(
-                    "[yellow]⚠ Validation skipped - idp_common not available[/yellow]"
-                )
-
-        # Upload to DynamoDB using ConfigurationManager
-        try:
-            import os
-
-            from idp_common.config.configuration_manager import ConfigurationManager
-
-            # Set env var for ConfigurationManager to find the table
-            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
-            if region:
-                os.environ["AWS_DEFAULT_REGION"] = region
-
-            manager = ConfigurationManager()
-
-            # If config_version specified, check if it exists
-            version_exists = False
-            if config_version:
-                # Check for default version update (warn user)
-                if config_version.lower() == "default":
-                    console.print(
-                        "[yellow]⚠️  Warning: This will update the default [system default] config version[/yellow]"
-                    )
-
-                try:
-                    existing_config = manager.get_configuration(
-                        "Config", version=config_version
-                    )
-                    version_exists = existing_config is not None
-                except Exception:
-                    version_exists = False
-
-                if version_exists:
-                    console.print(
-                        f"[blue]Updating existing configuration version: {config_version}[/blue]"
-                    )
-                else:
-                    console.print(
-                        f"[blue]Creating new configuration version: {config_version}[/blue]"
-                    )
-                    if version_description:
-                        console.print(f"[dim]Description: {version_description}[/dim]")
-                    # Add saveAsVersion flag for new versions
-                    user_config["saveAsVersion"] = True
-            else:
-                console.print("[blue]Updating active configuration version[/blue]")
-
-            # Convert to JSON string (the method expects JSON string or dict)
-            config_json = json.dumps(user_config)
-
-            success = manager.handle_update_custom_configuration(
-                config_json, version=config_version, description=version_description
-            )
-
-            if success:
-                console.print("[green]✓ Configuration uploaded successfully[/green]")
-                console.print()
-                if config_version:
-                    console.print(
-                        f"[bold]Configuration version '{config_version}' uploaded![/bold]"
-                    )
-                    console.print(
-                        "Use --config-version parameter to process documents with this version."
-                    )
-                else:
-                    console.print("[bold]Configuration is now active![/bold]")
-                    console.print(
-                        "New documents will use this configuration immediately."
-                    )
-            else:
-                console.print("[red]✗ Failed to upload configuration[/red]")
-                sys.exit(1)
-
-        except ImportError:
-            console.print("[red]✗ idp_common not installed[/red]")
+        # Warn for default version
+        if config_version and config_version.lower() == "default":
             console.print(
-                "[yellow]Install idp_common_pkg or run from project root[/yellow]"
+                "[yellow]⚠️  Warning: This will update the default [system default] config version[/yellow]"
             )
+
+        result = client.config.upload(
+            config_file=config_file,
+            validate=validate,
+            config_version=config_version,
+            description=version_description,
+        )
+
+        if not result.success:
+            console.print(
+                f"[red]✗ Failed to upload configuration: {result.error}[/red]"
+            )
+            if result.error and "Validation" in result.error:
+                console.print(
+                    "[yellow]Use --no-validate to skip validation (not recommended)[/yellow]"
+                )
             sys.exit(1)
-        except Exception as e:
-            console.print(f"[red]✗ Failed to upload configuration: {e}[/red]")
-            sys.exit(1)
+
+        console.print("[green]✓ Configuration uploaded successfully[/green]")
+        console.print()
+        if config_version:
+            action = "created" if result.version_created else "updated"
+            console.print(
+                f"[bold]Configuration version '{config_version}' {action}![/bold]"
+            )
+            console.print(
+                "Use --config-version parameter to process documents with this version."
+            )
+        else:
+            console.print("[bold]Configuration is now active![/bold]")
+            console.print("New documents will use this configuration immediately.")
 
     except Exception as e:
         logger.error(f"Error uploading config: {e}", exc_info=True)
@@ -3851,95 +4111,29 @@ def config_download(
       idp-cli config-download --stack-name my-stack
     """
     try:
-        import boto3
-        import yaml
+        from idp_sdk import IDPClient
 
         console.print(
             f"[bold blue]Downloading config from stack: {stack_name}[/bold blue]"
         )
 
-        # Get ConfigurationTable by looking up stack resource
-        cfn = boto3.client("cloudformation", region_name=region)
-
-        try:
-            # List stack resources to find ConfigurationTable
-            paginator = cfn.get_paginator("list_stack_resources")
-            config_table = None
-
-            for page in paginator.paginate(StackName=stack_name):
-                for resource in page.get("StackResourceSummaries", []):
-                    if resource.get("LogicalResourceId") == "ConfigurationTable":
-                        config_table = resource.get("PhysicalResourceId")
-                        break
-                if config_table:
-                    break
-
-            if not config_table:
-                console.print(
-                    "[red]✗ ConfigurationTable not found in stack resources[/red]"
-                )
-                sys.exit(1)
-
-            console.print(f"[dim]Using table: {config_table}[/dim]")
-
-            # Use idp_common's ConfigurationReader
-            from idp_common.config import ConfigurationReader
-
-            reader = ConfigurationReader(table_name=config_table)
-            config_data = reader.get_configuration(
-                "Config", version=config_version, as_model=False
-            )
-            console.print("[green]✓ Configuration retrieved[/green]")
-
-        except ImportError:
-            console.print(
-                "[red]✗ idp_common not installed - run from project root or install idp_common_pkg[/red]"
-            )
-            sys.exit(1)
-        except Exception as e:
-            console.print(f"[red]✗ Failed to get configuration: {e}[/red]")
-            sys.exit(1)
-
-        # For minimal format, compute diff from defaults
-        if output_format == "minimal":
-            from idp_common.config.merge_utils import (
-                get_diff_dict,
-                load_system_defaults,
-            )
-
-            # Auto-detect pattern from config
-            classification_method = config_data.get("classification", {}).get(
-                "classificationMethod", ""
-            )
-            diff_pattern = (
-                "pattern-1" if classification_method == "bda" else "pattern-2"
-            )
-
-            defaults = load_system_defaults(diff_pattern)
-            config_data = get_diff_dict(defaults, config_data)
-            console.print("[dim]Showing only differences from defaults[/dim]")
-
-        # Convert to YAML
-        yaml_content = yaml.dump(
-            config_data,
-            default_flow_style=False,
-            sort_keys=False,
-            allow_unicode=True,
-            width=120,
+        client = IDPClient(stack_name=stack_name, region=region)
+        result = client.config.download(
+            format=output_format,
+            config_version=config_version,
+            output=output,
         )
 
         if output:
-            with open(output, "w", encoding="utf-8") as f:
-                f.write(f"# Configuration downloaded from stack: {stack_name}\n")
-                f.write(f"# Format: {output_format}\n\n")
-                f.write(yaml_content)
             console.print(f"[green]✓ Configuration saved to: {output}[/green]")
         else:
             console.print()
-            console.print(yaml_content)
+            console.print(result.yaml_content)
 
     except Exception as e:
         logger.error(f"Error downloading config: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
 
 
 @cli.command(name="config-activate")
@@ -3953,9 +4147,11 @@ def config_download(
     required=True,
     help="Configuration version to activate",
 )
+@click.option("--region", help="AWS region (optional)")
 def config_activate(
     stack_name: str,
     config_version: str,
+    region: str = None,
 ):
     """
     Activate a configuration version in a deployed IDP stack
@@ -3974,146 +4170,48 @@ def config_activate(
       idp-cli config-activate --stack-name my-stack --config-version default
     """
     try:
+        from idp_sdk import IDPClient
+
         console.print(
             f"[bold blue]Activating config version in stack: {stack_name}[/bold blue]"
         )
         console.print(f"Version: {config_version}")
+        console.print()
 
-        # Get stack resources
-        try:
-            config_table = None
-            cf_client = boto3.client("cloudformation")
-            resources = cf_client.list_stack_resources(StackName=stack_name)
-            for resource in resources["StackResourceSummaries"]:
-                if resource["LogicalResourceId"] == "ConfigurationTable":
-                    config_table = resource.get("PhysicalResourceId")
-                if config_table:
-                    break
+        client = IDPClient(stack_name=stack_name, region=region)
+        result = client.config.activate(config_version=config_version)
 
-        except Exception as e:
-            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
-            return
-
-        if not config_table:
+        if not result.success:
             console.print(
-                "[red]✗ ConfigurationTable not found in stack resources[/red]"
+                f"[red]✗ Failed to activate configuration version '{config_version}': {result.error}[/red]"
             )
-            return
-
-        console.print(f"[dim]Using table: {config_table}[/dim]")
-
-        # Check version and sync to BDA if needed
-        try:
-            from idp_common.bda.bda_blueprint_service import BdaBlueprintService
-            from idp_common.config.configuration_manager import ConfigurationManager
-
-            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
-            os.environ["STACK_NAME"] = stack_name
-            manager = ConfigurationManager()
-
-            # Check if version exists
-            existing_config = manager.get_configuration(
-                "Config", version=config_version
-            )
-            if not existing_config:
+            if result.error and "does not exist" in result.error:
                 console.print(
-                    f"[red]✗ Configuration version '{config_version}' does not exist[/red]"
+                    f"Use 'idp-cli config-list --stack-name {stack_name}' to see available versions"
                 )
-                console.print(
-                    f"Use 'idp-cli config-download --stack-name {stack_name}' to see available versions"
-                )
-                return
+            sys.exit(1)
 
-            # Check if BDA sync is needed (matching UI behavior)
-            use_bda = (
-                existing_config.use_bda
-                if hasattr(existing_config, "use_bda")
-                else False
-            )
-            if use_bda:
+        # Show BDA sync results if performed
+        if result.bda_synced:
+            if result.bda_classes_failed > 0:
                 console.print(
-                    "[yellow]Configuration has use_bda enabled, syncing to BDA...[/yellow]"
+                    f"[yellow]⚠ BDA sync partial: {result.bda_classes_synced} succeeded, "
+                    f"{result.bda_classes_failed} failed[/yellow]"
+                )
+            else:
+                console.print(
+                    f"[green]✓ Successfully synced {result.bda_classes_synced} classes to BDA[/green]"
                 )
 
-                try:
-                    # Get or create BDA project
-                    bda_project_arn = manager.get_bda_project_arn(config_version)
-                    bda_service = BdaBlueprintService(
-                        dataAutomationProjectArn=bda_project_arn
-                    )
-
-                    if not bda_project_arn:
-                        console.print(
-                            "[dim]No BDA project linked, creating new project...[/dim]"
-                        )
-                        bda_project_arn = bda_service.get_or_create_project_for_version(
-                            config_version
-                        )
-                        console.print(
-                            f"[dim]Created BDA project: {bda_project_arn}[/dim]"
-                        )
-
-                    # Sync IDP to BDA (matching UI resolver logic)
-                    bda_service.dataAutomationProjectArn = bda_project_arn
-                    result = bda_service.create_blueprints_from_custom_configuration(
-                        sync_direction="idp_to_bda",
-                        version=config_version,
-                        sync_mode="replace",
-                    )
-
-                    # Process results
-                    sync_failed = []
-                    sync_succeeded = []
-                    if isinstance(result, list):
-                        for item in result:
-                            if item.get("status") == "success":
-                                sync_succeeded.append(item.get("class"))
-                            else:
-                                sync_failed.append(item.get("class", "Unknown"))
-
-                    if len(sync_succeeded) == 0 and len(sync_failed) > 0:
-                        console.print(
-                            f"[red]✗ BDA sync failed for all {len(sync_failed)} classes[/red]"
-                        )
-                        console.print("[red]Activation aborted[/red]")
-                        return
-                    elif len(sync_failed) > 0:
-                        console.print(
-                            f"[yellow]⚠ Partial sync: {len(sync_succeeded)} succeeded, {len(sync_failed)} failed[/yellow]"
-                        )
-                        manager.set_bda_project_arn(
-                            config_version, bda_project_arn, "partial"
-                        )
-                    else:
-                        console.print(
-                            f"[green]✓ Successfully synced {len(sync_succeeded)} classes to BDA[/green]"
-                        )
-                        manager.set_bda_project_arn(
-                            config_version, bda_project_arn, "synced"
-                        )
-
-                except Exception as e:
-                    console.print(f"[red]✗ Failed to sync to BDA: {e}[/red]")
-                    console.print("[red]Activation aborted[/red]")
-                    return
-
-            # Activate the version
-            manager.activate_version(config_version)
-            console.print(
-                f"[green]✓ Successfully activated configuration version: {config_version}[/green]"
-            )
-            console.print("New documents will use this configuration immediately.")
-
-        except ValueError as e:
-            console.print(f"[red]✗ {e}[/red]")
-            return
-        except Exception as e:
-            console.print(f"[red]✗ Failed to activate configuration version: {e}[/red]")
-            return
+        console.print(
+            f"[green]✓ Successfully activated configuration version: {config_version}[/green]"
+        )
+        console.print("New documents will use this configuration immediately.")
 
     except Exception as e:
+        logger.error(f"Error activating config: {e}", exc_info=True)
         console.print(f"[red]✗ Failed to activate configuration: {e}[/red]")
-        return
+        sys.exit(1)
 
 
 @cli.command(name="config-list")
@@ -4122,7 +4220,8 @@ def config_activate(
     required=True,
     help="CloudFormation stack name",
 )
-def config_list(stack_name: str):
+@click.option("--region", help="AWS region (optional)")
+def config_list(stack_name: str, region: str = None):
     """
     List all configuration versions in a deployed IDP stack
 
@@ -4134,90 +4233,56 @@ def config_list(stack_name: str):
       idp-cli config-list --stack-name my-stack
     """
     try:
+        from idp_sdk import IDPClient
+
         console.print(
             f"[bold blue]Listing configuration versions in stack: {stack_name}[/bold blue]"
         )
 
-        # Get stack resources
-        try:
-            config_table = None
-            cf_client = boto3.client("cloudformation")
-            resources = cf_client.list_stack_resources(StackName=stack_name)
-            for resource in resources["StackResourceSummaries"]:
-                if resource["LogicalResourceId"] == "ConfigurationTable":
-                    config_table = resource.get("PhysicalResourceId")
-                if config_table:
-                    break
+        client = IDPClient(stack_name=stack_name, region=region)
+        result = client.config.list()
 
-        except Exception as e:
-            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
+        if not result.versions:
+            console.print("[yellow]No configuration versions found[/yellow]")
             return
 
-        if not config_table:
-            console.print(
-                "[red]✗ ConfigurationTable not found in stack resources[/red]"
+        console.print(
+            f"\n[bold]Found {result.count} configuration version(s):[/bold]\n"
+        )
+
+        table = Table(show_header=True, header_style="bold blue")
+        table.add_column("Version Name", style="cyan")
+        table.add_column("Status", justify="center")
+        table.add_column("Created", style="dim")
+        table.add_column("Updated", style="dim")
+        table.add_column("Description", style="green")
+
+        for version in sorted(result.versions, key=lambda v: v.version_name):
+            status = "[bold green]ACTIVE[/bold green]" if version.is_active else ""
+            created = (
+                version.created_at.replace("T", " ").replace("Z", "")
+                if version.created_at
+                else ""
             )
-            return
-
-        console.print(f"[dim]Using table: {config_table}[/dim]")
-
-        # List configuration versions
-        try:
-            from idp_common.config.configuration_manager import ConfigurationManager
-
-            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
-            manager = ConfigurationManager()
-            versions = manager.list_config_versions()
-
-            if not versions:
-                console.print("[yellow]No configuration versions found[/yellow]")
-                return
-
-            console.print(
-                f"\n[bold]Found {len(versions)} configuration version(s):[/bold]\n"
+            updated = (
+                version.updated_at.replace("T", " ").replace("Z", "")
+                if version.updated_at
+                else ""
+            )
+            table.add_row(
+                version.version_name,
+                status,
+                created,
+                updated,
+                version.description or "",
             )
 
-            # Create table for better formatting
-            from rich.table import Table
-
-            table = Table(show_header=True, header_style="bold blue")
-            table.add_column("Version Name", style="cyan")
-            table.add_column("Status", justify="center")
-            table.add_column("Created", style="dim")
-            table.add_column("Updated", style="dim")
-            table.add_column("Description", style="green")
-
-            for version in sorted(versions, key=lambda x: x.get("versionName", "")):
-                version_name = version.get("versionName", "unknown")
-                status = (
-                    "[bold green]ACTIVE[/bold green]" if version.get("isActive") else ""
-                )
-                created = (
-                    version.get("createdAt", "").replace("T", " ").replace("Z", "")
-                    if version.get("createdAt")
-                    else ""
-                )
-                updated = (
-                    version.get("updatedAt", "").replace("T", " ").replace("Z", "")
-                    if version.get("updatedAt")
-                    else ""
-                )
-                description = version.get("description", "")
-
-                table.add_row(version_name, status, created, updated, description)
-
-            console.print(table)
-
-        except ValueError as e:
-            console.print(f"[red]✗ {e}[/red]")
-            return
-        except Exception as e:
-            console.print(f"[red]✗ Failed to list configuration versions: {e}[/red]")
-            return
+        console.print(table)
 
     except Exception as e:
+        logger.error(f"Error listing configs: {e}", exc_info=True)
         console.print(f"[red]✗ Failed to list configurations: {e}[/red]")
-        return
+        sys.exit(1)
 
 
 @cli.command(name="config-delete")
@@ -4236,10 +4301,12 @@ def config_list(stack_name: str):
     is_flag=True,
     help="Skip confirmation prompt",
 )
+@click.option("--region", help="AWS region (optional)")
 def config_delete(
     stack_name: str,
     config_version: str,
     force: bool,
+    region: str = None,
 ):
     """
     Delete a configuration version from a deployed IDP stack
@@ -4255,65 +4322,137 @@ def config_delete(
       idp-cli config-delete --stack-name my-stack --config-version old-version --force
     """
     try:
+        from idp_sdk import IDPClient
+
         console.print(
             f"[bold blue]Deleting config version from stack: {stack_name}[/bold blue]"
         )
         console.print(f"Version: {config_version}")
 
-        # Get stack resources
-        try:
-            config_table = None
-            cf_client = boto3.client("cloudformation")
-            resources = cf_client.list_stack_resources(StackName=stack_name)
-            for resource in resources["StackResourceSummaries"]:
-                if resource["LogicalResourceId"] == "ConfigurationTable":
-                    config_table = resource.get("PhysicalResourceId")
-                if config_table:
-                    break
+        # Confirmation prompt
+        if not force:
+            if not click.confirm(
+                f"Are you sure you want to delete configuration version '{config_version}'?"
+            ):
+                console.print("[yellow]Deletion cancelled[/yellow]")
+                return
 
-        except Exception as e:
-            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
-            return
+        client = IDPClient(stack_name=stack_name, region=region)
+        result = client.config.delete(config_version=config_version)
 
-        if not config_table:
+        if not result.success:
             console.print(
-                "[red]✗ ConfigurationTable not found in stack resources[/red]"
+                f"[red]✗ Failed to delete configuration version '{config_version}': {result.error}[/red]"
             )
-            return
+            sys.exit(1)
 
-        console.print(f"[dim]Using table: {config_table}[/dim]")
-
-        # Delete the version
-        try:
-            from idp_common.config.configuration_manager import ConfigurationManager
-
-            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
-            manager = ConfigurationManager()
-
-            # Confirmation prompt
-            if not force:
-                if not click.confirm(
-                    f"Are you sure you want to delete configuration version '{config_version}'?"
-                ):
-                    console.print("[yellow]Deletion cancelled[/yellow]")
-                    return
-
-            # Delete the version (method handles all validations)
-            manager.delete_configuration("Config", version=config_version)
-            console.print(
-                f"[green]✓ Successfully deleted configuration version: {config_version}[/green]"
-            )
-
-        except ValueError as e:
-            console.print(f"[red]✗ {e}[/red]")
-            return
-        except Exception as e:
-            console.print(f"[red]✗ Failed to delete configuration version: {e}[/red]")
-            return
+        console.print(
+            f"[green]✓ Successfully deleted configuration version: {config_version}[/green]"
+        )
 
     except Exception as e:
-        console.print(f"[red]✗ Failed to delete configuration: {e}[/red]")
-        return
+        logger.error(f"Error deleting config version: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command(name="config-sync-bda")
+@click.option(
+    "--stack-name",
+    required=True,
+    help="CloudFormation stack name",
+)
+@click.option(
+    "--direction",
+    type=click.Choice(["bidirectional", "bda-to-idp", "idp-to-bda"]),
+    default="bidirectional",
+    help="Sync direction (default: bidirectional)",
+)
+@click.option(
+    "--mode",
+    type=click.Choice(["replace", "merge"]),
+    default="replace",
+    help="Sync mode: 'replace' (full alignment) or 'merge' (additive, don't delete) (default: replace)",
+)
+@click.option(
+    "--config-version",
+    help="Configuration version to sync (default: active version)",
+)
+@click.option("--region", help="AWS region (optional)")
+def config_sync_bda(
+    stack_name: str,
+    direction: str,
+    mode: str,
+    config_version: Optional[str],
+    region: Optional[str],
+):
+    """
+    Synchronize IDP document classes with BDA blueprints
+
+    Performs bidirectional or one-way synchronization between the IDP
+    configuration's document classes and BDA (Bedrock Data Automation) blueprints.
+
+    Sync directions:
+      bidirectional: Full two-way sync (default)
+      bda-to-idp:    Import BDA blueprints into IDP config
+      idp-to-bda:    Push IDP classes to BDA blueprints
+
+    Sync modes:
+      replace: Target is aligned to match source exactly (default)
+      merge:   Source items are added without removing existing items
+
+    Examples:
+
+      # Bidirectional sync (default)
+      idp-cli config-sync-bda --stack-name my-stack
+
+      # Import BDA blueprints to IDP
+      idp-cli config-sync-bda --stack-name my-stack --direction bda-to-idp
+
+      # Push IDP to BDA (merge mode)
+      idp-cli config-sync-bda --stack-name my-stack --direction idp-to-bda --mode merge
+
+      # Sync specific config version
+      idp-cli config-sync-bda --stack-name my-stack --config-version v2
+    """
+    try:
+        from idp_sdk import IDPClient
+
+        # Normalize direction for SDK (CLI uses dashes, SDK uses underscores)
+        sdk_direction = direction.replace("-", "_")
+
+        console.print(f"[bold blue]BDA Sync for stack: {stack_name}[/bold blue]")
+        console.print(f"Direction: {direction}")
+        console.print(f"Mode: {mode}")
+        if config_version:
+            console.print(f"Config Version: {config_version}")
+        console.print()
+
+        client = IDPClient(stack_name=stack_name, region=region)
+
+        with console.status("[cyan]Synchronizing with BDA...[/cyan]"):
+            result = client.config.sync_bda(
+                direction=sdk_direction,
+                mode=mode,
+                config_version=config_version,
+            )
+
+        if result.success:
+            console.print("[green]✓ BDA sync completed successfully[/green]")
+            console.print(f"  Classes synced: {result.classes_synced}")
+            if result.processed_classes:
+                for cls_name in result.processed_classes:
+                    console.print(f"    • {cls_name}")
+        else:
+            console.print("[yellow]⚠ BDA sync completed with issues[/yellow]")
+            console.print(f"  Classes synced: {result.classes_synced}")
+            console.print(f"  Classes failed: {result.classes_failed}")
+            if result.error:
+                console.print(f"  [red]Error: {result.error}[/red]")
+            sys.exit(1)
+
+    except Exception as e:
+        logger.error(f"Error syncing BDA: {e}", exc_info=True)
         console.print(f"[red]✗ Error: {e}[/red]")
         sys.exit(1)
 
@@ -4349,6 +4488,40 @@ def config_delete(
     type=click.Path(),
     help="Output path: file (single doc or JSON array for batch) or directory (one file per schema)",
 )
+@click.option(
+    "--class-hint",
+    help="Hint for the document class name (e.g., 'W2 Form'). The LLM will use this as $id.",
+)
+@click.option(
+    "--page-range",
+    multiple=True,
+    help="Page range to discover (e.g., '1-3'). Repeatable for multi-section. Requires PDF document.",
+)
+@click.option(
+    "--page-label",
+    multiple=True,
+    help="Label for corresponding --page-range (e.g., 'W2 Form'). Used as class name hint per range.",
+)
+@click.option(
+    "--auto-detect",
+    is_flag=True,
+    help="Auto-detect document section boundaries using AI, then discover each section.",
+)
+@click.option(
+    "--detect-only",
+    is_flag=True,
+    help="Only detect section boundaries (use with --auto-detect). Prints boundaries without running discovery.",
+)
+@click.option(
+    "--model-id",
+    default=None,
+    help=(
+        "Override the Bedrock model ID used for discovery "
+        "(e.g., 'us.anthropic.claude-opus-4-6-v1'). When omitted, the "
+        "discovery model from the stack config (stack mode) or system "
+        "defaults (local mode) is used."
+    ),
+)
 def discover(
     stack_name: str,
     document: tuple,
@@ -4356,6 +4529,12 @@ def discover(
     config_version: Optional[str],
     region: Optional[str],
     output: Optional[str],
+    class_hint: Optional[str],
+    page_range: tuple,
+    page_label: tuple,
+    auto_detect: bool,
+    detect_only: bool,
+    model_id: Optional[str],
 ):
     """
     Discover document class schema from sample document(s)
@@ -4366,6 +4545,16 @@ def discover(
     Ground truth files (-g) are auto-matched to documents (-d) by filename
     stem: invoice.pdf matches invoice.json. Unmatched documents run without
     ground truth.
+
+    Special case: when exactly one document and one ground truth file are
+    provided, they are paired by position regardless of filename stem. This
+    supports the common case where ground truth files have generic names
+    (e.g., baseline/<doc>/sections/1/result.json).
+
+    If any -g files are provided in batch mode (multiple -d or multiple -g)
+    and cannot be matched to a document by stem, discover exits non-zero
+    with an error rather than silently falling back to no-GT discovery.
+    ([#310](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/310))
 
     For --output (-o) in batch mode: if path is a directory, writes one
     JSON file per schema; if path is a file, writes all schemas as a
@@ -4379,20 +4568,27 @@ def discover(
       # With ground truth (matched by filename stem)
       idp-cli discover -d ./invoice.pdf -g ./invoice.json
 
-      # Output to file
-      idp-cli discover -d ./form.pdf -o ./form-schema.json
+      # With class name hint
+      idp-cli discover -d ./form.pdf --class-hint "W2 Tax Form"
 
-      # Batch with auto-matched ground truth
-      idp-cli discover -d ./invoice.pdf -d ./w2.pdf -g ./invoice.json -g ./w2.json
+      # Multi-section: discover specific page ranges
+      idp-cli discover -d ./lending_package.pdf \\
+          --page-range "1-2" --page-label "Cover Letter" \\
+          --page-range "3-5" --page-label "W2 Form" \\
+          -o ./schemas/
 
-      # Batch with output directory
-      idp-cli discover -d ./invoice.pdf -d ./w2.pdf -o ./schemas/
+      # Auto-detect sections then discover each
+      idp-cli discover -d ./lending_package.pdf --auto-detect -o ./schemas/
 
-      # Batch with output file (JSON array)
-      idp-cli discover -d ./invoice.pdf -d ./w2.pdf -o ./all-schemas.json
+      # Only detect section boundaries (no discovery)
+      idp-cli discover -d ./lending_package.pdf --auto-detect --detect-only
 
       # Stack mode (saves to config)
       idp-cli discover --stack-name my-stack -d ./invoice.pdf --config-version v2
+
+      # Override the discovery model (e.g. use Claude Opus instead of the default)
+      idp-cli discover -d ./invoice.pdf -g ./invoice.json \\
+          --model-id us.anthropic.claude-opus-4-6-v1
     """
     import json
     from pathlib import Path
@@ -4402,24 +4598,234 @@ def discover(
 
         client = IDPClient(stack_name=stack_name, region=region)
 
-        # Build ground truth map: filename stem → gt path
-        gt_map = {}
-        for gt_path in ground_truth:
-            stem = Path(gt_path).stem
-            gt_map[stem] = gt_path
+        # --- Auto-detect mode ---
+        if auto_detect:
+            if len(document) > 1:
+                console.print(
+                    "[red]✗ Error: --auto-detect works with a single document only[/red]"
+                )
+                sys.exit(1)
 
-        # Match ground truth to documents by filename stem
-        doc_gt_pairs = []
-        for doc_path in document:
-            doc_stem = Path(doc_path).stem
-            matched_gt = gt_map.pop(doc_stem, None)
-            doc_gt_pairs.append((doc_path, matched_gt))
+            doc_path = document[0]
+            console.print("[bold blue]IDP Discovery — Auto-Detect Sections[/bold blue]")
+            if stack_name:
+                console.print(f"Stack: {stack_name}")
+            console.print(f"Document: {doc_path}")
+            if model_id:
+                console.print(f"Model ID override: {model_id}")
+            console.print()
 
-        # Warn about unmatched ground truth files
-        for gt_stem, gt_path in gt_map.items():
+            if detect_only:
+                # Only detect boundaries, don't run discovery
+                with console.status(
+                    "[cyan]Detecting section boundaries with AI...[/cyan]"
+                ):
+                    detect_result = client.discovery.auto_detect_sections(
+                        document_path=doc_path,
+                        model_id=model_id,
+                    )
+
+                if detect_result.status != "SUCCESS":
+                    console.print(
+                        f"[red]✗ Auto-detect failed: {detect_result.error}[/red]"
+                    )
+                    sys.exit(1)
+
+                console.print(
+                    f"[green]✓ Detected {len(detect_result.sections)} section(s):[/green]"
+                )
+                console.print()
+                for s in detect_result.sections:
+                    label = s.type or "Unknown"
+                    console.print(f"  Pages {s.start}-{s.end}: [cyan]{label}[/cyan]")
+
+                # Print as JSON if output specified
+                if output:
+                    sections_json = [
+                        {"start": s.start, "end": s.end, "type": s.type}
+                        for s in detect_result.sections
+                    ]
+                    with open(output, "w", encoding="utf-8") as f:
+                        f.write(json.dumps(sections_json, indent=2))
+                    console.print()
+                    console.print(
+                        f"[green]✓ Section boundaries written to: {output}[/green]"
+                    )
+                return
+
+            # Auto-detect + discover each section
+            console.print("[bold]Step 1: Detecting section boundaries...[/bold]")
+            with console.status("[cyan]Detecting section boundaries with AI...[/cyan]"):
+                batch_result = client.discovery.run(
+                    document_path=doc_path,
+                    config_version=config_version,
+                    auto_detect=True,
+                    model_id=model_id,
+                )
+
+            # batch_result is DiscoveryBatchResult
+            all_schemas = []
+            for r in batch_result.results:
+                doc_class = r.document_class or "Unknown"
+                range_info = f" (pages {r.page_range})" if r.page_range else ""
+                if r.status == "SUCCESS":
+                    console.print(f"  [green]✓ {doc_class}{range_info}[/green]")
+                    if r.json_schema:
+                        all_schemas.append(r.json_schema)
+                else:
+                    console.print(f"  [red]✗ Failed{range_info}: {r.error}[/red]")
+
+            console.print()
             console.print(
-                f"[yellow]⚠ Ground truth '{gt_path}' did not match any document (stem: {gt_stem})[/yellow]"
+                f"[bold]Summary:[/bold] {batch_result.succeeded}/{batch_result.total} succeeded"
             )
+
+            # Write output
+            _write_discover_output(output, all_schemas, console)
+
+            if stack_name and config_version and batch_result.succeeded > 0:
+                console.print(
+                    f"[green]✓ Schema(s) saved to configuration"
+                    f" (version: {config_version})[/green]"
+                )
+
+            if batch_result.failed > 0:
+                sys.exit(1)
+            return
+
+        # --- Multi-section page range mode ---
+        if page_range:
+            if len(document) > 1:
+                console.print(
+                    "[red]✗ Error: --page-range works with a single document only[/red]"
+                )
+                sys.exit(1)
+
+            doc_path = document[0]
+            console.print("[bold blue]IDP Discovery — Multi-Section[/bold blue]")
+            if stack_name:
+                console.print(f"Stack: {stack_name}")
+            console.print(f"Document: {doc_path}")
+            console.print(f"Page ranges: {len(page_range)}")
+            if model_id:
+                console.print(f"Model ID override: {model_id}")
+            console.print()
+
+            # Build page_ranges list
+            page_ranges_list = []
+            for idx, pr in enumerate(page_range):
+                label = page_label[idx] if idx < len(page_label) else None
+                # Parse "start-end" format
+                parts = pr.strip().split("-")
+                start = int(parts[0])
+                end = int(parts[1]) if len(parts) > 1 else start
+                page_ranges_list.append({"start": start, "end": end, "label": label})
+                label_str = f" → {label}" if label else ""
+                console.print(f"  Range {idx + 1}: pages {start}-{end}{label_str}")
+
+            console.print()
+
+            with console.status(
+                "[cyan]Analyzing sections with Amazon Bedrock...[/cyan]"
+            ):
+                batch_result = client.discovery.run_multi_section(
+                    document_path=doc_path,
+                    page_ranges=page_ranges_list,
+                    config_version=config_version,
+                    model_id=model_id,
+                )
+
+            all_schemas = []
+            for r in batch_result.results:
+                doc_class = r.document_class or "Unknown"
+                range_info = f" (pages {r.page_range})" if r.page_range else ""
+                if r.status == "SUCCESS":
+                    console.print(f"  [green]✓ {doc_class}{range_info}[/green]")
+                    if r.json_schema:
+                        all_schemas.append(r.json_schema)
+                else:
+                    console.print(f"  [red]✗ Failed{range_info}: {r.error}[/red]")
+
+            console.print()
+            console.print(
+                f"[bold]Summary:[/bold] {batch_result.succeeded}/{batch_result.total} succeeded"
+            )
+
+            _write_discover_output(output, all_schemas, console)
+
+            if stack_name and config_version and batch_result.succeeded > 0:
+                console.print(
+                    f"[green]✓ Schema(s) saved to configuration"
+                    f" (version: {config_version})[/green]"
+                )
+
+            if batch_result.failed > 0:
+                sys.exit(1)
+            return
+
+        # --- Standard discovery mode (original logic) ---
+        # Special case: exactly one document + one ground truth → pair by
+        # position regardless of filename stem. This supports the common case
+        # where GT files have generic names (e.g. baseline/<doc>/sections/1/result.json).
+        # See issue #310.
+        if len(document) == 1 and len(ground_truth) == 1:
+            doc_gt_pairs = [(document[0], ground_truth[0])]
+        else:
+            # Build ground truth map: filename stem → gt path.
+            # Detect duplicate stems up front — silently overwriting them
+            # would hide user errors (e.g. two baseline/.../result.json files).
+            gt_map: dict = {}
+            duplicate_stems: dict = {}
+            for gt_path in ground_truth:
+                stem = Path(gt_path).stem
+                if stem in gt_map:
+                    duplicate_stems.setdefault(stem, [gt_map[stem]]).append(gt_path)
+                else:
+                    gt_map[stem] = gt_path
+
+            if duplicate_stems:
+                console.print(
+                    "[red]✗ Error: multiple ground truth files share the same filename stem. "
+                    "Discover cannot determine which document each belongs to.[/red]"
+                )
+                for stem, paths in duplicate_stems.items():
+                    console.print(f"  stem '{stem}':")
+                    for p in paths:
+                        console.print(f"    - {p}")
+                console.print(
+                    "[yellow]Hint: rename ground truth files to uniquely match each document's "
+                    "filename stem, or run discover separately for each document.[/yellow]"
+                )
+                sys.exit(1)
+
+            # Match ground truth to documents by filename stem
+            doc_gt_pairs = []
+            for doc_path in document:
+                doc_stem = Path(doc_path).stem
+                matched_gt = gt_map.pop(doc_stem, None)
+                doc_gt_pairs.append((doc_path, matched_gt))
+
+            # Unmatched ground truth files are a fatal error when -g was
+            # explicitly provided. Previously this was a yellow warning that
+            # silently fell back to without-GT discovery — which violated the
+            # user's explicit request and produced subtly worse results that
+            # were hard to diagnose. See issue #310.
+            if gt_map:
+                console.print(
+                    "[red]✗ Error: ground truth file(s) could not be matched to "
+                    "any document by filename stem:[/red]"
+                )
+                for gt_stem, gt_path in gt_map.items():
+                    console.print(f"    - {gt_path} (stem: '{gt_stem}')")
+                doc_stems = sorted({Path(p).stem for p in document})
+                console.print(f"  Document stems available: {doc_stems}")
+                console.print(
+                    "[yellow]Hint: for a single document + single ground truth, "
+                    "filenames don't need to match (they will be paired by position). "
+                    "For batch mode, rename each ground truth file to match its "
+                    "corresponding document's stem.[/yellow]"
+                )
+                sys.exit(1)
 
         # Header
         is_batch = len(document) > 1
@@ -4433,8 +4839,12 @@ def discover(
         gt_matched = sum(1 for _, gt in doc_gt_pairs if gt)
         if gt_matched:
             console.print(f"Ground truth matched: {gt_matched}/{len(document)}")
+        if class_hint:
+            console.print(f"Class hint: {class_hint}")
         if config_version:
             console.print(f"Config Version: {config_version}")
+        if model_id:
+            console.print(f"Model ID override: {model_id}")
         console.print()
 
         # Process documents
@@ -4463,6 +4873,8 @@ def discover(
                     document_path=doc_path,
                     ground_truth_path=matched_gt,
                     config_version=config_version,
+                    class_name_hint=class_hint,
+                    model_id=model_id,
                 )
 
             if result.status == "SUCCESS":
@@ -4502,42 +4914,7 @@ def discover(
                 console.print()
 
         # Write/print output
-        if not output and all_schemas and is_batch:
-            # No -o specified in batch mode → print schemas to stdout
-            console.print()
-            console.print("[bold]Discovered schemas:[/bold]")
-            if len(all_schemas) == 1:
-                console.print(json.dumps(all_schemas[0], indent=2))
-            else:
-                console.print(json.dumps(all_schemas, indent=2))
-            console.print()
-        elif output and all_schemas:
-            output_path = Path(output)
-            if len(all_schemas) == 1 and not output_path.is_dir():
-                # Single schema → write directly to file
-                with open(output, "w", encoding="utf-8") as f:
-                    f.write(json.dumps(all_schemas[0], indent=2))
-                console.print(f"[green]✓ Schema written to: {output}[/green]")
-            elif output_path.is_dir() or (is_batch and not output_path.suffix):
-                # Directory mode → one file per schema
-                output_path.mkdir(parents=True, exist_ok=True)
-                for schema in all_schemas:
-                    class_name = (
-                        schema.get("$id")
-                        or schema.get("x-aws-idp-document-type")
-                        or "unknown"
-                    )
-                    file_path = output_path / f"{class_name}.json"
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(json.dumps(schema, indent=2))
-                    console.print(f"[green]✓ Schema written to: {file_path}[/green]")
-            else:
-                # File mode with multiple schemas → JSON array
-                with open(output, "w", encoding="utf-8") as f:
-                    f.write(json.dumps(all_schemas, indent=2))
-                console.print(
-                    f"[green]✓ {len(all_schemas)} schemas written to: {output}[/green]"
-                )
+        _write_discover_output(output, all_schemas, console, is_batch)
 
         # Summary
         if is_batch:
@@ -4564,8 +4941,839 @@ def discover(
         sys.exit(1)
 
 
+def _write_discover_output(output, all_schemas, console, is_batch=True):
+    """Helper to write discovery output to file or stdout."""
+    import json
+    from pathlib import Path
+
+    if not all_schemas:
+        return
+
+    if not output and is_batch:
+        # No -o specified in batch mode → print schemas to stdout
+        console.print()
+        console.print("[bold]Discovered schemas:[/bold]")
+        if len(all_schemas) == 1:
+            console.print(json.dumps(all_schemas[0], indent=2))
+        else:
+            console.print(json.dumps(all_schemas, indent=2))
+        console.print()
+    elif output:
+        output_path = Path(output)
+        if len(all_schemas) == 1 and not output_path.is_dir():
+            # Single schema → write directly to file
+            with open(output, "w", encoding="utf-8") as f:
+                f.write(json.dumps(all_schemas[0], indent=2))
+            console.print(f"[green]✓ Schema written to: {output}[/green]")
+        elif output_path.is_dir() or (is_batch and not output_path.suffix):
+            # Directory mode → one file per schema
+            output_path.mkdir(parents=True, exist_ok=True)
+            for schema in all_schemas:
+                class_name = (
+                    schema.get("$id")
+                    or schema.get("x-aws-idp-document-type")
+                    or "unknown"
+                )
+                file_path = output_path / f"{class_name}.json"
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(schema, indent=2))
+                console.print(f"[green]✓ Schema written to: {file_path}[/green]")
+        else:
+            # File mode with multiple schemas → JSON array
+            with open(output, "w", encoding="utf-8") as f:
+                f.write(json.dumps(all_schemas, indent=2))
+            console.print(
+                f"[green]✓ {len(all_schemas)} schemas written to: {output}[/green]"
+            )
+
+
+@cli.command(name="discover-multidoc")
+@click.option(
+    "--dir",
+    "document_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Directory containing documents to analyze (recursive scan)",
+)
+@click.option(
+    "--document",
+    "-d",
+    "documents",
+    multiple=True,
+    type=click.Path(exists=True),
+    help="Individual document files (repeatable: -d doc1.pdf -d doc2.png)",
+)
+@click.option(
+    "--embedding-model",
+    default=None,
+    help="Bedrock embedding model ID (default: us.cohere.embed-v4:0)",
+)
+@click.option(
+    "--analysis-model",
+    default=None,
+    help="Bedrock LLM for cluster analysis (default: us.anthropic.claude-sonnet-4-6)",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Output directory for discovered JSON schemas",
+)
+@click.option(
+    "--stack-name",
+    default=None,
+    help="CloudFormation stack name (required for --save-to-config)",
+)
+@click.option(
+    "--config-version",
+    default=None,
+    help="Configuration version to save schemas to",
+)
+@click.option(
+    "--save-to-config",
+    is_flag=True,
+    default=False,
+    help="Save discovered schemas to the stack's configuration",
+)
+@click.option("--region", default=None, help="AWS region")
+def multi_discover(
+    document_dir,
+    documents,
+    embedding_model,
+    analysis_model,
+    output,
+    stack_name,
+    config_version,
+    save_to_config,
+    region,
+):
+    """Discover document classes from a collection of documents.
+
+    Analyzes a directory of documents using embedding-based clustering and
+    agentic analysis to automatically discover document classes and generate
+    JSON Schemas.
+
+    Requires: make setup (or: pip install idp-common[multi_document_discovery])
+
+    Note: Requires at least 2 documents per expected class. Clusters with
+    fewer than 2 documents are filtered as noise. For discovering schemas
+    from individual documents, use 'idp-cli discover' instead.
+
+    \b
+    Examples:
+      # Discover from a directory of documents
+      idp-cli discover-multidoc --dir ./samples/
+
+      # Discover with explicit files
+      idp-cli discover-multidoc -d doc1.pdf -d doc2.png -d doc3.jpg
+
+      # Save schemas to output directory
+      idp-cli discover-multidoc --dir ./samples/ -o ./schemas/
+
+      # Save to stack configuration
+      idp-cli discover-multidoc --dir ./samples/ --save-to-config \\
+          --stack-name IDP --config-version v2
+    """
+    import json
+
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    from rich.table import Table
+
+    console = Console()
+
+    if not document_dir and not documents:
+        console.print(
+            "[red]Error: Either --dir or --document/-d must be provided[/red]"
+        )
+        sys.exit(1)
+
+    if save_to_config and not stack_name:
+        console.print(
+            "[red]Error: --stack-name is required when using --save-to-config[/red]"
+        )
+        sys.exit(1)
+
+    if save_to_config and not config_version:
+        console.print(
+            "[red]Error: --config-version is required when using --save-to-config[/red]"
+        )
+        sys.exit(1)
+
+    try:
+        from idp_sdk import IDPClient
+    except ImportError:
+        console.print("[red]Error: idp-sdk is required. pip install idp-sdk[/red]")
+        sys.exit(1)
+
+    client = IDPClient(stack_name=stack_name, region=region)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=False,
+    ) as progress:
+        task = progress.add_task("Starting multi-document discovery...", total=None)
+
+        def _progress_callback(step: str, data=None):
+            data = data or {}
+            if step == "documents_found":
+                progress.update(
+                    task,
+                    description=f"Found {data.get('count', '?')} documents",
+                )
+            elif step == "generating_embeddings":
+                progress.update(
+                    task,
+                    description=(
+                        f"Generating embeddings for {data.get('total', '?')} documents..."
+                    ),
+                )
+            elif step == "embedding_progress":
+                done = data.get("done", 0)
+                total = data.get("total", 0)
+                progress.update(
+                    task,
+                    description=f"Embedding documents... {done}/{total}",
+                )
+            elif step == "clustering":
+                progress.update(
+                    task,
+                    description=(
+                        f"Clustering {data.get('num_documents', '?')} documents..."
+                    ),
+                )
+            elif step == "clustering_complete":
+                progress.update(
+                    task,
+                    description=(f"Found {data.get('num_clusters', '?')} clusters"),
+                )
+            elif step == "analyzing_clusters":
+                progress.update(
+                    task,
+                    description=(
+                        f"Analyzing {data.get('total', '?')} clusters with AI agent..."
+                    ),
+                )
+            elif step == "cluster_analysis_progress":
+                done = data.get("done", 0)
+                total = data.get("total", 0)
+                cls = data.get("classification", "")
+                label = f" → {cls}" if cls else ""
+                progress.update(
+                    task,
+                    description=f"Analyzing clusters... {done}/{total}{label}",
+                )
+            elif step == "reflecting":
+                progress.update(task, description="Generating reflection report...")
+            elif step == "saving_to_config":
+                progress.update(
+                    task,
+                    description=(
+                        f"Saving to config version '{data.get('version', '?')}'..."
+                    ),
+                )
+            elif step == "pipeline_complete":
+                progress.update(task, description="Pipeline complete ✓")
+
+        result = client.discovery.run_multi_doc(
+            document_dir=document_dir,
+            document_paths=list(documents) if documents else None,
+            embedding_model_id=embedding_model,
+            analysis_model_id=analysis_model,
+            save_to_config=save_to_config,
+            config_version=config_version,
+            output_dir=output,
+            progress_callback=_progress_callback,
+            region=region,
+        )
+
+    # Display results
+    console.print()
+
+    if result.status == "FAILED":
+        console.print(f"[red]✗ Discovery failed: {result.error}[/red]")
+        sys.exit(1)
+
+    # Summary table
+    table = Table(title="Multi-Document Discovery Results", show_lines=True)
+    table.add_column("Cluster", style="cyan", justify="center")
+    table.add_column("Classification", style="bold green")
+    table.add_column("Documents", style="yellow", justify="center")
+    table.add_column("Fields", style="magenta", justify="center")
+    table.add_column("Status", justify="center")
+
+    for dc in result.discovered_classes:
+        if dc.error:
+            table.add_row(
+                str(dc.cluster_id),
+                "—",
+                str(dc.document_count),
+                "—",
+                "[red]✗ Error[/red]",
+            )
+        else:
+            num_fields = (
+                len(dc.json_schema.get("properties", {})) if dc.json_schema else 0
+            )
+            table.add_row(
+                str(dc.cluster_id),
+                dc.classification or "Unknown",
+                str(dc.document_count),
+                str(num_fields),
+                "[green]✓[/green]",
+            )
+
+    console.print(table)
+    console.print()
+
+    # Stats line
+    console.print(
+        f"[bold]Summary:[/bold] {result.total_documents} documents → "
+        f"{result.total_clusters} clusters → "
+        f"{len([c for c in result.discovered_classes if not c.error])} schemas"
+    )
+
+    if result.noise_documents > 0:
+        console.print(
+            f"[yellow]⚠ {result.noise_documents} documents failed embedding[/yellow]"
+        )
+
+    if result.config_version:
+        console.print(
+            f"[green]✓ Schemas saved to config version: {result.config_version}[/green]"
+        )
+
+    if output:
+        console.print(f"[green]✓ Schemas written to: {output}[/green]")
+
+    # Print schemas to stdout if no output specified
+    if not output and not save_to_config:
+        all_schemas = [
+            dc.json_schema
+            for dc in result.discovered_classes
+            if dc.json_schema and not dc.error
+        ]
+        if all_schemas:
+            console.print()
+            console.print("[bold]Discovered schemas:[/bold]")
+            console.print(json.dumps(all_schemas, indent=2))
+
+    # Print reflection report if available
+    if result.reflection_report:
+        console.print()
+        console.print("[bold]Reflection Report:[/bold]")
+        from rich.markdown import Markdown
+
+        console.print(Markdown(result.reflection_report))
+
+    if result.status == "PARTIAL":
+        console.print(
+            "\n[yellow]⚠ Some clusters failed analysis. "
+            "Check the errors above.[/yellow]"
+        )
+        sys.exit(1)
+
+
+@cli.command()
+@click.option(
+    "--source-dir",
+    default=".",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Path to IDP project root directory",
+)
+@click.option(
+    "--bucket-basename",
+    default=None,
+    help="S3 bucket basename for artifacts — region is appended automatically (auto-generated if not provided)",
+)
+@click.option(
+    "--prefix", default=None, help="S3 key prefix for artifacts (default: idp-cli)"
+)
+@click.option("--region", required=True, help="AWS region for deployment")
+@click.option(
+    "--headless", is_flag=True, help="Also generate a headless (no-UI) template variant"
+)
+@click.option("--public", is_flag=True, help="Make S3 artifacts publicly readable")
+@click.option(
+    "--max-workers",
+    type=int,
+    default=None,
+    help="Maximum concurrent build workers (default: auto-detect)",
+)
+@click.option(
+    "--clean-build",
+    is_flag=True,
+    help="Delete all checksum files to force full rebuild",
+)
+@click.option(
+    "--no-validate", is_flag=True, help="Skip CloudFormation template validation"
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose build output")
+@click.option(
+    "--lint/--no-lint",
+    default=True,
+    help="Enable/disable ruff linting and cfn-lint (default: enabled)",
+)
+def publish(
+    source_dir: str,
+    bucket_basename: Optional[str],
+    prefix: Optional[str],
+    region: str,
+    headless: bool,
+    public: bool,
+    max_workers: Optional[int],
+    clean_build: bool,
+    no_validate: bool,
+    verbose: bool,
+    lint: bool,
+):
+    """
+    Build, package, and publish IDP CloudFormation artifacts to S3
+
+    This command is the CLI equivalent of publish.py. It builds all Lambda
+    functions, Lambda layers, SAM templates, packages the UI, and uploads
+    everything to S3. Optionally generates a headless template variant.
+
+    Examples:
+
+      # Standard build and publish
+      idp-cli publish --source-dir . --region us-east-1
+
+      # With custom bucket and prefix
+      idp-cli publish --source-dir . --bucket my-artifacts --prefix v1 --region us-east-1
+
+      # Build with headless template
+      idp-cli publish --source-dir . --region us-east-1 --headless
+
+      # Public artifacts (for shared deployments)
+      idp-cli publish --source-dir . --region us-east-1 --public
+
+      # Full rebuild with verbose output
+      idp-cli publish --source-dir . --region us-east-1 --clean-build --verbose
+
+      # Skip validation
+      idp-cli publish --source-dir . --region us-east-1 --no-validate
+    """
+    try:
+        client = IDPClient(region=region)
+        result = client.publish.build(
+            source_dir=source_dir,
+            bucket=bucket_basename,
+            prefix=prefix,
+            region=region,
+            headless=headless,
+            public=public,
+            max_workers=max_workers,
+            clean_build=clean_build,
+            no_validate=no_validate,
+            verbose=verbose,
+            lint=lint,
+        )
+
+        if not result.success:
+            console.print(f"[red]✗ Publish failed: {result.error}[/red]")
+            sys.exit(1)
+
+        # Print deployment URLs
+        console.print()
+        client.publish.print_deployment_urls(
+            template_url=result.template_url or "",
+            region=region,
+            headless_template_url=result.headless_template_url,
+        )
+        console.print()
+        console.print("[bold green]✅ Publish complete![/bold green]")
+
+    except Exception as e:
+        logger.error(f"Error during publish: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option("--region", default=None, help="AWS region")
+@click.option(
+    "--prompt",
+    default=None,
+    help="Single-shot prompt (non-interactive mode)",
+)
+@click.option(
+    "--enable-code-intelligence",
+    is_flag=True,
+    default=False,
+    help="Enable Code Intelligence Agent (uses external third-party services)",
+)
+def chat(
+    stack_name: str,
+    region: Optional[str],
+    prompt: Optional[str],
+    enable_code_intelligence: bool,
+):
+    """Interactive Agent Companion Chat from the terminal.
+
+    Provides access to the full multi-agent orchestrator including
+    Analytics, Error Analyzer, and other agents.
+
+    \b
+    Examples:
+      # Interactive mode
+      idp-cli chat --stack-name IDP
+
+      # Single-shot mode
+      idp-cli chat --stack-name IDP --prompt "How many documents were processed today?"
+
+      # With Code Intelligence (external services)
+      idp-cli chat --stack-name IDP --enable-code-intelligence
+    """
+    try:
+        from .chat import run_chat
+    except ImportError:
+        console.print(
+            "[red]✗ Chat requires idp_common[agents] to be installed.\n"
+            "  Run: pip install -e 'lib/idp_common_pkg[agents]'[/red]"
+        )
+        sys.exit(1)
+
+    run_chat(
+        stack_name=stack_name,
+        region=region,
+        prompt=prompt,
+        enable_code_intelligence=enable_code_intelligence,
+    )
+
+
+@cli.command(name="test-result")
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option("--test-run-id", required=True, help="Test run ID")
+@click.option("--region", default=None, help="AWS region")
+@click.option("--wait", is_flag=True, help="Wait for evaluation to complete")
+@click.option(
+    "--timeout", default=600, type=int, help="Timeout in seconds (default: 600)"
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    help="Output directory for saving results JSON file",
+)
+def test_result(
+    stack_name: str,
+    test_run_id: str,
+    region: Optional[str],
+    wait: bool,
+    timeout: int,
+    output_dir: Optional[str],
+):
+    """Get test results for a specific test run.
+
+    Invokes TestResultsResolverFunction to trigger evaluation if needed
+    and retrieve test results including accuracy, precision, recall, F1 score, and cost.
+
+    \b
+    Examples:
+      # Get results immediately (may show evaluating status)
+      idp-cli test-result --stack-name my-stack --test-run-id fake-w2-20260409-123456
+
+      # Wait for evaluation to complete
+      idp-cli test-result --stack-name my-stack --test-run-id fake-w2-20260409-123456 --wait --timeout 900
+
+      # Save results to file
+      idp-cli test-result --stack-name my-stack --test-run-id fake-w2-20260409-123456 --wait --output-dir ./results
+    """
+    if not region:
+        region = os.environ.get("AWS_REGION", "us-east-1")
+
+    try:
+        # Use SDK to get test result
+        from idp_sdk import IDPClient
+
+        client = IDPClient(stack_name=stack_name, region=region)
+
+        if wait:
+            console.print(
+                f"[yellow]⏳ Waiting for test run to complete (up to {timeout}s)...[/yellow]"
+            )
+
+        test_result = client.testing.get_test_result(
+            test_run_id=test_run_id,
+            wait=wait,
+            timeout=timeout,
+            poll_interval=10,
+        )
+
+        # Save to file if output-dir specified
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            output_file = os.path.join(output_dir, f"{test_run_id}-result.json")
+            with open(output_file, "w") as f:
+                # Use raw_data for complete JSON export
+                json.dump(test_result.raw_data, f, indent=2, default=str)
+            console.print(f"[green]✓ Results saved to: {output_file}[/green]\n")
+
+        # Display results using Rich formatting
+        console.print("\n[bold green]✓ Test Results[/bold green]\n")
+        console.print(f"[bold]Test Run:[/bold] {test_result.test_run_id}")
+        console.print(f"[bold]Test Set:[/bold] {test_result.test_set_name}")
+        console.print(f"[bold]Status:[/bold] {test_result.status}")
+        console.print(
+            f"[bold]Files:[/bold] {test_result.completed_files}/{test_result.files_count} completed"
+        )
+
+        if test_result.failed_files > 0:
+            console.print(
+                f"[bold red]Failed Files:[/bold red] {test_result.failed_files}"
+            )
+
+        console.print()
+
+        if test_result.overall_accuracy is not None:
+            console.print(
+                f"[bold cyan]Overall Accuracy:[/bold cyan] {test_result.overall_accuracy:.2%}"
+            )
+
+        if test_result.accuracy_breakdown:
+            breakdown = test_result.accuracy_breakdown
+            console.print(
+                f"[bold cyan]Precision:[/bold cyan] {breakdown.get('precision', 0):.2%}"
+            )
+            console.print(
+                f"[bold cyan]Recall:[/bold cyan] {breakdown.get('recall', 0):.2%}"
+            )
+            console.print(
+                f"[bold cyan]F1 Score:[/bold cyan] {breakdown.get('f1_score', 0):.2%}"
+            )
+
+        if test_result.total_cost:
+            console.print(
+                f"[bold yellow]Total Cost:[/bold yellow] ${test_result.total_cost:.4f}"
+            )
+
+        console.print()
+
+        if test_result.created_at:
+            console.print(f"[dim]Created: {test_result.created_at}[/dim]")
+        if test_result.completed_at:
+            console.print(f"[dim]Completed: {test_result.completed_at}[/dim]")
+
+    except Exception as e:
+        logger.error(f"Error getting test results: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command(name="test-compare")
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option(
+    "--test-run-ids",
+    required=True,
+    help="Comma-separated list of test run IDs to compare",
+)
+@click.option("--region", default=None, help="AWS region")
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    help="Output directory for saving comparison JSON and CSV files",
+)
+def test_compare(
+    stack_name: str, test_run_ids: str, region: Optional[str], output_dir: Optional[str]
+):
+    """Compare results from multiple test runs.
+
+    Shows side-by-side comparison of metrics and configuration differences
+    between test runs.
+
+    \b
+    Examples:
+      # Compare two test runs
+      idp-cli test-compare --stack-name my-stack \\
+        --test-run-ids "fake-w2-20260409-123456,fake-w2-20260409-234567"
+
+      # Compare and save to files
+      idp-cli test-compare --stack-name my-stack \\
+        --test-run-ids "run1,run2,run3" --output-dir ./comparisons
+    """
+    import csv
+    from datetime import datetime, timezone
+
+    if not region:
+        region = os.environ.get("AWS_REGION", "us-east-1")
+
+    try:
+        # Parse test run IDs
+        test_run_id_list = [tid.strip() for tid in test_run_ids.split(",")]
+
+        if len(test_run_id_list) < 2:
+            console.print(
+                "[red]✗ At least 2 test run IDs required for comparison[/red]"
+            )
+            sys.exit(1)
+
+        # Use SDK to compare test runs
+        from idp_sdk import IDPClient
+
+        client = IDPClient(stack_name=stack_name, region=region)
+
+        console.print(f"[blue]Comparing {len(test_run_id_list)} test runs...[/blue]\n")
+
+        comparison_result = client.testing.compare_test_runs(
+            test_run_ids=test_run_id_list
+        )
+
+        metrics = comparison_result.metrics
+        # Note: configs not yet in SDK model, but in raw_data if needed
+        configs = []  # TODO: Add to SDK model if needed
+
+        if not metrics:
+            console.print("[yellow]⚠ No metrics data available for comparison[/yellow]")
+            sys.exit(1)
+
+        # Save to files if output-dir specified
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+
+            # Save JSON (reconstruct result dict for compatibility)
+            result_data = {
+                "metrics": metrics,
+                "configs": configs,
+            }
+            json_file = os.path.join(output_dir, f"comparison-{timestamp}.json")
+            with open(json_file, "w") as f:
+                json.dump(result_data, f, indent=2, default=str)
+            console.print(f"[green]✓ Comparison JSON saved to: {json_file}[/green]")
+
+            # Save CSV (metrics only)
+            csv_file = os.path.join(output_dir, f"comparison-{timestamp}.csv")
+            with open(csv_file, "w", newline="") as f:
+                writer = csv.writer(f)
+
+                # Header row
+                header = ["Metric"] + [tid[:30] for tid in test_run_id_list]
+                writer.writerow(header)
+
+                # Metric rows
+                metric_names = [
+                    ("Overall Accuracy", "overallAccuracy"),
+                    ("Precision", "accuracyBreakdown.precision"),
+                    ("Recall", "accuracyBreakdown.recall"),
+                    ("F1 Score", "accuracyBreakdown.f1_score"),
+                    ("Total Cost", "totalCost"),
+                    ("Files Completed", "completedFiles"),
+                    ("Files Failed", "failedFiles"),
+                ]
+
+                for display_name, metric_path in metric_names:
+                    row = [display_name]
+                    for test_run_id in test_run_id_list:
+                        test_data = metrics.get(test_run_id, {})
+
+                        # Navigate nested paths
+                        value = test_data
+                        for key in metric_path.split("."):
+                            value = value.get(key) if isinstance(value, dict) else None
+
+                        if value is not None:
+                            row.append(
+                                f"{value:.4f}"
+                                if isinstance(value, float)
+                                else str(value)
+                            )
+                        else:
+                            row.append("N/A")
+
+                    writer.writerow(row)
+
+            console.print(f"[green]✓ Comparison CSV saved to: {csv_file}[/green]\n")
+
+        # Display metrics comparison table
+        console.print("[bold green]Metrics Comparison[/bold green]\n")
+
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("Metric", style="dim")
+
+        for test_run_id in test_run_id_list:
+            table.add_column(test_run_id[:20], justify="right")
+
+        # Add rows for each metric
+        metric_names = [
+            ("Overall Accuracy", "overallAccuracy", "%"),
+            ("Precision", "accuracyBreakdown.precision", "%"),
+            ("Recall", "accuracyBreakdown.recall", "%"),
+            ("F1 Score", "accuracyBreakdown.f1_score", "%"),
+            ("Total Cost", "totalCost", "$"),
+        ]
+
+        for display_name, metric_path, format_type in metric_names:
+            row = [display_name]
+            for test_run_id in test_run_id_list:
+                test_data = metrics.get(test_run_id, {})
+
+                # Navigate nested paths
+                value = test_data
+                for key in metric_path.split("."):
+                    value = value.get(key) if isinstance(value, dict) else None
+
+                if value is not None:
+                    if format_type == "%":
+                        row.append(f"{value:.2%}")
+                    elif format_type == "$":
+                        row.append(f"${value:.4f}")
+                    else:
+                        row.append(str(value))
+                else:
+                    row.append("N/A")
+
+            table.add_row(*row)
+
+        console.print(table)
+        console.print()
+
+        # Display configuration differences
+        if configs and len(configs) > 0:
+            console.print("[bold green]Configuration Differences[/bold green]\n")
+
+            config_table = Table(show_header=True, header_style="bold cyan")
+            config_table.add_column("Setting", style="dim")
+
+            for test_run_id in test_run_id_list:
+                config_table.add_column(test_run_id[:20])
+
+            for diff in configs:
+                setting = diff.get("setting", "")
+                values = diff.get("values", {})
+
+                row = [setting]
+                for test_run_id in test_run_id_list:
+                    value = values.get(test_run_id, "<missing>")
+                    # Truncate long values
+                    if len(str(value)) > 50:
+                        value = str(value)[:47] + "..."
+                    row.append(str(value))
+
+                config_table.add_row(*row)
+
+            console.print(config_table)
+        else:
+            console.print("[dim]No configuration differences to display[/dim]")
+
+        console.print()
+
+    except Exception as e:
+        logger.error(f"Error comparing test runs: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
 def main():
     """Main entry point for the CLI"""
+    # Pre-flight check: verify core dependencies are importable
+    try:
+        import idp_sdk  # noqa: F401
+    except ImportError:
+        print(_SETUP_HELP, file=sys.stderr)
+        sys.exit(1)
+
     # Parse --profile from anywhere in sys.argv before Click processes arguments
     args = sys.argv[1:]  # Skip script name
     profile = None

@@ -110,12 +110,10 @@ def handler(event, context):
     
     # Initialize classification service with DynamoDB caching
     cache_table = os.environ.get('TRACKING_TABLE')
-    backend = "sagemaker" if os.environ.get("SAGEMAKER_ENDPOINT_NAME") else "bedrock"
     service = classification.ClassificationService(
         region=region,
         max_workers=MAX_WORKERS,
         config=config,
-        backend=backend,
         cache_table=cache_table
     )
     

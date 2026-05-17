@@ -19,7 +19,8 @@ import DocumentDetails from '../document-details';
 import DocumentsQueryLayout from '../document-kb-query-layout';
 import DocumentsAgentsLayout from '../document-agents-layout/DocumentsAgentsLayout';
 import UploadDocumentPanel from '../upload-document';
-import DiscoveryPanel from '../discovery/DiscoveryPanel';
+import DiscoveryPage from '../discovery/DiscoveryPage';
+import DiscoveryJobDetails from '../discovery/DiscoveryJobDetails';
 import UserManagementLayout from '../user-management/UserManagementLayout';
 import { appLayoutLabels } from '../common/labels';
 
@@ -30,6 +31,8 @@ import SplitPanel from './documents-split-panel';
 import ConfigurationLayout from '../configuration-layout';
 import PricingLayout from '../pricing-layout';
 import CapacityPlanningLayout from '../capacity-planning/CapacityPlanningLayout';
+import CustomModelsLayout from '../custom-models/CustomModelsLayout';
+import { FinetuningJobDetail } from '../custom-models';
 
 import { DOCUMENT_LIST_SHARDS_PER_DAY, PERIODS_TO_LOAD_STORAGE_KEY } from '../document-list/documents-table-config';
 
@@ -85,10 +88,8 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
     abortWorkflows,
   } = useGraphQlApi({ initialPeriodsToLoad });
 
-  // eslint-disable-next-line prettier/prettier
   const { splitPanelOpen, onSplitPanelToggle, splitPanelSize, onSplitPanelResize } = useSplitPanel(selectedItems);
 
-  // eslint-disable-next-line react/jsx-no-constructed-context-values
   const documentsContextValue = {
     documents,
     getDocumentDetailsFromIds,
@@ -134,8 +135,11 @@ const GenAIIDPLayout = ({ children }: GenAIIDPLayoutProps): React.JSX.Element =>
               <Route path="config" element={<ConfigurationLayout />} />
               <Route path="pricing" element={<PricingLayout />} />
               <Route path="capacity-planning" element={<CapacityPlanningLayout />} />
+              <Route path="custom-models" element={<CustomModelsLayout />} />
+              <Route path="custom-models/:jobId" element={<FinetuningJobDetail />} />
               <Route path="upload" element={<UploadDocumentPanel />} />
-              <Route path="discovery" element={<DiscoveryPanel />} />
+              <Route path="discovery" element={<DiscoveryPage />} />
+              <Route path="discovery/job/:jobId" element={<DiscoveryJobDetails />} />
               <Route path="users" element={<UserManagementLayout />} />
               <Route path="*" element={<DocumentDetails />} />
             </Routes>

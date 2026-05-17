@@ -1,11 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-/* eslint-disable max-len */
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
 import { Box, Button, Spinner, Header, Grid, Container, SpaceBetween, Input, Link } from '@cloudscape-design/components';
+import SafeMarkdown from '../common/SafeMarkdown';
+
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 
@@ -64,7 +64,6 @@ export const DocumentsQueryLayout = (): React.JSX.Element => {
   const { settings } = useSettingsContext();
 
   const getElementByIdAsync = (id: string): Promise<HTMLElement> =>
-    // eslint-disable-next-line
     new Promise((resolve) => {
       const getElement = () => {
         const element = document.getElementById(id);
@@ -134,12 +133,11 @@ export const DocumentsQueryLayout = (): React.JSX.Element => {
     return true;
   };
 
-  // eslint-disable-next-line
   const placeholder =
     (settings as Record<string, unknown>).ShouldUseDocumentKnowledgeBase === 'true'
       ? 'Enter a question to query your document knowledge base.'
       : 'Document Knowledge Base is set to DISABLED for this GenAIIDP deployment.';
-  // eslint-disable-next-line
+
   const initialMsg =
     (settings as Record<string, unknown>).ShouldUseDocumentKnowledgeBase === 'true'
       ? 'Ask a question below.'
@@ -169,8 +167,7 @@ export const DocumentsQueryLayout = (): React.JSX.Element => {
                     <Spinner />
                   </div>
                 ) : (
-                  <ReactMarkdown
-                    rehypePlugins={[rehypeRaw]}
+                  <SafeMarkdown
                     components={
                       {
                         documentid: CustomLink,
@@ -178,7 +175,7 @@ export const DocumentsQueryLayout = (): React.JSX.Element => {
                     }
                   >
                     {entry.value}
-                  </ReactMarkdown>
+                  </SafeMarkdown>
                 )}
               </ValueWithLabel>
             ))

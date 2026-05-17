@@ -108,9 +108,27 @@ const DocumentDetails = (): React.JSX.Element => {
       if (isRichData) {
         // Full replacement from subscription — allows clearing stale fields
         // (e.g., after reprocess). This is the common path during active processing.
+        // However, protect against subscription events (e.g. claimReview/releaseReview)
+        // that carry empty Sections/Pages overwriting data loaded by getDocument.
         if (JSON.stringify(document) !== JSON.stringify(incomingDoc)) {
-          logger.debug('Full document replacement from subscription data');
-          setDocument(incomingDoc);
+          const existingSections = (document as Record<string, unknown>).sections as unknown[] | undefined;
+          const incomingSections = (incomingDoc as Record<string, unknown>).sections as unknown[] | undefined;
+          if (Array.isArray(existingSections) && existingSections.length > 0 && (!incomingSections || incomingSections.length === 0)) {
+            // Incoming would wipe sections — overlay only changed scalar fields
+            const merged = { ...document } as Record<string, unknown>;
+            const incoming = incomingDoc as Record<string, unknown>;
+            Object.keys(incoming).forEach((key) => {
+              const val = incoming[key];
+              if (val === null || val === undefined) return;
+              if (Array.isArray(val) && val.length === 0) return;
+              (merged as Record<string, unknown>)[key] = val;
+            });
+            logger.debug('Preserving sections from getDocument, merging subscription fields');
+            setDocument(merged as MappedDocument);
+          } else {
+            logger.debug('Full document replacement from subscription data');
+            setDocument(incomingDoc);
+          }
         }
         return;
       }
@@ -186,14 +204,30 @@ const DocumentDetails = (): React.JSX.Element => {
   };
 
   // Function to handle reprocess confirmation
-  const handleReprocessConfirm = async () => {
-    logger.debug('Reprocessing document', objectKey);
+  const handleReprocessConfirm = async (version?: string) => {
+    logger.debug('Reprocessing document', objectKey, 'with version', version);
     setIsReprocessLoading(true);
     try {
-      const result = await reprocessDocuments([objectKey]);
+      const result = await reprocessDocuments([objectKey], version);
       logger.debug('Reprocess result', result);
       // Close the modal
       setIsReprocessModalVisible(false);
+
+      // Immediately clear stale sections/pages so the UI doesn't show old data
+      // while waiting for the backend pipeline to start and send subscription updates.
+      if (document) {
+        setDocument({
+          ...document,
+          objectStatus: 'QUEUED',
+          sections: [],
+          pages: [],
+          evaluationReportUri: '',
+          summaryReportUri: '',
+          ruleValidationResultUri: '',
+          metering: null,
+          confidenceAlertCount: 0,
+        } as MappedDocument);
+      }
     } finally {
       setIsReprocessLoading(false);
     }

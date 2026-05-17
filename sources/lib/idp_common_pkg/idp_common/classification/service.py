@@ -43,6 +43,8 @@ from idp_common.config.schema_constants import (
     X_AWS_IDP_CLASSIFICATION,
     X_AWS_IDP_DOCUMENT_NAME_REGEX,
     X_AWS_IDP_DOCUMENT_TYPE,
+    X_AWS_IDP_EXCLUDE_FROM_PROCESSING,
+    X_AWS_IDP_EXCLUSION_REASON,
     X_AWS_IDP_PAGE_CONTENT_REGEX,
 )
 from idp_common.models import Document, Section, Status
@@ -153,9 +155,6 @@ class ClassificationService:
         # Get classification method from typed config
         self.classification_method = self.config.classification.classificationMethod
 
-        # Page output URI for LambdaHook — set per-page before invoke
-        self._current_page_output_uri: Optional[str] = None
-
         # Get max pages for classification (1 to ALL)
         self.max_pages_for_classification = (
             self.config.classification.maxPagesForClassification
@@ -192,12 +191,28 @@ class ClassificationService:
                 X_AWS_IDP_PAGE_CONTENT_REGEX
             ) or classification_meta.get("pageContentPattern")
 
+            # Excluded-from-processing flag + optional short reason.
+            # Accepts both the x-aws-idp-* schema extension and a legacy
+            # snake_case key for convenience in handwritten configs.
+            excluded = bool(
+                schema.get(X_AWS_IDP_EXCLUDE_FROM_PROCESSING)
+                or schema.get("exclude_from_processing")
+                or classification_meta.get("excludeFromProcessing")
+            )
+            exclusion_reason = (
+                schema.get(X_AWS_IDP_EXCLUSION_REASON)
+                or schema.get("exclusion_reason")
+                or classification_meta.get("exclusionReason")
+            )
+
             doc_types.append(
                 DocumentType(
                     type_name=schema.get(X_AWS_IDP_DOCUMENT_TYPE, ""),
                     description=schema.get("description", ""),
                     document_name_regex=document_name_regex,
                     document_page_content_regex=document_page_content_regex,
+                    excluded=excluded,
+                    exclusion_reason=exclusion_reason,
                 )
             )
 
@@ -214,6 +229,47 @@ class ClassificationService:
             )
 
         return doc_types
+
+    def get_doc_type(self, class_name: Optional[str]) -> Optional[DocumentType]:
+        """Return the DocumentType for a given class name, or None."""
+        if not class_name:
+            return None
+        for doc_type in self.document_types:
+            if doc_type.type_name == class_name:
+                return doc_type
+        return None
+
+    def _mark_excluded_sections(self, document: Document) -> Document:
+        """
+        Populate ``Section.excluded`` / ``Section.exclusion_reason`` for any
+        section whose classification corresponds to a class that was
+        configured with ``x-aws-idp-exclude-from-processing: true``.
+
+        This runs once after classification completes so all downstream
+        services (extraction, assessment, summarization, rule_validation,
+        evaluation) can skip excluded sections by inspecting these flags.
+        """
+        if not document.sections:
+            return document
+        for section in document.sections:
+            doc_type = self.get_doc_type(section.classification)
+            if doc_type and doc_type.excluded:
+                section.excluded = True
+                section.exclusion_reason = doc_type.exclusion_reason
+                logger.info(
+                    "Section %s classified as excluded class '%s' (reason=%s); "
+                    "downstream processing will skip it.",
+                    section.section_id,
+                    section.classification,
+                    doc_type.exclusion_reason or "excluded",
+                )
+            else:
+                # Reset in case of re-classification: ensure no stale flag
+                # survives if a section's class no longer maps to an
+                # excluded class.
+                section.excluded = False
+                section.exclusion_reason = None
+        return document
 
     def _check_document_name_regex(self, document: Document) -> Optional[str]:
         """
@@ -1279,10 +1335,6 @@ class ClassificationService:
 
         # Invoke Bedrock model
         try:
-            # Set page output URI for LambdaHook — derived from page image URI
-            self._current_page_output_uri = (
-                image_uri.rsplit("/", 1)[0] + "/" if image_uri else None
-            )
             response_with_metering = self._invoke_bedrock_model(
                 content=content, config=config
             )
@@ -1574,7 +1626,6 @@ class ClassificationService:
             max_tokens=config["max_tokens"],
             context="Classification",
             model_lambda_hook_arn=self.config.classification.model_lambda_hook_arn,
-            page_output_uri=self._current_page_output_uri,
         )
 
     def _create_unclassified_result(
@@ -2436,6 +2487,11 @@ class ClassificationService:
 
         # Calculate and store page_indices for each section for use during extraction
         document = self._calculate_and_store_page_indices(document)
+
+        # Populate Section.excluded / Section.exclusion_reason based on class
+        # configuration. Downstream services use these flags to skip sections
+        # containing only static/boilerplate content.
+        document = self._mark_excluded_sections(document)
 
         return document
 

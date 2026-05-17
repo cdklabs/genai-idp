@@ -30,6 +30,7 @@ export interface CostBreakdownServiceDetail {
   estimated_cost?: number;
   value?: number;
   unit_cost?: number;
+  unit?: string;
   [key: string]: unknown;
 }
 
@@ -53,6 +54,28 @@ export interface SplitClassificationMetrics {
     total?: number;
     [key: string]: unknown;
   };
+}
+
+/** Parsed field metrics from TestRun.fieldMetrics AWSJSON field */
+export interface FieldMetrics {
+  [fieldName: string]: {
+    tp?: number;
+    fp?: number;
+    tn?: number;
+    fn?: number;
+    [key: string]: unknown;
+  };
+}
+
+/** Parsed confusion matrix from TestRun.confusionMatrix AWSJSON field */
+export interface ConfusionMatrix {
+  tp?: number;
+  fp?: number;
+  tn?: number;
+  fn?: number;
+  fa?: number;
+  fd?: number;
+  [key: string]: unknown;
 }
 
 /** Parsed comparison metrics from TestRunComparison.metrics AWSJSON field */

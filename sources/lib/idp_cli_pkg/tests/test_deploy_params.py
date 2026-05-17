@@ -7,7 +7,7 @@ Tests for deploy command parameter handling
 Verifies that stack updates only modify explicitly provided parameters.
 """
 
-from idp_sdk.core.stack import build_parameters
+from idp_sdk._core.stack import build_parameters
 
 
 class TestParameterPreservation:

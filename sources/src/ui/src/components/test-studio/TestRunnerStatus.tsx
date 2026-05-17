@@ -19,14 +19,19 @@ interface TestRunStatusData {
 
 interface TestRunnerStatusProps {
   testRunId?: string | null;
+  createdAt?: string | null;
   onComplete?: (() => void) | null;
 }
 
-const TestRunnerStatus = ({ testRunId = null, onComplete = null }: TestRunnerStatusProps): React.JSX.Element => {
+const MAX_POLL_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+const TestRunnerStatus = ({ testRunId = null, createdAt = null, onComplete = null }: TestRunnerStatusProps): React.JSX.Element => {
   const [testRunStatus, setTestRunStatus] = useState<TestRunStatusData | null>(null);
 
   useEffect(() => {
     if (!testRunId) return undefined;
+
+    const isStale = createdAt ? Date.now() - new Date(createdAt).getTime() > MAX_POLL_AGE_MS : false;
 
     const fetchStatus = async () => {
       try {
@@ -40,8 +45,8 @@ const TestRunnerStatus = ({ testRunId = null, onComplete = null }: TestRunnerSta
 
         setTestRunStatus(status);
 
-        // Close modal when test is complete (progress = 100%)
-        if (status.progress === 100 && onComplete) {
+        // Stop polling when test run reaches a terminal state
+        if ((status.status === 'COMPLETE' || status.status === 'PARTIAL_COMPLETE') && onComplete) {
           onComplete();
         }
       } catch (error) {
@@ -50,9 +55,12 @@ const TestRunnerStatus = ({ testRunId = null, onComplete = null }: TestRunnerSta
     };
 
     fetchStatus();
+
+    if (isStale) return undefined;
+
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
-  }, [testRunId, onComplete]);
+  }, [testRunId, createdAt, onComplete]);
 
   if (!testRunStatus) return <span>Loading...</span>;
 

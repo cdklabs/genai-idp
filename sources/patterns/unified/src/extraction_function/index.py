@@ -7,6 +7,7 @@ import json
 import time
 import logging
 
+import boto3
 from idp_common import metrics, get_config, extraction
 from idp_common.models import Document, Section, Status
 from idp_common.docs_service import create_document_service
@@ -22,6 +23,98 @@ OCR_TEXT_ONLY = os.environ.get('OCR_TEXT_ONLY', 'false').lower() == 'true'
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_LOG_LEVEL", "INFO"))
+
+# --- Extraction checkpoint helpers for resume-on-timeout ---
+
+_s3_client = None
+
+def _get_s3_client():
+    """Lazy-init S3 client for checkpoint operations."""
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = boto3.client("s3")
+    return _s3_client
+
+
+def _checkpoint_s3_key(execution_arn: str, section_id: str) -> str:
+    """Build deterministic S3 key for extraction checkpoint."""
+    # Sanitise execution ARN for use as S3 key prefix
+    safe_arn = execution_arn.replace(":", "_").replace("/", "_")
+    return f"checkpoints/{safe_arn}/{section_id}/extraction_state.json"
+
+
+def load_extraction_checkpoint(bucket: str, execution_arn: str, section_id: str) -> dict | None:
+    """
+    Load an extraction checkpoint from S3 if one exists.
+
+    Returns the checkpoint data dict, or None if no checkpoint found.
+    """
+    key = _checkpoint_s3_key(execution_arn, section_id)
+    try:
+        response = _get_s3_client().get_object(Bucket=bucket, Key=key)
+        checkpoint = json.loads(response["Body"].read().decode("utf-8"))
+        logger.info(
+            f"Loaded extraction checkpoint from s3://{bucket}/{key} "
+            f"(saved at {checkpoint.get('timestamp', 'unknown')})"
+        )
+        return checkpoint
+    except _get_s3_client().exceptions.NoSuchKey:
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to load extraction checkpoint: {e}")
+        return None
+
+
+def save_extraction_checkpoint(
+    bucket: str, execution_arn: str, section_id: str, extraction_data: dict
+) -> None:
+    """
+    Save an extraction checkpoint to S3.
+
+    Called incrementally after each successful extraction_tool or apply_json_patches
+    invocation inside the agentic extraction loop.
+    """
+    key = _checkpoint_s3_key(execution_arn, section_id)
+    checkpoint = {
+        "extraction_data": extraction_data,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    try:
+        _get_s3_client().put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=json.dumps(checkpoint, default=str).encode("utf-8"),
+            ContentType="application/json",
+        )
+        # Count items for logging (works for schemas with list fields like holdings_positions)
+        item_count = _count_extraction_items(extraction_data)
+        logger.info(
+            f"Saved extraction checkpoint to s3://{bucket}/{key} "
+            f"({item_count} items extracted so far)"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to save extraction checkpoint: {e}")
+
+
+def delete_extraction_checkpoint(bucket: str, execution_arn: str, section_id: str) -> None:
+    """Delete extraction checkpoint from S3 after successful completion."""
+    key = _checkpoint_s3_key(execution_arn, section_id)
+    try:
+        _get_s3_client().delete_object(Bucket=bucket, Key=key)
+        logger.info(f"Deleted extraction checkpoint s3://{bucket}/{key}")
+    except Exception as e:
+        logger.warning(f"Failed to delete extraction checkpoint: {e}")
+
+
+def _count_extraction_items(extraction_data: dict) -> int:
+    """Count total items across all list fields in extraction data for logging."""
+    count = 0
+    for value in extraction_data.values():
+        if isinstance(value, list):
+            count += len(value)
+        else:
+            count += 1
+    return count
 
 @xray_recorder.capture('extraction_function')
 def handler(event, context):
@@ -135,6 +228,42 @@ def handler(event, context):
     # Initialize the extraction service
     extraction_service = extraction.ExtractionService(config=config)
     
+    # --- Checkpoint: load any existing checkpoint for resume-on-timeout ---
+    execution_arn = getattr(full_document, 'workflow_execution_arn', '') or event.get('execution_arn', '')
+    agentic_enabled = config.extraction.agentic.enabled if config.extraction and config.extraction.agentic else False
+    checkpoint_data = None
+    
+    if agentic_enabled and working_bucket and execution_arn:
+        checkpoint = load_extraction_checkpoint(working_bucket, execution_arn, section_id)
+        if checkpoint and checkpoint.get("extraction_data"):
+            raw_checkpoint = checkpoint["extraction_data"]
+            # Handle new format: {"source": "...", "data": {...}}
+            # and legacy format: direct extraction dict
+            if isinstance(raw_checkpoint, dict) and "source" in raw_checkpoint and "data" in raw_checkpoint:
+                checkpoint_source = raw_checkpoint["source"]
+                checkpoint_data = raw_checkpoint["data"]
+            else:
+                # Legacy format — assume current_extraction
+                checkpoint_source = "current_extraction"
+                checkpoint_data = raw_checkpoint
+            item_count = _count_extraction_items(checkpoint_data)
+            logger.info(
+                f"Resuming agentic extraction from checkpoint "
+                f"(source={checkpoint_source}, {item_count} items, "
+                f"saved at {checkpoint.get('timestamp', 'unknown')})"
+            )
+            # If checkpoint came from buffer (intermediate_extraction),
+            # store it so service.py can load it into agent's buffer state
+            if checkpoint_source == "intermediate_extraction":
+                # Tag as buffer checkpoint so service layer handles it
+                checkpoint_data = {"_checkpoint_source": "intermediate_extraction", **checkpoint_data}
+        
+        # Set up incremental checkpoint callback on the extraction service
+        def _checkpoint_cb(extraction_data: dict) -> None:
+            save_extraction_checkpoint(working_bucket, execution_arn, section_id, extraction_data)
+        
+        extraction_service._checkpoint_callback = _checkpoint_cb
+    
     # Track metrics
     metrics.put_metric('InputDocuments', 1)
     metrics.put_metric('InputDocumentPages', len(section.page_ids))
@@ -143,10 +272,15 @@ def handler(event, context):
     t0 = time.time()
     section_document = extraction_service.process_document_section(
         document=section_document,
-        section_id=section_id
+        section_id=section_id,
+        checkpoint_data=checkpoint_data,
     )
     t1 = time.time()
     logger.info(f"Total extraction time: {t1-t0:.2f} seconds")
+    
+    # --- Checkpoint: cleanup on successful completion ---
+    if agentic_enabled and working_bucket and execution_arn:
+        delete_extraction_checkpoint(working_bucket, execution_arn, section_id)
     
     # Check if document processing failed
     if section_document.status == Status.FAILED:

@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: MIT-0
 
 from unittest.mock import MagicMock, patch
-from xml.etree.ElementTree import Element, SubElement
+from xml.etree.ElementTree import (  # nosec B405 - constructing XML in-memory for tests, no parsing
+    Element,
+    SubElement,
+)
 
 import pytest
 from idp_common.ocr.document_converter import DocumentConverter

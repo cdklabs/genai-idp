@@ -388,6 +388,10 @@ class OcrService:
                 if is_pdf:
                     # Determine which pages need processing (retry-safe: skip completed pages)
                     pdf_document = pdfium.PdfDocument(file_content)
+                    # Initialize form rendering engine so fillable PDF form fields
+                    # (text inputs, checkboxes, etc.) appear in rendered page images.
+                    # Without this, may_draw_forms=True in render() has no effect.
+                    pdf_document.init_forms()
                     num_pages = len(pdf_document)
                     document.num_pages = num_pages
 
@@ -422,6 +426,13 @@ class OcrService:
                     page_images: Dict[int, bytes] = {}
                     for i in pages_to_render:
                         page = pdf_document[i]
+                        # Flatten form fields into page content before rendering.
+                        # Many fillable PDFs (e.g., government forms) lack appearance
+                        # streams for form fields — flatten() forces PDFium to generate
+                        # them and merge into page content so render() can display them.
+                        # Only applies when PDF has form fields (formenv is set by init_forms).
+                        if page.formenv is not None:
+                            page.flatten()
                         page_images[i] = self._extract_page_image(page, True, i + 1)
 
                     pdf_document.close()
@@ -1141,9 +1152,9 @@ class OcrService:
                 content_type="application/json",
             )
 
-        # Memory cleanup
-        img_bytes = None
-        ocr_img_bytes = None
+        # Memory cleanup - delete references to free large image buffers
+        del img_bytes
+        del ocr_img_bytes
 
         t2 = time.time()
         logger.debug(

@@ -147,5 +147,7 @@ class TestTestSetResolver:
             args = {"filePattern": "*.pdf", "bucketType": "input"}
             result = test_set_index.list_bucket_files(args)
 
-            mock_find.assert_called_once_with("test-bucket", "*.pdf")
+            mock_find.assert_called_once_with(
+                "test-bucket", "*.pdf", modified_after=None
+            )
             assert result == ["file1.pdf", "file2.pdf"]

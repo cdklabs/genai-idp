@@ -18,11 +18,14 @@ import {
   FormField,
   Input,
   Select,
-  CollectionPreferences,
   ExpandableSection,
   RadioGroup,
+  Pagination,
+  TextFilter,
+  CollectionPreferences,
 } from '@cloudscape-design/components';
-// eslint-disable-next-line import/no-extraneous-dependencies
+import { useCollection } from '@cloudscape-design/collection-hooks';
+
 import yaml from 'js-yaml';
 import { generateClient } from 'aws-amplify/api';
 import { getTestRun, startTestRun, getTestSets } from '../../graphql/generated';
@@ -32,8 +35,11 @@ import useAppContext from '../../contexts/app';
 import { formatConfigVersionLink } from './utils/configVersionUtils';
 import {
   parseCostBreakdown,
+  calculateAvgCostPerPage,
   parseAccuracyBreakdown,
   parseSplitClassificationMetrics,
+  parseFieldMetrics,
+  parseConfusionMatrix,
   parseWeightedOverallScores,
   parseTestRunConfig,
 } from '../../graphql/awsjson-parsers';
@@ -57,20 +63,18 @@ interface ComprehensiveBreakdownProps {
   costBreakdown: Record<string, Record<string, Record<string, unknown>>> | null;
   accuracyBreakdown: Record<string, number> | null;
   splitClassificationMetrics: Record<string, unknown> | null;
+  fieldMetrics: Record<string, unknown> | null;
   averageWeightedScore: number | null;
-  preferences: { wrapLines: boolean };
-  setPreferences: (prefs: { wrapLines: boolean }) => void;
 }
 
 const ComprehensiveBreakdown = ({
   costBreakdown,
   accuracyBreakdown,
   splitClassificationMetrics,
+  fieldMetrics,
   averageWeightedScore,
-  preferences,
-  setPreferences,
 }: ComprehensiveBreakdownProps): React.JSX.Element => {
-  if (!costBreakdown && !accuracyBreakdown && !splitClassificationMetrics) {
+  if (!costBreakdown && !accuracyBreakdown && !splitClassificationMetrics && !fieldMetrics) {
     return <Box>No breakdown data available</Box>;
   }
 
@@ -78,18 +82,11 @@ const ComprehensiveBreakdown = ({
     <SpaceBetween direction="vertical" size="l">
       {/* Combined Accuracy and Split Classification Metrics */}
       {(accuracyBreakdown || splitClassificationMetrics) && (
-        <Container
-          header={<Header variant="h3">Average Accuracy and Split Metrics</Header>}
-          {...({
-            preferences: <TestResultsPreferences preferences={preferences} setPreferences={setPreferences} />,
-          } as Record<string, unknown>)}
-        >
+        <Container header={<Header variant="h3">Average Accuracy and Split Metrics</Header>}>
           <SpaceBetween direction="vertical" size="m">
             {/* Main metrics */}
             <Table
               resizableColumns
-              wrapLines={preferences.wrapLines}
-              preferences={<TestResultsPreferences preferences={preferences} setPreferences={setPreferences} />}
               items={(() => {
                 const mainItems = [];
 
@@ -150,8 +147,6 @@ const ComprehensiveBreakdown = ({
               <Container>
                 <Table
                   resizableColumns
-                  wrapLines={preferences.wrapLines}
-                  preferences={<div />}
                   items={[
                     // All accuracy breakdown metrics
                     ...(accuracyBreakdown
@@ -180,8 +175,8 @@ const ComprehensiveBreakdown = ({
                               typeof value === 'number' && key.includes('accuracy')
                                 ? value.toFixed(3)
                                 : value !== null && value !== undefined
-                                ? value.toString()
-                                : '0',
+                                  ? value.toString()
+                                  : '0',
                           }))
                       : []),
                   ]}
@@ -197,12 +192,250 @@ const ComprehensiveBreakdown = ({
         </Container>
       )}
 
+      {/* Field Metrics */}
+      {fieldMetrics &&
+        Object.keys(fieldMetrics).length > 0 &&
+        (() => {
+          // Initialize with all object fields expanded
+          const initialExpanded = new Set<string>();
+          Object.keys(fieldMetrics).forEach((fieldName) => {
+            // Check if this field has children
+            if (Object.keys(fieldMetrics).some((f) => f.startsWith(fieldName + '.'))) {
+              initialExpanded.add(fieldName);
+            }
+          });
+
+          const [expandedFields, setExpandedFields] = React.useState<Set<string>>(initialExpanded);
+          const [fieldMetricsPageSize, setFieldMetricsPageSize] = React.useState(10);
+          const [fieldMetricsVisibleColumns, setFieldMetricsVisibleColumns] = React.useState([
+            'fieldName',
+            'accuracy',
+            'precision',
+            'recall',
+            'tp',
+            'fp',
+            'tn',
+            'fn',
+          ]);
+
+          // Build hierarchical structure
+          const allItems = Object.entries(fieldMetrics).map(([fieldName, metrics]) => {
+            const m = metrics as { tp?: number; fp?: number; tn?: number; fn?: number };
+            const tp = m.tp ?? 0;
+            const fp = m.fp ?? 0;
+            const tn = m.tn ?? 0;
+            const fn = m.fn ?? 0;
+            const total = tp + fp + tn + fn;
+            return {
+              fieldName,
+              tp,
+              fp,
+              tn,
+              fn,
+              accuracy: total > 0 ? ((tp + tn) / total).toFixed(3) : 'N/A',
+              precision: tp + fp > 0 ? (tp / (tp + fp)).toFixed(3) : 'N/A',
+              recall: tp + fn > 0 ? (tp / (tp + fn)).toFixed(3) : 'N/A',
+              depth: (fieldName.match(/\./g) || []).length,
+            };
+          });
+
+          // Check if a field has children
+          const hasChildren = (fieldName: string) =>
+            allItems.some((item) => item.fieldName.startsWith(fieldName + '.') && item.depth === (fieldName.match(/\./g) || []).length + 1);
+
+          // Get parent field name
+          const getParent = (fieldName: string) => {
+            const parts = fieldName.split('.');
+            return parts.length > 1 ? parts.slice(0, -1).join('.') : null;
+          };
+
+          // Check if field should be visible
+          const isVisible = (item: { fieldName: string }) => {
+            let parent = getParent(item.fieldName);
+            while (parent) {
+              if (!expandedFields.has(parent)) return false;
+              parent = getParent(parent);
+            }
+            return true;
+          };
+
+          // Build display items
+          const displayItems = allItems.filter(isVisible).map((item) => ({
+            ...item,
+            hasChildren: hasChildren(item.fieldName),
+            isExpanded: expandedFields.has(item.fieldName),
+          }));
+
+          const toggleExpand = (fieldName: string) => {
+            setExpandedFields((prev) => {
+              const next = new Set(prev);
+              if (next.has(fieldName)) {
+                next.delete(fieldName);
+              } else {
+                next.add(fieldName);
+              }
+              return next;
+            });
+          };
+
+          const expandAll = () => {
+            const allParents = new Set<string>();
+            allItems.forEach((item) => {
+              if (hasChildren(item.fieldName)) allParents.add(item.fieldName);
+            });
+            setExpandedFields(allParents);
+          };
+
+          const collapseAll = () => {
+            setExpandedFields(new Set<string>());
+          };
+
+          const allExpanded = allItems.filter((item) => hasChildren(item.fieldName)).every((item) => expandedFields.has(item.fieldName));
+
+          const { items, collectionProps, paginationProps, filterProps } = useCollection(displayItems, {
+            filtering: {
+              empty: 'No field metrics found',
+              noMatch: 'No fields match the filter',
+            },
+            pagination: { pageSize: fieldMetricsPageSize },
+            sorting: { defaultState: { sortingColumn: { sortingField: 'fieldName' }, isDescending: false } },
+          });
+
+          const allColumnDefinitions = [
+            {
+              id: 'fieldName',
+              header: 'Field Name',
+              cell: (item: (typeof displayItems)[0]) => {
+                const indent = item.depth * 20;
+                return (
+                  <span
+                    role={item.hasChildren ? 'button' : undefined}
+                    tabIndex={item.hasChildren ? 0 : undefined}
+                    style={{
+                      cursor: item.hasChildren ? 'pointer' : 'default',
+                      paddingLeft: `${indent}px`,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    }}
+                    onClick={() => item.hasChildren && toggleExpand(item.fieldName)}
+                    onKeyDown={(e) => {
+                      if (item.hasChildren && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        toggleExpand(item.fieldName);
+                      }
+                    }}
+                  >
+                    <span style={{ display: 'inline-block', width: '16px', flexShrink: 0 }}>
+                      {item.hasChildren ? (item.isExpanded ? '▼' : '▶') : ''}
+                    </span>
+                    {item.fieldName}
+                  </span>
+                );
+              },
+              sortingField: 'fieldName',
+            },
+            { id: 'accuracy', header: 'Accuracy', cell: (item: (typeof displayItems)[0]) => item.accuracy, sortingField: 'accuracy' },
+            {
+              id: 'precision',
+              header: 'Precision',
+              cell: (item: (typeof displayItems)[0]) => item.precision,
+              sortingField: 'precision',
+            },
+            { id: 'recall', header: 'Recall', cell: (item: (typeof displayItems)[0]) => item.recall, sortingField: 'recall' },
+            { id: 'tp', header: 'TP', cell: (item: (typeof displayItems)[0]) => item.tp, sortingField: 'tp' },
+            { id: 'fp', header: 'FP', cell: (item: (typeof displayItems)[0]) => item.fp, sortingField: 'fp' },
+            { id: 'tn', header: 'TN', cell: (item: (typeof displayItems)[0]) => item.tn, sortingField: 'tn' },
+            { id: 'fn', header: 'FN', cell: (item: (typeof displayItems)[0]) => item.fn, sortingField: 'fn' },
+          ];
+
+          return (
+            <Container header={<Header variant="h3">Field Level Metrics</Header>}>
+              <ExpandableSection headerText="View Details" defaultExpanded={false}>
+                <Table
+                  {...collectionProps}
+                  resizableColumns
+                  visibleColumns={fieldMetricsVisibleColumns}
+                  filter={
+                    <TextFilter
+                      filteringText={filterProps.filteringText}
+                      onChange={filterProps.onChange}
+                      filteringAriaLabel="Filter field metrics"
+                      filteringPlaceholder="Search fields..."
+                    />
+                  }
+                  items={items}
+                  columnDefinitions={allColumnDefinitions}
+                  pagination={
+                    <SpaceBetween direction="horizontal" size="xs">
+                      <Pagination
+                        currentPageIndex={paginationProps.currentPageIndex}
+                        pagesCount={paginationProps.pagesCount}
+                        onChange={paginationProps.onChange}
+                      />
+                    </SpaceBetween>
+                  }
+                  preferences={
+                    <SpaceBetween direction="horizontal" size="xs">
+                      <Button
+                        variant="icon"
+                        iconName={allExpanded ? 'treeview-collapse' : 'treeview-expand'}
+                        onClick={allExpanded ? collapseAll : expandAll}
+                        ariaLabel={allExpanded ? 'Collapse all' : 'Expand all'}
+                      />
+                      <CollectionPreferences
+                        title="Preferences"
+                        confirmLabel="Confirm"
+                        cancelLabel="Cancel"
+                        preferences={{
+                          pageSize: fieldMetricsPageSize,
+                          visibleContent: fieldMetricsVisibleColumns,
+                        }}
+                        onConfirm={({ detail }) => {
+                          if (detail.pageSize) setFieldMetricsPageSize(detail.pageSize);
+                          if (detail.visibleContent) setFieldMetricsVisibleColumns([...detail.visibleContent]);
+                        }}
+                        pageSizePreference={{
+                          title: 'Page size',
+                          options: [
+                            { value: 10, label: '10 fields' },
+                            { value: 25, label: '25 fields' },
+                            { value: 50, label: '50 fields' },
+                            { value: 100, label: '100 fields' },
+                          ],
+                        }}
+                        visibleContentPreference={{
+                          title: 'Visible columns',
+                          options: [
+                            {
+                              label: 'Field metrics columns',
+                              options: [
+                                { id: 'fieldName', label: 'Field Name', editable: false },
+                                { id: 'accuracy', label: 'Accuracy' },
+                                { id: 'precision', label: 'Precision' },
+                                { id: 'recall', label: 'Recall' },
+                                { id: 'tp', label: 'TP' },
+                                { id: 'fp', label: 'FP' },
+                                { id: 'tn', label: 'TN' },
+                                { id: 'fn', label: 'FN' },
+                              ],
+                            },
+                          ],
+                        }}
+                      />
+                    </SpaceBetween>
+                  }
+                  variant="embedded"
+                />
+              </ExpandableSection>
+            </Container>
+          );
+        })()}
+
       {/* Cost breakdown */}
       {costBreakdown && (
         <Container header={<Header variant="h3">Estimated Cost</Header>}>
           <Table
             resizableColumns
-            wrapLines={preferences.wrapLines}
             items={(() => {
               const costItems: CostItem[] = [];
               let totalCost = 0;
@@ -352,25 +585,6 @@ const ComprehensiveBreakdown = ({
   );
 };
 
-interface TestResultsPreferencesProps {
-  preferences: { wrapLines: boolean };
-  setPreferences: (prefs: { wrapLines: boolean }) => void;
-}
-
-const TestResultsPreferences = ({ preferences, setPreferences }: TestResultsPreferencesProps): React.JSX.Element => (
-  <CollectionPreferences
-    title="Preferences"
-    confirmLabel="Confirm"
-    cancelLabel="Cancel"
-    preferences={preferences}
-    onConfirm={({ detail }) => setPreferences(detail as { wrapLines: boolean })}
-    wrapLinesPreference={{
-      label: 'Wrap lines',
-      description: 'Check to see all the text and wrap the lines',
-    }}
-  />
-);
-
 interface TestResultsProps {
   testRunId: string;
   setSelectedTestRunId?: ((id: string | null) => void) | null;
@@ -392,7 +606,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
   const [results, setResults] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentAttempt, setCurrentAttempt] = useState(1);
   const [reRunLoading, setReRunLoading] = useState(false);
   const [showReRunModal, setShowReRunModal] = useState(false);
   const [reRunContext, setReRunContext] = useState('');
@@ -401,8 +614,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
   const [testSetStatus, setTestSetStatus] = useState<string | null>(null);
   const [testSetFilePattern, setTestSetFilePattern] = useState<string | null>(null);
   const [chartType, setChartType] = useState<SelectProps.Option>({ label: 'Bar Chart', value: 'bar' });
-  const [retryMessage, setRetryMessage] = useState('');
-  const [preferences, setPreferences] = useState({ wrapLines: false });
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [selectedRangeData, setSelectedRangeData] = useState<SelectedRange | null>(null);
   const [lowestScoreCount, setLowestScoreCount] = useState<SelectProps.Option>({ label: '5', value: '5' });
@@ -411,14 +622,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
   const [showConfigExportModal, setShowConfigExportModal] = useState(false);
   const [configExportFormat, setConfigExportFormat] = useState('json');
   const [configExportFileName, setConfigExportFileName] = useState('');
-
-  const getProgressMessage = (progressLevel: number): string => {
-    if (progressLevel <= 1) return 'Initializing test results...';
-    if (progressLevel <= 2) return 'Processing evaluation data...';
-    if (progressLevel <= 3) return 'Calculating accuracy metrics...';
-    if (progressLevel <= 4) return 'Generating cost analysis...';
-    return 'Finalizing results...';
-  };
 
   const checkTestSetStatus = async () => {
     if (!results?.testSetId) return;
@@ -449,128 +652,26 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
 
   useEffect(() => {
     let isCancelled = false;
-    const timeouts: ReturnType<typeof setTimeout>[] = []; // Track all timeouts to clear them
 
     const fetchResults = async () => {
       if (isCancelled) return;
 
-      // Clear any existing timeouts
-      const clearAllTimeouts = () => {
-        timeouts.forEach(clearTimeout);
-        timeouts.length = 0;
-      };
-
       try {
-        let result;
-        let attempt = 1;
-        const maxRetries = 5;
+        const result = await client.graphql({
+          query: getTestRun,
+          variables: { testRunId },
+        });
 
-        while (attempt <= maxRetries && !isCancelled) {
-          try {
-            console.log(`getTestRun attempt ${attempt} starting...`);
-            if (attempt === 1) {
-              setCurrentAttempt(1);
-              setRetryMessage('Getting results from cache...');
+        if (isCancelled) return;
 
-              // Show cache miss progression after 1 second for first attempt
-              timeouts.push(
-                setTimeout(() => {
-                  if (!isCancelled) {
-                    setRetryMessage('No cache found, generating results...');
-                    setCurrentAttempt(2);
-                  }
-                }, 1000),
-              );
-
-              timeouts.push(
-                setTimeout(() => {
-                  if (!isCancelled) {
-                    setRetryMessage(getProgressMessage(2));
-                    setCurrentAttempt(3);
-                  }
-                }, 2000),
-              );
-
-              timeouts.push(
-                setTimeout(() => {
-                  if (!isCancelled) {
-                    setRetryMessage(getProgressMessage(3));
-                    setCurrentAttempt(4);
-                  }
-                }, 4000),
-              );
-            }
-
-            if (isCancelled) return;
-
-            result = await client.graphql({
-              query: getTestRun,
-              variables: { testRunId },
-            });
-
-            if (isCancelled) return;
-
-            console.log('getTestRun result:', result);
-            clearAllTimeouts(); // Clear timeouts on success
-            setCurrentAttempt(10); // Set to 100% before completing
-            await new Promise((resolve) => setTimeout(resolve, 500)); // Brief pause to show 100%
-            break;
-          } catch (retryError) {
-            if (isCancelled) return;
-            const typedRetryError = retryError as {
-              message?: string;
-              code?: string;
-              name?: string;
-              errors?: Array<{ errorType?: string; message?: string }>;
-            };
-
-            console.log('getTestRun error caught:', {
-              message: typedRetryError.message,
-              code: typedRetryError.code,
-              name: typedRetryError.name,
-              error: retryError,
-            });
-            const isTimeout =
-              typedRetryError.message?.toLowerCase().includes('timeout') ||
-              typedRetryError.code === 'TIMEOUT' ||
-              typedRetryError.message?.includes('Request failed with status code 504') ||
-              typedRetryError.name === 'TimeoutError' ||
-              typedRetryError.code === 'NetworkError' ||
-              typedRetryError.errors?.some(
-                (err: { errorType?: string; message?: string }) =>
-                  err.errorType === 'Lambda:ExecutionTimeoutException' || err.message?.toLowerCase().includes('timeout'),
-              );
-            if (isTimeout && attempt < maxRetries) {
-              console.log(`getTestRun attempt ${attempt} failed, retrying...`, typedRetryError.message);
-
-              clearAllTimeouts(); // Clear any running timeouts
-
-              // Always move progress forward, never backwards
-              setCurrentAttempt((currentProgress) => {
-                const targetProgress = Math.min(currentProgress + 1, 9); // Move forward by 1 step, cap at 90%
-                return Math.max(currentProgress, targetProgress);
-              });
-
-              attempt++;
-              const waitTime = Math.max(2000, 5000 - attempt * 1000); // 5s, 4s, 3s, 2s min
-
-              setRetryMessage(getProgressMessage(Math.min(attempt + 1, 5)));
-
-              await new Promise((resolve) => setTimeout(resolve, waitTime));
-              continue;
-            }
-            throw retryError;
-          }
-        }
-
-        if (!isCancelled && result) {
-          const testRun = result.data.getTestRun;
-          console.log('Test results:', testRun);
-          setResults(testRun as Record<string, unknown> | null);
-        }
+        const testRun = result.data.getTestRun;
+        console.log('Test results:', testRun);
+        setResults(testRun as Record<string, unknown> | null);
       } catch (err) {
         if (!isCancelled) {
-          setError((err as Error).message);
+          const typedErr = err as { errors?: Array<{ message: string }> };
+          const errorMsg = typedErr.errors?.[0]?.message || (err as Error).message || 'Unknown error';
+          setError(errorMsg);
         }
       } finally {
         if (!isCancelled) {
@@ -581,10 +682,8 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
 
     fetchResults();
 
-    // Cleanup function
     return () => {
       isCancelled = true;
-      timeouts.forEach(clearTimeout);
     };
   }, [testRunId]);
 
@@ -594,8 +693,31 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
     }
   }, [results]);
 
-  if (loading) return <ProgressBar status="in-progress" label={retryMessage || 'Loading test results...'} value={currentAttempt * 10} />;
-  if (error) return <Box>Error loading test results: {error}</Box>;
+  if (loading) return <ProgressBar status="in-progress" label="Loading test results..." />;
+
+  if (error) {
+    const handleBackClick = () => {
+      if (setSelectedTestRunId) {
+        setSelectedTestRunId(null);
+      } else {
+        window.location.replace('#/test-studio?tab=executions');
+      }
+    };
+
+    // Determine if this is a processing state or actual error
+    const isProcessing =
+      error.includes('evaluating results') || error.includes('not complete') || error.includes('QUEUED') || error.includes('RUNNING');
+
+    return (
+      <Container header={<Header variant="h1">Test Results: {testRunId}</Header>}>
+        <SpaceBetween size="m">
+          <Alert type={isProcessing ? 'info' : 'error'}>{error}</Alert>
+          <Button onClick={handleBackClick}>Back to Test Results</Button>
+        </SpaceBetween>
+      </Container>
+    );
+  }
+
   if (!results) {
     const handleBackClick = () => {
       if (setSelectedTestRunId) {
@@ -630,12 +752,19 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const costBreakdown: any = results.costBreakdown ? parseCostBreakdown(results.costBreakdown as string) : null;
+
+  // Calculate avg cost per page from costBreakdown page counts
+  const avgCostPerPage = calculateAvgCostPerPage(results.totalCost as number, costBreakdown);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const accuracyBreakdown: any = results.accuracyBreakdown ? parseAccuracyBreakdown(results.accuracyBreakdown as string) : null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const splitClassificationMetrics: any = results.splitClassificationMetrics
     ? parseSplitClassificationMetrics(results.splitClassificationMetrics as string)
     : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fieldMetrics: any = results.fieldMetrics ? parseFieldMetrics(results.fieldMetrics as string) : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const _confusionMatrix: any = results.confusionMatrix ? parseConfusionMatrix(results.confusionMatrix as string) : null;
 
   // Helper function to get merged config from results.config
   // The config may be stored as a JSON string (possibly double-stringified) with {Default: {...}, Custom: {...}} or already merged
@@ -886,6 +1015,10 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
             <Box fontSize="heading-l">
               {results.totalCost !== null && results.totalCost !== undefined ? `$${(results.totalCost as number).toFixed(4)}` : 'N/A'}
             </Box>
+          </Box>
+          <Box>
+            <Box variant="awsui-key-label">Avg Cost/Page</Box>
+            <Box fontSize="heading-l">{avgCostPerPage !== null ? `$${avgCostPerPage.toFixed(4)}` : 'N/A'}</Box>
           </Box>
           <Box>
             <Box variant="awsui-key-label">Avg Confidence</Box>
@@ -1145,7 +1278,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
               return (
                 <Table
                   resizableColumns
-                  wrapLines={preferences.wrapLines}
                   items={sortedDocs}
                   columnDefinitions={[
                     {
@@ -1178,14 +1310,13 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
         )}
 
         {/* Breakdown Tables */}
-        {(costBreakdown || accuracyBreakdown || splitClassificationMetrics) && (
+        {(costBreakdown || accuracyBreakdown || splitClassificationMetrics || fieldMetrics) && (
           <ComprehensiveBreakdown
             costBreakdown={costBreakdown}
             accuracyBreakdown={accuracyBreakdown}
             splitClassificationMetrics={splitClassificationMetrics}
+            fieldMetrics={fieldMetrics}
             averageWeightedScore={averageWeightedScore}
-            preferences={preferences}
-            setPreferences={setPreferences}
           />
         )}
       </SpaceBetween>
@@ -1277,7 +1408,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
           {selectedRangeData && selectedRangeData.docs?.length > 0 ? (
             <Table
               resizableColumns
-              wrapLines={preferences.wrapLines}
               items={selectedRangeData.docs}
               columnDefinitions={[
                 {

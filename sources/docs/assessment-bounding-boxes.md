@@ -20,7 +20,7 @@ The Assessment Service now supports **optional bounding box extraction** as part
 ### Core Capabilities
 
 - **Optional Feature**: Disabled by default, enabled via configuration
-- **UI Compatible**: Outputs geometry format compatible with existing pattern-1 UI
+- **UI Compatible**: Outputs geometry format compatible with existing BDA mode UI
 - **Multi-page Support**: Handles bounding boxes across multiple document pages
 - **Error Resilient**: Gracefully handles invalid or incomplete bounding box data
 - **Coordinate Normalization**: Converts from 0-1000 scale to 0-1 normalized coordinates
@@ -325,7 +325,7 @@ if explainability_info:
 
 ## Integration with UI
 
-The geometry format is fully compatible with the existing pattern-1 UI:
+The geometry format is fully compatible with the existing BDA mode UI:
 
 - **Coordinate System**: Normalized 0-1 coordinates
 - **Bounding Box Format**: `{top, left, width, height}`

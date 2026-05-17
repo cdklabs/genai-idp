@@ -203,10 +203,14 @@ def list_documents(event):
     if reviewer_only:
         reviewer_id = caller["username"]
         reviewer_email = caller["email"]
-        # Build filter: HITLTriggered = true AND (
+        # Build filter: HITL is active AND (
         #   (not completed AND (no owner OR owner is me))
         #   OR owner is me  (covers in-progress + completed reviews they own)
         # )
+        # HITL is considered active when either:
+        #   - HITLTriggered = true (explicit boolean flag), OR
+        #   - HITLStatus indicates a pending/in-progress review (defense in depth
+        #     for items where HITLTriggered was not written to DynamoDB)
         # Owner match checks HITLReviewOwner against both reviewer_id and
         # reviewer_email, because claim_review stores identity.username (often
         # the email) while this resolver reads cognito:username from claims.
@@ -214,8 +218,14 @@ def list_documents(event):
             Attr("HITLReviewOwner").eq(reviewer_id) |
             Attr("HITLReviewOwner").eq(reviewer_email)
         )
+        hitl_active = (
+            Attr("HITLTriggered").eq(True) |
+            Attr("HITLStatus").eq("PendingReview") |
+            Attr("HITLStatus").eq("InProgress") |
+            Attr("HITLStatus").eq("ReviewInProgress")
+        )
         filter_expr = (
-            Attr("HITLTriggered").eq(True) & (
+            hitl_active & (
                 (
                     ~Attr("HITLCompleted").eq(True) &
                     (
@@ -269,10 +279,14 @@ def list_documents(event):
         # Filter by config version scope if user has restrictions
         if allowed_versions:
             doc_version = item.get("ConfigVersion") or item.get("ConfigurationVersion")
+            logger.info(f"Scope filter: PK={item.get('PK')}, ConfigVersion='{doc_version}', allowed={allowed_versions}, pass={not doc_version or doc_version in allowed_versions}")
             if doc_version and doc_version not in allowed_versions:
+                logger.info(f"Scope filter REJECTED: doc_version='{doc_version}' (type={type(doc_version).__name__}, repr={repr(doc_version)}) not in {allowed_versions}")
                 continue  # Skip documents outside user's scope
         doc = _gsi_item_to_document(item)
         documents.append(doc)
+    
+    logger.info(f"After scope filtering: {len(documents)} documents from {len(items)} items")
     
     result = {
         "Documents": documents,

@@ -71,6 +71,7 @@ const applyCorrections = (data: Record<string, unknown> | null, corrections: Cor
       if (current[pathParts[i]] === undefined) {
         current[pathParts[i]] = {};
       }
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop
       current = current[pathParts[i]];
     }
 

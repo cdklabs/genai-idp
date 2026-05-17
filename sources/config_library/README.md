@@ -105,7 +105,6 @@ config_library/
 │   ├── lending-package-sample-govcloud/
 │   ├── ocr-benchmark/
 │   ├── realkie-fcc-verified/
-│   ├── rule-extraction/
 │   ├── rule-validation/
 │   ├── rvl-cdip/
 │   └── rvl-cdip-with-few-shot-examples/
@@ -204,11 +203,48 @@ To add few-shot examples to your configuration:
 - Consider cost vs. performance tradeoffs
 - Document the rationale for model selection
 
+### Agentic Extraction with Table Parsing (Optional)
+
+For documents with extensive tabular data, consider enabling agentic extraction with table parsing:
+
+```yaml
+extraction:
+  model: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+  agentic:
+    enabled: true
+    table_parsing:
+      enabled: true  # Deterministic Markdown table parser
+      max_empty_line_gap: 3  # Tolerate OCR page breaks (0-10)
+      auto_merge_adjacent_tables: true  # Merge table fragments
+      min_confidence_threshold: 95.0  # OCR confidence target
+      min_parse_success_rate: 0.90  # Quality threshold
+```
+
+**When to use**:
+- Documents with large tables (100+ rows)
+- Bank statements, transaction logs, inventory lists
+- Multi-page tables that may split across pages
+- High accuracy requirements for tabular data
+
+**Benefits**:
+- Dramatically improves completeness (handles OCR artifacts)
+- Faster and more accurate than LLM-only extraction for tables
+- Reduces token costs for large tables
+- Provides quality metrics and warnings
+
+**Tuning**:
+- **High-quality OCR**: `max_empty_line_gap: 2`
+- **Standard quality**: `max_empty_line_gap: 3` (default)
+- **Complex/noisy documents**: `max_empty_line_gap: 5-7`
+
+See `lib/idp_common_pkg/idp_common/extraction/README.md` for detailed documentation.
+
 ### Configuration Management
 
 - Document all significant overrides in your README
 - Include version information when applicable
 - Note any dependencies or requirements
+- Document table parsing configuration if enabled
 
 ## Contributing
 

@@ -7,6 +7,7 @@ query GetConfigVersions {
       createdAt
       updatedAt
       description
+      managed
       bdaProjectArn
       bdaSyncStatus
       bdaLastSyncedAt

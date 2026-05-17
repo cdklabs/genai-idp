@@ -12,8 +12,8 @@ from typing import Dict, Any
 import cfnresponse
 
 # Set HuggingFace cache to /tmp (Lambda's writable directory)
-os.environ['HF_HOME'] = '/tmp/huggingface'
-os.environ['HUGGINGFACE_HUB_CACHE'] = '/tmp/huggingface/hub'
+os.environ['HF_HOME'] = '/tmp/huggingface'  # nosec B108 - isolated Lambda environment
+os.environ['HUGGINGFACE_HUB_CACHE'] = '/tmp/huggingface/hub'  # nosec B108
 
 # Lightweight HuggingFace access
 from huggingface_hub import hf_hub_download
@@ -185,14 +185,14 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
     """
     try:
         # Ensure cache directory exists in /tmp (Lambda's writable directory)
-        cache_dir = '/tmp/huggingface/hub'
+        cache_dir = '/tmp/huggingface/hub'  # nosec B108
         os.makedirs(cache_dir, exist_ok=True)
         logger.info(f"Using cache directory: {cache_dir}")
         
         logger.info(f"Downloading dataset from HuggingFace: amazon-agi/RealKIE-FCC-Verified")
         
         # Download the parquet file with metadata using hf_hub_download
-        parquet_path = hf_hub_download(
+        parquet_path = hf_hub_download(  # nosec B615 - trusted HuggingFace dataset
             repo_id="amazon-agi/RealKIE-FCC-Verified",
             filename="data/test-00000-of-00001.parquet",
             repo_type="dataset",
@@ -257,7 +257,7 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
                 
                 # Download PDF file from HuggingFace repository using hf_hub_download
                 try:
-                    pdf_path = hf_hub_download(
+                    pdf_path = hf_hub_download(  # nosec B615
                         repo_id="amazon-agi/RealKIE-FCC-Verified",
                         filename=f"pdfs/{document_id}",
                         repo_type="dataset",

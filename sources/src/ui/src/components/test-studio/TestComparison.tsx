@@ -20,7 +20,13 @@ import TestStudioHeader from './TestStudioHeader';
 import useLocalStorage from '../common/local-storage';
 import useConfigurationVersions from '../../hooks/use-configuration-versions';
 import { formatConfigVersionLink, formatConfigVersionText, type ConfigVersion as UtilsConfigVersion } from './utils/configVersionUtils';
-import { parseComparisonMetrics, parseWeightedOverallScores, parseConfigSettingValues } from '../../graphql/awsjson-parsers';
+import {
+  parseComparisonMetrics,
+  parseWeightedOverallScores,
+  parseConfigSettingValues,
+  calculateAvgCostPerPage,
+} from '../../graphql/awsjson-parsers';
+import type { CostBreakdown } from '../../graphql/awsjson-types';
 
 const client = generateClient();
 
@@ -303,6 +309,13 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
         ),
       ],
       [
+        'Avg Cost/Page',
+        ...Object.values(completeTestRuns).map((run) => {
+          const avg = calculateAvgCostPerPage(run.totalCost as number, run.costBreakdown as CostBreakdown);
+          return avg !== null ? `$${avg.toFixed(4)}` : 'N/A';
+        }),
+      ],
+      [
         'Average Accuracy',
         ...Object.values(completeTestRuns).map((run) =>
           run.overallAccuracy !== null && run.overallAccuracy !== undefined ? Number(run.overallAccuracy).toFixed(3) : 'N/A',
@@ -525,6 +538,41 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
       });
     }
 
+    // Add field metrics rows (only when same test set)
+    const fieldMetricsRows: string[][] = [];
+    const testSetNames = new Set(Object.values(completeTestRuns).map((r) => r.testSetName));
+    const hasFieldMetrics = Object.values(completeTestRuns).some((r) => r.fieldMetrics);
+    if (testSetNames.size === 1 && hasFieldMetrics) {
+      const allFields = new Set<string>();
+      Object.values(completeTestRuns).forEach((r) => {
+        if (r.fieldMetrics) Object.keys(r.fieldMetrics as Record<string, unknown>).forEach((f) => allFields.add(f));
+      });
+      fieldMetricsRows.push(['Field Name', ...Object.keys(completeTestRuns)]);
+      Array.from(allFields)
+        .sort()
+        .forEach((fieldName) => {
+          const row = [fieldName];
+          Object.entries(completeTestRuns).forEach(([, testRun]) => {
+            const fm = testRun.fieldMetrics as Record<string, Record<string, number>> | undefined;
+            const m = fm?.[fieldName];
+            if (m) {
+              const tp = m.tp ?? 0,
+                fp = m.fp ?? 0,
+                tn = m.tn ?? 0,
+                fn = m.fn ?? 0;
+              const total = tp + fp + tn + fn;
+              const acc = total > 0 ? ((tp + tn) / total).toFixed(3) : 'N/A';
+              const prec = tp + fp > 0 ? (tp / (tp + fp)).toFixed(3) : 'N/A';
+              const rec = tp + fn > 0 ? (tp / (tp + fn)).toFixed(3) : 'N/A';
+              row.push(`${acc} / ${prec} / ${rec}`);
+            } else {
+              row.push('N/A');
+            }
+          });
+          fieldMetricsRows.push(row);
+        });
+    }
+
     // Combine all data
     const csvData = [
       headers,
@@ -537,6 +585,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
       ['=== AVERAGE ACCURACY BREAKDOWN ==='],
       ...accuracyRows,
       [''],
+      ...(fieldMetricsRows.length > 0 ? [['=== FIELD LEVEL METRICS (Accuracy / Precision / Recall) ==='], ...fieldMetricsRows, ['']] : []),
       ['=== COST BREAKDOWN ==='],
       ...costRows,
       [''],
@@ -544,7 +593,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
       ...usageRows,
     ];
 
-    const csvContent = csvData.map((row) => row.map((field: unknown) => `"${String(field).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const csvContent = csvData.map((row) => row.map((field: unknown) => `"${String(field).replace(/"/g, '""')}"`).join(',')).join('\n'); // nosemgrep: javascript.lang.security.audit.incomplete-sanitization.incomplete-sanitization - Standard RFC 4180 CSV double-quote escaping
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -588,6 +637,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
             completedFiles: testRun.completedFiles,
             failedFiles: testRun.failedFiles,
             totalCost: testRun.totalCost,
+            avgCostPerPage: calculateAvgCostPerPage(testRun.totalCost as number, testRun.costBreakdown as CostBreakdown),
             averageAccuracy: testRun.overallAccuracy,
             averageConfidence: testRun.averageConfidence,
             averageWeightedOverallScore: (() => {
@@ -627,6 +677,9 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
       ),
       costBreakdown: Object.fromEntries(
         Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.costBreakdown || {}]),
+      ),
+      fieldMetrics: Object.fromEntries(
+        Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.fieldMetrics || {}]),
       ),
     };
 
@@ -780,6 +833,15 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
                   ),
                 },
                 {
+                  metric: 'Avg Cost/Page',
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                      const avg = calculateAvgCostPerPage(testRun.totalCost as number, testRun.costBreakdown as CostBreakdown);
+                      return [testRunId, avg !== null ? `$${avg.toFixed(4)}` : 'N/A'];
+                    }),
+                  ),
+                },
+                {
                   metric: 'Average Accuracy',
                   ...Object.fromEntries(
                     Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
@@ -850,7 +912,11 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
                       style = getScoreColorGrade(value, allScores);
                     }
 
-                    return <span style={{ ...style, WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>{String(value)}</span>;
+                    return (
+                      <span style={{ ...style, WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>
+                        {item.metric === 'Config Version' ? (value as React.ReactNode) : String(value)}
+                      </span>
+                    );
                   },
                 })),
               ]}
@@ -992,7 +1058,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
                         <Button
                           variant="link"
                           onClick={() => {
-                            const urlPath = doc.docId.replace(/\//g, '%252F');
+                            const urlPath = doc.docId.replace(/\//g, '%252F'); // nosemgrep: javascript.lang.security.audit.incomplete-sanitization.incomplete-sanitization - Intentional double-encoding for hash routing; decoded by DocumentDetails
                             window.open(`#/documents/${urlPath}`, '_blank');
                           }}
                         >
@@ -1213,8 +1279,8 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
                                         typeof value === 'number' && String(metricKey).includes('accuracy')
                                           ? value.toFixed(3)
                                           : value !== null && value !== undefined
-                                          ? value.toString()
-                                          : '0';
+                                            ? value.toString()
+                                            : '0';
                                       return [testRunId, displayValue];
                                     }),
                                   ),
@@ -1244,6 +1310,97 @@ const TestComparison = ({ preSelectedTestRunIds = [] }: TestComparisonProps): Re
               );
             })()}
           </Container>
+
+          {/* Field Level Metrics Comparison - only when comparing same test set */}
+          {(() => {
+            const testSetNames = new Set(Object.values(completeTestRuns).map((r) => r.testSetName));
+            const isSameTestSet = testSetNames.size === 1;
+            const hasFieldData = Object.values(completeTestRuns).some((r) => r.fieldMetrics);
+
+            if (!isSameTestSet || !hasFieldData) return null;
+
+            // Collect all unique field names
+            const allFieldNames = new Set<string>();
+            Object.values(completeTestRuns).forEach((testRun) => {
+              if (testRun.fieldMetrics) {
+                Object.keys(testRun.fieldMetrics as Record<string, unknown>).forEach((f) => allFieldNames.add(f));
+              }
+            });
+
+            const computeMetric = (m: Record<string, number> | undefined) => {
+              if (!m) return { accuracy: 'N/A', precision: 'N/A', recall: 'N/A' };
+              const tp = m.tp ?? 0;
+              const fp = m.fp ?? 0;
+              const tn = m.tn ?? 0;
+              const fn = m.fn ?? 0;
+              const total = tp + fp + tn + fn;
+              return {
+                accuracy: total > 0 ? ((tp + tn) / total).toFixed(3) : 'N/A',
+                precision: tp + fp > 0 ? (tp / (tp + fp)).toFixed(3) : 'N/A',
+                recall: tp + fn > 0 ? (tp / (tp + fn)).toFixed(3) : 'N/A',
+              };
+            };
+
+            const tableItems = Array.from(allFieldNames)
+              .sort()
+              .map((fieldName) => {
+                const row: Record<string, unknown> = { fieldName };
+                Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
+                  const fm = testRun.fieldMetrics as Record<string, Record<string, number>> | undefined;
+                  const m = computeMetric(fm?.[fieldName]);
+                  row[testRunId] = `${m.accuracy} / ${m.precision} / ${m.recall}`;
+                });
+                return row;
+              });
+
+            return (
+              <Container
+                header={
+                  <Header variant="h3" description="Values shown as: Accuracy / Precision / Recall. Color grading based on accuracy.">
+                    Field Level Metrics Comparison
+                  </Header>
+                }
+              >
+                <ExpandableSection headerText={`View Details (${allFieldNames.size} fields)`} defaultExpanded={false}>
+                  <Table
+                    resizableColumns
+                    wrapLines={preferences.wrapLines}
+                    preferences={<div />}
+                    items={tableItems}
+                    columnDefinitions={[
+                      {
+                        id: 'fieldName',
+                        header: 'Field Name',
+                        cell: (item: Record<string, unknown>) => String(item.fieldName),
+                        width: 400,
+                      },
+                      ...Object.keys(completeTestRuns).map((testRunId) => ({
+                        id: testRunId,
+                        header: createTestRunHeader(testRunId, true),
+                        width: 200,
+                        cell: (item: Record<string, unknown>) => {
+                          const val = String(item[testRunId] ?? 'N/A');
+                          const allVals = Object.keys(completeTestRuns).map((id) => {
+                            const v = String(item[id] ?? 'N/A');
+                            return v.split('/')[0]?.trim();
+                          });
+                          const acc = val.split('/')[0]?.trim();
+                          const style = getScoreColorGrade(acc, allVals);
+                          return (
+                            <span style={{ ...style, WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact', fontSize: '0.9em' }}>
+                              {val}
+                            </span>
+                          );
+                        },
+                      })),
+                    ]}
+                    variant="embedded"
+                    contentDensity="compact"
+                  />
+                </ExpandableSection>
+              </Container>
+            );
+          })()}
 
           {/* Cost Comparison */}
           <Container header={<Header variant="h3">Cost Breakdown Comparison</Header>}>

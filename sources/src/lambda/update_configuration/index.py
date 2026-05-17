@@ -87,9 +87,7 @@ MODEL_MAPPINGS = {
     "us.anthropic.claude-3-5-sonnet-20241022-v2:0": "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
     "us.anthropic.claude-3-7-sonnet-20250219-v1:0": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
     "us.anthropic.claude-sonnet-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-20250514-v1:0",
-    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
     "us.anthropic.claude-sonnet-4-6": "eu.anthropic.claude-sonnet-4-6",
     "us.anthropic.claude-sonnet-4-6:1m": "eu.anthropic.claude-sonnet-4-6:1m",
     "us.anthropic.claude-opus-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -97,6 +95,8 @@ MODEL_MAPPINGS = {
     "us.anthropic.claude-opus-4-5-20251101-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.anthropic.claude-opus-4-6-v1": "eu.anthropic.claude-opus-4-6-v1",
     "us.anthropic.claude-opus-4-6-v1:1m": "eu.anthropic.claude-opus-4-6-v1:1m",
+    "us.anthropic.claude-opus-4-7": "eu.anthropic.claude-opus-4-7",
+    "us.anthropic.claude-opus-4-7:1m": "eu.anthropic.claude-opus-4-7:1m",
     # Third-party models (US-only, no EU equivalent - fall back to themselves)
     "us.meta.llama4-maverick-17b-instruct-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.meta.llama4-scout-17b-instruct-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -578,8 +578,6 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 "CustomClassificationModelARN",
                 "CustomExtractionModelARN",
                 "PreviousIDPPattern",
-                "BdaProjectArn",
-                "ConfigurationTable",
             }
             
             for prop_name, prop_value in properties.items():
@@ -669,15 +667,6 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                         logger.info("Activated default version")
                 except Exception as e:
                     logger.error(f"Error activating version during create, error: {e}")
-
-            # Set BDA project ARN on the default config version if provided
-            bda_project_arn = properties.get("BdaProjectArn", "").strip()
-            if bda_project_arn:
-                try:
-                    manager.set_bda_project_arn("default", arn=bda_project_arn, sync_status="synced")
-                    logger.info(f"Set BDA project ARN on default version: {bda_project_arn}")
-                except Exception as e:
-                    logger.warning(f"Failed to set BDA project ARN: {e}")
                     
             # Auto-enable BDA on ALL config versions when upgrading from a Pattern-1 stack
             previous_idp_pattern = properties.get("PreviousIDPPattern", "").strip()

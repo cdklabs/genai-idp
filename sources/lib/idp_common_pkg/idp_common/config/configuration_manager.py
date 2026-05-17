@@ -39,7 +39,7 @@ _COMPRESSED_DATA_FIELD = "_compressed_config"
 
 # DynamoDB metadata fields that are stored as top-level attributes (not compressed)
 _DYNAMODB_METADATA_FIELDS = {"Configuration", "CreatedAt", "UpdatedAt", "IsActive", "Description",
-                              "BdaProjectArn", "BdaSyncStatus", "BdaLastSyncedAt"}
+                              "BdaProjectArn", "BdaSyncStatus", "BdaLastSyncedAt", "Managed"}
 
 # DynamoDB item size limit (400KB) with safety margin
 _DYNAMODB_ITEM_SIZE_LIMIT = 400 * 1024
@@ -420,7 +420,7 @@ class ConfigurationManager:
             response = self.table.scan(
                 FilterExpression="begins_with(Configuration, :config_prefix)",
                 ExpressionAttributeValues={":config_prefix": f"{CONFIG_TYPE_CONFIG}#"},
-                ProjectionExpression="Configuration, IsActive, CreatedAt, UpdatedAt, Description, BdaProjectArn, BdaSyncStatus, BdaLastSyncedAt"
+                ProjectionExpression="Configuration, IsActive, CreatedAt, UpdatedAt, Description, BdaProjectArn, BdaSyncStatus, BdaLastSyncedAt, Managed"
             )
 
             versions = []
@@ -437,6 +437,7 @@ class ConfigurationManager:
                         "bdaProjectArn": item.get('BdaProjectArn'),
                         "bdaSyncStatus": item.get('BdaSyncStatus'),
                         "bdaLastSyncedAt": item.get('BdaLastSyncedAt'),
+                        "managed": item.get('Managed', False),
                     })
 
             return versions

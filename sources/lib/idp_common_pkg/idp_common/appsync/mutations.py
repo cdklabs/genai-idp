@@ -35,6 +35,8 @@ mutation UpdateDocument($input: UpdateDocumentInput!) {
             PageIds
             Class
             OutputJSONUri
+            Excluded
+            ExclusionReason
             ConfidenceThresholdAlerts {
                 attributeName
                 confidence
@@ -52,6 +54,7 @@ mutation UpdateDocument($input: UpdateDocumentInput!) {
         EvaluationReportUri
         EvaluationStatus
         SummaryReportUri
+        RuleValidationResultUri
         ExpiresAfter
         HITLStatus
         HITLReviewURL
@@ -82,6 +85,8 @@ query GetDocument($objectKey: ID!) {
             PageIds
             Class
             OutputJSONUri
+            Excluded
+            ExclusionReason
             ConfidenceThresholdAlerts {
                 attributeName
                 confidence
@@ -99,6 +104,8 @@ query GetDocument($objectKey: ID!) {
         EvaluationReportUri
         EvaluationStatus
         SummaryReportUri
+        RuleValidationResult
+        RuleValidationResultUri
         ExpiresAfter
         HITLStatus
         HITLReviewURL
@@ -133,6 +140,8 @@ mutation UpdateDocumentSection($input: UpdateDocumentSectionInput!) {
             PageIds
             Class
             OutputJSONUri
+            Excluded
+            ExclusionReason
             ConfidenceThresholdAlerts {
                 attributeName
                 confidence

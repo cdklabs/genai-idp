@@ -7,7 +7,6 @@ import cfnresponse
 import time
 import logging
 import os
-from typing import Any, Dict
 from bedrock_agentcore_starter_toolkit.operations.gateway.client import GatewayClient
 
 logger = logging.getLogger()
@@ -60,53 +59,167 @@ def handler(event, context):
 def create_or_update_gateway(props, gateway_name):
     """Create or update AgentCore Gateway using existing Cognito resources"""
     region = props['Region']
-    
-    # Initialize gateway client
-    client = GatewayClient(region_name=region)
-    
-    # Check if gateway already exists
+    lambda_arn = props['LambdaArn']  # The expected (new) Lambda ARN from CloudFormation
+
+    # Check if gateway already exists — paginate through ALL gateways to avoid
+    # a ConflictException when the account has more than 10 gateways and the
+    # target gateway is not in the first page of list_gateways results.
     try:
         control_client = boto3.client("bedrock-agentcore-control", region_name=region)
-        resp = control_client.list_gateways(maxResults=10)
-        existing_gateways = [g for g in resp.get("items", []) if g.get("name") == gateway_name]
-        
+        all_gateways = []
+        paginator = control_client.get_paginator("list_gateways")
+        for page in paginator.paginate():
+            all_gateways.extend(page.get("items", []))
+        existing_gateways = [g for g in all_gateways if g.get("name") == gateway_name]
+
         if existing_gateways:
             existing_gateway = existing_gateways[0]
             gateway_id = existing_gateway.get('gatewayId')
-            
+
             if gateway_id:
+                # Gateway is confirmed to exist — never fall through to create from here.
+                # If get_gateway fails transiently, return basic info from list_gateways
+                # rather than attempting a CreateGateway that would conflict.
                 try:
                     gateway_details = control_client.get_gateway(gatewayIdentifier=gateway_id)
                     if gateway_details and gateway_details.get('gatewayUrl'):
+                        # Check if the Lambda target ARN needs updating (e.g. after a stack update
+                        # that replaced the Lambda function due to a logical resource ID rename)
+                        update_result = update_gateway_target_if_needed(
+                            control_client, gateway_id, lambda_arn
+                        )
+                        if update_result:
+                            logger.info(f"Updated gateway target to new Lambda ARN: {lambda_arn}")
+
                         return {
                             'gateway_url': gateway_details.get('gatewayUrl'),
                             'gateway_id': gateway_details.get('gatewayId'),
                             'gateway_arn': gateway_details.get('gatewayArn')
                         }
+                    else:
+                        # Gateway exists but gatewayUrl not available yet (e.g. still initializing).
+                        # Return what we have from list_gateways — do NOT attempt to re-create.
+                        logger.warning(
+                            f"Gateway {gateway_id} exists but gatewayUrl is not yet available. "
+                            f"Returning partial details."
+                        )
+                        return {
+                            'gateway_url': 'N/A - Gateway initializing',
+                            'gateway_id': gateway_id,
+                            'gateway_arn': existing_gateway.get('gatewayArn', 'N/A')
+                        }
                 except Exception as e:
-                    logger.warning(f"Error getting gateway details: {e}")
+                    # get_gateway failed transiently. The gateway is known to exist so we must
+                    # NOT fall through to create. Return what list_gateways already gave us.
+                    logger.warning(
+                        f"Error getting gateway details for {gateway_id}: {e}. "
+                        f"Returning partial details from list."
+                    )
+                    return {
+                        'gateway_url': 'N/A - Error retrieving details',
+                        'gateway_id': gateway_id,
+                        'gateway_arn': existing_gateway.get('gatewayArn', 'N/A')
+                    }
 
     except Exception as e:
         logger.warning(f"Error checking for existing gateway: {e}")
-    
-    # Gateway doesn't exist, create it
+
+    # Gateway does not exist — create it now.
     logger.info(f"Gateway {gateway_name} does not exist, creating new one")
+    # GatewayClient is only initialized when we actually need to create a new gateway.
+    client = GatewayClient(region_name=region)
     return create_gateway(props, gateway_name, client)
 
 
-def create_gateway(props, gateway_name, client):
+def update_gateway_target_if_needed(control_client, gateway_id, expected_lambda_arn):
+    """
+    Check if any gateway target's Lambda ARN differs from expected_lambda_arn.
+    If so, update it. Returns True if an update was performed.
+
+    This is needed when the Lambda function is replaced during a stack update (e.g. due to
+    a CloudFormation logical resource ID rename), which creates a new Lambda with a new ARN
+    while the gateway target still points to the old deleted Lambda's ARN.
+    """
+    try:
+        response = control_client.list_gateway_targets(gatewayIdentifier=gateway_id)
+        targets = response.get("items", [])
+
+        for target in targets:
+            target_id = target.get("targetId")
+            target_name = target.get("name", "")
+
+            # Get full target details to check Lambda ARN
+            try:
+                target_details = control_client.get_gateway_target(
+                    gatewayIdentifier=gateway_id,
+                    targetId=target_id
+                )
+                # Navigate response structure to find the Lambda ARN.
+                # Confirmed API response path: targetConfiguration.mcp.lambda.lambdaArn
+                target_config = target_details.get("targetConfiguration", {})
+                mcp_lambda = target_config.get("mcp", {}).get("lambda", {})
+                current_lambda_arn = mcp_lambda.get("lambdaArn", "")
+
+                if current_lambda_arn and current_lambda_arn != expected_lambda_arn:
+                    logger.info(
+                        f"Target {target_name} ({target_id}) has stale Lambda ARN: "
+                        f"{current_lambda_arn} -> {expected_lambda_arn}. Updating..."
+                    )
+                    # Preserve existing toolSchema and credentialProviderConfigurations —
+                    # both are required fields for update_gateway_target.
+                    existing_tool_schema = mcp_lambda.get("toolSchema", {})
+                    existing_credential_configs = target_details.get(
+                        "credentialProviderConfigurations", []
+                    )
+                    update_kwargs = dict(
+                        gatewayIdentifier=gateway_id,
+                        targetId=target_id,
+                        name=target_name,
+                        targetConfiguration={
+                            "mcp": {
+                                "lambda": {
+                                    "lambdaArn": expected_lambda_arn,
+                                    "toolSchema": existing_tool_schema,
+                                }
+                            }
+                        },
+                    )
+                    if existing_credential_configs:
+                        update_kwargs["credentialProviderConfigurations"] = existing_credential_configs
+                    control_client.update_gateway_target(**update_kwargs)
+                    logger.info(f"Successfully updated target {target_id} Lambda ARN")
+                    return True
+                else:
+                    logger.info(f"Target {target_name} Lambda ARN is current, no update needed")
+
+            except Exception as e:
+                logger.warning(f"Could not get/update target {target_id}: {e}")
+
+    except Exception as e:
+        logger.warning(f"Could not list gateway targets for update check: {e}")
+
+    return False
+
+
+def create_gateway(props, gateway_name, client: GatewayClient):
     """Create new AgentCore Gateway"""
     region = props['Region']
     lambda_arn = props['LambdaArn']
     user_pool_id = props['UserPoolId']
     client_id = props['ClientId']
     execution_role_arn = props['ExecutionRoleArn']
+    connector_client_id = props.get('ConnectorClientId')
+
+    # Build allowed clients list — include MCP connector client if provided
+    allowed_clients = [client_id]
+    if connector_client_id:
+        allowed_clients.append(connector_client_id)
 
     # Create JWT authorizer config using existing Cognito resources
     authorizer_config = {
         "customJWTAuthorizer": {
             "discoveryUrl": f"https://cognito-idp.{region}.amazonaws.com/{user_pool_id}/.well-known/openid-configuration",
-            "allowedClients": [client_id]
+            "allowedClients": allowed_clients
         }
     }
 
@@ -328,4 +441,3 @@ def delete_gateway(props, gateway_name):
     
     if deletion_errors:
         raise Exception(f"Partial deletion errors: {'; '.join(deletion_errors)}")
-

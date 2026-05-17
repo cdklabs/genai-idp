@@ -92,6 +92,14 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
     customDateRangeRef.current = customDateRange;
   }, [customDateRange]);
 
+  // Ref to track current documents for subscription callbacks.
+  // Needed so onUpdateDocument can check if a document is already tracked without
+  // stale closure issues.
+  const documentsRef = useRef<Document[]>([]);
+  useEffect(() => {
+    documentsRef.current = documents;
+  }, [documents]);
+
   /**
    * Check if a document falls within the active date range filter.
    */
@@ -127,9 +135,20 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
         const isRichData = 'Sections' in newDoc;
 
         if (isRichData) {
-          // Full replacement from subscription/getDocument — allows clearing stale fields
-          // (e.g., after reprocess). Only skip truly undefined keys.
-          const replaced = { ...newDoc };
+          // Rich data from subscription/getDocument — overlay new fields onto existing.
+          // Each subscription event (updateDocument, updateDocumentSection) returns the
+          // full DynamoDB item with ALL current Sections/Pages in the correct order.
+          // We use the incoming data directly, but protect against null values wiping
+          // existing data — updateDocumentStatus events only touch ObjectStatus in DDB
+          // and may deliver null for Sections/Pages in the subscription payload.
+          const replaced = { ...existing };
+          Object.entries(newDoc).forEach(([key, value]) => {
+            if (value === undefined) return; // skip truly undefined keys
+            // Don't overwrite existing non-null data with null
+            // (protects Sections/Pages from being wiped by status-only updates)
+            if (value === null && (replaced as Record<string, unknown>)[key] != null) return;
+            (replaced as Record<string, unknown>)[key] = value;
+          });
           return replaced as Document;
         }
 
@@ -228,7 +247,14 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
         const documentUpdateEvent = message.data?.onUpdateDocument;
         if (documentUpdateEvent?.ObjectKey) {
           const doc = documentUpdateEvent as unknown as Document;
-          if (isDocumentInActiveRange(doc)) {
+
+          // Always accept updates for documents already in the list.
+          // Lightweight mutations like updateDocumentStatus (used during Map state
+          // steps: Extraction, Assessment, Rule Validation) may not include
+          // InitialEventTime/QueuedTime, causing isDocumentInActiveRange to return
+          // false. For documents we're already tracking, skip the date range check.
+          const isAlreadyTracked = documentsRef.current.some((d) => d.ObjectKey === doc.ObjectKey);
+          if (isAlreadyTracked || isDocumentInActiveRange(doc)) {
             setDocumentsDeduped([doc]);
           }
         }

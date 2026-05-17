@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT-0
 
 /* eslint-disable react/no-array-index-key */
-/* eslint-disable no-use-before-define */
+
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Box,
@@ -15,11 +15,13 @@ import {
   Button,
   Header,
   Container,
+  ExpandableSection,
   Modal,
   Tabs,
 } from '@cloudscape-design/components';
 import type { BoxProps } from '@cloudscape-design/components';
 import SchemaBuilder from '../json-schema-builder/SchemaBuilder';
+import PromptPreview from './PromptPreview';
 
 // Type for schema property definitions used throughout the config builder
 interface SchemaProperty {
@@ -44,7 +46,7 @@ interface SchemaProperty {
 
 // Extended Box props that allow style, className, event handlers, and relaxed spacing values.
 // Cloudscape Box doesn't type these but passes them through to the DOM element.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 type ExtendedBoxProps = Omit<BoxProps, 'padding' | 'margin' | 'display' | 'color'> & {
   [key: string]: unknown;
   style?: React.CSSProperties;
@@ -426,6 +428,7 @@ interface ConfigBuilderProps {
   ruleSchema?: Record<string, unknown> | unknown[] | null;
   onRuleSchemaChange?: ((schema: unknown, isDirty: boolean) => void) | null;
   onRuleSchemaValidate?: ((isValid: boolean, errors: unknown[]) => void) | null;
+  highlightClassName?: string | null;
   versionDescription?: string;
   onDescriptionChange?: ((description: string) => void) | null;
 }
@@ -448,11 +451,15 @@ const ConfigBuilder = ({
   ruleSchema = null,
   onRuleSchemaChange = null,
   onRuleSchemaValidate = null,
+  highlightClassName = null,
   versionDescription = '',
   onDescriptionChange = null,
 }: ConfigBuilderProps): React.JSX.Element => {
   // Track expanded state for all list items across the form - default to collapsed
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+
+  // Track expanded state for collapsible top-level sections
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   // State for add item modals
   const [activeAddModal, setActiveAddModal] = useState<string | null>(null); // Path of the list currently showing add modal
@@ -548,7 +555,7 @@ const ConfigBuilder = ({
 
       if (!Number.isNaN(parseInt(part, 10))) {
         // Skip array indices but continue traversing
-        // eslint-disable-next-line no-continue
+
         continue;
       }
 
@@ -572,12 +579,15 @@ const ConfigBuilder = ({
   const getValueAtPath = (obj: Record<string, unknown>, path: string): unknown => {
     const segments = path.split(/[.[\]]+/).filter(Boolean);
 
-    const result = segments.reduce((acc: Record<string, unknown> | undefined, segment: string) => {
-      if (acc === null || acc === undefined) {
-        return undefined;
-      }
-      return (acc as Record<string, unknown>)[segment] as Record<string, unknown> | undefined;
-    }, obj as Record<string, unknown> | undefined);
+    const result = segments.reduce(
+      (acc: Record<string, unknown> | undefined, segment: string) => {
+        if (acc === null || acc === undefined) {
+          return undefined;
+        }
+        return (acc as Record<string, unknown>)[segment] as Record<string, unknown> | undefined;
+      },
+      obj as Record<string, unknown> | undefined,
+    );
 
     return result;
   };
@@ -1620,6 +1630,27 @@ const ConfigBuilder = ({
       const sectionTitle = property.sectionLabel as string;
       console.log(`Creating section container for ${key} with title: ${sectionTitle}`); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
 
+      // Support collapsible top-level sections via schema property `collapsible: true`
+      // defaultExpanded controls whether section starts expanded (defaults to true for backward compat)
+      if (property.collapsible === true || property.collapsible === 'true') {
+        const defaultExpanded = property.defaultExpanded === true || property.defaultExpanded === 'true'; // default to collapsed
+        const isExpanded = expandedSections[key] !== undefined ? expandedSections[key] : defaultExpanded;
+
+        return (
+          <ExpandableSection
+            key={key}
+            variant="container"
+            headerText={sectionTitle}
+            expanded={isExpanded}
+            onChange={({ detail }) => {
+              setExpandedSections((prev) => ({ ...prev, [key]: detail.expanded }));
+            }}
+          >
+            <ExtBox padding="s">{renderField(key, property)}</ExtBox>
+          </ExpandableSection>
+        );
+      }
+
       return (
         <Container key={key} header={<Header variant="h3">{sectionTitle}</Header>}>
           <ExtBox padding="s">{renderField(key, property)}</ExtBox>
@@ -1682,12 +1713,12 @@ const ConfigBuilder = ({
               </ExtBox>
             ),
           },
-          // Only show Rule Schema tab for Pattern2
+          // Only show Policy Schema tab for Pattern2
           ...(showRuleSchema
             ? [
                 {
                   id: 'rule-schema',
-                  label: 'Rule Schema',
+                  label: 'Policy Schema',
                   content: (
                     <ExtBox style={{ height: 'calc(70vh - 60px)' }}>
                       <SchemaBuilder
@@ -1695,12 +1726,22 @@ const ConfigBuilder = ({
                         onChange={onRuleSchemaChange}
                         onValidate={onRuleSchemaValidate}
                         isRuleSchema={true}
+                        highlightClassName={highlightClassName}
                       />
                     </ExtBox>
                   ),
                 },
               ]
             : []),
+          {
+            id: 'prompt-preview',
+            label: 'Prompt Preview',
+            content: (
+              <ExtBox style={{ height: 'calc(70vh - 60px)', overflow: 'auto' }} padding="s">
+                <PromptPreview formValues={formValues} />
+              </ExtBox>
+            ),
+          },
         ]}
       />
 

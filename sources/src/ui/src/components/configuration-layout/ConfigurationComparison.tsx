@@ -81,6 +81,7 @@ const ConfigurationComparison = ({ versions, configs }: ConfigurationComparisonP
           if (!Array.isArray(arr)) return null;
           current = (arr.find((item) => item && item['$id'] === id) || null) as Record<string, unknown> | null;
         } else if (typeof current === 'object' && current !== null && part in current) {
+          // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop
           current = current[part] as Record<string, unknown> | null;
         } else {
           return null;

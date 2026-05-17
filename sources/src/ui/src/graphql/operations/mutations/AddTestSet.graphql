@@ -1,5 +1,5 @@
-mutation AddTestSet($name: String!, $description: String, $filePattern: String!, $bucketType: String!, $fileCount: Int!) {
-  addTestSet(name: $name, description: $description, filePattern: $filePattern, bucketType: $bucketType, fileCount: $fileCount) {
+mutation AddTestSet($name: String!, $description: String, $filePattern: String!, $bucketType: String!, $fileCount: Int!, $modifiedAfter: String) {
+  addTestSet(name: $name, description: $description, filePattern: $filePattern, bucketType: $bucketType, fileCount: $fileCount, modifiedAfter: $modifiedAfter) {
     id
     name
     description

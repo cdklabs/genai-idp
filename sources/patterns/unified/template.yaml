@@ -20,9 +20,11 @@ Parameters:
 
   DiscoveryBucket:
     Type: String
+    Default: ""
 
   DiscoveryTrackingTable:
     Type: String
+    Default: ""
 
   ConfigurationBucket:
     Type: String
@@ -117,6 +119,14 @@ Parameters:
     Type: String
     Description: "S3 bucket containing deployment artifacts"
 
+  ArtifactsBucketKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) KMS CMK ARN used to encrypt the artifacts bucket. When provided,
+      the DockerBuildRole and other CodeBuild roles receive kms:Decrypt permission.
+    AllowedPattern: "^(|arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/.+)$"
+
   ArtifactPrefix:
     Type: String
     Description: "S3 prefix for deployment artifacts"
@@ -158,7 +168,46 @@ Parameters:
     Type: String
     Default: ""
 
+  # Private AppSync VPC config (req #2)
+  UsePrivateAppSync:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Set to "true" when AppSyncVisibility=PRIVATE — puts processing Lambdas in VPC
+
+  LambdaSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Subnet IDs for Lambda VpcConfig (required when UsePrivateAppSync=true)
+
+  LambdaSecurityGroupId:
+    Type: String
+    Default: ""
+    Description: Security group ID for Lambda VpcConfig (required when UsePrivateAppSync=true)
+
+  VpcId:
+    Type: String
+    Default: ""
+    Description: "Optional - VPC ID for VPC-secured deployment"
+
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: "Optional - Comma-separated list of private subnet IDs"
+
+  EnableMLflow:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Enable MLflow experiment tracking integration
+
+  MlflowTrackingURI:
+    Type: String
+    Default: ""
+    Description: SageMaker MLflow tracking server ARN
+
 Conditions:
+  DeployInVPC: !Not [!Equals [!Ref VpcId, ""]]
   HasGuardrailConfig:
     !And [
       !Not [!Equals [!Ref BedrockGuardrailId, ""]],
@@ -171,6 +220,9 @@ Conditions:
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
   IsECRImageScanningEnabled: !Equals [!Ref EnableECRImageScanning, "true"]
+  IsPrivateAppSync: !Equals [!Ref UsePrivateAppSync, "true"]
+  IsMLflowEnabled: !Equals [!Ref EnableMLflow, "true"]
+  HasArtifactsBucketKmsKey: !Not [!Equals [!Ref ArtifactsBucketKmsKeyArn, ""]]
 
 Resources:
 
@@ -200,9 +252,17 @@ Resources:
             type: boolean
             description: Use Bedrock Data Automation (BDA) for OCR, classification, extraction, and assessment
             default: false
-          ocr:
+          enable_blueprint_optimization:
             order: 2
+            type: boolean
+            description: Automatically optimize BDA blueprints using ground truth data during discovery to improve extraction accuracy
+            default: false
+            dependsOn: { field: "use_bda", value: true }
+          ocr:
+            order: 3
             type: object
+            collapsible: true
+            defaultExpanded: false
             sectionLabel: OCR Configuration
             description: "Not used when BDA is enabled - BDA handles OCR internally"
             dependsOn: { field: "use_bda", value: false }
@@ -259,34 +319,29 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.amazon.nova-2-lite-v1:0:priority"
                   - "global.amazon.nova-2-lite-v1:0:flex"
-                  - "us.anthropic.claude-3-haiku-20240307-v1:0"
                   - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-                  - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-                  - "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-                  - "us.anthropic.claude-sonnet-4-20250514-v1:0"
-                  - "us.anthropic.claude-sonnet-4-20250514-v1:0:1m"
                   - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
-                  - "us.anthropic.claude-opus-4-20250514-v1:0"
-                  - "us.anthropic.claude-opus-4-1-20250805-v1:0"
+                  - "us.anthropic.claude-sonnet-4-6"
+                  - "us.anthropic.claude-sonnet-4-6:1m"
                   - "us.anthropic.claude-opus-4-5-20251101-v1:0"
                   - "us.anthropic.claude-opus-4-6-v1"
                   - "us.anthropic.claude-opus-4-6-v1:1m"
+                  - "us.anthropic.claude-opus-4-7"
+                  - "us.anthropic.claude-opus-4-7:1m"
                   - "eu.amazon.nova-lite-v1:0"
                   - "eu.amazon.nova-pro-v1:0"
                   - "eu.amazon.nova-2-lite-v1:0"
                   - "eu.amazon.nova-2-lite-v1:0:priority"
                   - "eu.amazon.nova-2-lite-v1:0:flex"
-                  - "eu.anthropic.claude-3-haiku-20240307-v1:0"
                   - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
-                  - "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
-                  - "eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
-                  - "eu.anthropic.claude-sonnet-4-20250514-v1:0"
                   - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                  - "eu.anthropic.claude-sonnet-4-6"
+                  - "eu.anthropic.claude-sonnet-4-6:1m"
                   - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
                   - "eu.anthropic.claude-opus-4-6-v1"
                   - "eu.anthropic.claude-opus-4-6-v1:1m"
+                  - "eu.anthropic.claude-opus-4-7"
+                  - "eu.anthropic.claude-opus-4-7:1m"
                   - "qwen.qwen3-vl-235b-a22b"
                   - "us.meta.llama4-maverick-17b-instruct-v1:0"
                   - "us.meta.llama4-scout-17b-instruct-v1:0"
@@ -295,10 +350,12 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                  - "global.anthropic.claude-sonnet-4-6:1m"
                   - "global.anthropic.claude-opus-4-5-20251101-v1:0"
                   - "global.anthropic.claude-opus-4-6-v1"
                   - "global.anthropic.claude-opus-4-6-v1:1m"
+                  - "global.anthropic.claude-opus-4-7"
+                  - "global.anthropic.claude-opus-4-7:1m"
                 order: 2
                 dependsOn: { field: "backend", value: "bedrock" }
               model_lambda_hook_arn:
@@ -363,6 +420,47 @@ Resources:
                   type: string
                   description: "Optional regex pattern to match against page content text. When matched during multi-modal page-level classification, the page will be classified as this class type without LLM processing."
                   order: 2.6
+                extraction_model:
+                  type: string
+                  description: "Optional per-class extraction model override. When set, this model is used for extraction instead of the global extraction.model. Useful for classes that benefit from a different model."
+                  order: 2.7
+                  enum:
+                    - ""
+                    - "us.amazon.nova-lite-v1:0"
+                    - "us.amazon.nova-pro-v1:0"
+                    - "us.amazon.nova-premier-v1:0"
+                    - "us.amazon.nova-2-lite-v1:0"
+                    - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+                    - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                    - "us.anthropic.claude-sonnet-4-6"
+                    - "us.anthropic.claude-sonnet-4-6:1m"
+                    - "us.anthropic.claude-opus-4-5-20251101-v1:0"
+                    - "us.anthropic.claude-opus-4-6-v1"
+                    - "us.anthropic.claude-opus-4-6-v1:1m"
+                    - "us.anthropic.claude-opus-4-7"
+                    - "us.anthropic.claude-opus-4-7:1m"
+                    - "eu.amazon.nova-lite-v1:0"
+                    - "eu.amazon.nova-pro-v1:0"
+                    - "eu.amazon.nova-2-lite-v1:0"
+                    - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+                    - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                    - "eu.anthropic.claude-sonnet-4-6"
+                    - "eu.anthropic.claude-sonnet-4-6:1m"
+                    - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
+                    - "eu.anthropic.claude-opus-4-6-v1"
+                    - "eu.anthropic.claude-opus-4-6-v1:1m"
+                    - "eu.anthropic.claude-opus-4-7"
+                    - "eu.anthropic.claude-opus-4-7:1m"
+                    - "global.amazon.nova-2-lite-v1:0"
+                    - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+                    - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                    - "global.anthropic.claude-sonnet-4-6"
+                    - "global.anthropic.claude-sonnet-4-6:1m"
+                    - "global.anthropic.claude-opus-4-5-20251101-v1:0"
+                    - "global.anthropic.claude-opus-4-6-v1"
+                    - "global.anthropic.claude-opus-4-6-v1:1m"
+                    - "global.anthropic.claude-opus-4-7"
+                    - "global.anthropic.claude-opus-4-7:1m"
                 examples:
                   type: array
                   description: Class few-shot examples
@@ -567,9 +665,11 @@ Resources:
                     # This controls the layout of the form fields inside each attribute item
                     columns: 2
           classification:
-            order: 3
+            order: 4
             type: object
-            sectionLabel: Classification Inference
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Classification Configuration
             description: "Not used when BDA is enabled - BDA handles classification internally"
             dependsOn: { field: "use_bda", value: false }
             required:
@@ -617,34 +717,29 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.amazon.nova-2-lite-v1:0:priority"
                   - "global.amazon.nova-2-lite-v1:0:flex"
-                  - "us.anthropic.claude-3-haiku-20240307-v1:0"
                   - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-                  - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-                  - "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-                  - "us.anthropic.claude-sonnet-4-20250514-v1:0"
-                  - "us.anthropic.claude-sonnet-4-20250514-v1:0:1m"
                   - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
-                  - "us.anthropic.claude-opus-4-20250514-v1:0"
-                  - "us.anthropic.claude-opus-4-1-20250805-v1:0"
+                  - "us.anthropic.claude-sonnet-4-6"
+                  - "us.anthropic.claude-sonnet-4-6:1m"
                   - "us.anthropic.claude-opus-4-5-20251101-v1:0"
                   - "us.anthropic.claude-opus-4-6-v1"
                   - "us.anthropic.claude-opus-4-6-v1:1m"
+                  - "us.anthropic.claude-opus-4-7"
+                  - "us.anthropic.claude-opus-4-7:1m"
                   - "eu.amazon.nova-lite-v1:0"
                   - "eu.amazon.nova-pro-v1:0"
                   - "eu.amazon.nova-2-lite-v1:0"
                   - "eu.amazon.nova-2-lite-v1:0:priority"
                   - "eu.amazon.nova-2-lite-v1:0:flex"
-                  - "eu.anthropic.claude-3-haiku-20240307-v1:0"
                   - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
-                  - "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
-                  - "eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
-                  - "eu.anthropic.claude-sonnet-4-20250514-v1:0"
                   - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                  - "eu.anthropic.claude-sonnet-4-6"
+                  - "eu.anthropic.claude-sonnet-4-6:1m"
                   - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
                   - "eu.anthropic.claude-opus-4-6-v1"
                   - "eu.anthropic.claude-opus-4-6-v1:1m"
+                  - "eu.anthropic.claude-opus-4-7"
+                  - "eu.anthropic.claude-opus-4-7:1m"
                   - "qwen.qwen3-vl-235b-a22b"
                   - "us.meta.llama4-maverick-17b-instruct-v1:0"
                   - "us.meta.llama4-scout-17b-instruct-v1:0"
@@ -653,10 +748,13 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                  - "global.anthropic.claude-sonnet-4-6"
+                  - "global.anthropic.claude-sonnet-4-6:1m"
                   - "global.anthropic.claude-opus-4-5-20251101-v1:0"
                   - "global.anthropic.claude-opus-4-6-v1"
                   - "global.anthropic.claude-opus-4-6-v1:1m"
+                  - "global.anthropic.claude-opus-4-7"
+                  - "global.anthropic.claude-opus-4-7:1m"
                 order: 1
               model_lambda_hook_arn:
                 type: string
@@ -696,12 +794,12 @@ Resources:
                 type: number
                 minimum: 0
                 maximum: 1
-                description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
+                description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs. Not used for Claude 4.7 models."
                 order: 4
               top_k:
                 type: integer
                 minimum: 1
-                description: Sampling Top K
+                description: "Sampling Top K. Not used for Claude 4.7 models."
                 order: 5
               top_p:
                 type: number
@@ -720,10 +818,12 @@ Resources:
                 description: Task prompt - include placeholders {CLASS_NAMES_AND_DESCRIPTIONS} (replaced with the class names and descriptions for all specified classes), {FEW_SHOT_EXAMPLES} (replaced by classPrompt and image data from examples in class definitions), {DOCUMENT_TEXT} (replaced by the OCR output), and for multi-modal classification {DOCUMENT_IMAGE} (replaced by the page image attachment). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
                 order: 9
           extraction:
-            order: 4
+            order: 5
             type: object
             format: section
-            sectionLabel: Extraction Inference
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Extraction Configuration
             description: "Not used when BDA is enabled - BDA handles extraction internally"
             dependsOn: { field: "use_bda", value: false }
             required:
@@ -746,15 +846,39 @@ Resources:
                     description: Enable Agentic Extraction
                     order: 0
                     default: false
-                  review_agent:
-                    type: boolean
-                    description: This introduces a second agent to review the first agents work. Only use with highly complex workflows as it increases token usage.
-                    order: 1
-                    default: false
-                  review_agent_model:
-                    type: string
-                    description: Model to review the initial extraction agents work and correct it if needed, if not specified will default to the same as the extraction model.
-                    default: ""
+                  max_concurrent_batches:
+                    type: number
+                    description: "Number of concurrent page-batch agents for parallel extraction. 1=sequential (default). Higher values (2-5) split pages into batches and run agents concurrently for faster extraction. Increases Bedrock RPM usage. Tune based on your Bedrock quota."
+                    minimum: 1
+                    maximum: 10
+                    default: 1
+                  table_parsing:
+                    type: object
+                    sectionLabel: Table Parsing Tool
+                    description: "When enabled, the extraction agent gains a deterministic parse_table tool for efficiently extracting well-formatted Markdown tables from OCR output without LLM inference. The agent decides when to use this tool based on table quality and OCR confidence metrics."
+                    order: 4
+                    properties:
+                      enabled:
+                        type: boolean
+                        description: "Enable the parse_table tool for the extraction agent. When enabled, the agent can use deterministic table parsing for well-formatted OCR tabular data instead of LLM inference."
+                        order: 0
+                        default: false
+                      min_confidence_threshold:
+                        type: number
+                        description: "Minimum average OCR text confidence (Textract 0-100 scale) for the agent to prefer table parsing over LLM extraction. Included in the agent system prompt as guidance."
+                        minimum: 0
+                        maximum: 100
+                        default: 95
+                      min_parse_success_rate:
+                        type: number
+                        description: "Minimum parse_success_rate from the parse_table tool for the agent to trust parsed results. Below this threshold, the agent falls back to LLM extraction."
+                        minimum: 0
+                        maximum: 1
+                        default: 0.9
+                      use_confidence_data:
+                        type: boolean
+                        description: "Whether to load and provide OCR confidence data to the parse_table tool for quality assessment. Requires text_confidence_uri from Textract OCR."
+                        default: true
               image:
                 type: object
                 sectionLabel: Image Processing Settings
@@ -782,7 +906,6 @@ Resources:
                     - HasCustomExtractionModelARN
                     - !Ref CustomExtractionModelARN
                     - !Ref AWS::NoValue
-                  - "us.anthropic.claude-sonnet-4-20250514-v1:0"
                   - "us.amazon.nova-lite-v1:0"
                   - "us.amazon.nova-pro-v1:0"
                   - "us.amazon.nova-premier-v1:0"
@@ -792,33 +915,29 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.amazon.nova-2-lite-v1:0:priority"
                   - "global.amazon.nova-2-lite-v1:0:flex"
-                  - "us.anthropic.claude-3-haiku-20240307-v1:0"
                   - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-                  - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-                  - "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-                  - "us.anthropic.claude-sonnet-4-20250514-v1:0:1m"
                   - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
-                  - "us.anthropic.claude-opus-4-20250514-v1:0"
-                  - "us.anthropic.claude-opus-4-1-20250805-v1:0"
+                  - "us.anthropic.claude-sonnet-4-6"
+                  - "us.anthropic.claude-sonnet-4-6:1m"
                   - "us.anthropic.claude-opus-4-5-20251101-v1:0"
                   - "us.anthropic.claude-opus-4-6-v1"
                   - "us.anthropic.claude-opus-4-6-v1:1m"
+                  - "us.anthropic.claude-opus-4-7"
+                  - "us.anthropic.claude-opus-4-7:1m"
                   - "eu.amazon.nova-lite-v1:0"
                   - "eu.amazon.nova-pro-v1:0"
                   - "eu.amazon.nova-2-lite-v1:0"
                   - "eu.amazon.nova-2-lite-v1:0:priority"
                   - "eu.amazon.nova-2-lite-v1:0:flex"
-                  - "eu.anthropic.claude-3-haiku-20240307-v1:0"
                   - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
-                  - "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
-                  - "eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
-                  - "eu.anthropic.claude-sonnet-4-20250514-v1:0"
                   - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                  - "eu.anthropic.claude-sonnet-4-6"
+                  - "eu.anthropic.claude-sonnet-4-6:1m"
                   - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
                   - "eu.anthropic.claude-opus-4-6-v1"
                   - "eu.anthropic.claude-opus-4-6-v1:1m"
+                  - "eu.anthropic.claude-opus-4-7"
+                  - "eu.anthropic.claude-opus-4-7:1m"
                   - "qwen.qwen3-vl-235b-a22b"
                   - "us.meta.llama4-maverick-17b-instruct-v1:0"
                   - "us.meta.llama4-scout-17b-instruct-v1:0"
@@ -827,10 +946,13 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                  - "global.anthropic.claude-sonnet-4-6"
+                  - "global.anthropic.claude-sonnet-4-6:1m"
                   - "global.anthropic.claude-opus-4-5-20251101-v1:0"
                   - "global.anthropic.claude-opus-4-6-v1"
                   - "global.anthropic.claude-opus-4-6-v1:1m"
+                  - "global.anthropic.claude-opus-4-7"
+                  - "global.anthropic.claude-opus-4-7:1m"
                 order: 1
               model_lambda_hook_arn:
                 type: string
@@ -842,12 +964,12 @@ Resources:
                 type: number
                 minimum: 0
                 maximum: 1
-                description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
+                description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs. Not used for Claude 4.7 models."
                 order: 3
               top_k:
                 type: integer
                 minimum: 1
-                description: Sampling Top K
+                description: "Sampling Top K. Not used for Claude 4.7 models."
                 order: 4
               top_p:
                 type: number
@@ -870,8 +992,10 @@ Resources:
                 description: "(Optional) ARN of a Lambda function to generate custom extraction prompts. Function name must start with 'GENAIIDP-'. If not provided, default prompts will be used. The Lambda function receives the complete config, prompt placeholders, default task prompt content, and serialized document, and returns custom system_prompt and task_prompt_content. Example: arn:partition:lambda:us-east-1:123456789012:function:GENAIIDP-my-extractor"
                 order: 9
           assessment:
-            order: 5
+            order: 6
             type: object
+            collapsible: true
+            defaultExpanded: false
             sectionLabel: Assessment & HITL Configuration
             properties:
               hitl_enabled:
@@ -964,32 +1088,27 @@ Resources:
                     "us.amazon.nova-pro-v1:0",
                     "us.amazon.nova-premier-v1:0",
                     "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
-                    "us.anthropic.claude-3-haiku-20240307-v1:0",
                     "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                    "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                    "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                    "us.anthropic.claude-sonnet-4-20250514-v1:0",
-                    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                     "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
-                    "us.anthropic.claude-opus-4-20250514-v1:0",
-                    "us.anthropic.claude-opus-4-1-20250805-v1:0",
+                    "us.anthropic.claude-sonnet-4-6",
+                    "us.anthropic.claude-sonnet-4-6:1m",
                     "us.anthropic.claude-opus-4-5-20251101-v1:0",
                     "us.anthropic.claude-opus-4-6-v1",
                     "us.anthropic.claude-opus-4-6-v1:1m",
+                    "us.anthropic.claude-opus-4-7",
+                    "us.anthropic.claude-opus-4-7:1m",
                     "eu.amazon.nova-lite-v1:0",
                     "eu.amazon.nova-pro-v1:0",
                     "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
-                    "eu.anthropic.claude-3-haiku-20240307-v1:0",
                     "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-                    "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                    "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                    "eu.anthropic.claude-sonnet-4-20250514-v1:0",
                     "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                    "eu.anthropic.claude-sonnet-4-6",
+                    "eu.anthropic.claude-sonnet-4-6:1m",
                     "eu.anthropic.claude-opus-4-5-20251101-v1:0",
                     "eu.anthropic.claude-opus-4-6-v1",
                     "eu.anthropic.claude-opus-4-6-v1:1m",
+                    "eu.anthropic.claude-opus-4-7",
+                    "eu.anthropic.claude-opus-4-7:1m",
                     "qwen.qwen3-vl-235b-a22b",
                     "us.meta.llama4-maverick-17b-instruct-v1:0",
                     "us.meta.llama4-scout-17b-instruct-v1:0",
@@ -998,10 +1117,13 @@ Resources:
                     "global.amazon.nova-2-lite-v1:0",
                     "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                     "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                    "global.anthropic.claude-sonnet-4-6",
+                    "global.anthropic.claude-sonnet-4-6:1m",
                     "global.anthropic.claude-opus-4-5-20251101-v1:0",
                     "global.anthropic.claude-opus-4-6-v1",
-                    "global.anthropic.claude-opus-4-6-v1:1m"
+                    "global.anthropic.claude-opus-4-6-v1:1m",
+                    "global.anthropic.claude-opus-4-7",
+                    "global.anthropic.claude-opus-4-7:1m"
                   ]
                 order: 5
               model_lambda_hook_arn:
@@ -1013,12 +1135,12 @@ Resources:
               temperature:
                 type: number
                 dependsOn: { field: "use_bda", value: false }
-                description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
+                description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs. Not used for Claude 4.7 models."
                 order: 7
               top_k:
                 type: number
                 dependsOn: { field: "use_bda", value: false }
-                description: Sampling Top K
+                description: "Sampling Top K. Not used for Claude 4.7 models."
                 order: 8
               top_p:
                 type: number
@@ -1043,9 +1165,11 @@ Resources:
                 description: Task prompt - supports placeholders {DOCUMENT_TEXT} (markdown text), {OCR_TEXT_CONFIDENCE} (OCR text blocks with confidence), {DOCUMENT_CLASS}, {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}, {EXTRACTION_RESULTS}, {GRANULAR_CONTEXT} and {DOCUMENT_IMAGE}. Use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
                 order: 12
           summarization:
-            order: 6
+            order: 7
             type: object
-            sectionLabel: Summarization Inference
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Summarization Configuration
             properties:
               enabled:
                 type: boolean
@@ -1062,32 +1186,27 @@ Resources:
                     "us.amazon.nova-pro-v1:0",
                     "us.amazon.nova-premier-v1:0",
                     "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
-                    "us.anthropic.claude-3-haiku-20240307-v1:0",
                     "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                    "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                    "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                    "us.anthropic.claude-sonnet-4-20250514-v1:0",
-                    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                     "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
-                    "us.anthropic.claude-opus-4-20250514-v1:0",
-                    "us.anthropic.claude-opus-4-1-20250805-v1:0",
+                    "us.anthropic.claude-sonnet-4-6",
+                    "us.anthropic.claude-sonnet-4-6:1m",
                     "us.anthropic.claude-opus-4-5-20251101-v1:0",
                     "us.anthropic.claude-opus-4-6-v1",
                     "us.anthropic.claude-opus-4-6-v1:1m",
+                    "us.anthropic.claude-opus-4-7",
+                    "us.anthropic.claude-opus-4-7:1m",
                     "eu.amazon.nova-lite-v1:0",
                     "eu.amazon.nova-pro-v1:0",
                     "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
-                    "eu.anthropic.claude-3-haiku-20240307-v1:0",
                     "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-                    "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                    "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                    "eu.anthropic.claude-sonnet-4-20250514-v1:0",
                     "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                    "eu.anthropic.claude-sonnet-4-6",
+                    "eu.anthropic.claude-sonnet-4-6:1m",
                     "eu.anthropic.claude-opus-4-5-20251101-v1:0",
                     "eu.anthropic.claude-opus-4-6-v1",
                     "eu.anthropic.claude-opus-4-6-v1:1m",
+                    "eu.anthropic.claude-opus-4-7",
+                    "eu.anthropic.claude-opus-4-7:1m",
                     "qwen.qwen3-vl-235b-a22b",
                     "us.meta.llama4-maverick-17b-instruct-v1:0",
                     "us.meta.llama4-scout-17b-instruct-v1:0",
@@ -1096,10 +1215,13 @@ Resources:
                     "global.amazon.nova-2-lite-v1:0",
                     "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                     "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                    "global.anthropic.claude-sonnet-4-6",
+                    "global.anthropic.claude-sonnet-4-6:1m",
                     "global.anthropic.claude-opus-4-5-20251101-v1:0",
                     "global.anthropic.claude-opus-4-6-v1",
-                    "global.anthropic.claude-opus-4-6-v1:1m"
+                    "global.anthropic.claude-opus-4-6-v1:1m",
+                    "global.anthropic.claude-opus-4-7",
+                    "global.anthropic.claude-opus-4-7:1m"
                   ]
                 order: 1
               model_lambda_hook_arn:
@@ -1110,11 +1232,11 @@ Resources:
                 dependsOn: { field: "model", value: "LambdaHook" }
               temperature:
                 type: number
-                description: Sampling temperature
+                description: "Sampling temperature. Not used for Claude 4.7 models."
                 order: 3
               top_k:
                 type: number
-                description: Sampling Top K
+                description: "Sampling Top K. Not used for Claude 4.7 models."
                 order: 4
               top_p:
                 type: number
@@ -1135,9 +1257,11 @@ Resources:
                 description: Task prompt - supports parameters {DOCUMENT_TEXT} and {EXTRACTION_RESULTS}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
                 order: 8
           evaluation:
-            order: 7
+            order: 9
             type: object
-            sectionLabel: Evaluation Inference
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Evaluation Configuration
             properties:
               enabled:
                 type: boolean
@@ -1156,32 +1280,27 @@ Resources:
                         "us.amazon.nova-pro-v1:0",
                         "us.amazon.nova-premier-v1:0",
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
-                        "us.anthropic.claude-3-haiku-20240307-v1:0",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                        "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "us.anthropic.claude-sonnet-4-20250514-v1:0",
-                        "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
-                        "us.anthropic.claude-opus-4-20250514-v1:0",
-                        "us.anthropic.claude-opus-4-1-20250805-v1:0",
+                        "us.anthropic.claude-sonnet-4-6",
+                        "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
                         "us.anthropic.claude-opus-4-6-v1",
                         "us.anthropic.claude-opus-4-6-v1:1m",
+                        "us.anthropic.claude-opus-4-7",
+                        "us.anthropic.claude-opus-4-7:1m",
                         "eu.amazon.nova-lite-v1:0",
                         "eu.amazon.nova-pro-v1:0",
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
-                        "eu.anthropic.claude-3-haiku-20240307-v1:0",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                        "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "eu.anthropic.claude-sonnet-4-20250514-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                        "eu.anthropic.claude-sonnet-4-6",
+                        "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
                         "eu.anthropic.claude-opus-4-6-v1",
                         "eu.anthropic.claude-opus-4-6-v1:1m",
+                        "eu.anthropic.claude-opus-4-7",
+                        "eu.anthropic.claude-opus-4-7:1m",
                         "qwen.qwen3-vl-235b-a22b",
                         "us.meta.llama4-maverick-17b-instruct-v1:0",
                         "us.meta.llama4-scout-17b-instruct-v1:0",
@@ -1190,20 +1309,23 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                        "global.anthropic.claude-sonnet-4-6",
+                        "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
                         "global.anthropic.claude-opus-4-6-v1",
-                        "global.anthropic.claude-opus-4-6-v1:1m"
+                        "global.anthropic.claude-opus-4-6-v1:1m",
+                        "global.anthropic.claude-opus-4-7",
+                        "global.anthropic.claude-opus-4-7:1m"
                       ]
                     order: 1
                   temperature:
                     type: number
-                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs. Not used for Claude 4.7 models."
                     default: 0.0
                     order: 2
                   top_k:
                     type: number
-                    description: Sampling Top K
+                    description: "Sampling Top K. Not used for Claude 4.7 models."
                     default: 250
                     order: 3
                   top_p:
@@ -1225,8 +1347,10 @@ Resources:
                     description: Task prompt for LLM evaluation - supports placeholders {DOCUMENT_CLASS}, {ATTRIBUTE_NAME}, {ATTRIBUTE_DESCRIPTION}, {EXPECTED_VALUE} and {ACTUAL_VALUE}
                     order: 7
           discovery:
-            order: 8
+            order: 10
             type: object
+            collapsible: true
+            defaultExpanded: false
             sectionLabel: Discovery Configuration
             description: Configuration for document class discovery functionality
             properties:
@@ -1245,32 +1369,27 @@ Resources:
                         "us.amazon.nova-pro-v1:0",
                         "us.amazon.nova-premier-v1:0",
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
-                        "us.anthropic.claude-3-haiku-20240307-v1:0",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                        "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "us.anthropic.claude-sonnet-4-20250514-v1:0",
-                        "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
-                        "us.anthropic.claude-opus-4-20250514-v1:0",
-                        "us.anthropic.claude-opus-4-1-20250805-v1:0",
+                        "us.anthropic.claude-sonnet-4-6",
+                        "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
                         "us.anthropic.claude-opus-4-6-v1",
                         "us.anthropic.claude-opus-4-6-v1:1m",
+                        "us.anthropic.claude-opus-4-7",
+                        "us.anthropic.claude-opus-4-7:1m",
                         "eu.amazon.nova-lite-v1:0",
                         "eu.amazon.nova-pro-v1:0",
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
-                        "eu.anthropic.claude-3-haiku-20240307-v1:0",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                        "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "eu.anthropic.claude-sonnet-4-20250514-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                        "eu.anthropic.claude-sonnet-4-6",
+                        "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
                         "eu.anthropic.claude-opus-4-6-v1",
                         "eu.anthropic.claude-opus-4-6-v1:1m",
+                        "eu.anthropic.claude-opus-4-7",
+                        "eu.anthropic.claude-opus-4-7:1m",
                         "qwen.qwen3-vl-235b-a22b",
                         "us.meta.llama4-maverick-17b-instruct-v1:0",
                         "us.meta.llama4-scout-17b-instruct-v1:0",
@@ -1279,16 +1398,19 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                        "global.anthropic.claude-sonnet-4-6",
+                        "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
                         "global.anthropic.claude-opus-4-6-v1",
-                        "global.anthropic.claude-opus-4-6-v1:1m"
+                        "global.anthropic.claude-opus-4-6-v1:1m",
+                        "global.anthropic.claude-opus-4-7",
+                        "global.anthropic.claude-opus-4-7:1m"
                       ]
                     default: "us.amazon.nova-pro-v1:0"
                     order: 0
                   temperature:
                     type: number
-                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs. Not used for Claude 4.7 models."
                     minimum: 0.0
                     maximum: 1.0
                     default: 1.0
@@ -1334,32 +1456,27 @@ Resources:
                         "us.amazon.nova-pro-v1:0",
                         "us.amazon.nova-premier-v1:0",
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
-                        "us.anthropic.claude-3-haiku-20240307-v1:0",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                        "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "us.anthropic.claude-sonnet-4-20250514-v1:0",
-                        "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
-                        "us.anthropic.claude-opus-4-20250514-v1:0",
-                        "us.anthropic.claude-opus-4-1-20250805-v1:0",
+                        "us.anthropic.claude-sonnet-4-6",
+                        "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
                         "us.anthropic.claude-opus-4-6-v1",
                         "us.anthropic.claude-opus-4-6-v1:1m",
+                        "us.anthropic.claude-opus-4-7",
+                        "us.anthropic.claude-opus-4-7:1m",
                         "eu.amazon.nova-lite-v1:0",
                         "eu.amazon.nova-pro-v1:0",
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
-                        "eu.anthropic.claude-3-haiku-20240307-v1:0",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                        "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "eu.anthropic.claude-sonnet-4-20250514-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                        "eu.anthropic.claude-sonnet-4-6",
+                        "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
                         "eu.anthropic.claude-opus-4-6-v1",
                         "eu.anthropic.claude-opus-4-6-v1:1m",
+                        "eu.anthropic.claude-opus-4-7",
+                        "eu.anthropic.claude-opus-4-7:1m",
                         "qwen.qwen3-vl-235b-a22b",
                         "us.meta.llama4-maverick-17b-instruct-v1:0",
                         "us.meta.llama4-scout-17b-instruct-v1:0",
@@ -1368,16 +1485,19 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                        "global.anthropic.claude-sonnet-4-6",
+                        "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
                         "global.anthropic.claude-opus-4-6-v1",
-                        "global.anthropic.claude-opus-4-6-v1:1m"
+                        "global.anthropic.claude-opus-4-6-v1:1m",
+                        "global.anthropic.claude-opus-4-7",
+                        "global.anthropic.claude-opus-4-7:1m"
                       ]
                     default: "us.amazon.nova-pro-v1:0"
                     order: 0
                   temperature:
                     type: number
-                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs. Not used for Claude 4.7 models."
                     minimum: 0.0
                     maximum: 1.0
                     default: 1.0
@@ -1408,8 +1528,95 @@ Resources:
                     description: User prompt template for discovery with ground truth (use {ground_truth_json} placeholder)
                     default: 'This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference. <GROUND_TRUTH_REFERENCE>{ground_truth_json}</GROUND_TRUTH_REFERENCE> Ground truth reference JSON has the fields we are interested in extracting from the document/image. Use the ground truth to optimize field extraction. Match field names, data types, and groupings from the reference. Image may contain multiple pages, process all pages. Extract all field names including those without values. Do not change the group name and field name from ground truth in the extracted data json. Add field_description field for every field which will contain instruction to LLM to extract the field data from the image/document. Add data_type field for every field. Add two fields document_class and document_description. For document_class generate a short name based on the document content like W4, I-9, Paystub. For document_description generate a description about the document in less than 50 words. If the group repeats and follows table format, add a special field group_type with value "Table" and description field for the group. Do not extract the values.'
                     order: 5
-              output_format:
+              auto_split:
                 order: 2
+                type: object
+                sectionLabel: Auto-Detect Sections (Multi-Section Package)
+                description: Configuration for AI-powered auto-detection of document section boundaries in multi-page packages
+                properties:
+                  model_id:
+                    type: string
+                    description: Bedrock model ID for auto-detecting document sections
+                    enum:
+                      [
+                        "us.amazon.nova-lite-v1:0",
+                        "us.amazon.nova-pro-v1:0",
+                        "us.amazon.nova-premier-v1:0",
+                        "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
+                        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                        "us.anthropic.claude-sonnet-4-6",
+                        "us.anthropic.claude-sonnet-4-6:1m",
+                        "us.anthropic.claude-opus-4-5-20251101-v1:0",
+                        "us.anthropic.claude-opus-4-6-v1",
+                        "us.anthropic.claude-opus-4-6-v1:1m",
+                        "us.anthropic.claude-opus-4-7",
+                        "us.anthropic.claude-opus-4-7:1m",
+                        "eu.amazon.nova-lite-v1:0",
+                        "eu.amazon.nova-pro-v1:0",
+                        "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
+                        "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                        "eu.anthropic.claude-sonnet-4-6",
+                        "eu.anthropic.claude-sonnet-4-6:1m",
+                        "eu.anthropic.claude-opus-4-5-20251101-v1:0",
+                        "eu.anthropic.claude-opus-4-6-v1",
+                        "eu.anthropic.claude-opus-4-6-v1:1m",
+                        "eu.anthropic.claude-opus-4-7",
+                        "eu.anthropic.claude-opus-4-7:1m",
+                        "qwen.qwen3-vl-235b-a22b",
+                        "us.meta.llama4-maverick-17b-instruct-v1:0",
+                        "us.meta.llama4-scout-17b-instruct-v1:0",
+                        "google.gemma-3-27b-it",
+                        "nvidia.nemotron-nano-12b-v2",
+                        "global.amazon.nova-2-lite-v1:0",
+                        "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                        "global.anthropic.claude-sonnet-4-6",
+                        "global.anthropic.claude-sonnet-4-6:1m",
+                        "global.anthropic.claude-opus-4-5-20251101-v1:0",
+                        "global.anthropic.claude-opus-4-6-v1",
+                        "global.anthropic.claude-opus-4-6-v1:1m",
+                        "global.anthropic.claude-opus-4-7",
+                        "global.anthropic.claude-opus-4-7:1m"
+                      ]
+                    default: "us.amazon.nova-pro-v1:0"
+                    order: 0
+                  temperature:
+                    type: number
+                    description: "Temperature for section detection (0.0 recommended for consistent boundary detection)"
+                    minimum: 0.0
+                    maximum: 1.0
+                    default: 0.0
+                    order: 1
+                  top_p:
+                    type: number
+                    description: "Top P for section detection"
+                    minimum: 0.0
+                    maximum: 1.0
+                    default: 0.1
+                    order: 2
+                  max_tokens:
+                    type: number
+                    description: "Maximum output tokens for section detection response"
+                    minimum: 1000
+                    maximum: 10000
+                    default: 4096
+                    order: 3
+                  system_prompt:
+                    type: string
+                    format: textarea
+                    description: System prompt for auto-detecting document sections
+                    default: "You are an expert document analyst. Your task is to identify distinct document sections within a multi-page document package. Return only valid JSON."
+                    order: 4
+                  user_prompt:
+                    type: string
+                    format: textarea
+                    description: User prompt for auto-detecting document sections
+                    default: 'Analyze this multi-page document package. Identify the page boundaries where different document types or sections begin and end. For each distinct document section, provide: - "start": the first page number (1-based) - "end": the last page number (1-based) - "type": a short label for the document type (e.g., "W2 Form", "Letter", "Invoice"). Return ONLY a JSON array, no other text: [{"start": 1, "end": 2, "type": "Letter"}, {"start": 3, "end": 3, "type": "Invoice"}]'
+                    order: 5
+              output_format:
+                order: 3
                 type: object
                 sectionLabel: Output Format Configuration
                 description: Configuration for discovery output format
@@ -1420,9 +1627,157 @@ Resources:
                     description: Sample JSON format for discovery output
                     default: "{\n  \"document_class\": \"Form-1040\",\n  \"document_description\": \"Brief summary of the document\",\n  \"groups\": [\n    {\n      \"name\": \"PersonalInformation\",\n      \"description\": \"Personal information of Tax payer\",\n      \"attributeType\": \"group\",\n      \"groupType\": \"normal\",\n      \"groupAttributes\": [\n        {\n          \"name\": \"FirstName\",\n          \"dataType\": \"string\",\n          \"description\": \"First Name of Taxpayer\"\n        },\n        {\n          \"name\": \"Age\",\n          \"dataType\": \"number\",\n          \"description\": \"Age of Taxpayer\"\n        }\n      ]\n    }\n  ]\n}"
                     order: 0
+              multi_document:
+                order: 4
+                type: object
+                sectionLabel: Multi-Document Discovery (Batch Clustering)
+                description: Configuration for discovering document classes from a collection of documents using embedding-based clustering
+                properties:
+                  embedding_model_id:
+                    type: string
+                    description: Bedrock model ID for generating document embeddings
+                    default: "us.cohere.embed-v4:0"
+                    order: 0
+                  analysis_model_id:
+                    type: string
+                    description: Bedrock model ID for analyzing document clusters
+                    default: "us.anthropic.claude-sonnet-4-6"
+                    enum:
+                      - "us.amazon.nova-lite-v1:0"
+                      - "us.amazon.nova-pro-v1:0"
+                      - "us.amazon.nova-premier-v1:0"
+                      - "us.amazon.nova-2-lite-v1:0"
+                      - "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+                      - "us.anthropic.claude-sonnet-4-20250514-v1:0"
+                      - "us.anthropic.claude-sonnet-4-6"
+                      - "us.anthropic.claude-opus-4-20250514-v1:0"
+                      - "us.anthropic.claude-opus-4-6-v1:1m"
+                      - "us.anthropic.claude-opus-4-7"
+                      - "us.anthropic.claude-opus-4-7:1m"
+                    order: 1
+                  temperature:
+                    type: number
+                    description: Temperature for cluster analysis model
+                    default: 0.0
+                    minimum: 0
+                    maximum: 1
+                    order: 2
+                  max_tokens:
+                    type: number
+                    description: Maximum output tokens for cluster analysis
+                    default: 10000
+                    order: 3
+                  max_documents:
+                    type: number
+                    description: Maximum documents to process in a single discovery run
+                    default: 500
+                    minimum: 1
+                    order: 4
+                  min_cluster_size:
+                    type: number
+                    description: Minimum documents required to form a cluster
+                    default: 2
+                    minimum: 1
+                    order: 5
+                  num_sample_documents:
+                    type: number
+                    description: Number of sample documents selected per cluster for analysis
+                    default: 3
+                    minimum: 1
+                    order: 6
+                  max_sample_size:
+                    type: number
+                    description: Maximum sample size for cluster analysis
+                    default: 5
+                    minimum: 1
+                    order: 7
+                  max_concurrent_embeddings:
+                    type: number
+                    description: Maximum concurrent embedding API requests
+                    default: 5
+                    minimum: 1
+                    order: 8
+                  max_concurrent_clusters:
+                    type: number
+                    description: Maximum concurrent cluster analysis requests
+                    default: 3
+                    minimum: 1
+                    order: 9
+              rules:
+                order: 5
+                type: object
+                sectionLabel: Policy Discovery
+                description: Configuration for extracting policy rules from regulatory documents
+                properties:
+                  model:
+                    type: string
+                    description: Bedrock model ID for Policy Discovery
+                    enum:
+                      [
+                        "us.anthropic.claude-sonnet-4-6",
+                        "us.anthropic.claude-sonnet-4-6:1m",
+                        "us.anthropic.claude-opus-4-6-v1",
+                        "us.anthropic.claude-opus-4-6-v1:1m",
+                        "us.anthropic.claude-opus-4-7",
+                        "us.anthropic.claude-opus-4-7:1m",
+                        "eu.anthropic.claude-sonnet-4-6",
+                        "eu.anthropic.claude-sonnet-4-6:1m",
+                        "eu.anthropic.claude-opus-4-6-v1",
+                        "eu.anthropic.claude-opus-4-6-v1:1m",
+                        "eu.anthropic.claude-opus-4-7",
+                        "eu.anthropic.claude-opus-4-7:1m",
+                        "global.anthropic.claude-sonnet-4-6",
+                        "global.anthropic.claude-sonnet-4-6:1m",
+                        "global.anthropic.claude-opus-4-6-v1",
+                        "global.anthropic.claude-opus-4-6-v1:1m",
+                        "global.anthropic.claude-opus-4-7",
+                        "global.anthropic.claude-opus-4-7:1m"
+                      ]
+                    default: "global.anthropic.claude-sonnet-4-6"
+                    order: 0
+                  temperature:
+                    type: number
+                    description: "Sampling temperature for Policy Discovery (0.0 recommended for consistent extraction)"
+                    minimum: 0.0
+                    maximum: 1.0
+                    default: 0.0
+                    order: 1
+                  top_p:
+                    type: number
+                    description: "Top P for Policy Discovery"
+                    minimum: 0.0
+                    maximum: 1.0
+                    default: 0.0
+                    order: 2
+                  top_k:
+                    type: number
+                    description: "Top K for Policy Discovery"
+                    minimum: 1
+                    maximum: 100
+                    default: 5
+                    order: 3
+                  max_tokens:
+                    type: number
+                    description: "Maximum output tokens for Policy Discovery"
+                    minimum: 1000
+                    maximum: 128000
+                    default: 64000
+                    order: 4
+                  system_prompt:
+                    type: string
+                    format: textarea
+                    description: System prompt for Policy Discovery
+                    order: 5
+                  task_prompt:
+                    type: string
+                    format: textarea
+                    description: Task prompt for Policy Discovery
+                    order: 6
           agents:
-            order: 9
+            order: 11
             type: object
+            collapsible: true
+            defaultExpanded: false
             sectionLabel: Agent Configuration
             description: Configuration for AI agents used in the system
             properties:
@@ -1444,40 +1799,38 @@ Resources:
                       - "global.amazon.nova-2-lite-v1:0"
                       - "global.amazon.nova-2-lite-v1:0:priority"
                       - "global.amazon.nova-2-lite-v1:0:flex"
-                      - "us.anthropic.claude-3-haiku-20240307-v1:0"
                       - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-                      - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-                      - "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-                      - "us.anthropic.claude-sonnet-4-20250514-v1:0"
-                      - "us.anthropic.claude-sonnet-4-20250514-v1:0:1m"
                       - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                      - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
-                      - "us.anthropic.claude-opus-4-20250514-v1:0"
-                      - "us.anthropic.claude-opus-4-1-20250805-v1:0"
+                      - "us.anthropic.claude-sonnet-4-6"
+                      - "us.anthropic.claude-sonnet-4-6:1m"
                       - "us.anthropic.claude-opus-4-5-20251101-v1:0"
                       - "us.anthropic.claude-opus-4-6-v1"
                       - "us.anthropic.claude-opus-4-6-v1:1m"
+                      - "us.anthropic.claude-opus-4-7"
+                      - "us.anthropic.claude-opus-4-7:1m"
                       - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                       - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                      - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                      - "global.anthropic.claude-sonnet-4-6"
+                      - "global.anthropic.claude-sonnet-4-6:1m"
                       - "global.anthropic.claude-opus-4-5-20251101-v1:0"
                       - "global.anthropic.claude-opus-4-6-v1"
                       - "global.anthropic.claude-opus-4-6-v1:1m"
+                      - "global.anthropic.claude-opus-4-7"
+                      - "global.anthropic.claude-opus-4-7:1m"
                       - "eu.amazon.nova-lite-v1:0"
                       - "eu.amazon.nova-pro-v1:0"
                       - "eu.amazon.nova-2-lite-v1:0"
                       - "eu.amazon.nova-2-lite-v1:0:priority"
                       - "eu.amazon.nova-2-lite-v1:0:flex"
-                      - "eu.anthropic.claude-3-haiku-20240307-v1:0"
                       - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
-                      - "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
-                      - "eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
-                      - "eu.anthropic.claude-sonnet-4-20250514-v1:0"
                       - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                      - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                      - "eu.anthropic.claude-sonnet-4-6"
+                      - "eu.anthropic.claude-sonnet-4-6:1m"
                       - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
                       - "eu.anthropic.claude-opus-4-6-v1"
                       - "eu.anthropic.claude-opus-4-6-v1:1m"
+                      - "eu.anthropic.claude-opus-4-7"
+                      - "eu.anthropic.claude-opus-4-7:1m"
                       - "qwen.qwen3-vl-235b-a22b"
                       - "us.meta.llama4-maverick-17b-instruct-v1:0"
                       - "us.meta.llama4-scout-17b-instruct-v1:0"
@@ -1490,30 +1843,143 @@ Resources:
                 sectionLabel: Error Analysis Agent
                 description: Configuration for the error analysis agent
                 properties:
+                  model_id:
+                    type: string
+                    description: Bedrock model ID for the error analysis agent (requires tool use support)
+                    enum:
+                      - "us.amazon.nova-pro-v1:0"
+                      - "us.amazon.nova-premier-v1:0"
+                      - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                      - "us.anthropic.claude-sonnet-4-6"
+                      - "us.anthropic.claude-sonnet-4-6:1m"
+                      - "us.anthropic.claude-opus-4-5-20251101-v1:0"
+                      - "us.anthropic.claude-opus-4-6-v1"
+                      - "us.anthropic.claude-opus-4-6-v1:1m"
+                      - "us.anthropic.claude-opus-4-7"
+                      - "us.anthropic.claude-opus-4-7:1m"
+                      - "global.amazon.nova-pro-v1:0"
+                      - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                      - "global.anthropic.claude-sonnet-4-6"
+                      - "global.anthropic.claude-sonnet-4-6:1m"
+                      - "global.anthropic.claude-opus-4-5-20251101-v1:0"
+                      - "global.anthropic.claude-opus-4-6-v1"
+                      - "global.anthropic.claude-opus-4-6-v1:1m"
+                      - "global.anthropic.claude-opus-4-7"
+                      - "global.anthropic.claude-opus-4-7:1m"
+                      - "eu.amazon.nova-pro-v1:0"
+                      - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                      - "eu.anthropic.claude-sonnet-4-6"
+                      - "eu.anthropic.claude-sonnet-4-6:1m"
+                      - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
+                      - "eu.anthropic.claude-opus-4-6-v1"
+                      - "eu.anthropic.claude-opus-4-6-v1:1m"
+                      - "eu.anthropic.claude-opus-4-7"
+                      - "eu.anthropic.claude-opus-4-7:1m"
+                    default: "us.anthropic.claude-sonnet-4-6"
+                    order: 0
+                  lookback_hours:
+                    type: integer
+                    description: How far back the error analyzer searches logs, traces, and execution history (in hours)
+                    default: 24
+                    order: 1
                   system_prompt:
                     type: string
                     format: textarea
                     description: System prompt for the error analysis agent
-                    order: 1
-                  parameters:
-                    type: object
-                    sectionLabel: Agent Parameters
-                    description: Configuration parameters for the agent
-                    properties:
-                      max_log_events:
-                        type: integer
-                        description: Maximum number of log events to analyze
-                        default: 100
-                        order: 0
-                      time_range_hours_default:
-                        type: integer
-                        description: Default time range in hours for analysis
-                        default: 24
-                        order: 2
-          rule_validation:
-            order: 10
+                    order: 2
+          chat:
+            order: 12
             type: object
-            sectionLabel: Rule Validation Inference
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Chat-with-Document Configuration
+            description: >-
+              Controls the interactive "Chat with Document" feature on the
+              Document Detail screen. This uses the model configured here
+              (independent from summarization). The full document text is
+              sent in a single prompt, so a large-context model is
+              recommended.
+            properties:
+              enabled:
+                type: boolean
+                description: Enable or disable the Chat-with-Document feature
+                default: true
+                order: 0
+              model:
+                type: string
+                description: "Bedrock model ID for chat. A large-context model is recommended because the entire document text is sent in one prompt. Select 'LambdaHook' to use a custom Lambda function for inference."
+                enum:
+                  [
+                    "LambdaHook",
+                    "us.amazon.nova-lite-v1:0",
+                    "us.amazon.nova-pro-v1:0",
+                    "us.amazon.nova-premier-v1:0",
+                    "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
+                    "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                    "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                    "us.anthropic.claude-sonnet-4-6",
+                    "us.anthropic.claude-sonnet-4-6:1m",
+                    "us.anthropic.claude-opus-4-5-20251101-v1:0",
+                    "us.anthropic.claude-opus-4-6-v1",
+                    "us.anthropic.claude-opus-4-6-v1:1m",
+                    "us.anthropic.claude-opus-4-7",
+                    "us.anthropic.claude-opus-4-7:1m",
+                    "eu.amazon.nova-lite-v1:0",
+                    "eu.amazon.nova-pro-v1:0",
+                    "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
+                    "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+                    "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                    "eu.anthropic.claude-sonnet-4-6",
+                    "eu.anthropic.claude-sonnet-4-6:1m",
+                    "eu.anthropic.claude-opus-4-5-20251101-v1:0",
+                    "eu.anthropic.claude-opus-4-6-v1",
+                    "eu.anthropic.claude-opus-4-6-v1:1m",
+                    "eu.anthropic.claude-opus-4-7",
+                    "eu.anthropic.claude-opus-4-7:1m",
+                    "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+                    "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                    "global.anthropic.claude-sonnet-4-6",
+                    "global.anthropic.claude-sonnet-4-6:1m",
+                    "global.anthropic.claude-opus-4-5-20251101-v1:0",
+                    "global.anthropic.claude-opus-4-6-v1",
+                    "global.anthropic.claude-opus-4-6-v1:1m",
+                    "global.anthropic.claude-opus-4-7",
+                    "global.anthropic.claude-opus-4-7:1m"
+                  ]
+                order: 1
+              model_lambda_hook_arn:
+                type: string
+                description: "Lambda function ARN for custom inference (used when model is 'LambdaHook'). Function name must start with GENAIIDP-."
+                default: ""
+                order: 2
+                dependsOn: { field: "model", value: "LambdaHook" }
+              temperature:
+                type: number
+                description: "Sampling temperature. Not used for Claude 4.7 models."
+                order: 3
+              top_k:
+                type: number
+                description: "Sampling Top K. Not used for Claude 4.7 models."
+                order: 4
+              top_p:
+                type: number
+                description: Sampling Top P
+                order: 5
+              max_tokens:
+                type: number
+                description: "Maximum number of output tokens for the chat response. Ensure this does not exceed the selected model's limit."
+                order: 6
+              system_prompt:
+                type: string
+                format: textarea
+                description: System prompt for the Chat-with-Document assistant
+                order: 7
+          rule_validation:
+            order: 8
+            type: object
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Rule Validation Configuration
             properties:
               enabled:
                 type: boolean
@@ -1562,33 +2028,27 @@ Resources:
                         "us.amazon.nova-pro-v1:0",
                         "us.amazon.nova-premier-v1:0",
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
-                        "us.anthropic.claude-3-haiku-20240307-v1:0",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                        "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
-                        "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "us.anthropic.claude-sonnet-4-20250514-v1:0",
-                        "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
-                        "us.anthropic.claude-opus-4-20250514-v1:0",
-                        "us.anthropic.claude-opus-4-1-20250805-v1:0",
+                        "us.anthropic.claude-sonnet-4-6",
+                        "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
                         "us.anthropic.claude-opus-4-6-v1",
                         "us.anthropic.claude-opus-4-6-v1:1m",
+                        "us.anthropic.claude-opus-4-7",
+                        "us.anthropic.claude-opus-4-7:1m",
                         "eu.amazon.nova-lite-v1:0",
                         "eu.amazon.nova-pro-v1:0",
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
-                        "eu.anthropic.claude-3-haiku-20240307-v1:0",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                        "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "eu.anthropic.claude-sonnet-4-20250514-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                        "eu.anthropic.claude-sonnet-4-6",
+                        "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
                         "eu.anthropic.claude-opus-4-6-v1",
                         "eu.anthropic.claude-opus-4-6-v1:1m",
+                        "eu.anthropic.claude-opus-4-7",
+                        "eu.anthropic.claude-opus-4-7:1m",
                         "qwen.qwen3-vl-235b-a22b",
                         "us.meta.llama4-maverick-17b-instruct-v1:0",
                         "us.meta.llama4-scout-17b-instruct-v1:0",
@@ -1597,10 +2057,13 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                        "global.anthropic.claude-sonnet-4-6",
+                        "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
                         "global.anthropic.claude-opus-4-6-v1",
-                        "global.anthropic.claude-opus-4-6-v1:1m"
+                        "global.anthropic.claude-opus-4-6-v1:1m",
+                        "global.anthropic.claude-opus-4-7",
+                        "global.anthropic.claude-opus-4-7:1m"
                       ]
                     default: "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
                     order: 0
@@ -1608,13 +2071,13 @@ Resources:
                     type: number
                     minimum: 0
                     maximum: 1
-                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random)"
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Not used for Claude 4.7 models."
                     default: 0.0
                     order: 1
                   top_k:
                     type: integer
                     minimum: 1
-                    description: Sampling Top K
+                    description: "Sampling Top K. Not used for Claude 4.7 models."
                     default: 20
                     order: 2
                   top_p:
@@ -1635,7 +2098,7 @@ Resources:
                   task_prompt:
                     type: string
                     format: textarea
-                    description: Task prompt for fact extraction - supports placeholders {DOCUMENT_TEXT} (replaced with document content), {recommendation_options} (replaced with available recommendation options), {rule_type} (replaced with rule type), and {rule} (replaced with rule description). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
+                    description: Task prompt for fact extraction - supports placeholders {DOCUMENT_TEXT} (replaced with document content), {recommendation_options} (replaced with available recommendation options), {policy_type} (replaced with policy type), and {rule} (replaced with rule description). Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
                     order: 6
               rule_validation_orchestrator:
                 type: object
@@ -1653,33 +2116,27 @@ Resources:
                         "us.amazon.nova-pro-v1:0",
                         "us.amazon.nova-premier-v1:0",
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
-                        "us.anthropic.claude-3-haiku-20240307-v1:0",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                        "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
-                        "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "us.anthropic.claude-sonnet-4-20250514-v1:0",
-                        "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
-                        "us.anthropic.claude-opus-4-20250514-v1:0",
-                        "us.anthropic.claude-opus-4-1-20250805-v1:0",
+                        "us.anthropic.claude-sonnet-4-6",
+                        "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
                         "us.anthropic.claude-opus-4-6-v1",
                         "us.anthropic.claude-opus-4-6-v1:1m",
+                        "us.anthropic.claude-opus-4-7",
+                        "us.anthropic.claude-opus-4-7:1m",
                         "eu.amazon.nova-lite-v1:0",
                         "eu.amazon.nova-pro-v1:0",
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
-                        "eu.anthropic.claude-3-haiku-20240307-v1:0",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                        "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                        "eu.anthropic.claude-sonnet-4-20250514-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                        "eu.anthropic.claude-sonnet-4-6",
+                        "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
                         "eu.anthropic.claude-opus-4-6-v1",
                         "eu.anthropic.claude-opus-4-6-v1:1m",
+                        "eu.anthropic.claude-opus-4-7",
+                        "eu.anthropic.claude-opus-4-7:1m",
                         "qwen.qwen3-vl-235b-a22b",
                         "us.meta.llama4-maverick-17b-instruct-v1:0",
                         "us.meta.llama4-scout-17b-instruct-v1:0",
@@ -1688,10 +2145,13 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+                        "global.anthropic.claude-sonnet-4-6",
+                        "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
                         "global.anthropic.claude-opus-4-6-v1",
-                        "global.anthropic.claude-opus-4-6-v1:1m"
+                        "global.anthropic.claude-opus-4-6-v1:1m",
+                        "global.anthropic.claude-opus-4-7",
+                        "global.anthropic.claude-opus-4-7:1m"
                       ]
                     default: "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
                     order: 0
@@ -1699,13 +2159,13 @@ Resources:
                     type: number
                     minimum: 0
                     maximum: 1
-                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random)"
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Not used for Claude 4.7 models."
                     default: 0.0
                     order: 1
                   top_k:
                     type: integer
                     minimum: 1
-                    description: Sampling Top K
+                    description: "Sampling Top K. Not used for Claude 4.7 models."
                     default: 20
                     order: 2
                   top_p:
@@ -1742,6 +2202,10 @@ Resources:
       CustomClassificationModelARN: !Ref CustomClassificationModelARN
       CustomExtractionModelARN: !Ref CustomExtractionModelARN
       PreviousIDPPattern: !Ref PreviousIDPPattern
+      fake-w2: !Sub "s3://${ConfigurationBucket}/config_library/managed_config/fake-w2/config.yaml"
+      docsplit: !Sub "s3://${ConfigurationBucket}/config_library/managed_config/docsplit/config.yaml"
+      ocr-benchmark: !Sub "s3://${ConfigurationBucket}/config_library/managed_config/ocr-benchmark/config.yaml"
+      realkie-fcc-verified: !Sub "s3://${ConfigurationBucket}/config_library/managed_config/realkie-fcc-verified/config.yaml"
 
 
   ##########################################################################
@@ -1851,6 +2315,35 @@ Resources:
                 Action:
                   - kms:Decrypt
                   - kms:CreateGrant
+              # Grant kms:Decrypt on the artifacts bucket KMS key when provided
+              # This allows DockerBuildRole to download source code from a KMS-encrypted artifact bucket
+              - !If
+                - HasArtifactsBucketKmsKey
+                - Effect: Allow
+                  Action:
+                    - kms:Decrypt
+                    - kms:GenerateDataKey*
+                    - kms:DescribeKey
+                  Resource: !Ref ArtifactsBucketKmsKeyArn
+                - !Ref AWS::NoValue
+              # Required for VPC-enabled CodeBuild projects
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeDhcpOptions
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterfacePermission
+                Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*"
+                Condition:
+                  StringEquals:
+                    ec2:AuthorizedService: !Sub "codebuild.${AWS::URLSuffix}"
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
@@ -1861,6 +2354,14 @@ Resources:
         Unified Docker image builder for GenAIIDP stack - ${AWS::StackName}
       ServiceRole: !GetAtt DockerBuildRole.Arn
       EncryptionKey: !Ref CustomerManagedEncryptionKeyArn
+      VpcConfig:
+        !If
+          - DeployInVPC
+          - VpcId: !Ref VpcId
+            Subnets: !Ref PrivateSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Artifacts:
         Type: NO_ARTIFACTS
       Source:
@@ -1950,6 +2451,11 @@ Resources:
                   - lambda:RemovePermission
                 Resource:
                   - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:*"
+      ManagedPolicyArns:
+        - !If
+          - DeployInVPC
+          - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+          - !Ref AWS::NoValue
 
   CodeBuildTrigger:
     Type: AWS::Serverless::Function
@@ -1973,6 +2479,13 @@ Resources:
       Role: !GetAtt CodeBuildExecutionRole.Arn
       Runtime: python3.12
       Timeout: 60
+      VpcConfig:
+        !If
+          - DeployInVPC
+          - SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+            SubnetIds: !Ref PrivateSubnetIds
+          - !Ref AWS::NoValue
       MemorySize: 128
       Handler: index.handler
       CodeUri: ../../src/lambda/start_codebuild
@@ -2008,6 +2521,7 @@ Resources:
         - "evaluation-function"
         - "rule-validation-function"
         - "rule-validation-orchestration-function"
+        - "mlflow-logger-function"
 
   EcrRepositoryCleanup:
     Type: Custom::ECRRepositoryCleanup
@@ -2107,8 +2621,8 @@ Resources:
       RetentionInDays: !Ref LogRetentionDays
   
   BDAProcessResultsFunction:
-    DependsOn: DockerBuildRun
     Type: AWS::Serverless::Function
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -2116,7 +2630,7 @@ Resources:
           - id: W11
             reason: "Cloudwatch does not support resource-level permissions"
           - id: W89
-            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs — placed in VPC when AppSyncVisibility=PRIVATE"
           - id: W92
             reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
     # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
@@ -2132,6 +2646,17 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - DeployInVPC
+        - SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !If
+          - IsPrivateAppSync
+          - SubnetIds: !Ref LambdaSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2384,6 +2909,17 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - DeployInVPC
+        - SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !If
+          - IsPrivateAppSync
+          - SubnetIds: !Ref LambdaSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2432,10 +2968,13 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -2501,6 +3040,17 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - DeployInVPC
+        - SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !If
+          - IsPrivateAppSync
+          - SubnetIds: !Ref LambdaSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2558,10 +3108,13 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
                 - !If
                   - HasCustomClassificationModelARN
                   - !Ref CustomClassificationModelARN
@@ -2630,6 +3183,17 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - DeployInVPC
+        - SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !If
+          - IsPrivateAppSync
+          - SubnetIds: !Ref LambdaSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2688,10 +3252,13 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
                 - !If
                   - HasCustomExtractionModelARN
                   - !Ref CustomExtractionModelARN
@@ -2757,6 +3324,17 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - DeployInVPC
+        - SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !If
+          - IsPrivateAppSync
+          - SubnetIds: !Ref LambdaSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2809,10 +3387,13 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -2874,6 +3455,17 @@ Resources:
           - "index.handler"
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - DeployInVPC
+        - SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !If
+          - IsPrivateAppSync
+          - SubnetIds: !Ref LambdaSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2962,6 +3554,17 @@ Resources:
           - "index.handler"
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - DeployInVPC
+        - SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !If
+          - IsPrivateAppSync
+          - SubnetIds: !Ref LambdaSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3017,10 +3620,13 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -3083,6 +3689,17 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - DeployInVPC
+        - SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !If
+          - IsPrivateAppSync
+          - SubnetIds: !Ref LambdaSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -3137,10 +3754,13 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
             # Lambda invoke permission for SaveReportingFunction (in main template)
             - Effect: Allow
               Action:
@@ -3153,6 +3773,160 @@ Resources:
     Properties:
       KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
       LogGroupName: !Sub "/${AWS::StackName}/lambda/EvaluationFunction"
+      RetentionInDays: !Ref LogRetentionDays
+
+  ##########################################################################
+  # Test Execution Aggregation Function
+  ##########################################################################
+
+  TestExecutionAggregationFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: DockerBuildRun
+    Metadata:
+      SkipBuild: True
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Cloudwatch does not support resource-level permissions"
+          - id: W89
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+          - id: W92
+            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for this function as it is invoked synchronously"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      PackageType: Image
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:test-execution-aggregation-function-${ImageVersion}"
+      Architectures:
+        - arm64
+      Timeout: 900
+      MemorySize: 4096
+      Tracing: Active
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TRACKING_TABLE: !Ref TrackingTable
+      LoggingConfig:
+        LogGroup: !Ref TestExecutionAggregationFunctionLogGroup
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBReadPolicy:
+            TableName: !Ref TrackingTable
+        - S3ReadPolicy:
+            BucketName: !Ref OutputBucket
+        - Statement:
+          - Effect: Allow
+            Action: cloudwatch:PutMetricData
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+            Resource: !Ref CustomerManagedEncryptionKeyArn
+
+  TestExecutionAggregationFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
+      LogGroupName: !Sub "/${AWS::StackName}/lambda/TestExecutionAggregationFunction"
+      RetentionInDays: !Ref LogRetentionDays
+
+  RuleValidationPolicyClassificationFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: DockerBuildRun
+    Metadata:
+      SkipBuild: True
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Cloudwatch does not support resource-level permissions"
+          - id: W89
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+          - id: W92
+            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      PackageType: Image
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:rule-validation-policy-classification-function-${ImageVersion}"
+      Architectures:
+        - arm64
+      ImageConfig:
+        Command:
+          - "index.handler"
+      Timeout: 300
+      MemorySize: 1024
+      Environment:
+        Variables:
+          METRIC_NAMESPACE: !Ref StackName
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+          LOG_LEVEL: !Ref LogLevel
+          APPSYNC_API_URL: !Ref AppSyncApiUrl
+          TRACKING_TABLE: !Ref TrackingTable
+          DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, "appsync", "dynamodb"]
+          WORKING_BUCKET: !Ref WorkingBucket
+          OUTPUT_BUCKET: !Ref OutputBucket
+          REPORTING_BUCKET: !Ref ReportingBucket
+          SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingFunctionName
+      LoggingConfig:
+        LogGroup: !Ref RuleValidationPolicyClassificationFunctionLogGroup
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - !Ref LambdaECRAccessPolicy
+        - S3ReadPolicy:
+            BucketName: !Ref InputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
+        - S3CrudPolicy:
+            BucketName: !Ref ReportingBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigurationTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - Statement:
+            - Effect: Allow
+              Action: cloudwatch:PutMetricData
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !Ref CustomerManagedEncryptionKeyArn
+            - !If
+              - HasAppSyncApi
+              - Effect: Allow
+                Action:
+                  - appsync:GraphQL
+                Resource:
+                  - !Sub "${AppSyncApiArn}/types/Mutation/*"
+              - !Ref AWS::NoValue
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${SaveReportingFunctionName}"
+
+  RuleValidationPolicyClassificationFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
+      LogGroupName: !Sub "/${AWS::StackName}/lambda/RuleValidationPolicyClassificationFunction"
       RetentionInDays: !Ref LogRetentionDays
 
   RuleValidationFunction:
@@ -3193,6 +3967,17 @@ Resources:
       # Runtime: python3.12
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - DeployInVPC
+        - SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !If
+          - IsPrivateAppSync
+          - SubnetIds: !Ref LambdaSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3248,10 +4033,13 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -3304,6 +4092,17 @@ Resources:
       # Runtime: python3.12
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - DeployInVPC
+        - SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !If
+          - IsPrivateAppSync
+          - SubnetIds: !Ref LambdaSubnetIds
+            SecurityGroupIds:
+              - !Ref LambdaSecurityGroupId
+          - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3360,6 +4159,7 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
@@ -3389,6 +4189,85 @@ Resources:
       LogGroupName: !Sub "/${AWS::StackName}/lambda/RuleValidationOrchestrationFunction"
       RetentionInDays: !Ref LogRetentionDays
 
+  ##########################################################################
+  # MLflow Logger Function
+  ##########################################################################
+
+  MLflowLoggerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: IsMLflowEnabled
+    Properties:
+      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
+      LogGroupName: !Sub "/${AWS::StackName}/lambda/MLflowLoggerFunction"
+      RetentionInDays: !Ref LogRetentionDays
+
+  MLflowLoggerFunction:
+    Type: AWS::Serverless::Function
+    Condition: IsMLflowEnabled
+    DependsOn: DockerBuildRun
+    Metadata:
+      SkipBuild: True
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "CloudWatch does not support resource-level permissions"
+          - id: W89
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+          - id: W92
+            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      PackageType: Image
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:mlflow-logger-function-${ImageVersion}"
+      Architectures:
+        - arm64
+      ImageConfig:
+        Command:
+          - "index.handler"
+      Timeout: 900
+      MemorySize: 1024
+      Tracing: Active
+      Environment:
+        Variables:
+          MLFLOW_TRACKING_URI: !Ref MlflowTrackingURI
+          METRIC_NAMESPACE: !Ref StackName
+          LOG_LEVEL: !Ref LogLevel
+      LoggingConfig:
+        LogGroup: !Ref MLflowLoggerFunctionLogGroup
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - !Ref LambdaECRAccessPolicy
+        - Statement:
+            - Effect: Allow
+              Action: cloudwatch:PutMetricData
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - sagemaker-mlflow:*
+              Resource: !Ref MlflowTrackingURI
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !Ref CustomerManagedEncryptionKeyArn
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:PutObjectAcl
+              Resource: !Sub "arn:${AWS::Partition}:s3:::sagemaker-${AWS::Region}-${AWS::AccountId}/mlflow-artifacts/*"
+
 
   ##########################################################################
   # Unified Document Processing State Machine
@@ -3412,6 +4291,7 @@ Resources:
         ExtractionFunctionArn: !GetAtt ExtractionFunction.Arn
         AssessmentFunctionArn: !GetAtt AssessmentFunction.Arn
         PipelineProcessResultsLambdaArn: !GetAtt ProcessResultsFunction.Arn
+        RuleValidationPolicyClassificationLambdaArn: !GetAtt RuleValidationPolicyClassificationFunction.Arn
         RuleValidationLambdaArn: !GetAtt RuleValidationFunction.Arn
         RuleValidationOrchestrationLambdaArn: !GetAtt RuleValidationOrchestrationFunction.Arn
         # Shared tail functions
@@ -3442,6 +4322,8 @@ Resources:
             FunctionName: !Ref AssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref ProcessResultsFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RuleValidationPolicyClassificationFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref RuleValidationFunction
         - LambdaInvokePolicy:
@@ -4237,6 +5119,7 @@ Outputs:
         # Shared log groups
         - !Ref SummarizationFunctionLogGroup
         - !Ref EvaluationFunctionLogGroup
+        - !Ref TestExecutionAggregationFunctionLogGroup
         - !Ref StateMachineLogGroup
 
   DashboardName:
@@ -4246,3 +5129,12 @@ Outputs:
   DashboardArn:
     Description: ARN of the Unified CloudWatch Dashboard
     Value: !Sub "arn:${AWS::Partition}:cloudwatch::${AWS::AccountId}:dashboard/${AWS::StackName}-${AWS::Region}-Unified"
+
+  TestExecutionAggregationFunctionArn:
+    Description: ARN of the Test Execution Aggregation Function
+    Value: !GetAtt TestExecutionAggregationFunction.Arn
+
+  MLflowLoggerFunctionArn:
+    Condition: IsMLflowEnabled
+    Description: ARN of the MLflow Logger Function
+    Value: !GetAtt MLflowLoggerFunction.Arn

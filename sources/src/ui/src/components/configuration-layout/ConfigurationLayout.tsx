@@ -18,11 +18,13 @@ import {
   RadioGroup,
   ExpandableSection,
   Icon,
+  Badge,
 } from '@cloudscape-design/components';
 import Editor, { type OnMount } from '@monaco-editor/react';
-// eslint-disable-next-line import/no-extraneous-dependencies
+
 import yaml from 'js-yaml';
 import ReactMarkdown from 'react-markdown';
+import { useLocation } from 'react-router-dom';
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import useConfiguration from '../../hooks/use-configuration';
@@ -137,10 +139,20 @@ const isNumericValue = (val: unknown): boolean => {
   return false;
 };
 
+// Read URL version param synchronously — used to initialize state on mount
+// so the very first useConfiguration() call targets the correct version
+const getInitialVersionFromUrl = (): string | null => {
+  const hash = window.location.hash;
+  const urlParams = new URLSearchParams(hash.split('?')[1] || '');
+  return urlParams.get('version');
+};
+
 const ConfigurationLayout = (): React.JSX.Element => {
   // Version selection state - declare first
+  // Initialize from URL to avoid a race where 'default' config is fetched before the URL version
   const [selectedVersionsForCompare, setSelectedVersionsForCompare] = useState<string[]>([]);
-  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(getInitialVersionFromUrl);
+  const location = useLocation();
   const [versionsTableExpanded, setVersionsTableExpanded] = useState(false);
 
   // Import as new version state
@@ -193,19 +205,35 @@ const ConfigurationLayout = (): React.JSX.Element => {
   }, [currentVersion?.description, currentVersionName]);
 
   // Handle URL query parameter for version selection
+  // Re-runs when location changes (SPA navigation) or when versions load
   useEffect(() => {
     // For hash routing, get parameters from the hash part
     const hash = window.location.hash;
     const urlParams = new URLSearchParams(hash.split('?')[1] || '');
     const versionParam = urlParams.get('version');
+    const tabParam = urlParams.get('tab');
+    const highlightParam = urlParams.get('highlight');
+    if (highlightParam !== highlightClassName) {
+      setHighlightClassName(highlightParam);
+    }
 
-    if (versionParam && versions.length > 0 && !selectedVersion) {
+    // Apply version from URL if it differs from current selection (or no selection yet)
+    if (versionParam && versions.length > 0 && versionParam !== selectedVersion) {
       const versionExists = versions.some((v) => v.versionName === versionParam);
       if (versionExists) {
         setSelectedVersion(versionParam);
+        // Immediately fetch the correct version's config to avoid briefly showing the default
+        fetchConfiguration(versionParam);
       }
     }
-  }, [versions, selectedVersion]);
+
+    // Support deep-linking to a specific tab (e.g., extraction-schema for Document Schema)
+    if (tabParam) {
+      setConfigBuilderActiveTab(tabParam);
+      // Store in ref so the mergedConfig useEffect can respect it
+      urlTabParamRef.current = tabParam;
+    }
+  }, [versions, selectedVersion, location]);
 
   const {
     schema,
@@ -315,8 +343,53 @@ const ConfigurationLayout = (): React.JSX.Element => {
       return;
     }
 
+    // Check if the version being activated (not the currently selected one) has BDA enabled
+    // Need to check the actual use_bda flag in config, not just bdaProjectArn existence
+    // (bdaProjectArn can be stale from previous syncs)
+    let targetHasBda = false;
+
+    try {
+      // Fetch the target version's config to check use_bda flag
+      const targetConfig = await fetchVersion(versionName);
+
+      // Parse configs if they're JSON strings (same logic as handleCompareVersions)
+      let schemaObj = targetConfig.schema;
+      let targetDefaultConfig = targetConfig.default;
+      let targetCustomConfig = targetConfig.custom;
+
+      // Parse schema if it's a string
+      if (typeof targetConfig.schema === 'string') {
+        schemaObj = parseConfigurationData(targetConfig.schema);
+      }
+
+      // Unwrap nested Schema object if present
+      if (schemaObj && (schemaObj as Record<string, unknown>).Schema) {
+        schemaObj = (schemaObj as Record<string, unknown>).Schema;
+      }
+
+      if (typeof targetDefaultConfig === 'string') {
+        targetDefaultConfig = JSON.parse(targetDefaultConfig);
+      }
+      if (typeof targetCustomConfig === 'string') {
+        targetCustomConfig = JSON.parse(targetCustomConfig);
+      }
+
+      // Normalize boolean values (same as handleCompareVersions)
+      const normalizedDefaultObj = normalizeBooleans(targetDefaultConfig as Record<string, unknown>, schemaObj as ConfigSchema);
+      const normalizedCustomObj = normalizeBooleans(targetCustomConfig as Record<string, unknown>, schemaObj as ConfigSchema);
+
+      // Merge default and custom configs using deepMerge (same as handleCompareVersions)
+      const targetMergedConfig: Record<string, unknown> = deepMerge(normalizedDefaultObj ?? {}, normalizedCustomObj ?? {});
+
+      targetHasBda = (targetMergedConfig.use_bda as boolean) === true;
+    } catch (err) {
+      console.error('Failed to fetch target version config:', err);
+      // Fallback: if we can't fetch config, don't show modal
+      targetHasBda = false;
+    }
+
     // Check if BDA-enabled pattern and show confirmation for auto-sync to BDA (unless skipping)
-    if ((isPattern1 || mergedConfig?.use_bda) && !skipSyncConfirmation) {
+    if ((isPattern1 || targetHasBda) && !skipSyncConfirmation) {
       setActivateVersionTarget(versionName);
       setShowActivateVersionConfirmModal(true);
       return;
@@ -353,16 +426,29 @@ const ConfigurationLayout = (): React.JSX.Element => {
     }
 
     try {
-      // First sync to BDA
-      await handleSyncBdaIdp('idp_to_bda');
+      // Check if the target version already has a BDA project
+      const targetVersionData = versions.find((v) => v.versionName === versionName);
+      const hadBdaProject = targetVersionData?.bdaProjectArn;
+
+      // Show creating status if this is a new BDA project
+      if (!hadBdaProject) {
+        setBdaProjectCreating(true);
+      }
+
+      // First sync to BDA - pass the target version being activated, not the currently selected one
+      await handleSyncBdaIdp('idp_to_bda', undefined, 'replace', versionName);
       logger.debug(`Synced to BDA before activating version ${versionName}`);
 
       // Then activate the version (but don't sync again since we just did)
       await setActiveVersion(versionName);
       await new Promise((resolve) => setTimeout(resolve, 500));
       setSelectedVersion(versionName);
+
+      // Clear creating status
+      setBdaProjectCreating(false);
     } catch (err) {
       console.error('Failed to sync and activate version:', err);
+      setBdaProjectCreating(false);
     }
   };
 
@@ -450,6 +536,11 @@ const ConfigurationLayout = (): React.JSX.Element => {
   const [importError, setImportError] = useState<string | null>(null);
   const [extractionSchema, setExtractionSchema] = useState<unknown[] | null>(null);
   const [ruleSchema, setRuleSchema] = useState<unknown[] | null>(null);
+  const [highlightClassName, setHighlightClassName] = useState<string | null>(() => {
+    const hash = window.location.hash;
+    const params = new URLSearchParams(hash.split('?')[1] || '');
+    return params.get('highlight');
+  });
   const [showMigrationModal, setShowMigrationModal] = useState(false);
   const [pendingImportConfig, setPendingImportConfig] = useState<Record<string, unknown> | null>(null);
   const [pendingImportSource, setPendingImportSource] = useState<{ type: string; name: string } | null>(null); // Track import source for version naming
@@ -465,6 +556,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [bdaProjectCreating, setBdaProjectCreating] = useState(false); // Track if BDA project is being created
   const [showSyncToBdaConfirmModal, setShowSyncToBdaConfirmModal] = useState(false);
   const [showActivateVersionConfirmModal, setShowActivateVersionConfirmModal] = useState(false);
   const [activateVersionTarget, setActivateVersionTarget] = useState<string | null>(null); // Track which version to activate
@@ -477,6 +569,8 @@ const ConfigurationLayout = (): React.JSX.Element => {
   const [syncFromBdaMode, setSyncFromBdaMode] = useState<string>('replace'); // 'replace' or 'merge'
 
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  // Track URL tab param to prevent mergedConfig useEffect from overriding it
+  const urlTabParamRef = useRef<string | null>(null);
 
   // Compute whether there are unsaved changes by comparing formValues with mergedConfig
   const hasUnsavedChanges = useMemo(() => {
@@ -503,7 +597,6 @@ const ConfigurationLayout = (): React.JSX.Element => {
     const handleHashChange = (): void => {
       // For SPA hash-based routing, intercept navigation when there are unsaved changes
       if (hasUnsavedChanges) {
-        // eslint-disable-next-line no-alert
         const confirmed = window.confirm('You have unsaved configuration changes. Are you sure you want to leave?');
         if (!confirmed) {
           // Restore the hash to the config page
@@ -573,8 +666,16 @@ const ConfigurationLayout = (): React.JSX.Element => {
       setExtractionSchema(null);
       setRuleSchema(null);
 
-      // Switch to configuration tab when version changes to avoid stale schema display
-      setConfigBuilderActiveTab('configuration');
+      // Switch to configuration tab when version changes — unless a URL tab param was specified
+      // Check URL directly each time to handle async version loading (multiple mergedConfig updates)
+      const currentHash = window.location.hash;
+      const currentUrlParams = new URLSearchParams(currentHash.split('?')[1] || '');
+      const currentTabParam = currentUrlParams.get('tab');
+      if (currentTabParam) {
+        setConfigBuilderActiveTab(currentTabParam);
+      } else {
+        setConfigBuilderActiveTab('configuration');
+      }
 
       const formData = JSON.parse(JSON.stringify(mergedConfig));
       setFormValues(formData);
@@ -584,9 +685,9 @@ const ConfigurationLayout = (): React.JSX.Element => {
         setExtractionSchema(mergedConfig.classes as unknown[]);
       }
 
-      // Initialize rule schema from config (stored in rule_classes field)
-      if (mergedConfig.rule_classes) {
-        setRuleSchema(mergedConfig.rule_classes as unknown[]);
+      // Initialize rule schema from config (stored in policy_classes field)
+      if (mergedConfig.policy_classes) {
+        setRuleSchema(mergedConfig.policy_classes as unknown[]);
       }
 
       // Set both JSON and YAML content
@@ -713,9 +814,9 @@ const ConfigurationLayout = (): React.JSX.Element => {
           // Skip validation if value is undefined (already handled by required check)
           if (value === undefined) return;
 
-          // Skip deep validation for classes and rule_classes fields - they have their own complex JSON Schema structure
+          // Skip deep validation for classes and policy_classes fields - they have their own complex JSON Schema structure
           // Just check they're arrays if present
-          if (key === 'classes' || key === 'rule_classes') {
+          if (key === 'classes' || key === 'policy_classes') {
             if (!Array.isArray(value)) {
               errors.push({ message: `Field '${key}' must be an array` });
             }
@@ -1345,18 +1446,18 @@ const ConfigurationLayout = (): React.JSX.Element => {
           }
         }
 
-        // CRITICAL: Always include the current rule schema (rule_classes) if it exists OR is explicitly empty
+        // CRITICAL: Always include the current rule schema (policy_classes) if it exists OR is explicitly empty
         // This ensures empty arrays are saved (to wipe all rule classes) and prevents schema loss
-        if (formValues.rule_classes && Array.isArray(formValues.rule_classes)) {
-          builtObject.rule_classes = formValues.rule_classes;
-          console.log('DEBUG: Including rule schema (rule_classes) in save:', formValues.rule_classes);
+        if (formValues.policy_classes && Array.isArray(formValues.policy_classes)) {
+          builtObject.policy_classes = formValues.policy_classes;
+          console.log('DEBUG: Including rule schema (policy_classes) in save:', formValues.policy_classes);
         }
 
-        // CRITICAL: Always include the current rule schema (rule_classes) if it exists OR is explicitly empty
+        // CRITICAL: Always include the current rule schema (policy_classes) if it exists OR is explicitly empty
         // This ensures empty arrays are saved (to wipe all rule classes) and prevents schema loss
-        if (formValues.rule_classes && Array.isArray(formValues.rule_classes)) {
-          builtObject.rule_classes = formValues.rule_classes;
-          console.log('DEBUG: Including rule schema (rule_classes) in save:', formValues.rule_classes);
+        if (formValues.policy_classes && Array.isArray(formValues.policy_classes)) {
+          builtObject.policy_classes = formValues.policy_classes;
+          console.log('DEBUG: Including rule schema (policy_classes) in save:', formValues.policy_classes);
         }
 
         // CRITICAL: If there are no differences AND no schema changes AND no description changes, don't send update to backend
@@ -1508,7 +1609,12 @@ const ConfigurationLayout = (): React.JSX.Element => {
   };
 
   // Handler for BDA/IDP sync with direction support and optional BDA project ARN
-  const handleSyncBdaIdp = async (direction = 'bidirectional', bdaProjectArn?: string, syncMode = 'replace'): Promise<void> => {
+  const handleSyncBdaIdp = async (
+    direction = 'bidirectional',
+    bdaProjectArn?: string,
+    syncMode = 'replace',
+    versionName?: string,
+  ): Promise<void> => {
     setSyncingDirection(direction);
     setSyncSuccess(false);
     setSyncSuccessMessage('');
@@ -1517,9 +1623,18 @@ const ConfigurationLayout = (): React.JSX.Element => {
     try {
       logger.debug(`Starting BDA/IDP sync with direction: ${direction}, mode: ${syncMode}, bdaProjectArn: ${bdaProjectArn || 'auto'}...`);
 
+      // Check if BDA project ARN exists before syncing (for new projects)
+      const hadBdaProject = currentVersion?.bdaProjectArn;
+
+      // If syncing to BDA and no project existed, show creating status BEFORE the sync call
+      // This provides user feedback while waiting for backend to create and save ARN
+      if (direction === 'idp_to_bda' && !hadBdaProject) {
+        setBdaProjectCreating(true);
+      }
+
       // Build variables - always pass saveArn: true to persist the project ARN
       const variables: Record<string, unknown> = {
-        versionName: currentVersionName,
+        versionName: versionName || currentVersionName,
         direction,
         syncMode,
         saveArn: true,
@@ -1559,7 +1674,17 @@ const ConfigurationLayout = (): React.JSX.Element => {
         }
 
         // Refresh configuration to show any new classes
-        await fetchConfiguration(currentVersionName);
+        await fetchConfiguration(versionName || currentVersionName);
+
+        // Refresh versions list to update BDA project ARN metadata
+        await fetchVersions();
+
+        // If we showed creating status, keep it visible for a moment then clear
+        if (direction === 'idp_to_bda' && !hadBdaProject) {
+          // Small delay to ensure state updates complete and user sees the status
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          setBdaProjectCreating(false);
+        }
 
         // Only auto-dismiss if there are no warnings in the message
         // Warnings indicate BDA limitations that users should read
@@ -1574,11 +1699,13 @@ const ConfigurationLayout = (): React.JSX.Element => {
       } else {
         const errorMsg = String(response?.error?.message || response?.message || 'Sync operation failed');
         setSyncError(errorMsg);
+        setBdaProjectCreating(false); // Clear creating status on error
         logger.error('Sync failed:', errorMsg);
       }
     } catch (err) {
       logger.error('Sync error:', err);
       setSyncError(`Sync failed: ${(err as Error).message}`);
+      setBdaProjectCreating(false); // Clear creating status on error
     } finally {
       setSyncingDirection(null);
     }
@@ -2211,17 +2338,30 @@ const ConfigurationLayout = (): React.JSX.Element => {
                   </Button>
                 )}
                 {isAdmin && (
-                  <Button variant="normal" onClick={() => setShowSaveAsVersionModal(true)} disabled={validationErrors.length > 0}>
+                  <Button
+                    variant="normal"
+                    onClick={() => {
+                      setSaveAsVersionName(`${currentVersionName}-copy`);
+                      setSaveAsVersionDescription(currentVersion?.description ? `${currentVersion.description} - copy` : '');
+                      setShowSaveAsVersionModal(true);
+                    }}
+                    disabled={validationErrors.length > 0}
+                  >
                     Save as Version
                   </Button>
                 )}
-                {/* Save changes - hidden for read-only users, disabled on default version */}
+                {/* Save changes - hidden for read-only users, disabled on default or managed versions */}
                 {canWrite && (
                   <Button
                     variant="primary"
                     onClick={() => handleSave(false)}
                     loading={isSaving}
-                    disabled={!hasUnsavedChanges || validationErrors.length > 0 || currentVersionName === 'default'}
+                    disabled={
+                      !hasUnsavedChanges ||
+                      validationErrors.length > 0 ||
+                      currentVersionName === 'default' ||
+                      currentVersion?.managed === true
+                    }
                   >
                     Save changes
                   </Button>
@@ -2229,9 +2369,18 @@ const ConfigurationLayout = (): React.JSX.Element => {
               </SpaceBetween>
             }
           >
-            Configuration:{' '}
-            {selectedVersion || (activeVersionName && currentVersion?.isActive ? `${activeVersionName} (Active)` : activeVersionName)}
-            {currentVersion?.description ? ` - ${currentVersion.description}` : ''}
+            <SpaceBetween direction="horizontal" size="xs">
+              <span>
+                Configuration: {selectedVersion || activeVersionName}
+                {currentVersion?.description ? ` - ${currentVersion.description}` : ''}
+              </span>
+              {currentVersion?.managed || currentVersionName === 'default' ? (
+                <Badge color="blue">Managed</Badge>
+              ) : (
+                <Badge color="grey">Custom</Badge>
+              )}
+              {currentVersion?.isActive && <Badge color="green">Active</Badge>}
+            </SpaceBetween>
           </Header>
         }
       >
@@ -2242,6 +2391,30 @@ const ConfigurationLayout = (): React.JSX.Element => {
                 <Spinner size="normal" />
                 <Box margin={{ left: 's' }}>Refreshing data from server</Box>
               </Box>
+            </Alert>
+          )}
+
+          {(currentVersion?.managed === true || currentVersionName === 'default') && (
+            <Alert
+              type="warning"
+              header="Read-only — Stack-managed configuration"
+              action={
+                isAdmin ? (
+                  <Button
+                    variant="normal"
+                    onClick={() => {
+                      setSaveAsVersionName(`${currentVersionName}-copy`);
+                      setSaveAsVersionDescription(currentVersion?.description ? `${currentVersion.description} - copy` : '');
+                      setShowSaveAsVersionModal(true);
+                    }}
+                  >
+                    Save as Version
+                  </Button>
+                ) : undefined
+              }
+            >
+              This configuration is managed by the stack and cannot be saved directly. It will be overwritten on stack updates. Use{' '}
+              <strong>Save as Version</strong> to create an editable copy.
             </Alert>
           )}
 
@@ -2321,7 +2494,14 @@ const ConfigurationLayout = (): React.JSX.Element => {
           {/* BDA Project Status Banner */}
           {Boolean(isPattern1 || mergedConfig?.use_bda || formValues?.use_bda) && currentVersion && (
             <>
-              {currentVersion.bdaProjectArn ? (
+              {bdaProjectCreating ? (
+                <Alert type="info" header="BDA Project Creation In Progress">
+                  <Box variant="p">
+                    <Spinner size="normal" /> Creating BDA project and syncing blueprints... This may take a few moments. The project ARN
+                    will appear once creation is complete.
+                  </Box>
+                </Alert>
+              ) : currentVersion.bdaProjectArn ? (
                 <Alert
                   type={currentVersion.bdaSyncStatus === 'needs-sync' ? 'warning' : 'info'}
                   header={currentVersion.bdaSyncStatus === 'needs-sync' ? 'BDA Project Linked — Sync Required' : 'BDA Project Linked'}
@@ -2378,6 +2558,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
             {viewMode === 'form' && (
               <SpaceBetween size="l">
                 <ConfigBuilder
+                  key={currentVersionName}
                   schema={{
                     ...schema,
                     properties: Object.fromEntries(Object.entries(schema?.properties || {}).filter(([key]) => key !== 'classes')),
@@ -2428,16 +2609,17 @@ const ConfigurationLayout = (): React.JSX.Element => {
                     }
                   }}
                   ruleSchema={ruleSchema}
+                  highlightClassName={highlightClassName}
                   onRuleSchemaChange={(schemaData: unknown, isDirty: boolean) => {
                     setRuleSchema(schemaData as unknown[] | null);
                     if (isDirty) {
                       const updatedConfig = { ...formValues };
-                      // CRITICAL: Always set rule_classes, even if empty array
+                      // CRITICAL: Always set policy_classes, even if empty array
                       if (schemaData === null) {
-                        updatedConfig.rule_classes = [];
+                        updatedConfig.policy_classes = [];
                       } else if (Array.isArray(schemaData)) {
-                        // Store as 'rule_classes' field with JSON Schema content
-                        updatedConfig.rule_classes = schemaData;
+                        // Store as 'policy_classes' field with JSON Schema content
+                        updatedConfig.policy_classes = schemaData;
                       }
                       setFormValues(updatedConfig);
                       setJsonContent(JSON.stringify(updatedConfig, null, 2));
@@ -2569,8 +2751,8 @@ const ConfigurationLayout = (): React.JSX.Element => {
               (newVersionName.length > 50
                 ? 'Version name cannot exceed 50 characters'
                 : !/^[a-zA-Z0-9_-]+$/.test(newVersionName)
-                ? 'Version name can only contain letters, numbers, hyphens, and underscores'
-                : '')
+                  ? 'Version name can only contain letters, numbers, hyphens, and underscores'
+                  : '')
             }
           >
             <Input

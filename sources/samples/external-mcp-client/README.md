@@ -12,7 +12,7 @@ The document processor example shows how to:
 
 ## Prerequisites
 
-1. Python 3.8+
+1. Python 3.12+
 2. Required packages:
    ```bash
    pip install -r requirements.txt

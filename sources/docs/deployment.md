@@ -45,8 +45,8 @@ For programmatic deployment, updates, and batch processing, use the IDP CLI.
 #### Install the CLI
 
 ```bash
-cd lib/idp_cli_pkg
-pip install -e .
+make setup-venv
+source .venv/bin/activate
 ```
 
 #### Deploy a New Stack
@@ -114,7 +114,7 @@ You need to have the following packages installed on your computer:
 1. bash shell (Linux, MacOS, Windows-WSL)
 2. aws (AWS CLI)
 3. [sam (AWS SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
-4. python 3.11 or later
+4. python 3.12 or later
 5. A local Docker daemon
 6. Python packages: `pip install boto3 rich typer PyYAML botocore setuptools ruff build cfn-lint`
 7. **Node.js 22.12+** and **npm** (required for UI validation in publish script)
@@ -132,13 +132,13 @@ Copy the repo to your computer. Either:
 
 ### Option A: IDP CLI `--from-code` (Recommended)
 
-The easiest way to build, publish, and deploy from source in a single command is using the IDP CLI with the `--from-code` option. This builds all artifacts using `publish.py`, publishes them to S3, and deploys the CloudFormation stack — all in one step.
+The easiest way to build, publish, and deploy from source in a single command is using the IDP CLI with the `--from-code` option. This builds all artifacts, publishes them to S3, and deploys the CloudFormation stack — all in one step.
 
 #### Install the CLI
 
 ```bash
-cd lib/idp_cli_pkg
-pip install -e .
+make setup-venv
+source .venv/bin/activate
 ```
 
 #### Deploy a New Stack from Source
@@ -161,7 +161,7 @@ idp-cli deploy \
 ```
 
 **What `--from-code` does:**
-- Runs `publish.py` to build SAM templates, Lambda layers, container images, and the UI
+- Builds SAM templates, Lambda layers, container images, and the UI
 - Publishes all artifacts to an S3 bucket in your account
 - Creates or updates the CloudFormation stack with the newly published template
 - With `--wait`, monitors the deployment until completion
@@ -174,37 +174,45 @@ idp-cli deploy \
 
 ### Option B: Publish Templates + Deploy Separately
 
-If you prefer to publish artifacts first and then deploy as a separate step, use `publish.py` to build and publish, then deploy using the AWS CloudFormation console or CLI.
+If you prefer to publish artifacts first and then deploy as a separate step, use `idp-cli publish` to build and publish, then deploy using the AWS CloudFormation console or CLI.
 
-#### Step 1: Build and Publish with publish.py
+#### Step 1: Build and Publish with `idp-cli publish`
 
 ```bash
-python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [--verbose] [--no-validate] [--clean-build] [--max-workers N]
+idp-cli publish --source-dir . --region <region> [--bucket-basename <bucket>] [--prefix <prefix>] [--verbose] [--no-validate] [--clean-build] [--max-workers N]
 ```
 
 **Parameters:**
 
-- `cfn_bucket_basename`: A prefix for the S3 bucket name (e.g., `idp-1234567890` to ensure global uniqueness)
-- `cfn_prefix`: S3 prefix for artifacts (e.g., `idp` or `idp-dev`)
-- `region`: AWS region for deployment (e.g., `us-east-1`)
+- `--source-dir`: Path to the IDP project root directory (default: `.`)
+- `--region`: AWS region for deployment (e.g., `us-east-1`)
+- `--bucket-basename`: (Optional) S3 bucket basename for artifacts (auto-generated if not provided)
+- `--prefix`: (Optional) S3 key prefix for artifacts (default: `idp-cli`)
 - `--verbose` or `-v`: (Optional) Enable detailed error output for debugging build failures
 - `--clean-build`: (Optional) Force a clean rebuild of all artifacts
 - `--max-workers N`: (Optional) Number of parallel build workers
+- `--headless`: (Optional) Also generate a **headless (no-UI) template variant**. Useful for API-only / pipeline integrations in Commercial regions and **required** for GovCloud deployments. See [Headless Deployment](./headless-deployment.md).
 
 **Example:**
 
 ```bash
-python3 publish.py idp-1234567890 idp us-east-1
+idp-cli publish --source-dir . --region us-east-1
 ```
 
-The publish script:
+With custom bucket and prefix:
+
+```bash
+idp-cli publish --source-dir . --bucket-basename idp-1234567890 --prefix idp --region us-east-1
+```
+
+The publish command:
 
 - Checks your system dependencies for required packages
 - Builds SAM templates, Lambda layers, and container images
 - Packages and uploads the UI
-- Publishes all templates and assets to an S3 bucket (`<cfn_bucket_basename>-<region>`, created if it doesn't exist)
+- Publishes all templates and assets to an S3 bucket (auto-created if it doesn't exist)
 
-When completed, the script displays:
+When completed, the command displays:
 
 - The CloudFormation template's S3 URL
 - A 1-click URL for launching the stack creation in the CloudFormation console
@@ -215,7 +223,7 @@ When completed, the script displays:
 If the build fails, use the `--verbose` flag to see detailed error messages:
 
 ```bash
-python3 publish.py idp-1234567890 idp us-east-1 --verbose
+idp-cli publish --source-dir . --region us-east-1 --verbose
 ```
 
 This will show:
@@ -257,13 +265,7 @@ aws cloudformation update-stack \
   --parameters ParameterKey=AdminEmail,ParameterValue="<your-email>"
 ```
 
-#### Using publish.sh (Legacy)
-
-`publish.sh` is a Bash wrapper around `publish.py`. Use `publish.py` directly for new deployments.
-
-```bash
-./publish.sh <cfn_bucket_basename> <cfn_prefix> <region>
-```
+> **Note**: The legacy `publish.py` script is deprecated. Use `idp-cli publish` for all new deployments.
 
 ---
 
@@ -282,7 +284,7 @@ The solution **automatically** deploys all Lambda functions as container images 
 
 ### Prerequisites
 
-- **Docker** must be running on your build machine (for local builds via `publish.py` or `idp-cli --from-code`)
+- **Docker** must be running on your build machine (for local builds via `idp-cli publish` or `idp-cli deploy --from-code`)
 - Your AWS credentials must have **ECR permissions**
 
 ### How It Works

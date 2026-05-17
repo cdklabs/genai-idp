@@ -278,9 +278,7 @@ To use Bedrock OCR:
    - `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
    - `us.anthropic.claude-3-7-sonnet-20250219-v1:0`
    - `us.anthropic.claude-sonnet-4-20250514-v1:0`
-   - `us.anthropic.claude-sonnet-4-20250514-v1:0:1m`
    - `us.anthropic.claude-sonnet-4-5-20250929-v1:0`
-   - `us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`
    - `us.anthropic.claude-sonnet-4-6`
    - `us.anthropic.claude-sonnet-4-6:1m`
    - `us.anthropic.claude-opus-4-20250514-v1:0`
@@ -288,6 +286,8 @@ To use Bedrock OCR:
    - `us.anthropic.claude-opus-4-5-20251101-v1:0`
    - `us.anthropic.claude-opus-4-6-v1`
    - `us.anthropic.claude-opus-4-6-v1:1m`
+   - `us.anthropic.claude-opus-4-7`
+   - `us.anthropic.claude-opus-4-7:1m`
    - `eu.amazon.nova-lite-v1:0`
    - `eu.amazon.nova-pro-v1:0`
    - `eu.amazon.nova-2-lite-v1:0`
@@ -297,22 +297,24 @@ To use Bedrock OCR:
    - `eu.anthropic.claude-3-7-sonnet-20250219-v1:0`
    - `eu.anthropic.claude-sonnet-4-20250514-v1:0`
    - `eu.anthropic.claude-sonnet-4-5-20250929-v1:0`
-   - `eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`
    - `eu.anthropic.claude-sonnet-4-6`
    - `eu.anthropic.claude-sonnet-4-6:1m`
    - `eu.anthropic.claude-opus-4-5-20251101-v1:0`
    - `eu.anthropic.claude-opus-4-6-v1`
    - `eu.anthropic.claude-opus-4-6-v1:1m`
+   - `eu.anthropic.claude-opus-4-7`
+   - `eu.anthropic.claude-opus-4-7:1m`
    - `qwen.qwen3-vl-235b-a22b`
    - `global.amazon.nova-2-lite-v1:0`
    - `global.anthropic.claude-haiku-4-5-20251001-v1:0`
    - `global.anthropic.claude-sonnet-4-5-20250929-v1:0`
-   - `global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`
    - `global.anthropic.claude-sonnet-4-6`
    - `global.anthropic.claude-sonnet-4-6:1m`
    - `global.anthropic.claude-opus-4-5-20251101-v1:0`
    - `global.anthropic.claude-opus-4-6-v1`
    - `global.anthropic.claude-opus-4-6-v1:1m`
+   - `global.anthropic.claude-opus-4-7`
+   - `global.anthropic.claude-opus-4-7:1m`
 
 3. **Configure prompts**: Customize system and task prompts for your specific use case
 4. **Deploy**: The configuration can be updated through the Web UI without stack redeployment

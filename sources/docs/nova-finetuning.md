@@ -24,6 +24,8 @@ This guide provides comprehensive step-by-step instructions for fine-tuning Amaz
 
 ## Prerequisites
 
+> **Region Availability**: Nova fine-tuning is only available in the `us-east-1` AWS region. Ensure your IDP Accelerator stack is deployed to `us-east-1` to use this feature. The Custom Models UI is automatically hidden in deployments to other regions.
+
 ### AWS Setup
 Set up AWS CLI and credentials:
 ```bash

@@ -50,9 +50,10 @@ def is_rule_validation_enabled(config_version=None):
         config = get_config(as_model=True, version=config_version)
         if hasattr(config, 'rule_validation') and config.rule_validation:
             enabled = config.rule_validation.enabled
-            if enabled and hasattr(config, 'rule_classes'):
-                if not config.rule_classes or len(config.rule_classes) == 0:
-                    logger.info("Rule validation enabled but no rule_classes configured - skipping")
+            if enabled:
+                policy_classes = getattr(config, 'policy_classes', None) or []
+                if len(policy_classes) == 0:
+                    logger.info("Rule validation enabled but no policy_classes configured - skipping")
                     return False
             logger.info(f"Rule validation enabled: {enabled}")
             return enabled
@@ -156,11 +157,22 @@ def create_pdf_page_images(bda_result_bucket, output_bucket, object_key):
 
         # Open the PDF using pypdfium2
         pdf_document = pdfium.PdfDocument(pdf_content)
+        # Initialize form rendering engine so fillable PDF form fields
+        # (text inputs, checkboxes, etc.) appear in rendered page images.
+        # Without this, may_draw_forms=True in render() has no effect.
+        pdf_document.init_forms()
 
         # Process each page
         for page_num in range(len(pdf_document)):
             # Render page to a PIL image
             page = pdf_document[page_num]
+            # Flatten form fields into page content before rendering.
+            # Many fillable PDFs (e.g., government forms) lack appearance
+            # streams for form fields — flatten() forces PDFium to generate
+            # them and merge into page content so render() can display them.
+            # Only applies when PDF has form fields (formenv is set by init_forms).
+            if page.formenv is not None:
+                page.flatten()
             pil_img = page.render(scale=150 / 72).to_pil()
 
             # Save the image to a BytesIO object as JPEG
@@ -1470,6 +1482,7 @@ def handler(event, context):
         if existing_status not in ("Review Completed", "Review Skipped", "Completed", "Skipped"):
             hitl_sections_pending = [section.section_id for section in document.sections]
             document.hitl_status = "PendingReview"
+            document.hitl_triggered = True
             document.hitl_sections_pending = hitl_sections_pending
             document.hitl_sections_completed = []
             logger.info(f"Document requires human review. Sections pending: {hitl_sections_pending}")

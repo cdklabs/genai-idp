@@ -18,6 +18,13 @@ interface SignOutModalProps {
 const SignOutModal = ({ visible, setVisible }: SignOutModalProps): React.JSX.Element => {
   async function handleSignOut() {
     try {
+      // Set flag to prevent auto-login from immediately signing back in via SSO
+      sessionStorage.setItem('idp_signed_out', 'true');
+
+      // Amplify's signOut() handles both federated and non-federated flows:
+      // - Clears local tokens from localStorage
+      // - When OAuth is configured, redirects through Cognito's /logout endpoint
+      //   using the redirectSignOut URL from aws-exports.js
       await signOut();
       logger.debug('signed out');
       window.location.reload();

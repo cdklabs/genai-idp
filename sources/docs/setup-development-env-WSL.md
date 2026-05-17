@@ -84,22 +84,33 @@ sam --version (Example: SAM CLI, version 1.143.0)
 node --version (Example: v22.12.0)
 npm --version (Example: 11.0.0)
 ```
-### 4.2 Test Build Process
-```
+### 4.2 Install the IDP CLI
+
+⚠️ **Critical**: Install packages in this exact order to avoid "No such command" errors.
+
+```bash
 cd accelerated-intelligent-document-processing-on-aws
-```
-```
-# Test publish script help
-python3 publish.py --help
-
-# Test build (replace with your S3 bucket name)
-python3 publish.py your-bucket-name build-test us-east-1
+pip install -e lib/idp_common_pkg
+pip install -e lib/idp_sdk
+pip install -e lib/idp_cli_pkg
 ```
 
-### 4.3 Troubleshooting Build Issues
+> **Note**: This installs the `idp-cli` command along with all required Python dependencies.
+
+### 4.3 Test Build Process
+
+```bash
+# Test CLI help
+idp-cli publish --help
+
+# Test build
+idp-cli publish --source-dir . --region us-east-1
+```
+
+### 4.4 Troubleshooting Build Issues
 If the build fails, use the `--verbose` flag:
 ```bash
-python3 publish.py your-bucket-name build-test us-east-1 --verbose
+idp-cli publish --source-dir . --region us-east-1 --verbose
 ```
 
 The verbose flag shows:
@@ -107,6 +118,8 @@ The verbose flag shows:
 - Complete error output from failed builds
 - Python version compatibility issues
 - Missing dependencies or configuration problems
+
+> **Note**: The legacy `publish.py` script is deprecated. Use `idp-cli publish` for all new builds.
 
 ## Step 5: Install Visual Studio Code on Local Machine for using WSL as a terminal
 ### Visit the official website: Go to [https://code.visualstudio.com/](https://code.visualstudio.com/)

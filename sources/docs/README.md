@@ -13,6 +13,7 @@ This folder contains detailed documentation on various aspects of the GenAI Inte
 
 - [Architecture](./architecture.md) - Detailed component architecture and data flow
 - [Deployment](./deployment.md) - Build, publish, deploy, and test instructions
+- [Headless Deployment](./headless-deployment.md) - Backend-only deployment (no UI/AppSync/Cognito/WAF) — for API-only / pipeline integrations in Commercial regions and required for GovCloud
 - [Configuration](./configuration.md) - Configuration and customization options
 - [Configuration Versions](./configuration-versions.md) - Managing multiple configuration versions
 - [IDP Configuration Best Practices](./idp-configuration-best-practices.md) - Guidelines for effective configuration design
@@ -56,7 +57,7 @@ This folder contains detailed documentation on various aspects of the GenAI Inte
 - [Code Intelligence](./code-intelligence.md) - Chat bot for asking questions about the IDP code base and features
 - [Knowledge Base](./knowledge-base.md) - Document knowledge base query feature
 - [Custom MCP Agent](./custom-MCP-agent.md) - Integrating external MCP servers for custom tools and capabilities
-- [MCP Integration](./mcp-integration.md) - Model Context Protocol integration for external applications
+- [MCP Server](./mcp-server.md) - Model Context Protocol integration for external applications
 
 ## Integration & Extensions
 
@@ -70,13 +71,15 @@ This folder contains detailed documentation on various aspects of the GenAI Inte
 - [Monitoring](./monitoring.md) - Monitoring and logging capabilities
 - [Reporting Database](./reporting-database.md) - Analytics database for evaluation metrics and metering data
 - [Capacity Planning](./capacity-planning.md) - Performance optimization and resource scaling guidance
+- [Circuit Breaker](./circuit-breaker.md) - Automatic protection from cascading failures during Bedrock outages
 - [Cost Calculator](./cost-calculator.md) - Framework for estimating solution costs
 
 ## Planning & Security
 
 - [Well-Architected Framework Assessment](./well-architected.md) - Analysis based on AWS Well-Architected Framework
 - [AWS Services & IAM Roles](./aws-services-and-roles.md) - AWS services used and IAM role requirements
-- [GovCloud Deployment](./govcloud-deployment.md) - Deployment guide for AWS GovCloud regions
+- [ALB Hosting](./alb-hosting.md) - ALB+S3 hosting to serve the full Web UI from within a VPC (alternative to CloudFront)
+- [GovCloud Deployment](./govcloud-deployment.md) - GovCloud-specific considerations on top of headless deployment
 - [EU Region Model Support](./eu-region-model-support.md) - Model availability in EU regions
 
 ## Development Setup
@@ -89,6 +92,13 @@ This folder contains detailed documentation on various aspects of the GenAI Inte
 ## Migration
 
 - [Migration v0.4 to v0.5](./migration-v04-to-v05.md) - Upgrading from v0.4.x to v0.5.x (Unified Pattern)
+
+### GovCloud
+
+- [GovCloud Deployment Guide](./govcloud-deployment.md) - Deployment packages, prerequisites, and deploy commands
+- [GovCloud Architecture](./govcloud-architecture.md) - Services removed vs. retained, limitations, and workarounds
+- [Batch Jobs REST API](./govcloud-batch-api.md) - API reference, authentication, and bastion tunnel setup
+- [GovCloud Operations](./govcloud-operations.md) - Monitoring, troubleshooting, and best practices
 
 ## Screenshots and Diagrams
 

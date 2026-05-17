@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
         with:
           fetch-depth: 0 # Fetch all history for git diff in typecheck-pr
 
@@ -89,7 +89,7 @@ jobs:
         continue-on-error: false
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         if: always() && steps.run-tests.outcome != 'skipped'
         with:
           name: test-reports
@@ -99,7 +99,7 @@ jobs:
           retention-days: 7
 
       - name: Publish test results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: EnricoMi/publish-unit-test-result-action@c950f6fb443cb5af20a377fd0dfaa78838901040  # v2.23.0
         if: always() && hashFiles('lib/idp_common_pkg/test-reports/test-results.xml') != ''
         with:
           files: lib/idp_common_pkg/test-reports/test-results.xml
@@ -107,7 +107,7 @@ jobs:
           comment_mode: off  # Disable PR comments to avoid permission issues on fork PRs
 
       - name: Code Coverage Report
-        uses: irongut/CodeCoverageSummary@v1.3.0
+        uses: irongut/CodeCoverageSummary@51cc3a756ddcd398d447c044c02cb6aa83fdae95  # v1.3.0
         if: always() && hashFiles('lib/idp_common_pkg/test-reports/coverage.xml') != ''
         with:
           filename: lib/idp_common_pkg/test-reports/coverage.xml

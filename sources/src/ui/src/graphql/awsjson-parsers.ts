@@ -9,6 +9,8 @@ import type {
   TestRunConfig,
   WeightedOverallScores,
   SplitClassificationMetrics,
+  FieldMetrics,
+  ConfusionMatrix,
   ComparisonMetrics,
   ConfigSettingValues,
   ConfigurationData,
@@ -56,6 +58,22 @@ export function parseCostBreakdown(json: unknown): CostBreakdown {
   return safeParse<CostBreakdown>(json, {});
 }
 
+export function calculateTotalPages(costBreakdown: CostBreakdown): number {
+  let totalPages = 0;
+  Object.values(costBreakdown).forEach((services) => {
+    Object.values(services).forEach((details) => {
+      if (details.unit === 'pages') totalPages += Number(details.value) || 0;
+    });
+  });
+  return totalPages;
+}
+
+export function calculateAvgCostPerPage(totalCost: number | null | undefined, costBreakdown: CostBreakdown | null): number | null {
+  if (totalCost == null || !costBreakdown) return null;
+  const totalPages = calculateTotalPages(costBreakdown);
+  return totalPages > 0 ? totalCost / totalPages : null;
+}
+
 export function parseTestRunConfig(json: unknown): TestRunConfig | null {
   return safeParse<TestRunConfig | null>(json, null);
 }
@@ -66,6 +84,14 @@ export function parseWeightedOverallScores(json: unknown): WeightedOverallScores
 
 export function parseSplitClassificationMetrics(json: unknown): SplitClassificationMetrics {
   return safeParse<SplitClassificationMetrics>(json, {});
+}
+
+export function parseFieldMetrics(json: unknown): FieldMetrics {
+  return safeParse<FieldMetrics>(json, {});
+}
+
+export function parseConfusionMatrix(json: unknown): ConfusionMatrix {
+  return safeParse<ConfusionMatrix>(json, {});
 }
 
 export function parseComparisonMetrics(json: unknown): ComparisonMetrics {
