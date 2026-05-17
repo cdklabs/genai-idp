@@ -1,30 +1,37 @@
 {
   "name": "idp-cdk-monorepo",
   "scripts": {
-    "build": "npx projen build",
-    "build:packages": "npx projen build:packages",
-    "clobber": "npx projen clobber",
-    "compile": "npx projen compile",
-    "default": "npx projen default",
-    "package": "npx projen package",
-    "post-upgrade": "npx projen post-upgrade",
-    "release": "npx projen release",
-    "run": "npx projen run",
-    "test": "npx projen test",
-    "update-upstream-sources": "npx projen update-upstream-sources",
-    "upgrade": "npx projen upgrade",
-    "projen": "npx projen"
+    "build": "projen build",
+    "build:packages": "projen build:packages",
+    "clobber": "projen clobber",
+    "compile": "projen compile",
+    "default": "projen default",
+    "package": "projen package",
+    "post-upgrade": "projen post-upgrade",
+    "release": "projen release",
+    "run": "projen run",
+    "test": "projen test",
+    "update-upstream-sources": "projen update-upstream-sources",
+    "upgrade": "projen upgrade",
+    "projen": "projen"
   },
   "devDependencies": {
     "@types/node": "^18",
-    "cdklabs-projen-project-types": "^0.3.2",
+    "cdklabs-projen-project-types": "^0.3.35",
     "constructs": "^10.0.0",
-    "projen": "^0.99.17",
+    "projen": "^0.99.61",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@mrgrain/jsii-struct-builder": "^0.7.63"
+    "@mrgrain/jsii-struct-builder": "^0.7.64"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "yarn",
+      "version": "1.22.22",
+      "onFail": "ignore"
+    }
   },
   "main": "lib/index.js",
   "license": "Apache-2.0",
