@@ -77,6 +77,9 @@ git add ${targetDir}
         {
           name: 'Checkout',
           uses: 'actions/checkout@v5',
+          with: {
+            'token': '${{ secrets.PROJEN_GITHUB_TOKEN }}',
+          },
         },
         ...project.renderWorkflowSetup(),
         {
