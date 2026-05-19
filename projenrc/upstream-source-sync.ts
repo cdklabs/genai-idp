@@ -97,19 +97,15 @@ git add ${targetDir}
           ].join('\n'),
         },
         {
-          name: 'Delete existing PR branch',
-          if: 'steps.check-changes.outputs.changes == \'true\'',
-          run: 'git push origin --delete update-upstream-sources || true',
-        },
-        {
           name: 'Create Pull Request',
           id: 'create-pr',
           if: 'steps.check-changes.outputs.changes == \'true\'',
-          uses: 'peter-evans/create-pull-request@v5',
+          uses: 'peter-evans/create-pull-request@v8',
           with: {
             'token': '${{ secrets.PROJEN_GITHUB_TOKEN }}',
             'commit-message': 'feat(sources): update upstream sources',
             'title': 'feat(sources): update upstream sources',
+            'force-push': 'always',
             'body': [
               '> ⚠️ This Pull Request updates weekly and will overwrite **all** manual changes pushed to the branch',
               '',
