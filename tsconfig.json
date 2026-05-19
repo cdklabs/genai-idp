@@ -49,6 +49,9 @@
       "path": "samples/sample-bedrock"
     },
     {
+      "path": "modules/bedrock-idp"
+    },
+    {
       "path": "samples/sample-sagemaker-udop-rvl-cdip"
     }
   ]

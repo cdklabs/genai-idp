@@ -1,0 +1,13 @@
+name: ${DEPLOYMENT_NAME}
+toolchainRegion: ${PLATFORM_REGION}
+forceDependencyRedeploy: false
+groups:
+  - name: bedrock-idp
+    path: bedrock-idp-modules.yaml
+targetAccountMappings:
+  - alias: primary
+    accountId: ${PRIMARY_ACCOUNT}
+    default: true
+    regionMappings:
+      - region: ${PRIMARY_REGION}
+        default: true

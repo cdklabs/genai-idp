@@ -1,0 +1,31 @@
+deploy:
+  phases:
+    install:
+      commands:
+        - npm install -g aws-cdk@2
+        - cd ../.. && yarn install --ignore-engines
+    pre_build:
+      commands:
+        - echo "Starting bedrock-idp deployment"
+        - cd ../.. && yarn workspace @cdklabs/genai-idp compile && yarn workspace @cdklabs/genai-idp-bedrock-llm-processor compile && yarn workspace @cdklabs/genai-idp-bedrock-llm-processor bundle
+        - npm run build
+    build:
+      commands:
+        - cdk deploy --all --require-approval never --progress events --outputs-file cdk-exports.json
+        - seedfarmer metadata convert -f cdk-exports.json -jq .BedrockIdpStack.metadata
+    post_build:
+      commands:
+        - echo "bedrock-idp deployment completed"
+destroy:
+  phases:
+    install:
+      commands:
+        - npm install -g aws-cdk@2
+        - cd ../.. && yarn install --ignore-engines
+    pre_build:
+      commands:
+        - cd ../.. && yarn workspace @cdklabs/genai-idp compile && yarn workspace @cdklabs/genai-idp-bedrock-llm-processor compile && yarn workspace @cdklabs/genai-idp-bedrock-llm-processor bundle
+        - npm run build
+    build:
+      commands:
+        - cdk destroy --all --force

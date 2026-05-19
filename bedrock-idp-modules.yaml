@@ -1,0 +1,5 @@
+name: bedrock-idp
+path: modules/bedrock-idp
+parameters:
+  - name: ADMIN_EMAIL
+    value: ${ADMIN_EMAIL}

@@ -1,0 +1,14 @@
+{
+  "type": "VerticalLayout",
+  "elements": [
+    {
+      "type": "Control",
+      "scope": "#/properties/ADMIN_EMAIL",
+      "label": "Admin Email",
+      "options": {
+        "placeholder": "admin@example.com",
+        "format": "email"
+      }
+    }
+  ]
+}

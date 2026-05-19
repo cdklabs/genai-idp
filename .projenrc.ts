@@ -434,6 +434,23 @@ new AwsCdkTypeScriptWorkspaceApp({
   constructsVersion: CONSTRUCTS_VERSION,
 });
 
+// GenAI Enterprise Hub capability module — Bedrock IDP
+new AwsCdkTypeScriptWorkspaceApp({
+  parent: rootProject,
+  private: true,
+  stability,
+  authorName: "AWS",
+  authorEmail: "aws-cdk-dev@amazon.com",
+  name: "bedrock-idp",
+  workspaceScope: "modules",
+  repository: "https://github.com/cdklabs/genai-idp",
+  devDeps: [...idpDeps],
+  deps: [...idpDeps, idpPattern2, genaiIdp],
+  jest: false,
+  cdkVersion: CDK_VERSION,
+  constructsVersion: CONSTRUCTS_VERSION,
+});
+
 const sample3App = new AwsCdkTypeScriptWorkspaceApp({
   parent: rootProject,
   private: true,

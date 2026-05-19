@@ -1,0 +1,4 @@
+project: genaieh
+description: GenAI IDP Accelerator - Pattern 2 Custom Document Extraction with Bedrock LLM
+seedfarmer_version: "4.0.0"
+manifestValidationFailOnUnknownFields: false

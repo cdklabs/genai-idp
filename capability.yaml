@@ -1,0 +1,19 @@
+path: genai-idp
+version: 1.0.0
+type: SeedFarmer
+
+name: GenAI IDP Bedrock LLM Processor
+description: Custom document extraction using Amazon Bedrock foundation models with classification, OCR, and a web UI for document processing management
+labels:
+  - IDP
+  - Bedrock
+  - DocumentProcessing
+input:
+  - name: ADMIN_EMAIL
+    description: Email address for the admin user (optional - leave empty to skip admin creation)
+    isRequired: false
+    defaultValue: ""
+environments:
+  - name: PRIMARY
+    description: Primary deployment environment
+    label: Primary Environment
