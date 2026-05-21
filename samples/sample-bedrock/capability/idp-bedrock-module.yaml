@@ -1,0 +1,10 @@
+name: idp-bedrock-llm
+path: app
+targetAccount: primary
+parameters:
+  - name: admin-email
+    valueFrom:
+      envVariable: ADMIN_EMAIL
+  - name: config-s3-uri
+    valueFrom:
+      envVariable: CONFIG_S3_URI
