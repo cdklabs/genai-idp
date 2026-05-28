@@ -1,0 +1,2 @@
+ADMIN_EMAIL: "user@example.com"
+CONFIG_S3_URI: "Optional, eg.: s3://my-bucket/configs/my-processor-config.yaml"

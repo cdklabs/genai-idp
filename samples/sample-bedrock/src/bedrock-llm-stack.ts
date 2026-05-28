@@ -178,10 +178,15 @@ export class BedrockLlmStack extends Stack {
     // 4.    Creating the processor, the actual engine for performing the IDP function.
 
     // 4.1   Creating the Bedrock LLM processor that uses Amazon Bedrock foundation models for document processing.
+    const configPath = this.node.tryGetContext("configPath");
+    const configuration = configPath
+      ? BedrockLlmProcessorConfiguration.fromFile(configPath)
+      : BedrockLlmProcessorConfiguration.lendingPackageSample();
+
     const processor = new BedrockLlmProcessor(this, "Processor", {
       environment,
       configurationBucket,
-      configuration: BedrockLlmProcessorConfiguration.lendingPackageSample(),
+      configuration,
     });
 
     // 2.2.  Creating the actual API that will be used by the UI (user interactions) and the processing environment

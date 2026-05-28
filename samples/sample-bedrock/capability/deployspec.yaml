@@ -1,0 +1,26 @@
+deploy:
+  phases:
+    install:
+      commands:
+        - npm install -g aws-cdk
+        - nvm use 22 || true
+        - npm install --legacy-peer-deps
+    build:
+      commands:
+        - |
+          CDK_CONTEXT_ARGS=""
+          if [ -n "${SEEDFARMER_PARAMETER_CONFIG_S3_URI:-}" ]; then
+            echo "Downloading custom processor config from ${SEEDFARMER_PARAMETER_CONFIG_S3_URI}"
+            aws s3 cp "${SEEDFARMER_PARAMETER_CONFIG_S3_URI}" ./custom-config.yaml
+            CDK_CONTEXT_ARGS="-c configPath=./custom-config.yaml"
+          else
+            echo "No CONFIG_S3_URI provided, using default processor config"
+          fi
+          npx cdk deploy --require-approval never --parameters AdminEmail="${SEEDFARMER_PARAMETER_ADMIN_EMAIL:-}" ${CDK_CONTEXT_ARGS} --all --outputs-file cdk-outputs.json
+        - python3 -c "import json; d=json.load(open('cdk-outputs.json')); stack=list(d.values())[0]; print(json.dumps({'metadata':json.dumps(stack)}))" > output.json
+        - seedfarmer metadata convert -f output.json -jq .metadata
+destroy:
+  phases:
+    build:
+      commands:
+        - npx cdk destroy --force --all

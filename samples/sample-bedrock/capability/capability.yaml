@@ -1,0 +1,27 @@
+uniqueId: genai-idp-bedrock-llm
+path: genai-idp-bedrock-llm
+version: 1.0.0
+type: SeedFarmer
+name: GenAI IDP - Intelligent Document Processing
+description: Intelligent Document Processing pipeline using Amazon Bedrock foundation models. Deploys a complete serverless solution for document classification, extraction, summarization, and evaluation with a web UI for document management.
+labels:
+  - DocumentProcessing
+  - Bedrock
+  - IDP
+  - GenAI
+input:
+  - name: ADMIN_EMAIL
+    description: Email address for the admin user (receives temporary password). Leave empty to skip admin user creation.
+    isRequired: false
+    defaultValue: ""
+  - name: CONFIG_S3_URI
+    description: S3 URI (s3://bucket/key) of a custom processor configuration YAML file in the target environment account. If not provided, the built-in lending package sample configuration is used.
+    isRequired: false
+    defaultValue: ""
+environments:
+  - name: DEPLOYMENT
+    description: Target AWS environment for the IDP processing pipeline
+    label: Deployment Environment
+output:
+  - name: WebSiteUrl
+    description: URL of the CloudFront-hosted web application for document processing
