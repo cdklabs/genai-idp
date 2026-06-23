@@ -42,10 +42,10 @@
   resolved "https://registry.yarnpkg.com/@aws-cdk/aws-sagemaker-alpha/-/aws-sagemaker-alpha-2.241.0-alpha.0.tgz#5c1439ce4713485ce99259b77645dabef51a6094"
   integrity sha512-naNhsHZebbNjiqlnc76rFnwDfoWAiZjEzD7hwvcy00eGyL3ZHTVL9+AFU16QbGp9/6CTWfFwZyFBFRKq0zpBAA==
 
-"@aws-cdk/cloud-assembly-api@^2.1.1":
-  version "2.2.0"
-  resolved "https://registry.yarnpkg.com/@aws-cdk/cloud-assembly-api/-/cloud-assembly-api-2.2.0.tgz#ef3f2f3f774b5802dabef1beeac6a28f41539715"
-  integrity sha512-u1iNQd7BNxTuSdIjbhoxqOxsYqi3kqj+SST0g1V1g24e/XY3FoiP8SFbiVd/+uLVNVY6mLGJ6+Mx3J5ZEkTFrg==
+"@aws-cdk/cloud-assembly-api@^2.1.1", "@aws-cdk/cloud-assembly-api@^2.2.3":
+  version "2.2.3"
+  resolved "https://registry.yarnpkg.com/@aws-cdk/cloud-assembly-api/-/cloud-assembly-api-2.2.3.tgz#3e175597cccb87ae6b067e729547f29b7c9b873e"
+  integrity sha512-XxuKjZ8j1Kkqi3tJaevO9DMWWKfen9QBwTUlgdPKyT4XDDy07r9MnqgeUC1vcpskoc3eeXItZHgqdVuaddleRQ==
   dependencies:
     jsonschema "~1.4.1"
     semver "^7.7.4"
@@ -58,12 +58,12 @@
     jsonschema "~1.4.1"
     semver "^7.7.3"
 
-"@aws-cdk/cx-api@^2.207.0":
-  version "2.241.0"
-  resolved "https://registry.yarnpkg.com/@aws-cdk/cx-api/-/cx-api-2.241.0.tgz#3261004ab42ed51c413d139d92bef229330aa6d1"
-  integrity sha512-629QCWGTPmL+z4qxseeWXZnbfjAMDc3FIGGi1mbi8qDXmgcUUhkzpT+TvIAKOlTzF/ox7MOd/aNzoY4D9n68Vg==
+"@aws-cdk/cx-api@^2.254.0":
+  version "2.254.0"
+  resolved "https://registry.yarnpkg.com/@aws-cdk/cx-api/-/cx-api-2.254.0.tgz#da9940c4d356dbc3722a12f70458e9d81ec5b11f"
+  integrity sha512-ABHBDhXDquTNjBA+RsRgo94tipwy0UTzdYKNyfC51kuYJJR7OK3pHiNajW0MY4dHiCfHzRVT7dLf7iB/e1NQ5Q==
   dependencies:
-    "@aws-cdk/cloud-assembly-api" "^2.1.1"
+    "@aws-cdk/cloud-assembly-api" "^2.2.3"
     semver "^7.7.4"
 
 "@aws-crypto/crc32@5.2.0":
