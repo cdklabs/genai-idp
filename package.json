@@ -19,7 +19,7 @@
     "@types/node": "^18",
     "cdklabs-projen-project-types": "^0.3.2",
     "constructs": "^10.0.0",
-    "projen": "^0.99.17",
+    "projen": "^0.99.62",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   },
