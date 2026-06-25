@@ -1,0 +1,339 @@
+notes: >-
+  ADUACOL IDP – Extracción de datos de Facturas Comerciales y Bills of Lading.
+  Solo extracción. La validación contra el sistema transaccional la hace ADUACOL.
+  Soporta operaciones IMPO, EXPO y DTA.
+
+ocr:
+  backend: textract
+  features:
+    - name: LAYOUT
+
+classification:
+  model: us.amazon.nova-2-lite-v1:0
+  temperature: 0
+  top_p: 0
+  top_k: 5
+  max_tokens: 4096
+  classificationMethod: multimodalPageLevelClassification
+  sectionSplitting: llm_determined
+  contextPagesCount: 1
+
+extraction:
+  model: us.amazon.nova-2-lite-v1:0
+  system_prompt: >-
+    You are a Colombian customs document extraction specialist. You extract structured
+    data from international trade documents (invoices and bills of lading).
+    Documents may be in English, Spanish, or bilingual.
+    Respond only with JSON. Never fabricate data - only extract what is explicitly present.
+    Normalize all dates to YYYY-MM-DD format regardless of input format.
+    Normalize NIT numbers by removing dots but keeping the verification digit after hyphen.
+  task_prompt: >-
+    <background>
+    You are an expert in Colombian customs document analysis. You extract key information
+    from documents classified as type {DOCUMENT_CLASS}. Documents originate from international
+    trade operations (imports, exports, transit) and may contain data in English, Spanish,
+    Chinese, or mixed languages.
+    </background>
+
+    <task>
+    Extract all fields defined in the attributes list below from the provided document.
+    Return a well-organized JSON object with the extracted values.
+    </task>
+
+    <extraction-guidelines>
+    1. Ensure data is accurately represented in proper JSON format
+    2. Use double quotes around all keys and values
+    3. Do not fabricate data - only extract information explicitly found in the document
+    4. Replace newlines with spaces in text values
+    5. If a field is not found, return null
+    6. DATES: Normalize ALL dates to YYYY-MM-DD format regardless of input format
+    7. NIT: Remove dots but keep hyphen and verification digit (e.g., "900.541.039-2" → "900541039-2")
+    8. MONETARY VALUES: Extract as numbers without currency symbols or thousand separators
+    9. For arrays/lists, extract ALL items found in the document
+    10. When a field has an alias, search for both the primary name and alias in the document
+    11. For the ENDOSO field: look for annotations, stamps, or text containing "endoso", "endosado", "endosar" anywhere in the document including overlaid text or stamps
+    </extraction-guidelines>
+
+    <attributes>
+    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+    </attributes>
+
+    <<CACHEPOINT>>
+
+    <document-text>
+    {DOCUMENT_TEXT}
+    </document-text>
+
+    <document_image>
+    {DOCUMENT_IMAGE}
+    </document_image>
+
+    <final-instructions>
+    Extract all requested attributes from this customs/trade document. Remember:
+    - Normalize dates to YYYY-MM-DD
+    - Normalize NIT removing dots
+    - Extract monetary values as plain numbers
+    - Return null for fields not found
+    - Extract ALL items in arrays completely
+    - Pay special attention to endorsement (endoso) annotations
+    </final-instructions>
+  temperature: 0
+  top_p: 0
+  top_k: 5
+  max_tokens: 16000
+
+assessment:
+  enabled: true
+  hitl_enabled: false
+  model: us.amazon.nova-2-lite-v1:0
+  temperature: 0
+  top_p: 0
+  top_k: 5
+  max_tokens: 10000
+  default_confidence_threshold: 0.8
+  granular:
+    enabled: true
+    list_batch_size: 3
+    simple_batch_size: 5
+    max_workers: 10
+
+summarization:
+  enabled: false
+
+rule_validation:
+  enabled: false
+
+classes:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # FACTURA COMERCIAL (Commercial Invoice)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - $schema: https://json-schema.org/draft/2020-12/schema
+    description: >-
+      Commercial invoice for international trade operations (import/export/transit).
+      Contains seller and buyer information, itemized goods with prices, trade terms
+      (incoterms), and total values. May be in English, Spanish, Chinese, or bilingual.
+      Common headers: COMMERCIAL INVOICE, INVOICE, FACTURA COMERCIAL, PROFORMA.
+      Common issuers include Chinese trading companies exporting to Colombia.
+      Key identifiers: invoice number, date, buyer/seller names, item table with
+      quantities and prices, total amount, incoterm (FOB, CFR, CIF).
+    type: object
+    x-aws-idp-document-type: FACTURA_COMERCIAL
+    required:
+      - numero_factura
+      - termino_negociacion
+    properties:
+      # ─── Campos REQUERIDOS (necesarios para validación en sistema transaccional) ───
+      numero_factura:
+        type: string
+        description: >-
+          Invoice number or reference. Alphanumeric, varies widely in format.
+          Also labeled as: Invoice No., Factura No., Ref., Invoice Number.
+          THIS FIELD IS REQUIRED - the system needs it to match against its records.
+      importador_nombre:
+        type: string
+        description: >-
+          Full legal name of the importer/buyer. May be a company (SAS, LTDA)
+          or a natural person. Also labeled as: Buyer, Consignee, To, Cliente.
+          For IMPO and DTA operations this is REQUIRED.
+          For EXPO operations, look for exportador_nombre instead.
+      exportador_nombre:
+        type: string
+        description: >-
+          Full legal name of the exporter/seller/shipper company.
+          Also labeled as: Seller, Shipper, Beneficiary, From, Exporter.
+          For EXPO operations this is REQUIRED.
+      termino_negociacion:
+        type: string
+        description: >-
+          Trade term (incoterm) code: FOB, CFR, CIF, CIP, EXW, CPT, DAP.
+          Also labeled as: Incoterm, Terms, Trade Terms, Condiciones.
+          Extract only the code without the location.
+          THIS FIELD IS REQUIRED for all operation types.
+      valor_total_usd:
+        type: number
+        description: >-
+          Total invoice value in US dollars.
+          Also labeled as: Total, Grand Total, Amount Due, Total Amount, Valor Total.
+          REQUIRED for EXPO and DTA operations.
+      valor_fob:
+        type: number
+        description: >-
+          FOB value (goods value without freight/insurance).
+          Also labeled as: Subtotal, FOB Value, FOB Amount.
+          REQUIRED for DTA operations to verify FOB is reflected.
+
+      # ─── Campos OPCIONALES (se extraen si están disponibles) ───
+      fecha_emision:
+        type: string
+        description: >-
+          Invoice issue date. Normalize to YYYY-MM-DD.
+      moneda:
+        type: string
+        description: Currency code (typically USD).
+      importador_nit:
+        type: string
+        description: >-
+          Colombian NIT of the importer. Normalize removing dots, keep hyphen
+          and verification digit (e.g., "900541039-2").
+      exportador_pais:
+        type: string
+        description: Country of the exporter (e.g., CHINA, TAIWAN, PANAMA).
+      puerto_embarque:
+        type: string
+        description: Port of loading/shipment.
+      puerto_destino:
+        type: string
+        description: Port of destination/discharge.
+      valor_flete:
+        type: number
+        description: Ocean freight cost (present in CFR and CIF invoices).
+      valor_seguro:
+        type: number
+        description: Insurance cost (present only in CIF invoices).
+      numero_bultos:
+        type: integer
+        description: Total number of packages/cartons/cases.
+      peso_bruto_kg:
+        type: number
+        description: Gross weight in kilograms.
+      items:
+        type: array
+        description: List of line items in the invoice.
+        items:
+          type: object
+          properties:
+            descripcion:
+              type: string
+              description: Product description.
+            cantidad:
+              type: number
+              description: Quantity.
+            unidad_medida:
+              type: string
+              description: Unit of measure (PCS, SET, KG, DOCENA, CTN).
+            valor_unitario:
+              type: number
+              description: Unit price.
+            valor_total_item:
+              type: number
+              description: Total value for this line item.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BILL OF LADING (Conocimiento de Embarque / Documento de Transporte)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - $schema: https://json-schema.org/draft/2020-12/schema
+    description: >-
+      Bill of Lading (B/L) - maritime transport document. May be Master BL
+      (issued by shipping line like Evergreen, CMA CGM, MSC, WAN HAI) or
+      House BL (issued by freight forwarder like Red Cargo, BVT Trade).
+      Common headers: BILL OF LADING, B/L, CONOCIMIENTO DE EMBARQUE, HBL, MBL.
+      Key identifiers: BL number, shipper, consignee, notify party, vessel name,
+      port of loading, port of discharge, container numbers, weight, packages.
+      Used for IMPO and DTA operations only.
+    type: object
+    x-aws-idp-document-type: BILL_OF_LADING
+    required:
+      - bl_number
+      - consignee_nombre
+      - administracion_aduana
+    properties:
+      # ─── Campos REQUERIDOS (necesarios para validación en sistema transaccional) ───
+      bl_number:
+        type: string
+        description: >-
+          Bill of Lading number. Unique identifier.
+          Also labeled as: B/L No., BL Number, Document Number, HBL No., MBL No.
+          THIS FIELD IS REQUIRED - must match doc_transporte_bl in the system.
+      consignee_nombre:
+        type: string
+        description: >-
+          Name of the consignee (receiver of goods). This is the importador
+          or consignatario depending on the operation type.
+          Also labeled as: Consignee, Consigned to, Consignatario, Importador.
+          May be "TO ORDER" for negotiable BLs.
+          THIS FIELD IS REQUIRED - used to verify importador identity.
+      administracion_aduana:
+        type: string
+        description: >-
+          Port of discharge which corresponds to the Administración or Aduana
+          in the transactional system. Extract the destination port name.
+          Also labeled as: Port of Discharge, POD, Puerto de Descarga,
+          Port of Destination, Lugar de Entrega.
+          Examples: BUENAVENTURA, CARTAGENA, BARRANQUILLA, SANTA MARTA.
+          THIS FIELD IS REQUIRED - must match Administración o Aduana in system.
+      endoso:
+        type: object
+        description: >-
+          Endorsement (endoso) information. Look for text blocks containing
+          "endoso", "endosado", "endosar", "se endosa". The endorsement transfers
+          rights from the original consignee to another party. It typically appears
+          as a text block overlaid on the BL with the structure:
+          "Yo [representante], Representante legal de [empresa_original]...
+          Endoso el presente documento BL [numero]... a: [empresa_destino] con NIT: [nit]"
+          May also appear as a stamp or scanned annotation. Can be null if no endorsement.
+        properties:
+          endoso_empresa_destino:
+            type: string
+            description: >-
+              Name of the company/person TO WHOM the BL is endorsed.
+              This is the key field - appears after "a:" in the endorsement text.
+              Examples: "FLEX INDUSTRIAL SAS", "SERVICIOS GRAY MACHINES S.A.S.", "GABILU 360 SAS"
+          endoso_nit_destino:
+            type: string
+            description: >-
+              NIT of the destination company. Normalize removing dots.
+              Appears after "con NIT:" in the endorsement text.
+
+      # ─── Campos OPCIONALES (se extraen si están disponibles) ───
+      tipo_bl:
+        type: string
+        description: >-
+          Type of BL: "MASTER" (shipping line) or "HOUSE" (freight forwarder).
+      fecha_emision:
+        type: string
+        description: Date of issue or "Shipped on Board" date. Normalize to YYYY-MM-DD.
+      shipper_nombre:
+        type: string
+        description: Name of the shipper/exporter.
+      consignee_nit:
+        type: string
+        description: Colombian NIT of the consignee. Normalize removing dots.
+      notify_party_nombre:
+        type: string
+        description: Name of the notify party.
+      vessel_name:
+        type: string
+        description: Name of the vessel/ship.
+      port_of_loading:
+        type: string
+        description: Port where cargo was loaded.
+      contenedores:
+        type: array
+        description: List of containers.
+        items:
+          type: object
+          properties:
+            numero:
+              type: string
+              description: Container number (e.g., FCIU9785189).
+            tipo:
+              type: string
+              description: Container type (e.g., 40HQ, 20GP).
+            seal:
+              type: string
+              description: Seal number.
+      peso_bruto:
+        type: number
+        description: Gross weight of cargo.
+      peso_bruto_unidad:
+        type: string
+        description: Unit of gross weight (KGS, KGM, MTS).
+      numero_bultos:
+        type: integer
+        description: Total number of packages.
+      descripcion_mercancia:
+        type: string
+        description: General description of goods.
+      freight_status:
+        type: string
+        description: Freight payment status (PREPAID or COLLECT).

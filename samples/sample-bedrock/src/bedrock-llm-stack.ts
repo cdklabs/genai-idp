@@ -27,6 +27,7 @@ import { Key } from "aws-cdk-lib/aws-kms";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 import { OptionalAdminUser } from "./optional-admin";
+import * as path from "path";
 
 export class BedrockLlmStack extends Stack {
   constructor(scope: Construct, id: string) {
@@ -176,7 +177,9 @@ export class BedrockLlmStack extends Stack {
     // 4.1   Creating the Bedrock LLM processor that uses Amazon Bedrock foundation models for document processing.
     const processor = new BedrockLlmProcessor(this, "Processor", {
       environment,
-      configuration: BedrockLlmProcessorConfiguration.lendingPackageSample(),
+      configuration: BedrockLlmProcessorConfiguration.fromFile(
+        path.join(__dirname, '../../../sources/config_library/pattern-2/aduacol-customs/config.yaml')
+      ),
     });
 
     // 2.2.  Creating the actual API that will be used by the UI (user interactions) and the processing environment

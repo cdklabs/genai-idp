@@ -4,7 +4,7 @@ import { BedrockLlmStack } from "./bedrock-llm-stack";
 
 const app = new App();
 
-new BedrockLlmStack(app, "GenAI-IDP-Sample-Pattern2");
+new BedrockLlmStack(app, "GenAI-IDP-ADUACOL");
 
 // INFO: clean up all the resources after deletion
 Aspects.of(app).add({
