@@ -80,7 +80,7 @@ extraction:
   temperature: 0
   top_p: 0
   top_k: 5
-  max_tokens: 16000
+  max_tokens: 51200
 
 assessment:
   enabled: true
