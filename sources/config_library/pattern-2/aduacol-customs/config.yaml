@@ -15,7 +15,7 @@ classification:
   top_k: 5
   max_tokens: 4096
   classificationMethod: multimodalPageLevelClassification
-  sectionSplitting: llm_determined
+  sectionSplitting: single_document
   contextPagesCount: 1
 
 extraction:
