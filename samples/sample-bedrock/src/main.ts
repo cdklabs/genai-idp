@@ -1,17 +1,13 @@
 import { App, Aspects, CfnResource, RemovalPolicy } from "aws-cdk-lib";
-import { CfnUserPool } from "aws-cdk-lib/aws-cognito";
-import { BedrockLlmStack } from "./bedrock-llm-stack";
+import { AduacolBackendStack } from "./aduacol-backend-stack";
 
 const app = new App();
 
-new BedrockLlmStack(app, "GenAI-IDP-ADUACOL");
+new AduacolBackendStack(app, "GenAI-IDP-ADUACOL");
 
-// INFO: clean up all the resources after deletion
+// Clean up all the resources after deletion
 Aspects.of(app).add({
   visit(node) {
-    if (node instanceof CfnUserPool) {
-      node.addPropertyOverride("DeletionProtection", "INACTIVE");
-    }
     if (node instanceof CfnResource) {
       node.applyRemovalPolicy(RemovalPolicy.DESTROY);
     }

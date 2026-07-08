@@ -62,3 +62,55 @@ packages/@cdklabs/genai-idp-sagemaker-udop-processor/test/integ/.tmp/
 !/.github/dependabot.yml
 !/.projenrc.ts
 !/.github/workflows/release.yml
+
+# ═══════════════════════════════════════════════════════════════════════
+# ADUACOL — Exclusiones del proyecto
+# El IDP de ADUACOL usa SOLO el backend (pipeline de procesamiento).
+# No se despliega frontend (WebUI, Cognito, AppSync, CloudFront).
+# ═══════════════════════════════════════════════════════════════════════
+
+# --- macOS ---
+.DS_Store
+**/.DS_Store
+
+# --- Samples que NO aplican para ADUACOL ---
+# Solo usamos sample-bedrock (nuestro CDK stack).
+# Los demás son ejemplos del accelerator que no desplegamos.
+samples/sample-sagemaker-udop-rvl-cdip/
+samples/sample-bda-lending/
+
+# --- Config libraries de ejemplo (no son de ADUACOL) ---
+# Solo necesitamos: sources/config_library/pattern-2/aduacol-customs/
+sources/config_library/pattern-1/
+sources/config_library/pattern-2/rvl-cdip/
+sources/config_library/pattern-2/rvl-cdip-with-few-shot-examples/
+sources/config_library/pattern-2/rule-validation/
+sources/config_library/pattern-2/rule-extraction/
+sources/config_library/pattern-2/lending-package-sample/
+sources/config_library/pattern-2/lending-package-sample-govcloud/
+sources/config_library/pattern-2/ocr-benchmark/
+sources/config_library/pattern-2/realkie-fcc-verified/
+sources/config_library/pattern-2/docsplit/
+sources/config_library/pattern-2/bank-statement-sample/
+sources/config_library/pattern-2/healthcare-multisection-package/
+sources/config_library/pattern-3/
+
+# --- Frontend del accelerator (NO se usa en ADUACOL) ---
+# El stack viejo con frontend se conserva como referencia local pero no sube.
+samples/sample-bedrock/src/bedrock-llm-stack.ts
+samples/sample-bedrock/src/optional-admin.ts
+
+# --- Build artifacts ---
+samples/sample-bedrock/cdk.out/
+
+# --- Python cache ---
+__pycache__/
+*.pyc
+
+# --- IDE ---
+.vscode/
+.idea/
+
+# --- Session exports ---
+*.json.bak
+session-*.json
