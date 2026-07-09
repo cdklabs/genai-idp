@@ -2,6 +2,7 @@ notes: >-
   ADUACOL IDP – Extracción de datos de Facturas Comerciales y Bills of Lading.
   Solo extracción. La validación contra el sistema transaccional la hace ADUACOL.
   Soporta operaciones IMPO, EXPO y DTA.
+  Assessment DESHABILITADO: el transaccional valida contra sus propios datos.
 
 ocr:
   backend: textract
@@ -83,19 +84,7 @@ extraction:
   max_tokens: 51200
 
 assessment:
-  enabled: true
-  hitl_enabled: false
-  model: us.amazon.nova-2-lite-v1:0
-  temperature: 0
-  top_p: 0
-  top_k: 5
-  max_tokens: 10000
-  default_confidence_threshold: 0.8
-  granular:
-    enabled: true
-    list_batch_size: 3
-    simple_batch_size: 5
-    max_workers: 10
+  enabled: false
 
 summarization:
   enabled: false
