@@ -1,100 +1,135 @@
-# GenAI IDP Accelerator for AWS CDK
+# ADUACOL IDP – Extracción Inteligente de Documentos Aduaneros
 
-[![Compatible with version: 0.4.16](https://img.shields.io/badge/Compatible%20with-0.4.16-brightgreen)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/releases/tag/v0.4.16)
+Pipeline de extracción automática de datos de **Facturas Comerciales** y **Bills of Lading** para el sistema transaccional de ADUACOL, usando Amazon Bedrock (Claude Haiku 4.5).
 
-A modular AWS CDK implementation of the GenAI Intelligent Document Processing (IDP) Accelerator, designed to transform unstructured documents into structured data at scale using AWS's latest AI/ML services.
+> **Programa:** AWS Bridge | **Cliente:** ADUACOL | **SA:** Homero (AWS) | **Implementación:** 3HTP
 
-## Overview
+---
 
-This project is a representation of the [GenAI Intelligent Document Processing Accelerator](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws) as a set of composable AWS CDK packages, enabling more flexible deployment, customization, and integration options.
+## Qué hace
 
-### Repository Structure
+Recibe PDFs de documentos de comercio exterior, extrae campos estructurados con IA, y entrega un JSON para que el sistema transaccional valide contra sus registros.
 
-#### Packages
-- `@cdklabs/genai-idp` - Core building blocks for document processing infrastructure
-- `@cdklabs/genai-idp-bda-processor` - Pattern 1 implementation using Amazon Bedrock Data Automation
-- `@cdklabs/genai-idp-bedrock-llm-processor` - Pattern 2 implementation for custom extraction using Amazon Bedrock models
-- `@cdklabs/genai-idp-sagemaker-udop-processor` - Pattern 3 implementation for specialized document processing using Sagemaker Endpoint
-
-#### Samples
-- `sample-bda-lending` - Complete Pattern 1 implementation for processing lending documents using Amazon Bedrock Data Automation
-- `sample-bedrock` - Pattern 2 demonstration using custom extraction with Amazon Bedrock foundation models
-- `sample-sagemaker-udop-rvl-cdip` - Pattern 3 implementation using fine-tuned Hugging Face RVL-CDIP model on Amazon SageMaker
-
-
-### Key Features
-
-- **Modular CDK Architecture**: Organized as reusable CDK constructs that can be composed into complete solutions
-- **Multiple Processing Patterns**: Pre-built document processing patterns for different use cases
-- **Serverless Design**: Built on AWS Lambda, Step Functions, SQS, and other serverless technologies
-- **AI-Powered Document Processing**: Leverages Amazon Bedrock, Textract, and other AWS AI services
-- **Web User Interface**: Optional secure web interface for document tracking and management
-- **Document Knowledge Base**: Query processed documents using natural language
-
-## Prerequisites
-
-- [NVM](https://github.com/nvm-sh/nvm) (Node Version Manager)
-- [yarn](https://yarnpkg.com/) for node package management
-- Docker CLI (can be [Docker Desktop](https://docs.docker.com/desktop/) or [Rancher Desktop](https://rancherdesktop.io/))
-- rsync for copying assets to packages
-- [Python](https://www.python.org/) for building Python GenAI IDP distributable packages
-- [.NET SDK](https://dotnet.microsoft.com/en-us/download) for building .NET GenAI IDP distributable packages
-- [AWS CLI](https://aws.amazon.com/cli/) configured with appropriate credentials
-- [AWS CDK CLI](https://docs.aws.amazon.com/cdk/v2/guide/cli.html) (`npm install -g aws-cdk`)
-## Getting Started
-
-### Environment Setup
-
-1. Set up the correct Node.js version using NVM:
-
-```bash
-# Install the required Node.js version specified in .nvmrc
-nvm install
-
-# Use the project's Node.js version
-nvm use
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Sistema Transaccional ADUACOL                               │
+│       │                                                      │
+│       ├── Sube PDF ──→ S3 Input                             │
+│       │                    │                                 │
+│       │              OCR (Textract)                          │
+│       │                    │                                 │
+│       │              Clasificación (Nova 2 Lite)             │
+│       │                    │                                 │
+│       │              Extracción (Claude Haiku 4.5)           │
+│       │                    │                                 │
+│       └── Lee JSON ◄── S3 Output                            │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-2. Install Yarn globally (if not already installed):
+**El IDP solo extrae. La validación cruzada la hace el sistema transaccional.**
 
-```bash
-npm i -g yarn
+---
+
+## Estructura del Repositorio
+
+```
+.
+├── README.md                          ← Este archivo
+├── sources/config_library/pattern-2/
+│   └── aduacol-customs/               ← ⭐ CONFIGURACIÓN ESPECÍFICA DE ADUACOL
+│       ├── config.yaml                 ← Schema, prompts, modelos
+│       ├── aduanas.csv                 ← Tabla Aduana ↔ Código DIAN
+│       ├── incoterms-2020.md           ← Base de conocimiento Incoterms
+│       ├── CHANGELOG-v2.md             ← Historial de cambios
+│       └── README.md                   ← Documentación detallada del config
+├── samples/sample-bedrock/             ← Stack CDK (despliega la infra)
+│   └── src/
+│       └── main.ts                     ← Entry point del stack
+├── packages/@cdklabs/                  ← Constructs del accelerator (no tocar)
+├── sources/                            ← Código fuente Lambdas del pipeline
+└── docs/                               ← Documentación del accelerator upstream
 ```
 
-3. Install project dependencies:
+**Para trabajar en la extracción de ADUACOL, el archivo principal es:**
+`sources/config_library/pattern-2/aduacol-customs/config.yaml`
+
+---
+
+## Quick Start
+
+### Requisitos
+- Node.js 18+ (usar `nvm use`)
+- Docker Desktop corriendo
+- AWS CLI con perfil `3htp-col` (cuenta 183804119221)
+- CDK Bootstrap presente en la cuenta
+
+### Desplegar
 
 ```bash
-yarn install
+cd samples/sample-bedrock
+npx tsc
+npx cdk deploy GenAI-IDP-ADUACOL --profile 3htp-col --region us-east-1 --require-approval never
 ```
 
-### Project Setup
+### Probar un documento
 
-1. Ensure Docker is running and rsync is available
-
-2. (Re)scaffold the project:
 ```bash
-yarn projen
+# Subir
+aws s3 cp factura.pdf s3://<INPUT_BUCKET>/test/factura.pdf --profile 3htp-col
+
+# Esperar ~15-20s y leer resultado
+aws s3 cp s3://<OUTPUT_BUCKET>/test/factura.pdf/sections/1/result.json - --profile 3htp-col
 ```
 
-3. Build the packages:
+### Destruir
+
 ```bash
-yarn build
+cd samples/sample-bedrock
+npx cdk destroy GenAI-IDP-ADUACOL --profile 3htp-col --region us-east-1 --force
 ```
 
-***Note:*** During the first run this might take a while
+---
 
-## License
+## Operaciones Soportadas
 
-This project is licensed under the terms specified in the LICENSE file.
+| Operación | Documentos | Notas |
+|-----------|-----------|-------|
+| **IMPO** (Importación) | Factura + BL | Ambos se procesan |
+| **EXPO** (Exportación) | Solo Factura | No requiere BL |
+| **DTA** (Tránsito Aduanero) | Factura + BL | Usa "consignatario" en BL |
+| **ENDOSO** | BL con endoso | Detecta empresa + NIT destino |
 
-## Contributing
+---
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details on how to get started, development workflow, and coding standards.
+## Modelo y Costos
 
-## Additional Resources
+| Componente | Modelo/Servicio | Costo estimado (500 docs/mes) |
+|------------|----------------|-------------------------------|
+| OCR | Amazon Textract (LAYOUT) | ~$15 |
+| Clasificación | Amazon Nova 2 Lite | <$1 |
+| Extracción | Claude Haiku 4.5 | ~$2.80 |
+| Infraestructura | VPC, Lambda, SQS, DynamoDB, etc. | ~$95 (VPC Endpoints) |
+| **Total** | | **~$136/mes** |
 
-- [Accelerate intelligent document processing with generative AI on AWS blog post](https://aws.amazon.com/blogs/machine-learning/accelerate-intelligent-document-processing-with-generative-ai-on-aws/)
-- [Gen AI Intelligent Document Processing (GenAIIDP)](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws)
-- [AWS CDK Documentation](https://docs.aws.amazon.com/cdk/v2/guide/home.html)
-- [Amazon Bedrock Documentation](https://docs.aws.amazon.com/bedrock/)
-- [Projen Documentation](https://projen.io/)
+---
+
+## Estado Actual (v2 – ago 2026)
+
+| Métrica | Resultado |
+|---------|-----------|
+| Documentos procesados | 60/60 (100%) |
+| Término negociación completo | 94% |
+| Valor total extraído | 100% |
+| Endosos detectados | 3/3 |
+| Velocidad (docs 1 pág) | 5.2s mediana |
+| Limitación | 1 factura de 7 págs con alucinación de items |
+
+Ver detalles completos en [`CHANGELOG-v2.md`](sources/config_library/pattern-2/aduacol-customs/CHANGELOG-v2.md)
+
+---
+
+## Base: GenAI IDP Accelerator
+
+Este repositorio es un fork/customización del [GenAI IDP Accelerator de AWS](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws) (v0.5.9). La documentación del framework base está en la carpeta `docs/` y en el [sitio oficial](https://aws-solutions-library-samples.github.io/accelerated-intelligent-document-processing-on-aws/).
+
+**No modificar** los packages en `packages/@cdklabs/` ni el código fuente en `sources/src/` a menos que sea estrictamente necesario. Los cambios de ADUACOL van en `config.yaml`.
