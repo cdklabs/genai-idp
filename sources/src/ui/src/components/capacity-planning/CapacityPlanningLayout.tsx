@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-/* eslint-disable react/no-unstable-nested-components, react/no-array-index-key */
+/* eslint-disable react/no-array-index-key */
 import React, { useState, useMemo, useEffect } from 'react';
-import { generateClient } from 'aws-amplify/api';
+import { generateClient } from '../../api/client-shim';
 import { calculateCapacity as calculateCapacityOp } from '../../graphql/generated';
 import {
   Container,
@@ -35,7 +35,11 @@ import { parseMetering } from '../../graphql/awsjson-parsers';
 interface Configuration {
   ocr?: { backend?: string; model_id?: string; model?: string };
   classification?: { model?: string };
-  extraction?: { model?: string };
+  extraction?: {
+    model?: string;
+    // v0.6: confidence assessment (model + granular) lives under extraction
+    confidence?: { enabled?: boolean; model?: string; granular?: { enabled?: boolean } };
+  };
   assessment?: { enabled?: boolean; model?: string; granular?: { enabled?: boolean } };
   summarization?: { model?: string };
   classes?: Array<{
@@ -211,7 +215,7 @@ const CapacityPlanningLayout = () => {
       if (activeVersion) {
         const activeVersionOption = versionOptions.find((option) => option.value === activeVersion.versionName);
         if (activeVersionOption) {
-          console.log('Setting selected config version to active:', activeVersionOption.value);
+          console.log('Setting selected configuration profile to active:', activeVersionOption.value);
           setSelectedConfigVersion(activeVersionOption);
           return;
         }
@@ -222,7 +226,6 @@ const CapacityPlanningLayout = () => {
         setSelectedConfigVersion(versionOptions[0]);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [versions, selectedConfigVersion]); // getVersionOptions is not memoized
 
   // Fetch configuration when selected version changes
@@ -232,7 +235,6 @@ const CapacityPlanningLayout = () => {
       console.log('Fetching configuration for version:', selectedConfigVersion.value);
       fetchConfiguration(selectedConfigVersion.value, true); // Use silent=true to avoid showing loading state
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConfigVersion]); // fetchConfiguration is not memoized, so we only depend on selectedConfigVersion
 
   // Auto-populate avgPages from processed documents on component mount
@@ -316,13 +318,16 @@ const CapacityPlanningLayout = () => {
   };
 
   // Check if granular assessment is enabled in configuration
+  // v0.6: confidence enable + granular live under extraction.confidence
+  // (fall back to legacy assessment.* for pre-migration configs).
   const isGranularAssessmentEnabled = () => {
-    // Check if assessment is enabled at all
-    if (configuration?.assessment?.enabled === false) {
+    const confidence = configuration?.extraction?.confidence;
+    // Check if confidence assessment is enabled at all
+    if ((confidence?.enabled ?? configuration?.assessment?.enabled) === false) {
       return false;
     }
     // Check if granular assessment specifically is enabled
-    if (configuration?.assessment?.granular?.enabled === false) {
+    if ((confidence?.granular?.enabled ?? configuration?.assessment?.granular?.enabled) === false) {
       return false;
     }
     // Default to true if not explicitly disabled
@@ -1266,7 +1271,7 @@ const CapacityPlanningLayout = () => {
     setHasCalculated(false);
     try {
       // Fetch the latest configuration before calculating
-      // IMPORTANT: Use the selected config version, not 'default'
+      // IMPORTANT: Use the selected configuration profile, not 'default'
       if (selectedConfigVersion) {
         await fetchConfiguration(selectedConfigVersion.value, true);
       }
@@ -1365,7 +1370,7 @@ const CapacityPlanningLayout = () => {
       const modelConfig = {
         extraction_model: configuration?.extraction?.model,
         classification_model: configuration?.classification?.model,
-        assessment_model: configuration?.assessment?.model,
+        assessment_model: configuration?.extraction?.confidence?.model ?? configuration?.assessment?.model,
         summarization_model: configuration?.summarization?.model,
         ocr_model: configuration?.ocr?.backend === 'bedrock' ? configuration?.ocr?.model_id : null,
       };
@@ -1665,6 +1670,7 @@ const CapacityPlanningLayout = () => {
 
       // Enhanced debugging for empty quota requirements
       if (results.quotaRequirements && Array.isArray(results.quotaRequirements) && results.quotaRequirements.length === 0) {
+        // Intentionally empty: quota requirements may be empty when the backend has no quota data
       }
 
       // Fallback: build quota data from configuration if no quotaRequirements
@@ -1684,7 +1690,7 @@ const CapacityPlanningLayout = () => {
       [
         { id: configuration?.classification?.model, step: 'Classification' },
         { id: configuration?.extraction?.model, step: 'Extraction' },
-        { id: configuration?.assessment?.model, step: 'Assessment' },
+        { id: configuration?.extraction?.confidence?.model ?? configuration?.assessment?.model, step: 'Assessment' },
         { id: configuration?.summarization?.model, step: 'Summarization' },
       ].forEach((model) => {
         if (model.id) models.push(model);
@@ -1914,9 +1920,9 @@ const CapacityPlanningLayout = () => {
     csvContent += `Export Date:,${new Date().toISOString()}\n`;
     csvContent += `Pattern:,${getDeployedPattern().toUpperCase()}\n`;
 
-    // Configuration version information
+    // Configuration profile information
     const currentVersion = versions.find((v) => v.versionName === selectedConfigVersion?.value);
-    csvContent += `Configuration Version:,${selectedConfigVersion?.value || 'Not selected'}\n`;
+    csvContent += `Configuration Profile:,${selectedConfigVersion?.value || 'Not selected'}\n`;
     if (currentVersion?.description) {
       csvContent += `Version Description:,"${currentVersion.description}"\n`;
     }
@@ -1934,7 +1940,7 @@ const CapacityPlanningLayout = () => {
     }
     csvContent += `Classification,"${configuration?.classification?.model || 'Not configured'}"\n`;
     csvContent += `Extraction,"${configuration?.extraction?.model || 'Not configured'}"\n`;
-    csvContent += `Assessment,"${configuration?.assessment?.model || 'Not configured'}"\n`;
+    csvContent += `Assessment,"${(configuration?.extraction?.confidence?.model ?? configuration?.assessment?.model) || 'Not configured'}"\n`;
     csvContent += `Summarization,"${configuration?.summarization?.model || 'Not configured'}"\n`;
     csvContent += '\n';
 
@@ -2040,14 +2046,14 @@ const CapacityPlanningLayout = () => {
           variant="h1"
           actions={
             <SpaceBetween direction="horizontal" size="s">
-              <FormField label="Configuration Version">
+              <FormField label="Configuration Profile">
                 <Select
                   selectedOption={selectedConfigVersion}
                   onChange={({ detail }) => setSelectedConfigVersion(detail.selectedOption as SelectOption)}
                   options={getVersionOptions()}
-                  placeholder={versions.length === 0 ? 'Loading versions...' : 'Select config version'}
+                  placeholder={versions.length === 0 ? 'Loading profiles...' : 'Select configuration profile'}
                   disabled={versions.length === 0}
-                  loadingText="Loading versions..."
+                  loadingText="Loading profiles..."
                 />
               </FormField>
               <Button variant="primary" iconName="download" onClick={exportCapacityPlan}>
@@ -2062,11 +2068,11 @@ const CapacityPlanningLayout = () => {
         {/* Configuration Status Alert */}
         {configuration && (
           <Alert type="success">
-            <strong>✓</strong> Using configuration version: <Badge color="green">{selectedConfigVersion?.value || 'default'}</Badge>
+            <strong>✓</strong> Using configuration profile: <Badge color="green">{selectedConfigVersion?.value || 'default'}</Badge>
             {selectedConfigVersion?.label?.includes('Active') && <Badge color="blue">Active</Badge>}
             <Box margin={{ top: 'xs' }}>
               Token calculations and processing times are loaded from your pattern configuration. Update models in{' '}
-              <strong>View/Edit Configuration</strong> to see changes reflected immediately, or select a different configuration version
+              <strong>View/Edit Configuration</strong> to see changes reflected immediately, or select a different configuration profile
               above.
             </Box>
           </Alert>
@@ -2253,7 +2259,7 @@ const CapacityPlanningLayout = () => {
                     <div>
                       <div>Assessment</div>
                       <div style={{ fontSize: '0.8em', color: '#2f3b4a', fontWeight: 'normal' }}>
-                        Model: {configuration?.assessment?.model || 'Not configured'}
+                        Model: {(configuration?.extraction?.confidence?.model ?? configuration?.assessment?.model) || 'Not configured'}
                       </div>
                     </div>
                   ),
@@ -2485,7 +2491,7 @@ const CapacityPlanningLayout = () => {
                   header: 'Processing Hours',
                   cell: (item) => (
                     <Select
-                      selectedOption={item.hour ? timeSlotOptions.find((opt) => opt.value === item.hour) ?? null : null}
+                      selectedOption={item.hour ? (timeSlotOptions.find((opt) => opt.value === item.hour) ?? null) : null}
                       onChange={({ detail }) => updateTimeSlot(item.index, 'hour', detail.selectedOption.value ?? '')}
                       options={timeSlotOptions}
                       placeholder="Select processing hour"
@@ -2500,9 +2506,9 @@ const CapacityPlanningLayout = () => {
                     <Select
                       selectedOption={
                         item.documentType && item.documentType !== ''
-                          ? scheduleDocumentTypeOptions.find(
+                          ? (scheduleDocumentTypeOptions.find(
                               (opt) => opt.value === item.documentType && !(opt as { disabled?: boolean }).disabled,
-                            ) ?? null
+                            ) ?? null)
                           : null
                       }
                       onChange={({ detail }) => updateTimeSlot(item.index, 'documentType', detail.selectedOption.value ?? '')}
@@ -2729,7 +2735,7 @@ const CapacityPlanningLayout = () => {
           loading={loading}
           disabled={!selectedConfigVersion || !configuration}
         >
-          {!selectedConfigVersion ? 'Loading configuration version...' : 'Calculate Capacity Requirements'}
+          {!selectedConfigVersion ? 'Loading configuration profile...' : 'Calculate Capacity Requirements'}
         </Button>
 
         {results?.success === false && results?.metrics && (
@@ -3534,7 +3540,7 @@ const CapacityPlanningLayout = () => {
                           <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
                             <div>
                               Peak: {String(peakHour.hour).padStart(2, '0')}:00-
-                              {/* eslint-disable-next-line max-len */}
+                              {}
                               {String(peakHour.hour + 1).padStart(2, '0')}:00 ({peakHour.totalTokens.toLocaleString()} tokens)
                             </div>
                             <div>

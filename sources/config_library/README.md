@@ -105,7 +105,6 @@ config_library/
 │   ├── lending-package-sample-govcloud/
 │   ├── ocr-benchmark/
 │   ├── realkie-fcc-verified/
-│   ├── rule-extraction/
 │   ├── rule-validation/
 │   ├── rvl-cdip/
 │   └── rvl-cdip-with-few-shot-examples/
@@ -159,9 +158,9 @@ To add few-shot examples to your configuration:
 
 1. **Create example images**: Collect clear, representative document images for each class
 2. **Define examples**: Add `x-aws-idp-examples` to each class with:
-   - `classPrompt`: Text describing the document class
-   - `attributesPrompt`: Expected attribute extraction in JSON format  
-   - `imagePath`: Path to the example document image
+   - `x-aws-idp-class-prompt`: Text describing the document class
+   - `x-aws-idp-attributes-prompt`: Expected attribute extraction in JSON format  
+   - `x-aws-idp-image-path`: Path to the example document image
    - `name`: Descriptive name for the example
 3. **Update prompts**: Ensure task prompts include `{FEW_SHOT_EXAMPLES}` placeholder
 4. **Test thoroughly**: Validate that examples improve accuracy
@@ -172,6 +171,24 @@ To add few-shot examples to your configuration:
 - Use hyphens to separate words in directory names
 - Choose descriptive names that reflect the use case (e.g., `lending-package-sample`, `bank-statement-sample`)
 - Keep names concise but informative
+
+## Sample Documents and the Samples Manifest
+
+The repository's top-level `samples/` directory holds example documents (single files and batch subdirectories such as `w2/`). At publish time the build:
+
+1. Scans `samples/` and generates `config_library/samples-manifest.json` — a machine-readable index of each sample (`id`, `name`, `description`, `s3Key`, `kind`, `fileCount`, and `configId`).
+2. Uploads the curated sample binaries to the artifacts bucket and, at deploy time, copies both the manifest and the binaries into the stack's ConfigurationBucket under `samples/`.
+
+The web UI reads the manifest to let users browse and process bundled samples directly (see [web-ui.md](../docs/web-ui.md#upload-documents)).
+
+### Associating a sample with a configuration (`configId`)
+
+`configId` links a sample to the `config_library/unified` preset it is designed for, so the UI can offer to import and use that configuration when the sample is launched. It is resolved at publish time (see `_SAMPLE_OVERRIDES` and `_sample_config_id` in `lib/idp_sdk/idp_sdk/_core/publish.py`) by:
+
+1. An explicit entry in the curated overrides table, or
+2. A folder-name convention — if `config_library/unified/<sample-id>/` exists, that preset is used automatically.
+
+To associate a new sample with a config, either name the sample to match its config folder, or add an override entry. Samples with no match get `configId: null` and upload under the currently selected configuration version.
 
 ## Best Practices
 
@@ -186,7 +203,7 @@ To add few-shot examples to your configuration:
 
 - **Quality Examples**: Use clear, representative examples of each document type
 - **Diverse Examples**: Include examples that cover edge cases and variations
-- **Accurate Labels**: Ensure `attributesPrompt` values are correct and consistent
+- **Accurate Labels**: Ensure `x-aws-idp-attributes-prompt` values are correct and consistent
 - **Image Quality**: Use high-resolution, clear images for examples
 - **Balanced Coverage**: Provide examples for your most important document classes
 
@@ -204,11 +221,52 @@ To add few-shot examples to your configuration:
 - Consider cost vs. performance tradeoffs
 - Document the rationale for model selection
 
+### Agentic Extraction with Table Parsing (Optional)
+
+For documents with extensive tabular data, consider enabling agentic extraction with table parsing:
+
+```yaml
+extraction:
+  model: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+  agentic:
+    enabled: true
+    table_parsing:
+      enabled: true  # Deterministic Markdown table parser
+      max_empty_line_gap: 3  # Tolerate OCR page breaks (0-10)
+      auto_merge_adjacent_tables: true  # Merge table fragments
+      min_confidence_threshold: 95.0  # OCR confidence target
+      min_parse_success_rate: 0.90  # Quality threshold
+      lazy_images: true  # Skip pre-loading page images when the table parse
+                         # succeeds (text-driven tool; view_image on demand).
+                         # Big cost saver on multi-page docs. false = always
+                         # attach images (image-dependent corpora).
+```
+
+**When to use**:
+- Documents with large tables (100+ rows)
+- Bank statements, transaction logs, inventory lists
+- Multi-page tables that may split across pages
+- High accuracy requirements for tabular data
+
+**Benefits**:
+- Dramatically improves completeness (handles OCR artifacts)
+- Faster and more accurate than LLM-only extraction for tables
+- Reduces token costs for large tables
+- Provides quality metrics and warnings
+
+**Tuning**:
+- **High-quality OCR**: `max_empty_line_gap: 2`
+- **Standard quality**: `max_empty_line_gap: 3` (default)
+- **Complex/noisy documents**: `max_empty_line_gap: 5-7`
+
+See `lib/idp_common_pkg/idp_common/extraction/README.md` for detailed documentation.
+
 ### Configuration Management
 
 - Document all significant overrides in your README
 - Include version information when applicable
 - Note any dependencies or requirements
+- Document table parsing configuration if enabled
 
 ## Contributing
 

@@ -25,7 +25,6 @@ def __getattr__(name):
         "bedrock",
         "s3",
         "dynamodb",
-        "appsync",
         "docs_service",
         "metrics",
         "image",
@@ -51,6 +50,10 @@ def __getattr__(name):
         return config.get_config
 
     # Special handling for directly exposed classes
+    if name == "IDPConfig":
+        config = __getattr__("config")
+        return config.models.IDPConfig
+
     if name in ["Document", "Page", "Section", "Status"]:
         models = __getattr__("models")
         return getattr(models, name)
@@ -62,7 +65,6 @@ __all__ = [
     "bedrock",
     "s3",
     "dynamodb",
-    "appsync",
     "docs_service",
     "metrics",
     "image",

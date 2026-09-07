@@ -37,7 +37,7 @@ opensource-codeofconduct@amazon.com with any additional questions or comments.
    - Bash shell (Linux, MacOS)
    - AWS CLI
    - AWS SAM CLI
-   - Python 3.11 or later
+   - Python 3.12 or later
    - Docker
 
 2. **Fork and Clone the Repository**:
@@ -121,39 +121,51 @@ Familiarize yourself with the project structure:
 
 The project uses `make` to simplify common development tasks. Run `make` or `make all` to execute the default lint and test workflow.
 
+> **Tip:** Run `make help` to see a quick reference of all available targets with descriptions, organized by category.
+
 ### Setup & Dependencies
 
 | Command | Description |
 |---------|-------------|
-| `make setup` | Install `idp-cli` and `idp_common` packages in development mode |
+| `make setup` | Install all packages into your current Python environment (no venv) |
+| `make setup-venv` | Create `.venv` virtual environment and install all packages into it |
 
 ### Code Quality
 
 | Command | Description |
 |---------|-------------|
-| `make lint` | Run all linting: ruff, formatting, ARN partition checks, buildspec validation, UI lint |
+| `make lint` | Run all linting: ruff, formatting, ARN partition checks, buildspec validation, UI lint, codegen check |
 | `make fastlint` | Quick lint without UI checks |
 | `make ruff-lint` | Run ruff linting with auto-fix |
 | `make format` | Format Python code with ruff |
-| `make typecheck` | Run type checking with basedpyright |
-| `make typecheck-stats` | Type checking with detailed statistics |
-| `make typecheck-pr` | Type check only files changed in current PR (vs main branch) |
-| `make lint-cicd` | CI/CD version - checks only, no modifications |
-| `make check-arn-partitions` | Verify CloudFormation templates use `${AWS::Partition}` for GovCloud compatibility |
-| `make validate-buildspec` | Validate CodeBuild buildspec files |
+| `make lint-cicd` | CI/CD version — checks only, no modifications |
+| `make validate-buildspec` | Validate AWS CodeBuild buildspec files |
+| `make check-arn-partitions` | Check CloudFormation templates for hardcoded ARN partitions (GovCloud compatibility) |
+
+### Type Checking
+
+| Command | Description |
+|---------|-------------|
+| `make typecheck` | Run type checks with basedpyright |
+| `make typecheck-stats` | Type checks with detailed statistics |
+| `make typecheck-pr` | Type check only files changed vs `TARGET_BRANCH` (default: `main`) |
 
 ### Testing
 
 | Command | Description |
 |---------|-------------|
-| `make test` | Run tests for `idp_common_pkg` and `idp_cli` |
-| `make all` | Run both lint and test (default target) |
+| `make all` | Run lint + test (default target) |
+| `make test` | Run all tests (idp_common, cli, sdk, capacity, config library) |
+| `make test-cli` | Run only IDP CLI tests |
+| `make test-config-library` | Run only config library validation tests |
+| `make test-capacity` | Run only capacity planning tests |
+| `make test-capacity-coverage` | Run capacity planning tests with coverage report |
 
 ### UI Development
 
 | Command | Description |
 |---------|-------------|
-| `make ui-start` | Start UI dev server. Use `STACK_NAME=<name>` to auto-generate `.env` from stack outputs |
+| `make ui-start` | Start UI dev server (requires `STACK_NAME` for `.env` generation from stack outputs) |
 | `make ui-lint` | Run UI linting with checksum caching (skips if unchanged) |
 | `make ui-build` | Build UI for production |
 
@@ -162,21 +174,44 @@ The project uses `make` to simplify common development tasks. Run `make` or `mak
 make ui-start STACK_NAME=my-idp-stack
 ```
 
+### Code Generation
+
+| Command | Description |
+|---------|-------------|
+| `make codegen` | Regenerate GraphQL types and operations |
+| `make codegen-check` | Verify GraphQL codegen output is up-to-date |
+| `make classes-from-bda` | Generate standard class catalog from BDA standard blueprints |
+
 ### Git Workflow
 
 | Command | Description |
 |---------|-------------|
-| `make commit` | Run lint+test, auto-generate commit message, commit and push |
-| `make fastcommit` | Fast lint only, auto-generate commit message, commit and push |
+| `make commit` | Lint, test, auto-generate commit message, commit, and push |
+| `make fastcommit` | Fast lint only, auto-generate commit message, commit, and push |
 
-### Security (DSR)
+### Version Management
 
 | Command | Description |
 |---------|-------------|
-| `make dsr` | Run DSR security scan (sets up if needed), optionally run fix |
-| `make dsr-setup` | Set up DSR tool |
-| `make dsr-scan` | Run DSR security scan |
-| `make dsr-fix` | Run DSR interactive fix |
+| `make version V=x.y.z` | Update version across all packages (PEP 440 validated) |
+
+### Documentation
+
+| Command | Description |
+|---------|-------------|
+| `make docs` | Build and serve the documentation site locally |
+| `make docs-setup` | One-time docs site setup (symlinks + npm install) |
+| `make docs-build` | Build documentation site (no serve) |
+| `make docs-deploy` | Deploy docs to GitHub Pages (from local build) |
+
+### Security (SRT)
+
+| Command | Description |
+|---------|-------------|
+| `make srt` | Run full SRT workflow (setup → scan → optional fix) |
+| `make srt-setup` | Download and configure SRT tool |
+| `make srt-scan` | Run SRT security assessment |
+| `make srt-fix` | Run SRT interactive fix |
 
 ## Coding Standards
 
@@ -215,8 +250,8 @@ We welcome you to use the GitHub issue tracker to report bugs or suggest feature
 
 We provide issue templates to make this process easier:
 
-- [Bug Report Template](/.github/ISSUE_TEMPLATE/bug_report.md) - Use this template when reporting a bug
-- [Feature Request Template](/.github/ISSUE_TEMPLATE/feature_request.md) - Use this template when suggesting new functionality
+- [Bug Report Template](/.github/ISSUE_TEMPLATE/bug_report.yml) - Use this template when reporting a bug
+- [Feature Request Template](/.github/ISSUE_TEMPLATE/feature_request.yml) - Use this template when suggesting new functionality
 
 When filing an issue, please check existing open, or recently closed, issues to make sure somebody else hasn't already
 reported the issue. Please try to include as much information as you can. Details like these are incredibly useful:

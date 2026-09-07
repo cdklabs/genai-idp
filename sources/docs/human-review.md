@@ -38,6 +38,10 @@ https://github.com/user-attachments/assets/0bf14b62-99dc-4538-a015-d8b89fa2f1f0
 **Key Features:**
 - Built-in review portal within the GenAI-IDP Web UI
 - Role-based access control with Admin and Reviewer personas
+- `Annotator` can also reach `claimReview`, `releaseReview` and
+  `completeSectionReview`, but only for documents belonging to a test set in its
+  `allowedTestSets` — production review documents (those with no `TestSetId`) are
+  refused. `skipAllSectionsReview` stays Admin/Reviewer. See [rbac.md](rbac.md).
 - Review ownership model - reviewers claim documents before editing
 - Section-by-section review workflow
 - Visual editor for viewing and correcting extracted data
@@ -50,7 +54,7 @@ The HITL system operates independently from the document processing workflow:
 - **Built-in Review Portal**: Web interface integrated into the GenAI-IDP UI for validation and correction
 - **User Management**: Cognito-based authentication with role-based access control
 - **Section Review Tracking**: DynamoDB-based tracking of review progress per document section
-- **Decoupled Design**: HITL operations update document status directly without triggering reprocessing
+- **Decoupled Design**: Per-section review actions update tracking status directly; when the final pending section is resolved (completed or skipped), the document is finalized and downstream reprocessing (Summarization/Evaluation) is triggered automatically
 
 ### Review Flow
 
@@ -192,7 +196,7 @@ Admins have additional capabilities:
 - **Skip All Reviews**: Click **Skip All Reviews** to mark all pending sections as skipped
   - Document status changes to **Review Skipped**
   - The **Review Completed By** field records the admin who skipped
-  - No reprocessing is triggered
+  - Downstream reprocessing (Summarization/Evaluation) is triggered automatically — consistent with completing all sections — which also fires the optional post-processing Lambda hook (`PostProcessingLambdaHookFunctionArn`) on workflow completion
   
 - **Release Any Review**: Admins can release reviews owned by other users
 
@@ -204,7 +208,7 @@ When all sections are reviewed or skipped:
 - **Review Completed By** field records who completed/skipped the review
 - Review history is recorded with reviewer information and timestamps
 
-**Note:** Completing or skipping reviews does not automatically trigger document reprocessing. Use the **Reprocess** button if you need to re-run summarization or evaluation with the corrected data.
+**Note:** Finalizing reviews — either completing the last pending section or using **Skip All Reviews** — automatically triggers document reprocessing to re-run Summarization/Evaluation and fire the optional post-processing Lambda hook on workflow completion. Use the **Reprocess** button if you later edit data and need to re-run those steps again.
 
 ## Configuration
 
@@ -293,7 +297,7 @@ The visual editor provides a comprehensive review experience with a modern tabbe
 - Section filtering with multiselect dropdown to focus on specific sections
 - Full JSON validation before saving
 
-**Revision History Tab**
+**Edit history Tab**
 - Complete audit trail of all edits to the document
 - Timestamps showing when edits were made
 - Reviewer identification showing who made each change

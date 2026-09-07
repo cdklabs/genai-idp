@@ -8,6 +8,7 @@ Unit tests for Stack operations (mocked).
 from unittest.mock import Mock, patch
 
 import pytest
+
 from idp_sdk import IDPClient
 
 
@@ -16,7 +17,7 @@ from idp_sdk import IDPClient
 class TestStackOperationsMocked:
     """Test stack operations with mocked AWS calls."""
 
-    @patch("idp_sdk.core.stack.StackDeployer")
+    @patch("idp_sdk._core.stack.StackDeployer")
     def test_deploy_stack(self, mock_deployer):
         """Test stack deployment."""
         # Setup mock
@@ -40,7 +41,7 @@ class TestStackOperationsMocked:
         assert result.operation == "CREATE"
         assert result.stack_name == "test-stack"
 
-    @patch("idp_sdk.core.stack.StackDeployer")
+    @patch("idp_sdk._core.stack.StackDeployer")
     def test_delete_stack(self, mock_deployer):
         """Test stack deletion."""
         # Setup mock

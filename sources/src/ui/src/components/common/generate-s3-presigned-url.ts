@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-import { HttpRequest } from '@aws-sdk/protocol-http';
+import { HttpRequest } from '@smithy/protocol-http';
 import { S3RequestPresigner } from '@aws-sdk/s3-request-presigner';
-import { parseUrl } from '@aws-sdk/url-parser';
+import { parseUrl } from '@smithy/url-parser';
 import { Sha256 } from '@aws-crypto/sha256-browser';
 import { formatUrl } from '@aws-sdk/util-format-url';
 import { ConsoleLogger } from 'aws-amplify/utils';
@@ -16,6 +16,11 @@ interface S3ParsedUrl {
 
 interface PresignedUrlOptions {
   forceInline?: boolean;
+  /**
+   * S3 object VersionId. When set, the presigned URL targets that specific
+   * object version (used to view a past document version's page images).
+   */
+  versionId?: string;
 }
 
 const parseS3Url = (s3Url: string): S3ParsedUrl | null => {
@@ -76,10 +81,21 @@ const generateS3PresignedUrl = async (
     // Extract region from env
     const region = import.meta.env.VITE_AWS_REGION;
 
+    // S3-safe URI encoding that handles characters encodeURIComponent doesn't encode.
+    // AWS SigV4 requires !, ', (, ), * to be percent-encoded but encodeURIComponent treats
+    // them as unreserved. Without this, filenames like "doc(1).pdf" produce signature mismatches.
+    const s3EncodeSegment = (segment: string): string =>
+      encodeURIComponent(segment)
+        .replace(/!/g, '%21')
+        .replace(/'/g, '%27')
+        .replace(/\(/g, '%28')
+        .replace(/\)/g, '%29')
+        .replace(/\*/g, '%2A');
+
     // Construct the canonical S3 URL with properly encoded key
     const encodedKey = key
       .split('/')
-      .map((segment) => encodeURIComponent(segment))
+      .map((segment) => s3EncodeSegment(segment))
       .join('/');
     const newUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${encodedKey}`;
 
@@ -99,6 +115,14 @@ const generateS3PresignedUrl = async (
       if (fileExtension === 'pdf') {
         s3ObjectUrl.query['response-content-type'] = 'application/pdf';
       }
+    }
+
+    // Pin a specific object version (document version history). versionId is a
+    // request parameter S3 accepts and SigV4 signs, so the presigned URL
+    // resolves to that exact version even after the object is overwritten.
+    if (options.versionId && options.versionId !== 'null') {
+      s3ObjectUrl.query = s3ObjectUrl.query || {};
+      s3ObjectUrl.query.versionId = options.versionId;
     }
 
     logger.debug('Canonical URL:', newUrl);

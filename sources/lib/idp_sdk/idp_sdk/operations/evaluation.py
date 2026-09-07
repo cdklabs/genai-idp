@@ -10,6 +10,7 @@ from idp_sdk.models import (
     EvaluationBaselineListResult,
     EvaluationMetrics,
     EvaluationReport,
+    UseAsBaselineResult,
 )
 
 
@@ -39,7 +40,7 @@ class EvaluationOperation:
         Returns:
             Dictionary with baseline creation result
         """
-        from idp_sdk.core.evaluation_processor import EvaluationProcessor
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
 
         name = self._client._require_stack(stack_name)
 
@@ -52,6 +53,53 @@ class EvaluationOperation:
             )
         except Exception as e:
             raise IDPProcessingError(f"Failed to create baseline: {e}") from e
+
+    def use_as_baseline(
+        self,
+        document_id: str,
+        stack_name: Optional[str] = None,
+        **kwargs,
+    ) -> UseAsBaselineResult:
+        """Promote a processed document's output to the evaluation baseline.
+
+        Programmatic equivalent of the UI "Use as Evaluation Baseline" button:
+        copies every object under the document's output prefix into the
+        evaluation baseline bucket and updates the document's ``EvaluationStatus``
+        to ``BASELINE_AVAILABLE``. Runs synchronously (returns when the copy is
+        complete), so it can be scripted and its result checked directly.
+
+        Args:
+            document_id: Document identifier (S3 key / object key)
+            stack_name: Optional stack name override
+            **kwargs: Additional parameters
+
+        Returns:
+            UseAsBaselineResult with the number of files copied and final status
+
+        Raises:
+            IDPResourceNotFoundError: If no output exists for the document
+            IDPProcessingError: If the copy fails
+        """
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
+
+        name = self._client._require_stack(stack_name)
+
+        try:
+            processor = EvaluationProcessor(
+                stack_name=name, region=self._client._region
+            )
+            result = processor.use_as_baseline(document_id=document_id)
+
+            return UseAsBaselineResult(
+                document_id=result["document_id"],
+                files_copied=result["files_copied"],
+                evaluation_status=result["evaluation_status"],
+                timestamp=result.get("timestamp"),
+            )
+        except FileNotFoundError as e:
+            raise IDPResourceNotFoundError(str(e)) from e
+        except Exception as e:
+            raise IDPProcessingError(f"Failed to use document as baseline: {e}") from e
 
     def get_report(
         self,
@@ -71,7 +119,7 @@ class EvaluationOperation:
         Returns:
             EvaluationReport with accuracy and field results
         """
-        from idp_sdk.core.evaluation_processor import EvaluationProcessor
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
 
         name = self._client._require_stack(stack_name)
 
@@ -117,7 +165,7 @@ class EvaluationOperation:
         Returns:
             EvaluationMetrics with aggregated statistics
         """
-        from idp_sdk.core.evaluation_processor import EvaluationProcessor
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
 
         name = self._client._require_stack(stack_name)
 
@@ -158,7 +206,7 @@ class EvaluationOperation:
         Returns:
             EvaluationBaselineListResult with baselines and optional next_token
         """
-        from idp_sdk.core.evaluation_processor import EvaluationProcessor
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
 
         name = self._client._require_stack(stack_name)
 
@@ -192,7 +240,7 @@ class EvaluationOperation:
         Returns:
             Dictionary with deletion result
         """
-        from idp_sdk.core.evaluation_processor import EvaluationProcessor
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
 
         name = self._client._require_stack(stack_name)
 

@@ -29,7 +29,7 @@ SPDX-License-Identifier: MIT-0
 - **DynamoDB**: Tracking and concurrency management
 - **CloudWatch**: Comprehensive monitoring and logging
 - **Web UI**: Browser-based interface for document management and visualization
-  - CloudFront distribution for global availability
+  - CloudFront distribution for global availability (default), or API Gateway for VPC-based hosting (see [API Gateway Hosting](./apigateway-hosting.md))
   - Cognito user authentication
   - GraphQL API for UI-backend interactions
 - **Evaluation**: Document processing accuracy assessment system
@@ -69,7 +69,7 @@ The main template handles all pattern-agnostic resources and infrastructure:
 - CloudWatch Alarms and Dashboard
 - SNS Topics for Alerts
 - Web UI Infrastructure:
-  - CloudFront Distribution
+  - CloudFront Distribution (default) or API Gateway ([API Gateway Hosting](./apigateway-hosting.md))
   - S3 Bucket for static web assets
   - CodeBuild project for UI deployment
 - Authentication:
@@ -149,8 +149,8 @@ For detailed information about the Web UI, its features, and usage, see [web-ui.
    - Optional self-signup can be enabled with domain restrictions
    - Identity pools provide secure, temporary AWS credentials
 
-2. **Content Delivery**: CloudFront distribution serves the static web assets
-   - Global availability and low latency
+- **Content Delivery**: CloudFront distribution serves the static web assets (default), or API Gateway (as an S3 proxy on the existing REST API) for VPC-based hosting (see [API Gateway Hosting](./apigateway-hosting.md))
+   - Global availability and low latency (CloudFront) or private network access (API Gateway with `ApiGatewayVisibility=PRIVATE`)
    - WAF integration for added security (optional)
    - Geographical restrictions can be applied
 
@@ -208,6 +208,7 @@ The solution supports optional Amazon Bedrock Guardrails integration:
 
 - Define content boundaries for Bedrock model outputs
 - Apply guardrails to all Bedrock model interactions across all patterns
+- Support for all Guardrail policy types, including content filters, topic restrictions, PII detection, and [Automated Reasoning Checks](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning.html) for formal verification of model outputs
 - Support for both DRAFT and versioned guardrails
 - Configuration parameters:
   - `BedrockGuardrailId` - ID of an existing Bedrock Guardrail
@@ -236,5 +237,5 @@ For comprehensive implementation guidance, use cases, and code examples, see [po
 ## Additional Documentation
 
 - [classification.md](./classification.md) - Details on document classification capabilities
-- [extraction.md](./extraction.md) - Details on data extraction capabilities
+- [extraction-and-confidence.md](./extraction-and-confidence.md) - Details on data extraction, confidence, and geometry capabilities
 - [troubleshooting.md](./troubleshooting.md) - Troubleshooting guidance and common issues

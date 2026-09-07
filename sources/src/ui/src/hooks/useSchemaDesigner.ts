@@ -2,10 +2,18 @@ import { useState, useCallback, useEffect } from 'react';
 import { produce } from 'immer';
 import {
   X_AWS_IDP_DOCUMENT_TYPE,
-  X_AWS_IDP_RULE_TYPE,
+  X_AWS_IDP_POLICY_TYPE,
   X_AWS_IDP_EXAMPLES,
   X_AWS_IDP_DOCUMENT_NAME_REGEX,
   X_AWS_IDP_PAGE_CONTENT_REGEX,
+  X_AWS_IDP_EXTRACTION_MODEL,
+  X_AWS_IDP_EXTRACTION_ESCALATION_MODEL,
+  X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT,
+  X_AWS_IDP_EXTRACTION_TASK_PROMPT,
+  X_AWS_IDP_EXCLUDE_FROM_PROCESSING,
+  X_AWS_IDP_EXCLUSION_REASON,
+  X_AWS_IDP_INSTANCE_ARRAY,
+  X_AWS_IDP_MULTI_INSTANCE,
 } from '../constants/schemaConstants';
 
 interface JsonSchemaProperty {
@@ -63,13 +71,29 @@ interface UseSchemaDesignerReturn {
   renameAttribute: (classId: string, oldName: string, newName: string) => boolean;
   removeAttribute: (classId: string, attributeName: string) => void;
   reorderAttributes: (classId: string, oldIndex: number, newIndex: number) => void;
-  exportSchema: () => JsonSchemaProperty[] | null;
+  exportSchema: (classNameFilter?: string[]) => JsonSchemaProperty[] | null;
   importSchema: (importedClasses: SchemaClass[]) => void;
   resetDirty: () => void;
   getSelectedClass: () => SchemaClass | undefined;
   getSelectedAttribute: () => JsonSchemaProperty | undefined;
   clearAllClasses: () => void;
 }
+
+/**
+ * Extract a human-readable name from a JSON Schema $id field.
+ * If $id is a URL (e.g., "https://schema.example.com/BankCheck"), returns the last path segment ("BankCheck").
+ * If $id is already a simple name, returns it as-is.
+ * Returns undefined if $id is falsy.
+ */
+const extractNameFromId = (id: string | undefined): string | undefined => {
+  if (!id) return undefined;
+  // If it looks like a URL, extract the last path segment
+  if (id.includes('://') || id.startsWith('/')) {
+    const segments = id.split('/').filter(Boolean);
+    return segments.length > 0 ? segments[segments.length - 1] : id;
+  }
+  return id;
+};
 
 const extractInlineObjectsToClasses = (
   properties: Record<string, JsonSchemaProperty>,
@@ -195,7 +219,11 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
       // Convert root schema to document type class
       const docTypeClass: SchemaClass = {
         id: `class-${timestamp}-doc-${schemaIndex}`,
-        name: (schema.$id as string) || (schema[X_AWS_IDP_DOCUMENT_TYPE] as string) || `DocumentType${schemaIndex + 1}`,
+        name:
+          (schema.title as string) ||
+          extractNameFromId(schema.$id as string) ||
+          (schema[X_AWS_IDP_DOCUMENT_TYPE] as string) ||
+          `DocumentType${schemaIndex + 1}`,
         description: schema.description,
         [X_AWS_IDP_DOCUMENT_TYPE]: true,
         attributes: {
@@ -208,6 +236,26 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
         // Preserve regex fields if they exist in the schema
         ...(schema[X_AWS_IDP_DOCUMENT_NAME_REGEX] ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: schema[X_AWS_IDP_DOCUMENT_NAME_REGEX] } : {}),
         ...(schema[X_AWS_IDP_PAGE_CONTENT_REGEX] ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: schema[X_AWS_IDP_PAGE_CONTENT_REGEX] } : {}),
+        // Preserve extraction model override if it exists in the schema
+        ...(schema[X_AWS_IDP_EXTRACTION_MODEL] ? { [X_AWS_IDP_EXTRACTION_MODEL]: schema[X_AWS_IDP_EXTRACTION_MODEL] } : {}),
+        // Preserve escalation model override if it exists in the schema
+        ...(schema[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]
+          ? { [X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]: schema[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL] }
+          : {}),
+        // Preserve extraction prompt overrides if they exist in the schema
+        ...(schema[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]
+          ? { [X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]: schema[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT] }
+          : {}),
+        ...(schema[X_AWS_IDP_EXTRACTION_TASK_PROMPT]
+          ? { [X_AWS_IDP_EXTRACTION_TASK_PROMPT]: schema[X_AWS_IDP_EXTRACTION_TASK_PROMPT] }
+          : {}),
+        // Preserve excluded-class flags if they exist in the schema
+        ...(schema[X_AWS_IDP_EXCLUDE_FROM_PROCESSING]
+          ? { [X_AWS_IDP_EXCLUDE_FROM_PROCESSING]: schema[X_AWS_IDP_EXCLUDE_FROM_PROCESSING] }
+          : {}),
+        ...(schema[X_AWS_IDP_EXCLUSION_REASON] ? { [X_AWS_IDP_EXCLUSION_REASON]: schema[X_AWS_IDP_EXCLUSION_REASON] } : {}),
+        ...(schema[X_AWS_IDP_INSTANCE_ARRAY] ? { [X_AWS_IDP_INSTANCE_ARRAY]: schema[X_AWS_IDP_INSTANCE_ARRAY] } : {}),
+        ...(schema[X_AWS_IDP_MULTI_INSTANCE] ? { [X_AWS_IDP_MULTI_INSTANCE]: schema[X_AWS_IDP_MULTI_INSTANCE] } : {}),
       };
       allClasses.push(docTypeClass);
 
@@ -263,7 +311,7 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
   const mainClassId = `class-${timestamp}`;
   const mainClass: SchemaClass = {
     id: mainClassId,
-    name: jsonSchema.$id || 'MainClass',
+    name: (jsonSchema.title as string) || extractNameFromId(jsonSchema.$id as string) || 'MainClass',
     description: jsonSchema.description,
     [X_AWS_IDP_DOCUMENT_TYPE]: true, // Mark as document type for backward compat
     attributes: {
@@ -276,6 +324,26 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
     // Preserve regex fields if they exist in the schema
     ...(jsonSchema[X_AWS_IDP_DOCUMENT_NAME_REGEX] ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: jsonSchema[X_AWS_IDP_DOCUMENT_NAME_REGEX] } : {}),
     ...(jsonSchema[X_AWS_IDP_PAGE_CONTENT_REGEX] ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: jsonSchema[X_AWS_IDP_PAGE_CONTENT_REGEX] } : {}),
+    // Preserve extraction model override if it exists in the schema
+    ...(jsonSchema[X_AWS_IDP_EXTRACTION_MODEL] ? { [X_AWS_IDP_EXTRACTION_MODEL]: jsonSchema[X_AWS_IDP_EXTRACTION_MODEL] } : {}),
+    // Preserve escalation model override if it exists in the schema
+    ...(jsonSchema[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]
+      ? { [X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]: jsonSchema[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL] }
+      : {}),
+    // Preserve extraction prompt overrides if they exist in the schema
+    ...(jsonSchema[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]
+      ? { [X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]: jsonSchema[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT] }
+      : {}),
+    ...(jsonSchema[X_AWS_IDP_EXTRACTION_TASK_PROMPT]
+      ? { [X_AWS_IDP_EXTRACTION_TASK_PROMPT]: jsonSchema[X_AWS_IDP_EXTRACTION_TASK_PROMPT] }
+      : {}),
+    // Preserve excluded-class flags if they exist in the schema
+    ...(jsonSchema[X_AWS_IDP_EXCLUDE_FROM_PROCESSING]
+      ? { [X_AWS_IDP_EXCLUDE_FROM_PROCESSING]: jsonSchema[X_AWS_IDP_EXCLUDE_FROM_PROCESSING] }
+      : {}),
+    ...(jsonSchema[X_AWS_IDP_EXCLUSION_REASON] ? { [X_AWS_IDP_EXCLUSION_REASON]: jsonSchema[X_AWS_IDP_EXCLUSION_REASON] } : {}),
+    ...(jsonSchema[X_AWS_IDP_INSTANCE_ARRAY] ? { [X_AWS_IDP_INSTANCE_ARRAY]: jsonSchema[X_AWS_IDP_INSTANCE_ARRAY] } : {}),
+    ...(jsonSchema[X_AWS_IDP_MULTI_INSTANCE] ? { [X_AWS_IDP_MULTI_INSTANCE]: jsonSchema[X_AWS_IDP_MULTI_INSTANCE] } : {}),
   };
   classes.push(mainClass);
 
@@ -643,48 +711,57 @@ export const useSchemaDesigner = (
     [classes],
   );
 
-  const exportSchema = useCallback((): JsonSchemaProperty[] | null => {
-    if (classes.length === 0) {
-      return null;
-    }
+  // Export the schema as an array of per-document-type JSON Schemas. Pass
+  // `classNameFilter` (a list of document-type class names) to export only those
+  // document types (each still carries its own referenced $defs); omit it to
+  // export every document type — the behavior the live onChange/preview path uses.
+  const exportSchema = useCallback(
+    (classNameFilter?: string[]): JsonSchemaProperty[] | null => {
+      if (classes.length === 0) {
+        return null;
+      }
 
-    // Find all document type classes
-    const docTypeClasses = classes.filter((cls) => cls[X_AWS_IDP_DOCUMENT_TYPE] === true);
+      // Find all document type classes
+      const docTypeClasses = classes.filter((cls) => cls[X_AWS_IDP_DOCUMENT_TYPE] === true);
 
-    // If no document types, fall back to treating first class as document type (backward compat)
-    const baseClasses = docTypeClasses.length > 0 ? docTypeClasses : [classes[0]];
+      // If no document types, fall back to treating first class as document type (backward compat)
+      let baseClasses = docTypeClasses.length > 0 ? docTypeClasses : [classes[0]];
 
-    console.log('=== exportSchema DEBUG ===');
-    console.log('Total classes:', classes.length);
-    console.log(
-      'All class names and flags:',
-      classes.map((c) => ({
-        name: c.name,
-        isDocType: c[X_AWS_IDP_DOCUMENT_TYPE],
-        properties: Object.keys(c.attributes.properties || {}),
-      })),
-    );
-    console.log(
-      'Document type classes:',
-      baseClasses.map((c) => c.name),
-    );
+      // Optionally restrict to a caller-selected subset of document types.
+      if (classNameFilter && classNameFilter.length > 0) {
+        const wanted = new Set(classNameFilter);
+        const filtered = baseClasses.filter((cls) => wanted.has(cls.name));
+        if (filtered.length > 0) {
+          baseClasses = filtered;
+        }
+      }
 
-    // Build schema for each document type
-    const schemas = baseClasses.map((docTypeClass) => {
-      console.log(`\n--- Building schema for: ${docTypeClass.name} ---`);
+      // Build schema for each document type
+      const schemas = baseClasses.map((docTypeClass) => {
+        // Find classes referenced by this document type
+        const referencedClasses = findReferencedClasses(docTypeClass);
 
-      // Find classes referenced by this document type
-      const referencedClasses = findReferencedClasses(docTypeClass);
-      console.log(
-        'Referenced classes found:',
-        referencedClasses.map((c) => c.name),
-      );
+        // Build $defs only for referenced classes
+        const defs: Record<string, JsonSchemaProperty> = {};
+        referencedClasses.forEach((cls) => {
+          const sanitizedProps = Object.entries(cls.attributes.properties || {}).reduce(
+            (acc: Record<string, JsonSchemaProperty>, [attrName, attrValue]) => {
+              acc[attrName] = sanitizeAttributeSchema(attrValue);
+              return acc;
+            },
+            {},
+          );
 
-      // Build $defs only for referenced classes
-      const defs: Record<string, JsonSchemaProperty> = {};
-      referencedClasses.forEach((cls) => {
-        console.log(`Adding to $defs: ${cls.name}`);
-        const sanitizedProps = Object.entries(cls.attributes.properties || {}).reduce(
+          defs[cls.name] = {
+            type: 'object',
+            ...(cls.description ? { description: cls.description } : {}),
+            properties: sanitizedProps,
+            ...(cls.attributes.required?.length > 0 ? { required: cls.attributes.required } : {}),
+          };
+        });
+
+        // Build main schema properties
+        const sanitizedProps = Object.entries(docTypeClass.attributes.properties || {}).reduce(
           (acc: Record<string, JsonSchemaProperty>, [attrName, attrValue]) => {
             acc[attrName] = sanitizeAttributeSchema(attrValue);
             return acc;
@@ -692,68 +769,54 @@ export const useSchemaDesigner = (
           {},
         );
 
-        defs[cls.name] = {
+        // Use conditional field names based on schema type
+        const typeField = isRuleSchema ? X_AWS_IDP_POLICY_TYPE : X_AWS_IDP_DOCUMENT_TYPE;
+        const propertiesField = isRuleSchema ? 'rule_properties' : 'properties';
+
+        const result: JsonSchemaProperty = {
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          $id: docTypeClass.name,
+          [typeField]: docTypeClass.name,
           type: 'object',
-          ...(cls.description ? { description: cls.description } : {}),
-          properties: sanitizedProps,
-          ...(cls.attributes.required?.length > 0 ? { required: cls.attributes.required } : {}),
+          ...(docTypeClass.description ? { description: docTypeClass.description } : {}),
+          [propertiesField]: sanitizedProps,
+          ...(docTypeClass.attributes.required?.length > 0 ? { required: docTypeClass.attributes.required } : {}),
+          ...(Object.keys(defs).length > 0 ? { $defs: defs } : {}),
+          ...(Array.isArray(docTypeClass[X_AWS_IDP_EXAMPLES]) && docTypeClass[X_AWS_IDP_EXAMPLES].length > 0
+            ? { [X_AWS_IDP_EXAMPLES]: docTypeClass[X_AWS_IDP_EXAMPLES] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_DOCUMENT_NAME_REGEX]
+            ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: docTypeClass[X_AWS_IDP_DOCUMENT_NAME_REGEX] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX]
+            ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EXTRACTION_MODEL] ? { [X_AWS_IDP_EXTRACTION_MODEL]: docTypeClass[X_AWS_IDP_EXTRACTION_MODEL] } : {}),
+          ...(docTypeClass[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]
+            ? { [X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]: docTypeClass[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]
+            ? { [X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]: docTypeClass[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EXTRACTION_TASK_PROMPT]
+            ? { [X_AWS_IDP_EXTRACTION_TASK_PROMPT]: docTypeClass[X_AWS_IDP_EXTRACTION_TASK_PROMPT] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EXCLUDE_FROM_PROCESSING]
+            ? { [X_AWS_IDP_EXCLUDE_FROM_PROCESSING]: docTypeClass[X_AWS_IDP_EXCLUDE_FROM_PROCESSING] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EXCLUSION_REASON] ? { [X_AWS_IDP_EXCLUSION_REASON]: docTypeClass[X_AWS_IDP_EXCLUSION_REASON] } : {}),
+          ...(docTypeClass[X_AWS_IDP_INSTANCE_ARRAY] ? { [X_AWS_IDP_INSTANCE_ARRAY]: docTypeClass[X_AWS_IDP_INSTANCE_ARRAY] } : {}),
+          ...(docTypeClass[X_AWS_IDP_MULTI_INSTANCE] ? { [X_AWS_IDP_MULTI_INSTANCE]: docTypeClass[X_AWS_IDP_MULTI_INSTANCE] } : {}),
         };
+
+        return result;
       });
 
-      console.log('Final $defs keys:', Object.keys(defs));
-      console.log('$defs will be added?', Object.keys(defs).length > 0);
-
-      // Build main schema properties
-      const sanitizedProps = Object.entries(docTypeClass.attributes.properties || {}).reduce(
-        (acc: Record<string, JsonSchemaProperty>, [attrName, attrValue]) => {
-          // Check if this attribute has a $ref
-          if (attrValue.$ref) {
-            console.log(`Property "${attrName}" has $ref: ${attrValue.$ref}`);
-          }
-          if (attrValue.items?.$ref) {
-            console.log(`Property "${attrName}" array items has $ref: ${attrValue.items.$ref}`);
-          }
-          acc[attrName] = sanitizeAttributeSchema(attrValue);
-          return acc;
-        },
-        {},
-      );
-
-      // Use conditional field names based on schema type
-      const typeField = isRuleSchema ? X_AWS_IDP_RULE_TYPE : X_AWS_IDP_DOCUMENT_TYPE;
-      const propertiesField = isRuleSchema ? 'rule_properties' : 'properties';
-
-      const result: JsonSchemaProperty = {
-        $schema: 'https://json-schema.org/draft/2020-12/schema',
-        $id: docTypeClass.name,
-        [typeField]: docTypeClass.name,
-        type: 'object',
-        ...(docTypeClass.description ? { description: docTypeClass.description } : {}),
-        [propertiesField]: sanitizedProps,
-        ...(docTypeClass.attributes.required?.length > 0 ? { required: docTypeClass.attributes.required } : {}),
-        ...(Object.keys(defs).length > 0 ? { $defs: defs } : {}),
-        ...(Array.isArray(docTypeClass[X_AWS_IDP_EXAMPLES]) && docTypeClass[X_AWS_IDP_EXAMPLES].length > 0
-          ? { [X_AWS_IDP_EXAMPLES]: docTypeClass[X_AWS_IDP_EXAMPLES] }
-          : {}),
-        ...(docTypeClass[X_AWS_IDP_DOCUMENT_NAME_REGEX]
-          ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: docTypeClass[X_AWS_IDP_DOCUMENT_NAME_REGEX] }
-          : {}),
-        ...(docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX]
-          ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX] }
-          : {}),
-      };
-
-      console.log('Final schema has $defs?', '$defs' in result);
-      console.log('Final schema $defs keys:', result.$defs ? Object.keys(result.$defs) : 'NONE');
-
-      return result;
-    });
-
-    console.log('=== exportSchema COMPLETE ===\n');
-
-    // Always return array of schemas for consistency
-    return schemas;
-  }, [classes, sanitizeAttributeSchema, findReferencedClasses, isRuleSchema]);
+      // Always return array of schemas for consistency
+      return schemas;
+    },
+    [classes, sanitizeAttributeSchema, findReferencedClasses, isRuleSchema],
+  );
 
   const importSchema = useCallback((importedClasses: SchemaClass[]) => {
     setClasses(importedClasses);

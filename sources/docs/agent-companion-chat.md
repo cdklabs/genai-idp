@@ -24,6 +24,7 @@ The Agent Companion Chat provides an intelligent conversational interface throug
 - **Session Persistence**: Conversations are saved and resume where you left off
 - **Sample Prompts**: Pre-defined queries to help you get started quickly
 - **Privacy Controls**: Optional Code Intelligence with user consent for external services
+- **CLI & SDK Access**: Use the same agents from the terminal via `idp-cli chat` or programmatically via `IDPClient.chat` — see [IDP CLI chat command](./idp-cli.md#chat)
 
 Updated Demo Video: 
 https://github.com/user-attachments/assets/c48b9e48-e0d4-457c-8c95-8cdb7a9d332b

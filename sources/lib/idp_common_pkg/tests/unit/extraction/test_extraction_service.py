@@ -272,8 +272,20 @@ class TestExtractionService:
         assert written_content["document_class"]["type"] == "invoice"
         assert written_content["inference_result"]["invoice_number"] == "INV-123"
         assert written_content["inference_result"]["invoice_date"] == "2025-05-08"
-        assert written_content["inference_result"]["total_amount"] == "$100.00"
+        # The model returned the string "$100.00" for a field the schema declares
+        # as `number` — a real type violation that simple mode used to pass
+        # through untouched. Deterministic coercion now repairs it (no extra
+        # inference) and records what it did, so the stored value is a number and
+        # the rewrite is auditable rather than silent.
+        assert written_content["inference_result"]["total_amount"] == 100.0
+        coercion = written_content["metadata"]["coercion"]
+        assert any(
+            c["path"] == "total_amount" and c["from"] == "$100.00" and c["to"] == 100.0
+            for c in coercion["coercions"]
+        ), coercion
         assert written_content["metadata"]["parsing_succeeded"] is True
+        # ...and the result then validates cleanly against the class schema.
+        assert written_content["metadata"]["validation"]["valid"] is True
 
     @patch("idp_common.s3.get_text_content")
     @patch("idp_common.image.prepare_image")
@@ -448,3 +460,855 @@ class TestExtractionService:
         text = "No JSON here"
         result = extract_json_from_text(text)
         assert result == "No JSON here"
+
+    def test_filter_extracted_to_schema_drops_off_schema_fields(self, service):
+        """Simple-mode schema filter drops top-level keys the class schema does
+        not define (the IDP1 cross-class hallucination), records them, and keeps
+        defined fields untouched."""
+        service._class_schema = service._get_class_schema("invoice")
+        service._class_label = "invoice"
+        extracted = {
+            "invoice_number": "INV-1",
+            "invoice_date": "2025-01-01",
+            "publications": [{"title": "x"}],  # off-schema (cross-class)
+            "ftc_testing_conditions": [{"a": 1}],  # off-schema/hallucinated
+        }
+        filtered = service._filter_extracted_to_schema(extracted)
+        assert "invoice_number" in filtered and filtered["invoice_number"] == "INV-1"
+        assert "publications" not in filtered
+        assert "ftc_testing_conditions" not in filtered
+        assert sorted(service._off_schema_fields) == [
+            "ftc_testing_conditions",
+            "publications",
+        ]
+
+    def test_filter_extracted_to_schema_noop_when_all_defined(self, service):
+        """No fields are dropped (and none recorded) when every key is in schema."""
+        service._class_schema = service._get_class_schema("invoice")
+        service._class_label = "invoice"
+        extracted = {"invoice_number": "INV-1", "invoice_date": "2025-01-01"}
+        filtered = service._filter_extracted_to_schema(extracted)
+        assert filtered == extracted
+        assert service._off_schema_fields == []
+
+    def test_filter_extracted_to_schema_noop_without_properties(self, service):
+        """Fail-open: an empty/property-less schema keeps everything unchanged."""
+        service._class_schema = {}
+        service._class_label = "unknown"
+        extracted = {"anything": 1, "else": 2}
+        filtered = service._filter_extracted_to_schema(extracted)
+        assert filtered == extracted
+        assert service._off_schema_fields == []
+
+    def test_build_extraction_issues_reports_off_schema_fields(self, service):
+        """The dropped off-schema fields surface as an info-severity
+        extraction_off_schema_fields issue naming the fields."""
+        service._class_schema = service._get_class_schema("invoice")
+        service._class_label = "invoice"
+        service._off_schema_fields = ["publications", "ftc_testing_conditions"]
+        issues = service._build_extraction_issues(
+            extracted_fields={"invoice_number": "INV-1"},
+            metadata={},
+            section_id="1",
+        )
+        off = [i for i in issues if i.code == "extraction_off_schema_fields"]
+        assert len(off) == 1
+        assert off[0].severity == "info"
+        assert "publications" in off[0].message
+        assert off[0].details["off_schema_fields"] == [
+            "publications",
+            "ftc_testing_conditions",
+        ]
+
+
+@pytest.mark.unit
+class TestPerClassExtractionModelOverride:
+    """Tests for the per-class extraction model override feature (x-aws-idp-extraction-model)."""
+
+    @pytest.fixture
+    def config_with_override(self):
+        """Config where one class has x-aws-idp-extraction-model and another does not."""
+        return {
+            "classes": [
+                {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "simple-receipt",
+                    "x-aws-idp-document-type": "simple-receipt",
+                    "type": "object",
+                    "description": "A simple receipt",
+                    "properties": {
+                        "total": {
+                            "type": "string",
+                            "description": "Total amount",
+                        },
+                    },
+                },
+                {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "complex-form",
+                    "x-aws-idp-document-type": "complex-form",
+                    "x-aws-idp-extraction-model": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "type": "object",
+                    "description": "A complex financial form",
+                    "properties": {
+                        "account_number": {
+                            "type": "string",
+                            "description": "Account number",
+                        },
+                    },
+                },
+            ],
+            "extraction": {
+                "model": "us.amazon.nova-pro-v1:0",
+                "temperature": 0.0,
+                "top_k": 5,
+                "system_prompt": "You are a document extraction assistant.",
+                "task_prompt": dedent("""
+                    Extract fields from this {DOCUMENT_CLASS} document:
+                    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+                    Document text: {DOCUMENT_TEXT}
+                    {DOCUMENT_IMAGE}
+                """),
+            },
+        }
+
+    @pytest.fixture
+    def service_with_override(self, config_with_override):
+        """ExtractionService with per-class model override config."""
+        return ExtractionService(region="us-west-2", config=config_with_override)
+
+    @patch("idp_common.bedrock.invoke_model")
+    def test_uses_global_model_when_no_override(
+        self, mock_invoke_model, service_with_override
+    ):
+        """When the class schema has no x-aws-idp-extraction-model, use the global model."""
+        from idp_common.extraction.service import SectionInfo
+
+        # Set up context for a class WITHOUT override
+        service_with_override._class_schema = service_with_override._get_class_schema(
+            "simple-receipt"
+        )
+        service_with_override._class_label = "simple-receipt"
+        service_with_override._page_images = []
+
+        mock_invoke_model.return_value = {
+            "response": {
+                "output": {"message": {"content": [{"text": '{"total": "$42.00"}'}]}}
+            },
+            "metering": {"tokens": 100},
+        }
+
+        section_info = SectionInfo(
+            class_label="simple-receipt",
+            sorted_page_ids=["1"],
+            page_indices=[0],
+            output_bucket="bucket",
+            output_key="key",
+            output_uri="s3://bucket/key",
+            start_page=1,
+            end_page=1,
+        )
+
+        service_with_override._invoke_extraction_model(
+            content=[{"text": "test"}],
+            system_prompt="test",
+            section_info=section_info,
+        )
+
+        # Verify the global model was used
+        mock_invoke_model.assert_called_once()
+        call_kwargs = mock_invoke_model.call_args
+        assert call_kwargs.kwargs["model_id"] == "us.amazon.nova-pro-v1:0"
+
+    @patch("idp_common.bedrock.invoke_model")
+    def test_uses_override_model_when_specified(
+        self, mock_invoke_model, service_with_override
+    ):
+        """When the class schema has x-aws-idp-extraction-model, use the override model."""
+        from idp_common.extraction.service import SectionInfo
+
+        # Set up context for a class WITH override
+        service_with_override._class_schema = service_with_override._get_class_schema(
+            "complex-form"
+        )
+        service_with_override._class_label = "complex-form"
+        service_with_override._page_images = []
+
+        mock_invoke_model.return_value = {
+            "response": {
+                "output": {
+                    "message": {"content": [{"text": '{"account_number": "12345"}'}]}
+                }
+            },
+            "metering": {"tokens": 100},
+        }
+
+        section_info = SectionInfo(
+            class_label="complex-form",
+            sorted_page_ids=["1"],
+            page_indices=[0],
+            output_bucket="bucket",
+            output_key="key",
+            output_uri="s3://bucket/key",
+            start_page=1,
+            end_page=1,
+        )
+
+        service_with_override._invoke_extraction_model(
+            content=[{"text": "test"}],
+            system_prompt="test",
+            section_info=section_info,
+        )
+
+        # Verify the per-class override model was used
+        mock_invoke_model.assert_called_once()
+        call_kwargs = mock_invoke_model.call_args
+        assert (
+            call_kwargs.kwargs["model_id"]
+            == "us.anthropic.claude-sonnet-4-20250514-v1:0"
+        )
+
+    @patch("idp_common.bedrock.invoke_model")
+    def test_override_is_logged(self, mock_invoke_model, service_with_override, caplog):
+        """Verify that using a per-class model override produces an info log message."""
+        import logging
+
+        from idp_common.extraction.service import SectionInfo
+
+        service_with_override._class_schema = service_with_override._get_class_schema(
+            "complex-form"
+        )
+        service_with_override._class_label = "complex-form"
+        service_with_override._page_images = []
+
+        mock_invoke_model.return_value = {
+            "response": {
+                "output": {
+                    "message": {"content": [{"text": '{"account_number": "12345"}'}]}
+                }
+            },
+            "metering": {"tokens": 100},
+        }
+
+        section_info = SectionInfo(
+            class_label="complex-form",
+            sorted_page_ids=["1"],
+            page_indices=[0],
+            output_bucket="bucket",
+            output_key="key",
+            output_uri="s3://bucket/key",
+            start_page=1,
+            end_page=1,
+        )
+
+        with caplog.at_level(logging.INFO, logger="idp_common.extraction.service"):
+            service_with_override._invoke_extraction_model(
+                content=[{"text": "test"}],
+                system_prompt="test",
+                section_info=section_info,
+            )
+
+        assert any(
+            "per-class extraction model override" in record.message
+            and "complex-form" in record.message
+            for record in caplog.records
+        )
+
+    def test_schema_constant_exists(self):
+        """Verify the X_AWS_IDP_EXTRACTION_MODEL constant is defined."""
+        from idp_common.config.schema_constants import X_AWS_IDP_EXTRACTION_MODEL
+
+        assert X_AWS_IDP_EXTRACTION_MODEL == "x-aws-idp-extraction-model"
+
+    def test_clean_schema_removes_extraction_model(self, service_with_override):
+        """Verify that x-aws-idp-extraction-model is stripped from prompts."""
+        schema_with_override = service_with_override._get_class_schema("complex-form")
+        assert "x-aws-idp-extraction-model" in schema_with_override
+
+        cleaned = service_with_override._clean_schema_for_prompt(schema_with_override)
+        assert "x-aws-idp-extraction-model" not in cleaned
+
+
+@pytest.mark.unit
+class TestPerClassExtractionPromptOverride:
+    """Tests for per-class extraction prompt overrides.
+
+    Covers x-aws-idp-extraction-system-prompt and
+    x-aws-idp-extraction-task-prompt.
+    """
+
+    @pytest.fixture
+    def config_with_prompt_override(self):
+        """Config where one class overrides prompts and another does not."""
+        return {
+            "classes": [
+                {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "simple-receipt",
+                    "x-aws-idp-document-type": "simple-receipt",
+                    "type": "object",
+                    "description": "A simple receipt",
+                    "properties": {
+                        "total": {
+                            "type": "string",
+                            "description": "Total amount",
+                        },
+                    },
+                },
+                {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "w2",
+                    "x-aws-idp-document-type": "w2",
+                    "x-aws-idp-extraction-system-prompt": "You are an expert W2 extractor.",
+                    "x-aws-idp-extraction-task-prompt": dedent("""
+                        Extract these attributes from this {DOCUMENT_CLASS}:
+                        {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+                        Text: {DOCUMENT_TEXT}
+                    """),
+                    "type": "object",
+                    "description": "A W2 tax form",
+                    "properties": {
+                        "employee_name": {
+                            "type": "string",
+                            "description": "Employee name",
+                        },
+                    },
+                },
+            ],
+            "extraction": {
+                "model": "us.amazon.nova-pro-v1:0",
+                "temperature": 0.0,
+                "top_k": 5,
+                "system_prompt": "You are a generic document extraction assistant.",
+                "task_prompt": dedent("""
+                    Extract fields from this {DOCUMENT_CLASS} document:
+                    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+                    Document text: {DOCUMENT_TEXT}
+                """),
+            },
+        }
+
+    @pytest.fixture
+    def service_with_prompt_override(self, config_with_prompt_override):
+        """ExtractionService with per-class prompt override config."""
+        return ExtractionService(region="us-west-2", config=config_with_prompt_override)
+
+    def _set_context(self, service, class_label):
+        """Populate the instance prompt-context for a given class."""
+        service._class_schema = service._get_class_schema(class_label)
+        service._class_label = class_label
+        service._document_text = "Some document text"
+        service._attribute_descriptions = "field: description"
+        service._page_images = []
+        service._image_uris = []
+
+    def test_uses_global_prompts_when_no_override(self, service_with_prompt_override):
+        """A class without prompt overrides uses the global prompts."""
+        self._set_context(service_with_prompt_override, "simple-receipt")
+
+        content, system_prompt = service_with_prompt_override._build_extraction_content(
+            document=Document(id="doc-1"),
+            page_images=[],
+        )
+
+        assert system_prompt == "You are a generic document extraction assistant."
+        combined = " ".join(item.get("text", "") for item in content)
+        assert "Extract fields from this simple-receipt document" in combined
+
+    def test_uses_override_system_prompt_when_specified(
+        self, service_with_prompt_override
+    ):
+        """A class with a system prompt override uses it instead of the global."""
+        self._set_context(service_with_prompt_override, "w2")
+
+        _content, system_prompt = (
+            service_with_prompt_override._build_extraction_content(
+                document=Document(id="doc-1"),
+                page_images=[],
+            )
+        )
+
+        assert system_prompt == "You are an expert W2 extractor."
+
+    def test_uses_override_task_prompt_with_substitution(
+        self, service_with_prompt_override
+    ):
+        """The override task prompt is used and placeholders are substituted."""
+        self._set_context(service_with_prompt_override, "w2")
+
+        content, _system_prompt = (
+            service_with_prompt_override._build_extraction_content(
+                document=Document(id="doc-1"),
+                page_images=[],
+            )
+        )
+
+        combined = " ".join(item.get("text", "") for item in content)
+        # Override-specific wording present, global wording absent
+        assert "Extract these attributes from this w2" in combined
+        assert "Extract fields from this" not in combined
+        # Placeholders substituted, not left literal
+        assert "{DOCUMENT_CLASS}" not in combined
+        assert "{DOCUMENT_TEXT}" not in combined
+        assert "Some document text" in combined
+        assert "field: description" in combined
+
+    def test_override_is_logged(self, service_with_prompt_override, caplog):
+        """Using prompt overrides produces info log messages."""
+        import logging
+
+        self._set_context(service_with_prompt_override, "w2")
+
+        with caplog.at_level(logging.INFO, logger="idp_common.extraction.service"):
+            service_with_prompt_override._build_extraction_content(
+                document=Document(id="doc-1"),
+                page_images=[],
+            )
+
+        assert any(
+            "per-class extraction system prompt override" in record.message
+            and "w2" in record.message
+            for record in caplog.records
+        )
+        assert any(
+            "per-class extraction task prompt override" in record.message
+            and "w2" in record.message
+            for record in caplog.records
+        )
+
+    def test_schema_constants_exist(self):
+        """Verify the prompt override constants are defined."""
+        from idp_common.config.schema_constants import (
+            X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT,
+            X_AWS_IDP_EXTRACTION_TASK_PROMPT,
+        )
+
+        assert (
+            X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT == "x-aws-idp-extraction-system-prompt"
+        )
+        assert X_AWS_IDP_EXTRACTION_TASK_PROMPT == "x-aws-idp-extraction-task-prompt"
+
+    def test_clean_schema_removes_prompt_overrides(self, service_with_prompt_override):
+        """Verify the prompt override keys are stripped from prompts."""
+        schema = service_with_prompt_override._get_class_schema("w2")
+        assert "x-aws-idp-extraction-system-prompt" in schema
+        assert "x-aws-idp-extraction-task-prompt" in schema
+
+        cleaned = service_with_prompt_override._clean_schema_for_prompt(schema)
+        assert "x-aws-idp-extraction-system-prompt" not in cleaned
+        assert "x-aws-idp-extraction-task-prompt" not in cleaned
+
+
+@pytest.mark.unit
+class TestNormalizeTableParsingStats:
+    """The display-time guard that clamps merged table-parsing stats."""
+
+    def test_drops_internal_rate_weight(self):
+        out = ExtractionService._normalize_table_parsing_stats(
+            {"rows_parsed": 100, "_rate_weight": 100, "parse_success_rate": 0.9}
+        )
+        assert "_rate_weight" not in out
+        assert out["rows_parsed"] == 100
+
+    def test_clamps_out_of_range_rate_and_confidence(self):
+        # Defense in depth: even if a merge regression slips through, the report
+        # can never show a 500% rate / 496% confidence again.
+        out = ExtractionService._normalize_table_parsing_stats(
+            {"parse_success_rate": 5.0, "avg_confidence": 496.1}
+        )
+        assert out["parse_success_rate"] == 1.0
+        assert out["avg_confidence"] == 100.0
+
+    def test_leaves_valid_values_untouched(self):
+        out = ExtractionService._normalize_table_parsing_stats(
+            {"parse_success_rate": 0.98, "avg_confidence": 98.4}
+        )
+        assert out["parse_success_rate"] == pytest.approx(0.98)
+        assert out["avg_confidence"] == pytest.approx(98.4)
+
+
+@pytest.mark.unit
+class TestGroundShardAssessment:
+    """Per-shard OCR grounding: a shard grounds its OWN rows against ONLY its own
+    pages, so grounding scales per-shard instead of a full-section merge sweep."""
+
+    def _service(self):
+        config = {
+            "classes": [
+                {
+                    "$id": "stmt",
+                    "type": "object",
+                    "properties": {
+                        "Transactions": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {"Amount": {"type": "string"}},
+                            },
+                        }
+                    },
+                }
+            ],
+            "extraction": {
+                "model": "anthropic.claude-3-sonnet-20240229-v1:0",
+                "temperature": 0.0,
+                "top_k": 5,
+                "system_prompt": "sys",
+                "task_prompt": "task {DOCUMENT_TEXT}",
+            },
+        }
+        return ExtractionService(region="us-west-2", config=config)
+
+    def _section_info(self, page_ids):
+        from idp_common.extraction.service import SectionInfo
+
+        return SectionInfo(
+            class_label="stmt",
+            sorted_page_ids=page_ids,
+            page_indices=[int(p) - 1 for p in page_ids],
+            output_bucket="out",
+            output_key="k",
+            output_uri="s3://out/k",
+            start_page=int(page_ids[0]),
+            end_page=int(page_ids[-1]),
+        )
+
+    def test_grounds_only_shard_pages(self):
+        """The shard for pages 3-4 loads OCR for exactly those page_ids and grounds
+        its rows against them — NOT the whole section's pages."""
+        service = self._service()
+        service._class_schema = service._get_class_schema("stmt")
+
+        # 6-page section; this shard covers global pages 3-4 (0-based slice 2:4).
+        section_info = self._section_info(["1", "2", "3", "4", "5", "6"])
+        payload = {"page_start": 2, "page_end": 4}
+
+        assessment = {
+            "Transactions": [
+                {"Amount": {"confidence": 0.9}},
+                {"Amount": {"confidence": 0.9}},
+            ]
+        }
+        extracted = {"Transactions": [{"Amount": "10.00"}, {"Amount": "20.00"}]}
+
+        captured = {}
+
+        def fake_load(pages, page_ids, page_offset=0):
+            captured["page_ids"] = list(page_ids)
+            captured["page_offset"] = page_offset
+            return {3: {"lines": []}}  # non-empty so grounding proceeds
+
+        def fake_ground(assess, extraction, pd, mode, schema, skip_grounded=False):
+            captured["mode"] = mode
+            captured["schema"] = schema
+            captured["skip_grounded"] = skip_grounded
+            # tag a leaf so we can assert it ran in place
+            assess["Transactions"][0]["Amount"]["geometry_source"] = "ocr"
+            return assess
+
+        with (
+            patch(
+                "idp_common.assessment.ocr_grounding.load_page_ocr_data",
+                side_effect=fake_load,
+            ),
+            patch(
+                "idp_common.assessment.ocr_grounding.ground_assessment_geometry",
+                side_effect=fake_ground,
+            ),
+        ):
+            service._ground_shard_assessment(
+                assessment=assessment,
+                extracted_fields=extracted,
+                payload=payload,
+                document=Document(id="d", input_key="k"),
+                section_info=section_info,
+                geometry_mode="ocr_only",
+            )
+
+        # Scoped to exactly the shard's global page_ids (3, 4) — not all six.
+        assert captured["page_ids"] == ["3", "4"]
+        # page_offset = page_start so the shard's pages number relative to the WHOLE
+        # section (section pages 3,4), keeping geometry.page section-relative.
+        assert captured["page_offset"] == 2
+        assert captured["mode"] == "ocr_only"
+        # Grounded in place on the passed assessment object.
+        assert assessment["Transactions"][0]["Amount"]["geometry_source"] == "ocr"
+
+    def test_noop_on_empty_assessment(self):
+        service = self._service()
+        # Should not raise or call load when assessment is empty.
+        with patch(
+            "idp_common.assessment.ocr_grounding.load_page_ocr_data"
+        ) as mock_load:
+            service._ground_shard_assessment(
+                assessment={},
+                extracted_fields={"Transactions": []},
+                payload={"page_start": 0, "page_end": 1},
+                document=Document(id="d", input_key="k"),
+                section_info=self._section_info(["1"]),
+                geometry_mode="ocr_only",
+            )
+        mock_load.assert_not_called()
+
+    def test_grounding_failure_is_swallowed(self):
+        """A grounding exception must never propagate out of the shard."""
+        service = self._service()
+        service._class_schema = service._get_class_schema("stmt")
+        with patch(
+            "idp_common.assessment.ocr_grounding.load_page_ocr_data",
+            side_effect=RuntimeError("boom"),
+        ):
+            # No exception should escape.
+            service._ground_shard_assessment(
+                assessment={"Transactions": [{"Amount": {"confidence": 0.9}}]},
+                extracted_fields={"Transactions": [{"Amount": "10.00"}]},
+                payload={"page_start": 0, "page_end": 1},
+                document=Document(id="d", input_key="k"),
+                section_info=self._section_info(["1"]),
+                geometry_mode="ocr_only",
+            )
+
+
+@pytest.mark.unit
+class TestToolUsageDecisionExplanation:
+    """The table-parsing-tool decision must clearly explain WHY the deterministic
+    parser was or wasn't used — distinguishing disabled / no-Markdown-tables /
+    agent-declined so the Processing Report isn't ambiguous."""
+
+    def _svc(self):
+        return ExtractionService.__new__(ExtractionService)
+
+    _OCR = {
+        "tool_usage_recommended": True,
+        "recommendation_reason": "Detected 8 table(s) with ~139 total rows",
+        "tables_detected": 8,
+    }
+
+    def test_agent_declined_available_tool(self):
+        msg = self._svc()._explain_tool_usage_decision(
+            True,
+            False,
+            None,
+            self._OCR,
+            tool_enabled=True,
+            ocr_had_markdown_tables=True,
+        )
+        assert "CHOSE NOT" in msg
+        assert "Detected 8 table(s)" in msg  # the concrete reason it was recommended
+        assert "No reason was reported" in msg  # no agent note supplied
+
+    def test_agent_declined_with_stated_reason(self):
+        msg = self._svc()._explain_tool_usage_decision(
+            True,
+            False,
+            None,
+            self._OCR,
+            tool_enabled=True,
+            ocr_had_markdown_tables=True,
+            agent_note="Table had only 5 rows; direct extraction was reliable.",
+        )
+        assert "CHOSE NOT" in msg
+        assert "Agent's stated reason: \"Table had only 5 rows" in msg
+
+    def test_extract_table_tool_note_parses_marker(self):
+        svc = self._svc()
+        resp = {
+            "response": {
+                "output": {
+                    "message": {
+                        "content": [
+                            {
+                                "text": "Extraction complete.\n"
+                                "TABLE_TOOL_NOTE: Pipe-table was malformed so I read "
+                                "values from context."
+                            }
+                        ]
+                    }
+                }
+            },
+            "metering": {},
+        }
+        note = svc._extract_table_tool_note(resp)
+        assert note == "Pipe-table was malformed so I read values from context."
+
+    def test_extract_table_tool_note_absent_returns_none(self):
+        svc = self._svc()
+        resp = {
+            "response": {"output": {"message": {"content": [{"text": "All done."}]}}},
+            "metering": {},
+        }
+        assert svc._extract_table_tool_note(resp) is None
+
+    def test_no_markdown_tables_in_ocr(self):
+        msg = self._svc()._explain_tool_usage_decision(
+            True,
+            False,
+            None,
+            {"tables_detected": 0},
+            tool_enabled=True,
+            ocr_had_markdown_tables=False,
+        )
+        assert "NO Markdown tables" in msg
+        assert "TABLES feature" in msg  # points at the OCR-side remedy
+
+    def test_tool_disabled(self):
+        msg = self._svc()._explain_tool_usage_decision(
+            True,
+            False,
+            None,
+            self._OCR,
+            tool_enabled=False,
+            ocr_had_markdown_tables=True,
+        )
+        assert "DISABLED" in msg
+
+    def test_recommended_and_used(self):
+        msg = self._svc()._explain_tool_usage_decision(True, True, None, self._OCR)
+        assert "used as expected" in msg
+
+    def test_report_states_availability_and_reason(self):
+        # The rendered report must surface availability + the WHY line for the
+        # "agent declined an available tool" case.
+        md = {
+            "extraction_method": "agentic",
+            "parsing_succeeded": True,
+            "extraction_time_seconds": 1.0,
+            "ocr_analysis": {
+                "tables_detected": 8,
+                "estimated_row_count": 139,
+                "recommendation_strength": "STRONGLY_RECOMMENDED",
+                "tool_usage_recommended": True,
+            },
+            "tool_usage_decision": {
+                "expected": True,
+                "actual": False,
+                "mismatch": True,
+                "tool_enabled": True,
+                "ocr_had_markdown_tables": True,
+                "explanation": "... CHOSE NOT to call the deterministic parser ...",
+            },
+        }
+        report = self._svc()._generate_processing_report(md)
+        assert "Markdown tables in OCR text: YES" in report
+        assert "ENABLED and AVAILABLE" in report
+        assert "Actually used by agent: NO" in report
+        assert "CHOSE NOT" in report
+
+    def test_report_states_no_markdown_tables(self):
+        md = {
+            "extraction_method": "agentic",
+            "parsing_succeeded": True,
+            "extraction_time_seconds": 1.0,
+            "ocr_analysis": {
+                "tables_detected": 0,
+                "estimated_row_count": 0,
+                "recommendation_strength": "OPTIONAL",
+                "tool_usage_recommended": False,
+            },
+            "tool_usage_decision": {
+                "expected": False,
+                "actual": False,
+                "mismatch": False,
+                "tool_enabled": True,
+                "ocr_had_markdown_tables": False,
+                "explanation": "no markdown tables",
+            },
+        }
+        report = self._svc()._generate_processing_report(md)
+        assert "Markdown tables in OCR text: NONE" in report
+        assert "cannot" in report and "table parser" in report
+
+
+@pytest.mark.unit
+class TestProcessingFlow:
+    """The normalized processing_flow drives the report's flow graph for BOTH
+    simple and advanced, and the recovery summary explains auto-recovery."""
+
+    def _svc(self, conf_mode="separate", conf_enabled=True, geometry="ocr_only"):
+        cfg = {
+            "classes": [{"$id": "x", "type": "object", "properties": {}}],
+            "extraction": {
+                "model": "us.anthropic.claude-sonnet-5",
+                "temperature": 0,
+                "top_k": 5,
+                "system_prompt": "s",
+                "task_prompt": "t {DOCUMENT_TEXT}",
+                "confidence": {
+                    "enabled": conf_enabled,
+                    "mode": conf_mode,
+                    "model": "us.amazon.nova-lite-v1:0",
+                },
+                "geometry": {"mode": geometry},
+            },
+        }
+        return ExtractionService(region="us-west-2", config=cfg)
+
+    def test_simple_mode_has_full_flow(self):
+        svc = self._svc()
+        md = {
+            "extraction_method": "traditional",
+            "extraction_model": "us.anthropic.claude-sonnet-5",
+            "ocr_analysis": {"tables_detected": 0},
+            "assessment_batch_split_stats": {"batch_count": 1, "concurrent_batches": 1},
+        }
+        flow = svc._build_processing_flow(md, "traditional", False)
+        labels = [s["label"] for s in flow["stages"]]
+        assert labels == ["OCR", "Classify", "Extract", "Confidence", "Geometry"]
+        extract = next(s for s in flow["stages"] if s["label"] == "Extract")
+        assert "single LLM pass" in extract["detail"]
+        assert flow["recovery"] is None
+
+    def test_advanced_flow_shards_tabletool_confidence_geometry(self):
+        svc = self._svc()
+        md = {
+            "extraction_method": "agentic",
+            "extraction_model": "us.anthropic.claude-sonnet-5",
+            "ocr_analysis": {"tables_detected": 8},
+            "sizing_plan": {"geometry_mode": "ocr_only"},
+            "shard_trace": {"num_shards": 5},
+            "tool_usage_decision": {
+                "expected": True,
+                "actual": False,
+                "tool_enabled": True,
+                "ocr_had_markdown_tables": True,
+            },
+            "assessment_batch_split_stats": {
+                "batch_count": 12,
+                "concurrent_batches": 10,
+            },
+        }
+        flow = svc._build_processing_flow(md, "agentic", False)
+        by = {s["label"]: s for s in flow["stages"]}
+        assert by["Extract"]["fanout"] == 5
+        assert by["Table tool"]["status"] == "warning"  # available but declined
+        assert by["Confidence"]["fanout"] == 10
+        assert by["Geometry"]["detail"].startswith("OCR-grounded")
+
+    def test_recovery_summary_populated(self):
+        svc = self._svc()
+        md = {
+            "extraction_method": "agentic",
+            "assessment_batch_split_stats": {
+                "truncated_calls": 3,
+                "splits": 3,
+                "rows_recovered_by_retry": 40,
+                "rows_recovered_by_escalation": 5,
+                "escalation_model": "us.anthropic.claude-sonnet-5:1m",
+                "unrecoverable_rows": 2,
+            },
+        }
+        flow = svc._build_processing_flow(md, "agentic", False)
+        rec = flow["recovery"]
+        assert rec["rows_recovered_by_retry"] == 40
+        assert rec["rows_recovered_by_escalation"] == 5
+        assert rec["unrecoverable_rows"] == 2
+
+    def test_confidence_off_marks_stage_skipped(self):
+        svc = self._svc(conf_enabled=False, conf_mode="off")
+        md = {"extraction_method": "agentic", "ocr_analysis": {"tables_detected": 0}}
+        flow = svc._build_processing_flow(md, "agentic", False)
+        conf = next(s for s in flow["stages"] if s["label"] == "Confidence")
+        assert conf["status"] == "skipped"
+        assert conf["detail"] == "disabled"
+        # No Geometry stage when confidence is off.
+        assert not any(s["label"] == "Geometry" for s in flow["stages"])

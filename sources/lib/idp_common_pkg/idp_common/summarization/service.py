@@ -28,6 +28,80 @@ from idp_common.utils import extract_json_from_text
 
 logger = logging.getLogger(__name__)
 
+# Rough chars-per-token estimate, matching idp_common.utils.check_token_limit and
+# idp_common.extraction.sharding. Deliberately conservative (English prose is
+# ~4 chars/token; dense numeric/tabular text can be lower, so this slightly
+# *under*-counts — we compensate with a context-window safety buffer below).
+_CHARS_PER_TOKEN = 4.0
+
+# Fraction of the model's input window reserved for the system prompt, the
+# static task-prompt boilerplate, and generation headroom. We only allow the
+# variable payload (DOCUMENT_TEXT + EXTRACTION_RESULTS) to occupy the rest.
+_CONTEXT_SAFETY_FRACTION = 0.85
+
+# Fallback input window when model_config_limits.yaml can't resolve the model
+# (unknown/misconfigured id). Nova/Claude base windows are >=200K, so 180K is a
+# safe conservative floor.
+_DEFAULT_MAX_INPUT_TOKENS = 180_000
+
+# How many head/tail items to keep when eliding a large array.
+_ELIDE_HEAD = 3
+_ELIDE_TAIL = 2
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimate the token count of a string using a conservative chars/token ratio."""
+    if not text:
+        return 0
+    return int(len(text) / _CHARS_PER_TOKEN)
+
+
+def _elide_large_arrays(obj: Any, max_items: int) -> Any:
+    """Recursively replace arrays longer than ``max_items`` with a head/tail
+    sample plus a marker string.
+
+    A statement/document summary needs counts and totals, not every row. The
+    full pretty-printed extraction list is the dominant token term that
+    overflows the model context window on large documents (e.g. a 6400-row
+    table). This keeps enough example rows for the model to understand the
+    shape of the data while collapsing the bulk.
+
+    ``max_items <= 0`` disables elision (returns the object unchanged).
+    """
+    if max_items and max_items > 0:
+        if isinstance(obj, list):
+            if len(obj) > max_items:
+                head = [_elide_large_arrays(x, max_items) for x in obj[:_ELIDE_HEAD]]
+                tail = (
+                    [_elide_large_arrays(x, max_items) for x in obj[-_ELIDE_TAIL:]]
+                    if _ELIDE_TAIL
+                    else []
+                )
+                marker = f"... ({len(obj)} items total, {len(obj) - _ELIDE_HEAD - _ELIDE_TAIL} elided)"
+                return head + [marker] + tail
+            return [_elide_large_arrays(x, max_items) for x in obj]
+        if isinstance(obj, dict):
+            return {k: _elide_large_arrays(v, max_items) for k, v in obj.items()}
+    return obj
+
+
+def _is_input_token_overflow(error: Exception) -> bool:
+    """Return True if the exception looks like a Bedrock input/context overflow.
+
+    Bedrock raises ``ValidationException`` with messages such as
+    "Input is too long for requested model" or "Input Tokens Exceeded" /
+    "input token count ... exceeds the maximum". We match loosely so a
+    summarization overflow degrades gracefully instead of failing the document.
+    """
+    msg = str(error).lower()
+    if "too long" in msg and "input" in msg:
+        return True
+    if "input token" in msg or "input tokens" in msg:
+        return True
+    if "context" in msg and ("exceed" in msg or "too long" in msg):
+        return True
+    return False
+
 
 class SummarizationService:
     """Service for summarizing documents using various backends."""
@@ -93,6 +167,7 @@ class SummarizationService:
             "top_k": self.config.summarization.top_k,
             "top_p": self.config.summarization.top_p,
             "max_tokens": self.config.summarization.max_tokens,
+            "reasoning_effort": self.config.summarization.reasoning_effort,
         }
 
         # Validate system prompt
@@ -134,6 +209,7 @@ class SummarizationService:
             max_tokens=config["max_tokens"],
             context="Summarization",
             model_lambda_hook_arn=self.config.summarization.model_lambda_hook_arn,
+            reasoning_effort=config.get("reasoning_effort"),
         )
 
     def _create_error_summary(self, error_message: str) -> DocumentSummary:
@@ -150,6 +226,107 @@ class SummarizationService:
             content={"error": "Error generating summary"},
             metadata={"error": error_message},
         )
+
+    def _get_max_input_tokens(self) -> int:
+        """Resolve the model's input (context-window) token limit.
+
+        Falls back to a conservative default if the model id can't be resolved
+        against model_config_limits.yaml.
+        """
+        try:
+            from idp_common.bedrock.model_utils import get_model_max_input_tokens
+
+            return get_model_max_input_tokens(self.bedrock_model)
+        except Exception as e:
+            logger.warning(
+                "Could not resolve max_input_tokens for model %s (%s); "
+                "falling back to %d.",
+                self.bedrock_model,
+                e,
+                _DEFAULT_MAX_INPUT_TOKENS,
+            )
+            return _DEFAULT_MAX_INPUT_TOKENS
+
+    def _build_placeholders(
+        self, text: str, extraction_results: Dict[str, Any], config: Dict[str, Any]
+    ) -> Tuple[Dict[str, str], bool]:
+        """Build the prompt placeholders, applying compaction/elision and a
+        fit-or-truncate guard against the model's input window.
+
+        Fix A: EXTRACTION_RESULTS is compact (no indent) and large arrays are
+        elided to head/tail samples so the dominant token term is removed.
+
+        Fix B: if the estimated prompt would still overflow the model window,
+        DOCUMENT_TEXT is truncated (and EXTRACTION_RESULTS further collapsed)
+        so the call fits instead of failing.
+
+        Returns:
+            (placeholders, truncated) where ``truncated`` is True if the payload
+            had to be reduced to fit.
+        """
+        array_cap = self.config.summarization.max_extraction_array_items
+
+        extraction_json = ""
+        if extraction_results:
+            elided = _elide_large_arrays(extraction_results, array_cap)
+            # Compact (no indent=2) — Fix A removes the pretty-print token bloat.
+            extraction_json = json.dumps(elided, default=str)
+
+        # Fix B: fit-or-truncate guard. Reserve a fraction of the window for the
+        # system prompt, task-prompt boilerplate, and output generation.
+        max_input_tokens = self._get_max_input_tokens()
+        budget_tokens = int(max_input_tokens * _CONTEXT_SAFETY_FRACTION)
+
+        # Account for the static task-prompt/system-prompt boilerplate.
+        boilerplate_tokens = _estimate_tokens(config["task_prompt"]) + _estimate_tokens(
+            config.get("system_prompt", "")
+        )
+        payload_budget = max(0, budget_tokens - boilerplate_tokens)
+
+        truncated = False
+        extraction_tokens = _estimate_tokens(extraction_json)
+        text_tokens = _estimate_tokens(text)
+
+        if extraction_tokens + text_tokens > payload_budget:
+            truncated = True
+            logger.warning(
+                "Summarization prompt (~%d text + ~%d extraction tokens) exceeds "
+                "payload budget (~%d of %d window); truncating to fit.",
+                text_tokens,
+                extraction_tokens,
+                payload_budget,
+                max_input_tokens,
+            )
+            # First, hard-cap the extraction JSON to at most a third of the budget
+            # (it is supplemental — the document text is primary for a summary).
+            extraction_cap_tokens = max(0, payload_budget // 3)
+            if extraction_tokens > extraction_cap_tokens:
+                extraction_char_cap = int(extraction_cap_tokens * _CHARS_PER_TOKEN)
+                if extraction_char_cap <= 0:
+                    extraction_json = ""
+                else:
+                    extraction_json = (
+                        extraction_json[:extraction_char_cap]
+                        + "\n... (extraction results truncated to fit model context window)"
+                    )
+                extraction_tokens = _estimate_tokens(extraction_json)
+
+            # Then truncate DOCUMENT_TEXT to whatever remains.
+            text_budget_tokens = max(0, payload_budget - extraction_tokens)
+            text_char_cap = int(text_budget_tokens * _CHARS_PER_TOKEN)
+            if text_char_cap < len(text):
+                notice = (
+                    "\n\n[NOTE: Document text was truncated to fit the model "
+                    "context window. The summary is based on the leading portion "
+                    "of the document.]"
+                )
+                keep = max(0, text_char_cap - len(notice))
+                text = text[:keep] + notice
+
+        placeholders = {"DOCUMENT_TEXT": text}
+        if extraction_json:
+            placeholders["EXTRACTION_RESULTS"] = extraction_json
+        return placeholders, truncated
 
     def process_text(
         self, text: str, extraction_results: Dict[str, Any] = None
@@ -171,12 +348,11 @@ class SummarizationService:
         # Get summarization configuration
         config = self._get_summarization_config()
 
-        # Build placeholders for the prompt
-        placeholders = {"DOCUMENT_TEXT": text}
-        if extraction_results:
-            placeholders["EXTRACTION_RESULTS"] = json.dumps(
-                extraction_results, indent=2
-            )
+        # Build placeholders for the prompt (Fix A: compact/elide extraction JSON;
+        # Fix B: fit-or-truncate DOCUMENT_TEXT/EXTRACTION_RESULTS to the window).
+        placeholders, _truncated = self._build_placeholders(
+            text, extraction_results, config
+        )
 
         # Use common function to prepare prompt with required placeholder validation
         task_prompt = bedrock.format_prompt(
@@ -201,7 +377,23 @@ class SummarizationService:
             metering = response_with_metering["metering"]
 
             # Extract summarization result
-            summary_text = response["output"]["message"]["content"][0].get("text", "")
+            # Defensive: Handle case where LLM returns empty content array
+            content = response["output"]["message"].get("content", [])
+            if not content or len(content) == 0:
+                logger.error(
+                    "LLM returned empty content array in summarization response",
+                    extra={"response": response},
+                )
+                raise ValueError("Summarization failed: LLM returned empty response")
+
+            # Reasoning models (Claude Sonnet 5 / 4.6+, extended thinking on) emit
+            # one or more `reasoningContent` blocks before the answer `text` block,
+            # so content[0] may not be the text. Concatenate all `text` blocks.
+            summary_text = "".join(
+                item["text"]
+                for item in content
+                if isinstance(item, dict) and isinstance(item.get("text"), str)
+            )
 
             # Try to extract JSON from the response
             try:
@@ -238,6 +430,35 @@ class SummarizationService:
                 )
 
         except Exception as e:
+            # Fix B: graceful degradation. If Bedrock still rejects the prompt as
+            # too large for the input window (despite the fit-or-truncate guard —
+            # e.g. our char/token estimate under-counted dense numeric text),
+            # return a partial/skipped summary stub instead of raising. A
+            # summarization overflow must NEVER fail the whole document when the
+            # (expensive) extraction already succeeded.
+            if _is_input_token_overflow(e):
+                logger.warning(
+                    "Summarization input exceeded the model context window even "
+                    "after truncation (%s); returning a partial summary stub so "
+                    "the document completes with extraction intact.",
+                    e,
+                )
+                return DocumentSummary(
+                    content={
+                        "summary": (
+                            "## Summary Unavailable\n\n"
+                            "This section could not be summarized because its "
+                            "content exceeded the summarization model's context "
+                            "window. Extraction results for this section are "
+                            "available and unaffected."
+                        )
+                    },
+                    metadata={
+                        "summarization_skipped": True,
+                        "skip_reason": "input_token_overflow",
+                        "error": str(e),
+                    },
+                )
             logger.error(f"Error summarizing text: {str(e)}")
             raise
 
@@ -275,6 +496,37 @@ class SummarizationService:
             error_msg = f"Section {section_id} not found in document"
             logger.error(error_msg)
             document.errors.append(error_msg)
+            return document, {}
+
+        # Short-circuit: skip sections whose class is marked as excluded
+        # (e.g., static instruction pages). Writes a small skipped-stub
+        # summary so the UI/reporting can display a meaningful message
+        # instead of an empty summary pane.
+        from idp_common.section_exclusion import (
+            is_section_excluded,
+            write_skipped_stub,
+        )
+
+        if is_section_excluded(section):
+            output_bucket = document.output_bucket
+            output_key = (
+                f"{document.input_key}/sections/{section.section_id}/summary.json"
+                if document.input_key
+                else None
+            )
+            write_skipped_stub(
+                document,
+                section,
+                stage="summarization",
+                output_bucket=output_bucket,
+                output_key=output_key,
+            )
+            logger.info(
+                "Summarization skipped for excluded section %s (class=%s, reason=%s)",
+                section.section_id,
+                section.classification,
+                section.exclusion_reason or "excluded",
+            )
             return document, {}
 
         # Extract information about the section

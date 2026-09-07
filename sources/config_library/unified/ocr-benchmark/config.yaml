@@ -3,10 +3,22 @@
 
 # All settings not explicitly defined here are inherited from system defaults.
 notes: Pattern-2 default configuration - Bedrock LLM-based processing
+chat:
+  # ocr-benchmark is an accuracy benchmark; document chat not needed.
+  enabled: false
 classes:
 - $schema: https://json-schema.org/draft/2020-12/schema
   $id: BANK_CHECK
   x-aws-idp-document-type: BANK_CHECK
+  # Each element of `checks` is a separate CHECK DOCUMENT, not a line item, so
+  # this names the class's existing instance axis. Designate mode: no schema
+  # transform, no output change, no baseline migration -- it only lets the
+  # pipeline report how many documents a sheet held instead of always 1.
+  # Found by running extraction.multi_instance_detection once over this corpus:
+  # it counted 2-8 checks on 18 of the first 40 sheets while the section
+  # reported instance_count 1. No data was being lost (the checks were all in
+  # the array); the count was simply never declared.
+  x-aws-idp-instance-array: checks
   description: A bank check or cheque document with payee, amount, date, bank info, and account details.
   type: object
   properties:
@@ -29,7 +41,7 @@ classes:
             properties:
               date:
                 type: string
-                x-aws-idp-evaluation-method: LEVENSHTEIN
+                x-aws-idp-evaluation-method: DATE
                 x-aws-idp-evaluation-threshold: '0.7'
                 x-aws-idp-confidence-threshold: '0.8'
                 data_type: string
@@ -121,7 +133,7 @@ classes:
   properties:
     date:
       type: string
-      x-aws-idp-evaluation-method: LEVENSHTEIN
+      x-aws-idp-evaluation-method: DATE
       x-aws-idp-evaluation-threshold: '0.7'
       x-aws-idp-confidence-threshold: '0.8'
       description: The agreement date in YYYY-MM-DD format.
@@ -154,14 +166,14 @@ classes:
           data_type: number
         endDate:
           type: string
-          x-aws-idp-evaluation-method: LEVENSHTEIN
+          x-aws-idp-evaluation-method: DATE
           x-aws-idp-evaluation-threshold: '0.7'
           x-aws-idp-confidence-threshold: '0.8'
           description: Lease end date in YYYY-MM-DD format.
           data_type: string
         startDate:
           type: string
-          x-aws-idp-evaluation-method: LEVENSHTEIN
+          x-aws-idp-evaluation-method: DATE
           x-aws-idp-evaluation-threshold: '0.7'
           x-aws-idp-confidence-threshold: '0.8'
           description: Lease start date in YYYY-MM-DD format.
@@ -256,7 +268,7 @@ classes:
         properties:
           date:
             type: string
-            x-aws-idp-evaluation-method: LEVENSHTEIN
+            x-aws-idp-evaluation-method: DATE
             x-aws-idp-evaluation-threshold: '0.7'
             x-aws-idp-confidence-threshold: '0.8'
             description: Transaction date in MM/DD format as shown on the statement (not YYYY-MM-DD for this field).
@@ -425,7 +437,7 @@ classes:
               data_type: string
         date:
           type: string
-          x-aws-idp-evaluation-method: LEVENSHTEIN
+          x-aws-idp-evaluation-method: DATE
           x-aws-idp-evaluation-threshold: '0.7'
           x-aws-idp-confidence-threshold: '0.8'
           data_type: string
@@ -537,7 +549,7 @@ classes:
           x-aws-idp-confidence-threshold: '0.8'
         inspectionDate:
           type: string
-          x-aws-idp-evaluation-method: LEVENSHTEIN
+          x-aws-idp-evaluation-method: DATE
           x-aws-idp-evaluation-threshold: '0.7'
           x-aws-idp-confidence-threshold: '0.8'
           description: inspectionDate in YYYY-MM-DD format.
@@ -553,7 +565,7 @@ classes:
           description: Whether the equipment passed overall inspection. Extract the explicit pass/fail determination stated in the document. Do NOT infer this from individual checkpoint statuses — use only the explicitly stated overall result.
         nextInspectionDue:
           type: string
-          x-aws-idp-evaluation-method: LEVENSHTEIN
+          x-aws-idp-evaluation-method: DATE
           x-aws-idp-evaluation-threshold: '0.7'
           x-aws-idp-confidence-threshold: '0.8'
           description: nextInspectionDue in YYYY-MM-DD format.
@@ -625,7 +637,7 @@ classes:
           data_type: string
         electionDate:
           type: string
-          x-aws-idp-evaluation-method: LEVENSHTEIN
+          x-aws-idp-evaluation-method: DATE
           x-aws-idp-evaluation-threshold: '0.7'
           x-aws-idp-confidence-threshold: '0.8'
           data_type: string
@@ -634,7 +646,7 @@ classes:
       properties:
         date:
           type: string
-          x-aws-idp-evaluation-method: LEVENSHTEIN
+          x-aws-idp-evaluation-method: DATE
           x-aws-idp-evaluation-threshold: '0.7'
           x-aws-idp-confidence-threshold: '0.8'
           data_type: string
@@ -678,7 +690,7 @@ classes:
         properties:
           date:
             type: string
-            x-aws-idp-evaluation-method: LEVENSHTEIN
+            x-aws-idp-evaluation-method: DATE
             x-aws-idp-evaluation-threshold: '0.7'
             x-aws-idp-confidence-threshold: '0.8'
             data_type: string
@@ -813,7 +825,7 @@ classes:
             data_type: string
     weekStartDate:
       type: string
-      x-aws-idp-evaluation-method: LEVENSHTEIN
+      x-aws-idp-evaluation-method: DATE
       x-aws-idp-evaluation-threshold: '0.7'
       x-aws-idp-confidence-threshold: '0.8'
       data_type: string
@@ -844,7 +856,9 @@ classification:
   max_tokens: '4096'
   top_k: '5'
   system_prompt: 'You are a multimodal document classification expert that analyzes business documents using both visual layout and textual content. Your task is to classify single-page documents into predefined categories based on their structural patterns, visual features, and text content. Your output must be valid JSON according to the requested format. <variables> <document-ocr-data>: OCR-extracted text content from the document page that provides textual information for classification <document-image>: Visual representation of the document page that provides layout, formatting, and visual structure information <document-types>: List of valid document types with their descriptions that the document must be classified into </variables>'
-  task_prompt: "<task-description> Analyze the provided document using both its visual layout and textual content to determine its document type and whether this page begins a new document or continues the previous one. </task-description>\n<document-types> {CLASS_NAMES_AND_DESCRIPTIONS} </document-types>\n<classification-instructions> Follow these steps to classify the document: 1. Examine the visual layout: headers, logos, formatting, structure, and visual organization 2. Analyze the textual content: key phrases, terminology, purpose, and information type 3. Identify distinctive features that match the document type descriptions 4. Decide if this page starts a new document (output \"start\") or continues the previous document (output \"continue\") 5. Consider both visual and textual evidence together to determine the best match 6. CRITICAL: Only use document types explicitly listed in the <document-types> section </classification-instructions>\n<output-format> {\n  \"classification_reason\": \"Detailed reasoning including specific visual and textual evidence that led to this classification\",\n  \"class\": \"exact_document_type_from_list\",\n  \"document_boundary\": \"start or continue\"\n} </output-format>\n<<CACHEPOINT>>\n<document-ocr-data> {DOCUMENT_TEXT} </document-ocr-data>\n<document-image> {DOCUMENT_IMAGE} </document-image>\n<final-instructions> Analyze the document above by: 1. Applying the <classification-instructions> to examine both visual and textual features 2. Selecting ONLY from document types in <document-types> 3. Providing clear reasoning with specific evidence 4. Outputting in the exact JSON format specified in <output-format> </final-instructions>"
+  task_prompt: "<task-description> Analyze the provided document using both its visual layout and textual content to determine its document type and whether this page begins a new document or continues the previous one. </task-description>\n<document-types> {CLASS_NAMES_AND_DESCRIPTIONS} </document-types>\n<classification-instructions> Follow these steps to classify the document: 1. Examine the visual layout: headers, logos, formatting, structure, and visual organization 2. Analyze the textual content: key phrases, terminology, purpose, and information type 3. Identify distinctive features that match the document type descriptions 4. Decide the document_boundary by applying the <boundary-detection-rules> below 5. Consider both visual and textual evidence together to determine the best match 6. CRITICAL: Only use document types explicitly listed in the <document-types> section </classification-instructions>\n<boundary-detection-rules> You are classifying ONE page at a time. Any pages shown to you as context are there only to help you judge this page; classify only the page identified as the page to classify. \"document_boundary\" answers one question: is this page the FIRST page of a document instance (\"start\"), or a later page of a document instance that already began on an earlier page (\"continue\")? Decide from this page's own evidence, in priority order: 1. PAGINATION: If the page shows pagination such as \"Page 2 of 2\", \"Page 3 of 5\", \"2/2\", or \"continued\" with a number greater than 1, this page is NOT a first page - output \"continue\". 2. If pagination indicates the first page (for example \"Page 1 of 2\"), output \"start\". 3. OPENING HEADER BLOCK: A first page\
+    \ normally carries the document's opening identity block - form number and title, addressee name AND full address, date, account or reference numbers. Output \"start\" when this page carries that opening block. 4. CONTINUATION EVIDENCE: A later page normally lacks the opening block and instead shows a form number only in the footer, a table or list continuing from a previous page, or a trailing signature/consent/certification section. Output \"continue\" for such a page. CRITICAL - no preceding page shown: If you are not shown the preceding page, do NOT conclude that this page must be a first page. Pages are classified independently, so the absence of a preceding page in your input tells you nothing about the document. Judge only from this page's own evidence: a page marked \"Page 2 of 2\" is a continuation page and must be \"continue\" even when you cannot see page 1. CRITICAL - consecutive documents of the same type: Output \"start\" whenever this page IS a first page, even when the preceding page has the same document type. Two copies of the same form filed back to back are two separate documents, and the first page of the second copy must be \"start\" so the two are not merged. PRECEDENCE: If the matched document type's description in <document-types> gives explicit boundary or page-ordering instructions (for example, how to handle pages scanned out of order), follow those instructions instead of the general rules above. If evidence is genuinely balanced, prefer \"continue\" for a page that is clearly not a first page, and prefer \"start\" for a page that carries a complete opening header block. </boundary-detection-rules>\n<output-format> {\n  \"classification_reason\"\
+    : \"Detailed reasoning including specific visual and textual evidence that led to this classification\",\n  \"class\": \"exact_document_type_from_list\",\n  \"document_boundary\": \"start or continue\"\n} </output-format>\n<<CACHEPOINT>>\n<document-ocr-data> {DOCUMENT_TEXT} </document-ocr-data>\n<document-image> {DOCUMENT_IMAGE} </document-image>\n<final-instructions> Analyze the document above by: 1. Applying the <classification-instructions> to examine both visual and textual features 2. Selecting ONLY from document types in <document-types> 3. Providing clear reasoning with specific evidence 4. Outputting in the exact JSON format specified in <output-format> </final-instructions>"
 extraction:
   agentic:
     enabled: false
@@ -859,27 +873,10 @@ extraction:
   top_k: '5'
   system_prompt: You are a document assistant. Respond only with JSON. Never make up data, only provide data found in the document being provided.
   task_prompt: "<background> You are an expert in document analysis and information extraction.  You can understand and extract key information from documents classified as type: \n{DOCUMENT_CLASS}. </background>\n<task> Your task is to take the unstructured text provided and convert it into a well-organized table format using JSON. Identify the main entities, attributes, or categories mentioned in the attributes list below and use them as keys in the JSON object.  Then, extract the relevant information from the text and populate the corresponding values in the JSON object. </task>\n<extraction-guidelines> Guidelines:\n    1. Ensure that the data is accurately represented and properly formatted within\n    the JSON structure\n    2. Include double quotes around all keys and values\n    3. Do not make up data - only extract information explicitly found in the\n    document\n    4. Do not use /n for new lines, use a space instead\n    5. If a field is not found or if unsure, return null\n    6. All dates should be in YYYY-MM-DD format (e.g., 2025-01-15)\n    7. Do not perform calculations or summations unless totals are explicitly given\n    8. If an alias is not found in the document, return null\n    9. Guidelines for checkboxes:\n     9.A. CAREFULLY examine each checkbox, radio button, and selection field:\n        - Look for marks like ✓, ✗, x, filled circles (●), darkened areas, or handwritten checks indicating selection\n        - For checkboxes and multi-select fields, ONLY INCLUDE options that show clear visual evidence of selection\n        - DO NOT list options that have no visible selection mark\n     9.B. For ambiguous or overlapping tick marks:\n        - If a mark overlaps between two or more checkboxes, determine which option contains the majority of the mark\n        - Consider a checkbox selected if the mark is primarily inside the check box or over the option text\n        - When a mark touches multiple options, analyze which option was most likely intended based on position and density. For handwritten checks, the mark typically flows from the selected checkbox outward.\n        - Carefully analyze visual cues and contextual hints. Think from a human perspective, anticipate natural tendencies, and apply thoughtful reasoning to make the best possible judgment.\n    10. Think step by step first and then answer.\n</extraction-guidelines>\nIf the attributes section below contains a list of attribute names and descriptions, then output only those attributes, using the provided descriptions as guidance for finding the correct values. \n<attributes> {ATTRIBUTE_NAMES_AND_DESCRIPTIONS} </attributes>\n<<CACHEPOINT>>\n<document-text> {DOCUMENT_TEXT} </document-text>\n<document_image> {DOCUMENT_IMAGE} </document_image>\n<final-instructions> Extract key information from the document and return a JSON object with the following key steps: 1. Carefully analyze the document text to identify the requested attributes 2. Extract only information explicitly found in the document - never make up data 3. Format all dates as YYYY-MM-DD and replace newlines with spaces 4. For checkboxes, only include options with clear visual selection marks 5. Use null for any fields not found in the document 6. Ensure the output is properly formatted JSON with quoted keys and values 7. Think step by step before finalizing your answer </final-instructions>"
-assessment:
-  enabled: false
-  validation_enabled: false
-  hitl_enabled: false
-  default_confidence_threshold: '0.8'
-  image:
-    target_height: ''
-    target_width: ''
-  granular:
-    enabled: true
-    max_workers: '20'
-    simple_batch_size: '3'
-    list_batch_size: '1'
-  model: us.amazon.nova-lite-v1:0
-  top_p: '0.0'
-  max_tokens: '10000'
-  top_k: '5'
-  temperature: '0.0'
-  system_prompt: You are a document analysis assessment expert. Your role is to evaluate the confidence and accuracy of data extraction results by analyzing them against source documents. Provide accurate confidence scores for each assessment. When bounding boxes are requested, provide precise coordinate locations where information appears in the document.
-  task_prompt: "<background> You are an expert document analysis assessment system. Your task is to evaluate the confidence of extraction results for a document of class {DOCUMENT_CLASS} and provide precise spatial localization for each field. </background>\n<task> Analyze the extraction results against the source document and provide confidence assessments AND bounding box coordinates for each extracted attribute. Consider factors such as: 1. Text clarity and OCR quality in the source regions  2. Alignment between extracted values and document content  3. Presence of clear evidence supporting the extraction  4. Potential ambiguity or uncertainty in the source material  5. Completeness and accuracy of the extracted information 6. Precise spatial location of each field in the document </task>\n<assessment-guidelines> For each attribute, provide:  - A confidence score between 0.0 and 1.0 where:\n   - 1.0 = Very high confidence, clear and unambiguous evidence\n   - 0.8-0.9 = High confidence, strong evidence with minor uncertainty\n   - 0.6-0.7 = Medium confidence, reasonable evidence but some ambiguity\n   - 0.4-0.5 = Low confidence, weak or unclear evidence\n   - 0.0-0.3 = Very low confidence, little to no supporting evidence\n- A clear explanation of the confidence reasoning - Precise spatial coordinates where the field appears in the document\nGuidelines:  - Base assessments on actual document content and OCR quality  - Consider both text-based evidence and visual/layout clues  - Account for OCR confidence scores when provided  - Be objective and specific in reasoning  - If an extraction appears incorrect, score accordingly with explanation - Provide tight, accurate bounding boxes around the actual text </assessment-guidelines>\n<spatial-localization-guidelines> For each field, provide bounding box coordinates: - bbox: [x1, y1, x2, y2] coordinates in normalized 0-1000 scale - page: Page number where the field appears (starting from 1)\nCoordinate system: - Use normalized scale 0-1000 for both x and y axes - x1, y1 = top-left corner of bounding box   - x2, y2 = bottom-right corner of bounding box - Ensure x2 > x1 and y2 > y1 - Make bounding boxes tight around the actual text content - If a field spans multiple lines, create a bounding box that encompasses all relevant text </spatial-localization-guidelines>\n<final-instructions> Analyze the extraction results against the source document and provide confidence assessments with spatial localization. Return a JSON object with the following structure based on the attribute type:\nFor SIMPLE attributes:  {\n  \"simple_attribute_name\": {\n    \"confidence\": 0.85,\n    \"bbox\": [100, 200, 300, 250],\n    \"page\": 1\n  }\n}\nFor GROUP attributes (nested object structure):  {\n  \"group_attribute_name\": {\n    \"sub_attribute_1\": {\n      \"confidence\": 0.90,\n      \"bbox\": [150, 300, 250, 320],\n      \"page\": 1\n    },\n    \"sub_attribute_2\": {\n      \"confidence\": 0.75,\n      \"bbox\": [150, 325, 280, 345],\n      \"page\": 1\n    }\n  }\n}\nFor LIST attributes (array of assessed items):  {\n  \"list_attribute_name\": [\n    {\n      \"item_attribute_1\": {\n        \"confidence\": 0.95,\n        \"bbox\": [100, 400, 200, 420],\n        \"page\": 1\n      },\n      \"item_attribute_2\": {\n        \"confidence\": 0.88,\n        \"bbox\": [250, 400, 350, 420],\n        \"page\": 1\n      }\n    },\n    {\n      \"item_attribute_1\": {\n        \"confidence\": 0.92,\n        \"bbox\": [100, 425, 200, 445],\n        \"page\": 1\n      },\n      \"item_attribute_2\": {\n        \"confidence\": 0.70,\n        \"bbox\": [250, 425, 350, 445],\n        \"page\": 1\n      }\n    }\n  ]\n}\nIMPORTANT:   - For LIST attributes like \"Transactions\", assess EACH individual item in the list separately with individual bounding boxes - Each transaction should be assessed as a separate object in the array with its own spatial coordinates - Do NOT provide aggregate assessments for list items - assess each one individually with precise locations - Include assessments AND bounding boxes
-    for ALL attributes present in the extraction results - Match the exact structure of the extracted data - Provide page numbers for all bounding boxes (starting from 1) </final-instructions>\n<<CACHEPOINT>>\n<document-image> {DOCUMENT_IMAGE} </document-image>\n<ocr-text-confidence-results> {OCR_TEXT_CONFIDENCE} </ocr-text-confidence-results>\n<<CACHEPOINT>>\n<attributes-definitions> {ATTRIBUTE_NAMES_AND_DESCRIPTIONS} </attributes-definitions>\n<extraction-results> {EXTRACTION_RESULTS} </extraction-results>"
+  # v0.6: confidence scoring disabled (was the top-level `assessment` block,
+  # which had assessment.enabled: false).
+  confidence:
+    mode: 'off'
 summarization:
   enabled: false
   model: us.amazon.nova-pro-v1:0
@@ -918,10 +915,8 @@ agents:
     model_id: us.anthropic.claude-haiku-4-5-20251001-v1:0
   error_analyzer:
     model_id: us.anthropic.claude-sonnet-4-20250514-v1:0
-    parameters:
-      max_log_events: 5
-      time_range_hours_default: 24
-    system_prompt: "You are an intelligent error analysis agent for the GenAI IDP system with access to specialized diagnostic tools.\n\nGENERAL TROUBLESHOOTING WORKFLOW:\n1. Identify document status from DynamoDB\n2. Find any errors reported during Step Function execution\n3. Collect relevant logs from CloudWatch\n4. Identify any performance issues from X-Ray traces\n5. Provide root cause analysis based on the collected information\n\nTOOL SELECTION STRATEGY:\n- If user provides a filename: Use cloudwatch_document_logs and dynamodb_status for document-specific analysis\n- For system-wide issues: Use cloudwatch_logs and dynamodb_query\n- For execution context: Use lambda_lookup or stepfunction_details\n- For distributed tracing: Use xray_trace or xray_performance_analysis\n\nALWAYS format your response with exactly these three sections in this order:\n\n## Root Cause\nIdentify the specific underlying technical reason why the error occurred. Focus on the primary cause, not symptoms.\n\n## Recommendations\nProvide specific, actionable steps to resolve the issue. Limit to top three recommendations only.\n\n<details>\n<summary><strong>Evidence</strong></summary>\n\nFormat evidence with source information. Include relevant data from tool responses:\n\n**For CloudWatch logs:**\n**Log Group:** [full log_group name]\n**Log Stream:** [full log_stream name]\n```\n[ERROR] timestamp message\n```\n\n**For other sources (DynamoDB, Step Functions, X-Ray):**\n**Source:** [service name and resource]\n```\nRelevant data from tool response\n```\n\n</details>\n\nFORMATTING RULES:\n- Use the exact three-section structure above\n- Make Evidence section collapsible using HTML details tags\n- Include relevant data from all tool responses (CloudWatch, DynamoDB, Step Functions, X-Ray)\n- For CloudWatch: Show complete log group and log stream names without truncation\n- Present evidence data in code blocks with appropriate source labels\n  \nANALYSIS GUIDELINES:\n- Use multiple tools for comprehensive analysis when needed\n- Start with document-specific tools for targeted queries\n- Use system-wide tools for pattern analysis\n- Combine DynamoDB status with CloudWatch logs for complete picture\n- Leverage X-Ray for distributed system issues\n\nROOT CAUSE DETERMINATION:\n1. Document Status: Check dynamodb_status first\n2. Execution Details: Use stepfunction_details for workflow failures\n3. Log Analysis: Use cloudwatch_document_logs or cloudwatch_logs for error details\n4. Distributed Tracing: Use xray_performance_analysis for service interaction issues\n5. Context: Use lambda_lookup for execution environment\n\nRECOMMENDATION GUIDELINES:\nFor code-related issues or system bugs:\n- Do not suggest code modifications\n- Include error details, timestamps, and context\n\nFor configuration-related issues:\n- Direct users to UI configuration panel\n- Specify exact configuration section and parameter names\n\nFor operational issues:\n- Provide immediate troubleshooting steps\n- Include preventive measures\n\nTIME RANGE PARSING:\n- recent: 1 hour\n- last week: 168 hours  \n- last day: 24 hours\n- No time specified: 24 hours (default)\n\nIMPORTANT: Do not include any search quality reflections, search quality scores, or meta-analysis sections in your response. Only provide the three required sections: Root Cause, Recommendations, and Evidence."
+    lookback_hours: 24
+    system_prompt: "You are an intelligent error analysis agent for the GenAI IDP (Intelligent Document Processing) system with access to specialized diagnostic tools.\n\nSYSTEM ARCHITECTURE:\nThe GenAI IDP system processes documents through an AWS Step Functions state machine with the following pipeline stages:\n- OCR Stage: Extracts text/layout from documents using Amazon Textract or Amazon Bedrock Data Automation (BDA)\n- Classification Stage: Identifies the document class using a Bedrock LLM\n- Extraction Stage: Extracts structured fields using a Bedrock LLM based on class-specific configuration\n- Assessment Stage: Evaluates extraction quality using a Bedrock LLM\n- Summarization Stage (optional): Generates a document summary\n- Evaluation Stage (optional): Scores extraction accuracy against ground truth\n\nBDA Alternative Branch:\n- InvokeBDA -> BDA Completion (EventBridge-triggered) -> BDA ProcessResults\n- BDA jobs are asynchronous; failures may appear in EventBridge delivery or the BDA service itself\n\nKey AWS services involved:\n- AWS Step Functions: Orchestrates the pipeline workflow\n- AWS Lambda: Executes each stage as an independent function\n- Amazon DynamoDB: Tracks document status and metadata per stage\n- Amazon CloudWatch: Captures logs from each Lambda function\n- AWS X-Ray: Provides distributed tracing across Lambda and Bedrock calls\n- Amazon Bedrock: Provides LLM inference for classification, extraction, assessment, and summarization\n- Amazon Textract: Performs OCR for non-BDA documents\n- Amazon S3: Stores input documents, OCR results, and extracted output\n\nINVESTIGATION WORKFLOW:\n1. Identify the document status in DynamoDB to understand which pipeline stage failed\n2. Retrieve Step Functions execution details to get the execution timeline and error event\n3. Collect CloudWatch logs from the failing Lambda stage for detailed error messages\n4. Use X-Ray traces to identify performance bottlenecks or cascading failures across services\n5. Synthesize all evidence to determine root cause - never stop at the first error message\n\nTOOL USAGE:\n- Document-specific analysis (user provides a filename or document ID):\n  Use cloudwatch_document_logs and dynamodb_status as primary tools\n- System-wide or batch analysis (no specific document):\n  Use cloudwatch_logs and dynamodb_query to identify patterns\n- Workflow failures and execution timeline:\n  Use stepfunction_details for the execution event history\n- Lambda configuration and environment context:\n  Use lambda_lookup to check timeout settings, memory, and environment variables\n- Distributed service interaction issues:\n  Use xray_trace or xray_performance_analysis\n\nAlways use at least 2 different tool sources before concluding a root cause. If a tool call returns no useful data, try an alternative - never guess without evidence.\n\nINVESTIGATION STRATEGY:\nUse this approach for all investigations, whether a single document or a large batch:\n\n1. TRIAGE: Check DynamoDB for document status and which stage failed. For batches, get a count of failed documents and their error status distribution.\n\n2. SAMPLE: For multiple failures, select 2-3 representative failed documents. Avoid over-sampling - additional documents yield diminishing returns.\n\n3. TRACE THE CAUSAL CHAIN for each sampled document:\n   DynamoDB status -> Step Functions execution timeline -> CloudWatch error logs -> X-Ray traces\n\n4. APPLY THE 5 WHYS - Never stop at the first error. Keep asking what caused THIS:\n   Finding: Extraction Lambda timed out -> Why?\n   Lambda waited 14 minutes on Bedrock InvokeModel -> Why was it slow?\n   Bedrock returned ThrottlingException, triggering exponential backoff -> Why throttled?\n   Batch of 200 docs with extraction concurrency=10 exceeded Bedrock RPM quota\n   ROOT CAUSE: Extraction concurrency too high for the configured Bedrock account quota\n\n5. DISTINGUISH SYSTEMIC vs ISOLATED FAILURES:\n   - Same error type across many documents -> systemic issue (quota, permissions, configuration, service limit)\n   - Different errors across documents -> per-document issues (bad input, edge cases, unsupported format)\n\n6. VALIDATE: Does the identified root cause explain ALL observed failures?\n\nROOT CAUSE vs SYMPTOM GUIDE:\n- SYMPTOM: Document processing failed\n- SYMPTOM: Extraction Lambda returned error\n- CLOSER:  ThrottlingException from Bedrock InvokeModel\n- ROOT CAUSE: Bedrock RPM quota exceeded - batch concurrency generated too many concurrent API calls\n\n- SYMPTOM: Classification failed\n- CLOSER:  Textract API timeout\n- ROOT CAUSE: 150-page PDF exceeded Textract async processing limit for the configured region\n\nCOMMON ERROR PATTERNS:\nUse these patterns to guide your investigation and accelerate diagnosis:\n\n1. THROTTLING - ThrottlingException, TooManyRequestsException, Rate exceeded, Too many requests\n   Likely cause: Batch size x concurrency > Bedrock RPM/TPM quota, or Textract TPS limit exceeded\n   Check: Concurrent Lambda executions, batch size, Bedrock model quotas\n\n2. TIMEOUT - Task timed out, Lambda timeout, socket timeout, Connection reset\n   Likely cause: Large document (many pages), undersized Lambda timeout or memory, slow Bedrock inference\n   Check: Document page count, Lambda timeout configuration, model response latency in X-Ray\n\n3. CONFIGURATION ERROR - KeyError, missing field, not found in config, validation error, AttributeError\n   Likely cause: Class definition or attribute names in config do not match expected schema; config changes deployed incorrectly\n   Check: DynamoDB config table, class definitions, attribute names for the affected document class\n\n4. PERMISSIONS - AccessDeniedException, not authorized, is not authorized to perform, ExpiredToken\n   Likely cause: Missing IAM policy, cross-account access issue, Bedrock model access not granted, KMS policy gap\n   Check: Lambda execution role policies, Bedrock model access in the console, S3 bucket policies\n\n5. INPUT QUALITY - empty extraction results, very low confidence, unable to parse, Textract errors on specific pages\n   Likely cause: Poor scan quality, handwritten content, unsupported file format, corrupted PDF\n   Check: OCR output in S3, original document quality, Textract response for page-level errors\n\n6. BDA-SPECIFIC - BDA Job Failed, blueprint mismatch, async job timeout, missing EventBridge event\n   Likely cause: Blueprint schema mismatch with document type, BDA service limit, EventBridge delivery failure\n   Check: BDA project configuration, blueprint compatibility, EventBridge rule and DLQ\n\n7. BEDROCK MODEL ERRORS - ModelErrorException, model returned an error, context length exceeded\n   Likely cause: Document content too large for model context window, model unavailable in region, prompt issue\n   Check: Document page count, OCR text length, model availability, extraction prompt configuration\n\nOUTPUT FORMAT:\nAlways format your response with exactly these three sections in this order:\n\n## Root Cause\n**Confidence:** [HIGH | MEDIUM | LOW]\nIdentify the specific underlying technical reason why the error occurred. Focus on the primary cause, not symptoms.\n\n## Recommendations\nProvide specific, actionable steps to resolve the issue. Limit to top three recommendations only.\n\n<details>\n<summary><strong>Evidence</strong></summary>\n\nFormat evidence with source information. Include relevant data from tool responses:\n\n**For CloudWatch logs:**\n**Log Group:** [full log_group name]\n**Log Stream:** [full log_stream name]\n```\n[ERROR] timestamp message\n```\n\n**For other sources (DynamoDB, Step Functions, X-Ray):**\n**Source:** [service name and resource]\n```\nRelevant data from tool response\n```\n\n</details>\n\nFORMATTING RULES:\n- Use the exact three-section structure above\n- Add Confidence (HIGH/MEDIUM/LOW) as the first line of the Root Cause section\n- Make the Evidence section collapsible using HTML details tags\n- Include relevant data from all tool responses used\n- For CloudWatch: Show complete log group and log stream names without truncation\n- Present evidence data in code blocks with appropriate source labels\n\nRECOMMENDATION GUIDELINES:\nFor code-related issues or system bugs:\n- Do not suggest code modifications - users cannot change Lambda code\n- Describe the error in detail with timestamps and context so it can be reported\n\nFor configuration-related issues:\n- Direct users to the UI configuration panel\n- Specify the exact configuration section and parameter name\n\nFor operational issues (throttling, timeouts, quotas):\n- Provide immediate remediation steps (e.g., reduce concurrency, reprocess failed documents)\n- Include preventive measures to avoid recurrence\n\nCOMMON MISTAKES TO AVOID:\n- Do NOT report Lambda function returned error as a root cause - that is a symptom\n- Do NOT recommend check CloudWatch logs as a recommendation - you are already doing that\n- Do NOT suggest code changes - users cannot modify Lambda functions\n- Do NOT speculate about root cause without corroborating tool evidence\n- Do NOT investigate more than 3 sample documents in a batch - focus on pattern recognition\n- Do NOT include search quality reflections, meta-analysis, or sections not listed in the output format above"
 discovery:
   output_format:
     sample_json: "{\n    \"document_class\" : \"Form-1040\",\n    \"document_description\" : \"Brief summary of the document\",\n    \"groups\" : [\n        {\n            \"name\" : \"PersonalInformation\",\n            \"description\" : \"Personal information of Tax payer\",\n            \"attributeType\" : \"group\",\n            \"groupAttributes\" : [\n                {\n                    \"name\": \"FirstName\",\n                    \"dataType\" : \"string\",\n                    \"description\" : \"First Name of Taxpayer\"\n                },\n                {\n                    \"name\": \"Age\",\n                    \"dataType\" : \"number\",\n                    \"description\" : \"Age of Taxpayer\"\n                }\n            ]\n        },\n        {\n            \"name\" : \"Dependents\",\n            \"description\" : \"Dependents of taxpayer\",\n            \"attributeType\" : \"list\",\n            \"listItemTemplate\": {\n                \"itemAttributes\" : [\n                    {\n                        \"name\": \"FirstName\",\n                        \"dataType\" : \"string\",\n                        \"description\" : \"Dependent first name\"\n                    },\n                    {\n                        \"name\": \"Age\",\n                        \"dataType\" : \"number\",\n                        \"description\" : \"Dependent Age\"\n                    }\n                ]\n            }\n        }\n    ]\n}"

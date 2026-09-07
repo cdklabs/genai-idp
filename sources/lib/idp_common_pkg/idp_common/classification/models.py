@@ -26,6 +26,17 @@ class DocumentType:
     document_page_content_regex: Optional[str] = None
     """Optional regex pattern to match against page content text. When matched during multi-modal page-level classification, the page is classified as this type."""
 
+    excluded: bool = False
+    """When True, sections classified as this document type are skipped by
+    downstream services (extraction, assessment, summarization, rule_validation,
+    evaluation). Use for classes whose pages contain only static content such
+    as instructions, legal boilerplate, or cover pages."""
+
+    exclusion_reason: Optional[str] = None
+    """Optional short reason/category for why this class is excluded
+    (e.g., "instructions", "legal", "cover-page"). Used for UI badges and
+    evaluation report annotations."""
+
     # Private compiled regex patterns (not included in init)
     _compiled_name_regex: Optional[re.Pattern] = field(default=None, init=False)
     """Compiled regex pattern for document name matching."""
@@ -75,8 +86,15 @@ class DocumentClassification:
     doc_type: str
     """The classified document type."""
 
-    confidence: float = 1.0
-    """Confidence score for the classification (0-1)."""
+    confidence: Optional[float] = None
+    """Confidence in ``doc_type``, in ``[0.0, 1.0]``, or ``None`` for NOT SCORED.
+
+    ``None`` is the default because most paths produce no score: the model has
+    to be asked for one and has to return it (GitHub #673). Callers that can
+    genuinely assert the class — a document-name regex match, a single-class
+    configuration, a page-content regex match — pass ``1.0`` explicitly, and an
+    errored page carries ``0.0``. See :attr:`idp_common.models.Page.confidence`
+    for why a defaulted ``1.0`` was removed."""
 
     metadata: Dict[str, Any] = field(default_factory=dict)
     """Additional metadata for the classification."""

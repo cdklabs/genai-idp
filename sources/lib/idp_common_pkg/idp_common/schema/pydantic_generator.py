@@ -230,13 +230,142 @@ def _find_model_in_module(
     for name, obj in all_models:
         if name in matching_names:
             logger.debug(f"Selected model '{name}' based on name matching")
-            return obj, all_models
+            return _ensure_model_covers_schema(obj, all_models, schema_dict), all_models
 
     # No exact match - use first available
     logger.debug(
         f"No name match found, using first available model: '{all_models[0][0]}'"
     )
-    return all_models[0][1], all_models
+    return (
+        _ensure_model_covers_schema(all_models[0][1], all_models, schema_dict),
+        all_models,
+    )
+
+
+def _declared_field_names(model: Type[BaseModel]) -> set:
+    """Field names AND aliases of a generated model.
+
+    Both matter: datamodel-code-generator sanitizes a JSON-Schema property name
+    that is not a Python identifier (``"Date of Birth"`` -> ``Date_of_Birth``)
+    and records the original as the field's alias.
+    """
+    names = set()
+    for field_name, field in model.model_fields.items():
+        names.add(field_name)
+        if field.alias:
+            names.add(field.alias)
+    return names
+
+
+def _ensure_model_covers_schema(
+    selected: Type[BaseModel],
+    all_models: List[Tuple[str, Type[BaseModel]]],
+    schema_dict: Dict[str, Any],
+) -> Type[BaseModel]:
+    """Guard against selecting a NESTED model instead of the root one.
+
+    Selection is by title/label priority, which is fine until a schema contains a
+    nested object that happens to match the same name. The case that provoked
+    this is the multi-instance wrapper (GitHub #715): a schema whose single
+    ``instances`` property has ``items`` describing the class would, if those
+    items kept the class title, select the INNER model — so the response was
+    silently validated as ONE record where a LIST had been requested. Every
+    record but the first would be dropped by validation with no error anywhere.
+
+    The check is structural rather than name-based, so it also catches the same
+    mis-selection arising any other way: the chosen model must declare every
+    top-level property the schema declares. When it does not, a model that DOES
+    is preferred (with a warning) and only a total absence of one is fatal —
+    raising on a schema that previously worked would be a worse outcome than the
+    bug this prevents.
+    """
+    properties = schema_dict.get("properties")
+    if not isinstance(properties, dict) or not properties:
+        return selected
+
+    expected = set(properties.keys())
+    if expected.issubset(_declared_field_names(selected)):
+        return selected
+
+    for name, candidate in all_models:
+        if expected.issubset(_declared_field_names(candidate)):
+            logger.warning(
+                "Generated model '%s' does not declare the schema's top-level "
+                "properties %s — it is a nested model, not the root. Using '%s' "
+                "instead, which does. (A wrapper schema whose inner items keep "
+                "the class title hits this: the inner model validates ONE record "
+                "where a LIST was requested.)",
+                selected.__name__,
+                sorted(expected - _declared_field_names(selected)),
+                name,
+            )
+            return candidate
+
+    raise PydanticModelGenerationError(
+        f"No generated Pydantic model declares the schema's top-level properties "
+        f"{sorted(expected)}; the closest was '{selected.__name__}' with fields "
+        f"{sorted(_declared_field_names(selected))}. Validating against it would "
+        f"silently drop data."
+    )
+
+
+def _iter_nested_model_classes(annotation: Any):
+    """Yield every Pydantic ``BaseModel`` subclass referenced by a type annotation.
+
+    Walks into containers and unions (``Optional[X]``, ``list[X]``,
+    ``dict[str, X]``, ``Union[...]``) so nested object/array-of-object fields are
+    reached, not just direct ``BaseModel`` annotations.
+    """
+    import typing
+
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        yield annotation
+        return
+    # typing.get_args handles Optional/Union/list/dict/tuple parameterizations.
+    for arg in typing.get_args(annotation):
+        yield from _iter_nested_model_classes(arg)
+
+
+def _apply_alias_config_recursively(
+    model: Type[BaseModel],
+    config: ConfigDict,
+    _seen: Optional[set] = None,
+) -> None:
+    """Apply ``config`` to ``model`` and every nested generated model in place.
+
+    datamodel-code-generator sanitizes JSON-Schema property names with spaces
+    (e.g. ``"Date of Birth"``) into Python identifiers (``Date_of_Birth``) and
+    records the original name as the field alias. The alias round-trip
+    (``populate_by_name`` / ``serialize_by_alias`` / ``validate_by_*``) is only
+    set on the top-level model by the caller, so **nested** sub-models would
+    otherwise validate/serialize by field name and silently drop or mis-key
+    nested values (see fix for agentic extraction nested-field loss). This walks
+    the whole model graph and applies the same config to every nested model,
+    then rebuilds each so Pydantic's cached core schema picks up the change.
+
+    ``_seen`` guards against recursive/self-referential schemas.
+    """
+    if _seen is None:
+        _seen = set()
+    if model in _seen:
+        return
+    _seen.add(model)
+
+    # Merge (not replace) so we don't clobber any config the model already has.
+    model.model_config.update(config)
+
+    for field in model.model_fields.values():
+        for nested in _iter_nested_model_classes(field.annotation):
+            _apply_alias_config_recursively(nested, config, _seen)
+
+    # Force a rebuild so the updated config takes effect on the cached schema.
+    try:
+        model.model_rebuild(force=True)
+    except Exception as exc:  # pragma: no cover - defensive; rebuild rarely fails
+        logger.warning(
+            f"model_rebuild failed for '{model.__name__}' after alias-config "
+            f"propagation; nested alias serialization may be incomplete: {exc}"
+        )
 
 
 def create_pydantic_model_from_json_schema(
@@ -395,6 +524,21 @@ def create_pydantic_model_from_json_schema(
                         populate_by_name=True, serialize_by_alias=True
                     ),
                 )
+
+            # Propagate the alias config to ALL nested models. The caller above
+            # only sets it on the top-level model, so without this, nested object
+            # properties whose names contain spaces (aliased to identifiers like
+            # "Date_of_Birth") validate/serialize by field name and silently drop
+            # or mis-key values. This makes nested behavior match the top level.
+            _apply_alias_config_recursively(
+                final_model,
+                ConfigDict(
+                    populate_by_name=True,
+                    serialize_by_alias=True,
+                    validate_by_name=True,
+                    validate_by_alias=True,
+                ),
+            )
 
             # Log the final model with its fields and aliases
             field_count = len(final_model.model_fields)

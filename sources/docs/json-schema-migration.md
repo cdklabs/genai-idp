@@ -165,11 +165,22 @@ JSON Schema is extended with custom AWS IDP fields:
 ### Document-Level Extensions
 
 - `x-aws-idp-document-type` - Marks a schema as a document type (value is the document class name)
+- `x-aws-idp-multi-instance` - `true` replaces the class's *effective* schema with a
+  list of that class (`{"instances": [ … ]}`), so a section holding several
+  documents of the class extracts every one of them. Mutually exclusive with
+  `x-aws-idp-instance-array`. ⚠️ Changes the shape of `inference_result`, so this
+  class's evaluation baselines must be migrated — see
+  [extraction-and-confidence.md](extraction-and-confidence.md).
+- `x-aws-idp-instance-array` - For a class whose schema is *already* a packet of
+  records: names the top-level array-of-objects property holding one record per
+  document, so the section reports that array's length as its instance count. No
+  schema change and no downstream impact.
 
 ### Attribute-Level Extensions
 
 - `x-aws-idp-evaluation-method` - Evaluation method for attribute comparison
-  - Valid values: `EXACT`, `NUMERIC_EXACT`, `FUZZY`, `SEMANTIC`, `LLM`
+  - Valid values: `EXACT`, `NUMERIC_EXACT`, `FUZZY`, `LEVENSHTEIN`, `SEMANTIC`, `DATE`, `LLM`, `HUNGARIAN`
+- `x-aws-idp-evaluation-method-config` - Optional comparator config passed through to the underlying comparator (used by `DATE`: `dayfirst`, `tolerance`, `range_mode`)
 - `x-aws-idp-confidence-threshold` - Confidence threshold (0.0 to 1.0)
 - `x-aws-idp-prompt-override` - Custom prompt for attribute extraction
 
@@ -196,7 +207,9 @@ The web UI provides two ways to create/edit document schemas:
    - Click "Add Class" to choose between:
      - **Custom Class** — define your own class with custom fields
      - **Standard Class** — import from 35+ pre-built document types (Invoice, Receipt, W-2, Bank Statement, Payslip, Driver License, Passport, tax forms, insurance cards, certificates, and more) derived from AWS BDA standard blueprints. Imported classes are fully editable.
-   - Add/edit document types and properties visually
+   - Add/edit document types and properties visually. A newly-created class shows an **Add first attribute** button; the **Add Attribute** dialog has an **Add another** option that saves the field and immediately starts a new one, so you can add several attributes without reopening the dialog.
+   - **Show Preview** opens a **Diagram** tab (a visual entity-relationship map of the classes and their `$ref`/array references), alongside **JSON Schema** and **Statistics** tabs.
+   - **Export** offers **Export all** (every document type) or **Export "&lt;class&gt;"** (the selected document type plus only the shared classes it references) as downloaded JSON. See the [Schema Builder Guide](web-ui.md#document-schema-builder).
 
 2. **JSON View** - Direct JSON editing with validation
    - Navigate to Configuration → JSON View
@@ -366,4 +379,4 @@ properties:
 - [Configuration Best Practices](idp-configuration-best-practices.md)
 - [Web UI Documentation](web-ui.md)
 - [JSON Schema Specification](https://json-schema.org/draft/2020-12/schema)
-- [Schema Builder Guide](web-ui.md#schema-builder)
+- [Schema Builder Guide](web-ui.md#document-schema-builder)

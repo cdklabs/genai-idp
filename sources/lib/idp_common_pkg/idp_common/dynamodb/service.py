@@ -12,12 +12,25 @@ import datetime
 import json
 import logging
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from idp_common.dynamodb.client import DynamoDBClient
-from idp_common.models import Document, Page, Section, Status
+from idp_common.models import (
+    Document,
+    Page,
+    ProcessingIssue,
+    Section,
+    Status,
+    coerce_revision,
+)
 
 logger = logging.getLogger(__name__)
+
+# TypeDateIndex hash-key values. A document submitted by a non-production caller
+# (currently only Test Studio) gets its own ItemType so it never appears in the
+# production Document List, while staying efficiently queryable on its own.
+ITEM_TYPE_DOCUMENT = "document"
+ITEM_TYPE_TEST_DOCUMENT = "test-document"
 
 
 def convert_floats_to_decimal(obj):
@@ -57,6 +70,96 @@ def convert_decimals_to_native(obj):
     elif isinstance(obj, (list, tuple)):
         return [convert_decimals_to_native(i) for i in obj]
     return obj
+
+
+def serialize_page_classification_signals(page: Any) -> Dict[str, Any]:
+    """Serialize a Page's OPTIONAL classification signals for DynamoDB.
+
+    Returns only the keys that have a value: ``ClassConfidence`` (the
+    classifier's confidence in ``Class``, as a Decimal — DynamoDB rejects
+    floats), ``ClassReason`` (the model's stated evidence) and ``Boundary``
+    (the ``start``/``continue`` signal ``sectionSplitting: llm_determined``
+    splits on). A page that produced none of them adds no attributes, so items
+    stay byte-identical to what older code wrote.
+
+    Named ``ClassConfidence`` rather than ``Confidence`` because a page item
+    already carries ``TextConfidenceUri``, which is OCR confidence — a different
+    measurement entirely. The prefix ties this one to the sibling ``Class``.
+
+    Shared by the live doc item writer (update_document) and the run-record
+    writer (create_document_run) so a version snapshot never carries fewer
+    signals than the live document.
+    """
+    signals: Dict[str, Any] = {}
+    if page.confidence is not None:
+        signals["ClassConfidence"] = Decimal(str(float(page.confidence)))
+    if getattr(page, "classification_reason", None):
+        signals["ClassReason"] = page.classification_reason
+    candidates = getattr(page, "classification_candidates", None)
+    if candidates:
+        # Ranked alternatives ("80% W-2, 15% 1099") from topk mode. Stored as a
+        # list of maps rather than a JSON string so the UI can render it without
+        # a parse step, mirroring ConfidenceThresholdAlerts.
+        signals["ClassCandidates"] = [
+            {
+                "Class": str(candidate.get("class", "")),
+                "Probability": Decimal(str(float(candidate.get("probability", 0.0)))),
+            }
+            for candidate in candidates
+            if isinstance(candidate, dict) and candidate.get("class")
+        ]
+    if page.document_boundary:
+        signals["Boundary"] = page.document_boundary
+    return signals
+
+
+def serialize_confidence_threshold_alerts(section: Section) -> List[Dict[str, Any]]:
+    """
+    Serialize a Section's confidence threshold alerts to the DynamoDB/GraphQL
+    camelCase shape (``attributeName``/``confidence``/``confidenceThreshold``).
+
+    Shared by the doc item writers (update_document,
+    update_document_section) and the run-record writer (create_document_run) so
+    a version snapshot carries the same low-confidence data the live document
+    does — the UI's "Low Confidence Fields" count reads this field.
+    """
+    alerts_data: List[Dict[str, Any]] = []
+    for alert in section.confidence_threshold_alerts or []:
+        alerts_data.append(
+            convert_floats_to_decimal(
+                {
+                    "attributeName": alert.get("attribute_name"),
+                    "confidence": alert.get("confidence"),
+                    "confidenceThreshold": alert.get("confidence_threshold"),
+                }
+            )
+        )
+    return alerts_data
+
+
+def serialize_processing_issues(section: Section) -> List[Dict[str, Any]]:
+    """
+    Serialize a Section's structured processing issues to compact camelCase
+    dicts mirroring the GraphQL ``ProcessingIssue`` type. ``details`` is
+    JSON-stringified rather than stored as a nested map, keeping the attribute
+    to one scalar regardless of the blob's shape. Note no consumer reads
+    ``details`` back today (the API resolvers strip it — it is not part of the
+    GraphQL type); it is written for parity with the live doc item.
+    """
+    issues_data: List[Dict[str, Any]] = []
+    for issue in section.processing_issues or []:
+        issue_item: Dict[str, Any] = {
+            "stage": issue.stage,
+            "severity": issue.severity,
+            "code": issue.code,
+            "message": issue.message,
+        }
+        if issue.root_cause:
+            issue_item["rootCause"] = issue.root_cause
+        if issue.details:
+            issue_item["details"] = json.dumps(issue.details, default=str)
+        issues_data.append(issue_item)
+    return issues_data
 
 
 class DocumentDynamoDBService:
@@ -128,8 +231,19 @@ class DocumentDynamoDBService:
             "ObjectStatus": document.status.value,
             "InitialEventTime": document.initial_event_time,
             "QueuedTime": document.queued_time,
-            "ItemType": "document",
+            # Partitioning on the index hash key, not a FilterExpression over a
+            # projected attribute: DynamoDB applies FilterExpression *after* Limit,
+            # so where most documents are test artifacts a page of 50 can return 1
+            # with no indication the rest were dropped.
+            "ItemType": ITEM_TYPE_TEST_DOCUMENT
+            if document.submission_source
+            else ITEM_TYPE_DOCUMENT,
         }
+
+        if document.submission_source:
+            item["SubmissionSource"] = document.submission_source
+        if document.test_set_id:
+            item["TestSetId"] = document.test_set_id
 
         if expires_after:
             item["ExpiresAfter"] = expires_after
@@ -178,6 +292,23 @@ class DocumentDynamoDBService:
             expression_names["#WorkflowExecutionArn"] = "WorkflowExecutionArn"
             expression_values[":WorkflowExecutionArn"] = document.workflow_execution_arn
 
+        # Persist the configuration version (read from the input object's
+        # `config-version` S3 metadata at queue time) so the UI/GSI can display
+        # which config each document was processed with. Without this the tracking
+        # item never carries ConfigVersion and the UI shows "N/A".
+        if document.config_version:
+            set_expressions.append("#ConfigVersion = :ConfigVersion")
+            expression_names["#ConfigVersion"] = "ConfigVersion"
+            expression_values[":ConfigVersion"] = document.config_version
+
+        # The revision of that profile the document is pinned to, so a result can
+        # be traced back to the exact configuration that produced it even after
+        # the profile has been saved again.
+        if document.config_revision is not None:
+            set_expressions.append("#ConfigRevision = :ConfigRevision")
+            expression_names["#ConfigRevision"] = "ConfigRevision"
+            expression_values[":ConfigRevision"] = int(document.config_revision)
+
         # Set workflow status based on document status
         if document.status == Status.FAILED:
             workflow_status = "FAILED"
@@ -213,7 +344,15 @@ class DocumentDynamoDBService:
                     "Class": page.classification or "",
                     "ImageUri": page.image_uri or "",
                     "TextUri": page.parsed_text_uri or page.raw_text_uri or "",
+                    "OcrPageDataUri": page.ocr_page_data_uri or "",
                 }
+                # Optional classification signals — the confidence in Class, the
+                # model's reason for it, and the "start"/"continue" boundary
+                # signal that sectionSplitting: llm_determined splits on.
+                # Persisted so a surprising classification or section merge can
+                # be audited after the fact instead of re-derived from Lambda
+                # logs. Each is omitted when absent.
+                page_data.update(serialize_page_classification_signals(page))
                 pages_data.append(page_data)
 
             if pages_data:
@@ -242,21 +381,39 @@ class DocumentDynamoDBService:
                     "OutputJSONUri": section.extraction_result_uri or "",
                 }
 
+                # Confidence in the section's CLASS (aggregated from its pages),
+                # distinct from the per-field ConfidenceThresholdAlerts below.
+                # Omitted when not scored.
+                if section.confidence is not None:
+                    section_data["Confidence"] = Decimal(str(float(section.confidence)))
+
                 # Convert confidence threshold alerts (matching current AppSync interface)
                 if section.confidence_threshold_alerts:
-                    alerts_data = []
-                    for alert in section.confidence_threshold_alerts:
-                        alert_data = convert_floats_to_decimal(
-                            {
-                                "attributeName": alert.get("attribute_name"),
-                                "confidence": alert.get("confidence"),
-                                "confidenceThreshold": alert.get(
-                                    "confidence_threshold"
-                                ),
-                            }
-                        )
-                        alerts_data.append(alert_data)
-                    section_data["ConfidenceThresholdAlerts"] = alerts_data
+                    section_data["ConfidenceThresholdAlerts"] = (
+                        serialize_confidence_threshold_alerts(section)
+                    )
+
+                # Persist structured processing issues (self-healing observability).
+                if section.processing_issues:
+                    section_data["ProcessingIssues"] = serialize_processing_issues(
+                        section
+                    )
+
+                # How many documents (instances) of this class the section holds.
+                # Omitted when undetermined (0) so items stay byte-identical to
+                # what older code wrote.
+                if section.instance_count:
+                    section_data["InstanceCount"] = section.instance_count
+
+                # Exclusion flags for a section whose class carries
+                # x-aws-idp-exclude-from-processing. This is the write that makes
+                # the UI's "Skipped" badge possible — the badge is the only
+                # explanation a user gets for why an excluded section's panels are
+                # empty. Omitted when not excluded, per the convention above.
+                if section.excluded:
+                    section_data["Excluded"] = True
+                    if section.exclusion_reason:
+                        section_data["ExclusionReason"] = section.exclusion_reason
 
                 sections_data.append(section_data)
 
@@ -287,6 +444,41 @@ class DocumentDynamoDBService:
             set_expressions.append("#SummaryReportUri = :SummaryReportUri")
             expression_names["#SummaryReportUri"] = "SummaryReportUri"
             expression_values[":SummaryReportUri"] = document.summary_report_uri
+
+        # Add rule validation result if available
+        if document.rule_validation_result:
+            set_expressions.append("#RuleValidationResult = :RuleValidationResult")
+            expression_names["#RuleValidationResult"] = "RuleValidationResult"
+            # Store as JSON string to preserve structure
+            rule_validation_dict = {
+                "request_id": document.rule_validation_result.request_id,
+                "summary": document.rule_validation_result.summary,
+                "section_results": document.rule_validation_result.section_results,
+                "metadata": document.rule_validation_result.metadata,
+                "output_uri": document.rule_validation_result.output_uri,
+                "errors": document.rule_validation_result.errors,
+                "matched_policy_types": document.rule_validation_result.matched_policy_types,
+                "matched_page_ids": document.rule_validation_result.matched_page_ids,
+            }
+            expression_values[":RuleValidationResult"] = json.dumps(
+                rule_validation_dict, default=str
+            )
+            # Also persist the flat URI scalar the schema/UI read directly
+            # (getDocument returns RuleValidationResultUri, and the UI's
+            # DocumentViewers renders the Rule Validation tab only when it is
+            # present). Without this the report never appears in the doc detail
+            # page even though the nested RuleValidationResult is stored. This
+            # mirrors the pre-AppSync-removal behaviour, where appsync/service.py
+            # set RuleValidationResultUri = output_uri "for backward
+            # compatibility"; that line was lost in the move to DynamoDB writes.
+            if document.rule_validation_result.output_uri:
+                set_expressions.append(
+                    "#RuleValidationResultUri = :RuleValidationResultUri"
+                )
+                expression_names["#RuleValidationResultUri"] = "RuleValidationResultUri"
+                expression_values[":RuleValidationResultUri"] = (
+                    document.rule_validation_result.output_uri
+                )
 
         # Add trace_id if available
         if document.trace_id:
@@ -322,6 +514,24 @@ class DocumentDynamoDBService:
         set_expressions.append("#ConfidenceAlertCount = :ConfidenceAlertCount")
         expression_names["#ConfidenceAlertCount"] = "ConfidenceAlertCount"
         expression_values[":ConfidenceAlertCount"] = document.confidence_alert_count
+
+        # Always persist processing-issue count (even 0) so the document list can
+        # show/filter on it, mirroring ConfidenceAlertCount (the authoritative
+        # filterable source of truth).
+        issue_count = document.processing_issue_count
+        set_expressions.append("#ProcessingIssueCount = :ProcessingIssueCount")
+        expression_names["#ProcessingIssueCount"] = "ProcessingIssueCount"
+        expression_values[":ProcessingIssueCount"] = issue_count
+
+        # Sparse GSI attribute for cheap "has processing issues" filtering — SET
+        # only when there ARE issues (mirrors the HITLPendingReview sparse pattern).
+        # Not proactively removed on issue-free writes: ProcessingIssueCount (always
+        # written, above) is the authoritative filter source, and avoiding a REMOVE
+        # here keeps the update-expression additive.
+        if issue_count > 0:
+            set_expressions.append("#HasProcessingIssues = :HasProcessingIssues")
+            expression_names["#HasProcessingIssues"] = "HasProcessingIssues"
+            expression_values[":HasProcessingIssues"] = "true"
 
         # Build update expression with optional REMOVE clause
         update_expression = "SET " + ", ".join(set_expressions)
@@ -362,6 +572,9 @@ class DocumentDynamoDBService:
             evaluation_report_uri=item.get("EvaluationReportUri"),
             summary_report_uri=item.get("SummaryReportUri"),
             trace_id=item.get("TraceId"),
+            initial_event_time=item.get("InitialEventTime"),
+            config_version=item.get("ConfigVersion"),
+            config_revision=coerce_revision(item.get("ConfigRevision")),
         )
 
         # Convert status
@@ -405,7 +618,27 @@ class DocumentDynamoDBService:
                     raw_text_uri=text_uri,
                     parsed_text_uri=text_uri,  # Set both raw and parsed to same URI
                     text_confidence_uri=page_data.get("TextConfidenceUri"),
+                    ocr_page_data_uri=page_data.get("OcrPageDataUri") or None,
                     classification=page_data.get("Class"),
+                    # Stored as a DynamoDB Decimal; back to float for the model.
+                    # Absent => not scored (None), never a presumed 1.0.
+                    confidence=(
+                        float(page_data["ClassConfidence"])
+                        if page_data.get("ClassConfidence") is not None
+                        else None
+                    ),
+                    classification_reason=page_data.get("ClassReason") or None,
+                    classification_candidates=[
+                        {
+                            "class": candidate.get("Class"),
+                            "probability": float(candidate["Probability"])
+                            if candidate.get("Probability") is not None
+                            else None,
+                        }
+                        for candidate in page_data.get("ClassCandidates") or []
+                    ]
+                    or None,
+                    document_boundary=page_data.get("Boundary") or None,
                 )
 
         # Convert sections
@@ -432,13 +665,48 @@ class DocumentDynamoDBService:
                             }
                         )
 
+                # Convert persisted processing issues back to ProcessingIssue.
+                processing_issues = []
+                issues_data = section_data.get("ProcessingIssues", [])
+                if issues_data:
+                    for iss in issues_data:
+                        details = iss.get("details")
+                        if isinstance(details, str):
+                            try:
+                                details = json.loads(details)
+                            except (json.JSONDecodeError, TypeError):
+                                details = {}
+                        processing_issues.append(
+                            ProcessingIssue(
+                                stage=iss.get("stage", ""),
+                                severity=iss.get("severity", "info"),
+                                code=iss.get("code", ""),
+                                message=iss.get("message", ""),
+                                root_cause=iss.get("rootCause", ""),
+                                section_id=section_data.get("Id"),
+                                details=details or {},
+                            )
+                        )
+
                 doc.sections.append(
                     Section(
                         section_id=section_data.get("Id", ""),
                         classification=section_data.get("Class", ""),
+                        # Confidence in the CLASS. Absent => not scored.
+                        confidence=(
+                            float(section_data["Confidence"])
+                            if section_data.get("Confidence") is not None
+                            else None
+                        ),
                         page_ids=page_ids,
                         extraction_result_uri=section_data.get("OutputJSONUri"),
                         confidence_threshold_alerts=confidence_threshold_alerts,
+                        processing_issues=processing_issues,
+                        instance_count=int(section_data.get("InstanceCount") or 0),
+                        # Absent on items written before the flags were persisted,
+                        # and on every non-excluded section.
+                        excluded=bool(section_data.get("Excluded", False)),
+                        exclusion_reason=section_data.get("ExclusionReason"),
                     )
                 )
 
@@ -446,6 +714,25 @@ class DocumentDynamoDBService:
         doc.hitl_status = item.get("HITLStatus")
         doc.hitl_sections_pending = item.get("HITLSectionsPending", [])
         doc.hitl_sections_completed = item.get("HITLSectionsCompleted", [])
+
+        # Convert rule validation result if present
+        if item.get("RuleValidationResult"):
+            try:
+                from idp_common.models import RuleValidationResult
+
+                rv_data = item.get("RuleValidationResult")
+                doc.rule_validation_result = RuleValidationResult(
+                    request_id=rv_data.get("request_id"),
+                    summary=rv_data.get("summary"),
+                    section_results=rv_data.get("section_results"),
+                    metadata=rv_data.get("metadata"),
+                    output_uri=rv_data.get("output_uri"),
+                    errors=rv_data.get("errors"),
+                    matched_policy_types=rv_data.get("matched_policy_types"),
+                    matched_page_ids=rv_data.get("matched_page_ids"),
+                )
+            except Exception as e:
+                logger.warning(f"Failed to parse RuleValidationResult: {e}")
 
         return doc
 
@@ -560,6 +847,18 @@ class DocumentDynamoDBService:
         if item:
             return self._dynamodb_item_to_document(item)
         return None
+
+    def batch_get_documents(self, object_keys: List[str]) -> List[Dict[str, Any]]:
+        """Batch get document records by object keys (max 100)."""
+        keys = [{"PK": f"doc#{k}", "SK": "none"} for k in object_keys]
+        items = self.client.batch_get_items(keys)
+        return [
+            {
+                "document_id": item.get("PK", "").replace("doc#", ""),
+                "status": item.get("ObjectStatus", ""),
+            }
+            for item in items
+        ]
 
     def list_documents(
         self,
@@ -891,26 +1190,57 @@ class DocumentDynamoDBService:
                     f"Skipping page ID {page_id} in section {section.section_id} - not an integer"
                 )
 
-        section_data = {
+        section_data: Dict[str, Any] = {
             "Id": section.section_id,
             "PageIds": page_ids,
             "Class": section.classification,
             "OutputJSONUri": section.extraction_result_uri or "",
         }
 
+        # Confidence in the section's CLASS, written here for the same reason the
+        # exclusion flags below are: this is a whole-map replace, so omitting a key
+        # classification already persisted ERASES it. Extraction calls this writer
+        # per section, which would otherwise drop the class confidence moments
+        # after it was stored.
+        if section.confidence is not None:
+            section_data["Confidence"] = Decimal(str(float(section.confidence)))
+
         # Convert confidence threshold alerts
         if section.confidence_threshold_alerts:
-            alerts_data = []
-            for alert in section.confidence_threshold_alerts:
-                alert_data = convert_floats_to_decimal(
-                    {
-                        "attributeName": alert.get("attribute_name"),
-                        "confidence": alert.get("confidence"),
-                        "confidenceThreshold": alert.get("confidence_threshold"),
-                    }
-                )
-                alerts_data.append(alert_data)
-            section_data["ConfidenceThresholdAlerts"] = alerts_data
+            section_data["ConfidenceThresholdAlerts"] = (
+                serialize_confidence_threshold_alerts(section)
+            )
+
+        # Persist structured processing issues. This write REPLACES the whole
+        # section map (`SET #Sections[i] = :section`), so omitting them here does
+        # not merely skip them — it ERASES any issues an earlier stage wrote.
+        # Extraction persists through this path for immediate UI visibility
+        # (patterns/unified/src/extraction_function/index.py:367), so without
+        # this the section status icon stayed blank until the collate step
+        # rewrote the full document.
+        #
+        # The truthiness guard is what CLEARS the attribute when a re-run resolved
+        # every issue: the caller already replaced its own stage's issues (see
+        # ExtractionService._save_results), so an empty list here means "nothing to
+        # report", and a full-map replace with the key omitted deletes the stale
+        # value. Do not "fix" this into an unconditional write of `[]`.
+        if section.processing_issues:
+            section_data["ProcessingIssues"] = serialize_processing_issues(section)
+
+        if section.instance_count:
+            section_data["InstanceCount"] = section.instance_count
+
+        # Exclusion flags, written for the same reason ProcessingIssues are above:
+        # classification sets them, then extraction calls THIS writer for every
+        # section including the excluded ones it short-circuited
+        # (patterns/unified/src/extraction_function/index.py:367). Because this is
+        # a whole-map replace, omitting the keys would erase the flags
+        # classification had already persisted, and the "Skipped" badge would
+        # disappear moments after appearing.
+        if section.excluded:
+            section_data["Excluded"] = True
+            if section.exclusion_reason:
+                section_data["ExclusionReason"] = section.exclusion_reason
 
         # Use SET Sections[index] = :value for atomic section update
         update_expression = f"SET #Sections[{section_index}] = :section"
@@ -929,6 +1259,251 @@ class DocumentDynamoDBService:
             f"Updated section {section_index} ({section.section_id}) for document: {document_id}"
         )
         return response.get("Attributes", {})
+
+    # ------------------------------------------------------------------ #
+    # Document runs (versions)
+    #
+    # Each successful processing run is recorded as an immutable item under
+    # the document's partition: PK = doc#<key>, SK = run#<run_id>. The run_id
+    # is timestamp-prefixed (see idp_common.document_versions.build_run_id)
+    # so a SK-descending query returns newest-first.
+    #
+    # Run items intentionally carry RecordType="run" and NO ItemType /
+    # InitialEventTime attributes: the TypeDateIndex GSI keys on
+    # (ItemType, InitialEventTime), so omitting ItemType keeps run items out
+    # of the GSI entirely — no index schema change, no re-hydration, no GSI
+    # write amplification. Likewise the VersionCount counter maintained on
+    # the doc item is NOT in the GSI's INCLUDE projection, so adding it never
+    # touches the index definition.
+    # ------------------------------------------------------------------ #
+
+    def create_document_run(
+        self,
+        document: Document,
+        run_id: str,
+        manifest_uri: str,
+        file_count: int = 0,
+        expires_after: Optional[int] = None,
+    ) -> str:
+        """
+        Record an immutable run (version) item for a completed document and
+        increment the document's VersionCount.
+
+        Args:
+            document: The completed Document (post-processing state)
+            run_id: Run identifier (timestamp-prefixed, unique per execution)
+            manifest_uri: S3 URI of the run's output-version manifest
+            file_count: Number of output objects pinned by the manifest
+            expires_after: Optional TTL timestamp (should match the doc item's)
+
+        Returns:
+            The run_id of the created run item
+        """
+        item: Dict[str, Any] = {
+            "PK": f"doc#{document.input_key}",
+            "SK": f"run#{run_id}",
+            "RecordType": "run",
+            "RunId": run_id,
+            "ObjectKey": document.input_key,
+            "ManifestUri": manifest_uri,
+            "FileCount": file_count,
+        }
+
+        # Snapshot of the run's metadata (mirrors the doc item's attributes so
+        # the UI can render a prior version with the same code paths).
+        if document.completion_time:
+            item["CompletionTime"] = document.completion_time
+        if document.queued_time:
+            item["QueuedTime"] = document.queued_time
+        if document.start_time:
+            item["WorkflowStartTime"] = document.start_time
+        if document.initial_event_time:
+            # NB: attribute is safe on run items because ItemType is absent;
+            # both GSI keys are required for an item to be indexed.
+            item["RunInitialEventTime"] = document.initial_event_time
+        if document.workflow_execution_arn:
+            item["WorkflowExecutionArn"] = document.workflow_execution_arn
+        if document.config_version:
+            item["ConfigVersion"] = document.config_version
+        if document.config_revision is not None:
+            item["ConfigRevision"] = int(document.config_revision)
+        if document.num_pages > 0:
+            item["PageCount"] = document.num_pages
+        if document.metering:
+            item["Metering"] = json.dumps(document.metering, default=str)
+        if document.summary_report_uri:
+            item["SummaryReportUri"] = document.summary_report_uri
+        if document.evaluation_report_uri:
+            item["EvaluationReportUri"] = document.evaluation_report_uri
+        if (
+            document.rule_validation_result
+            and document.rule_validation_result.output_uri
+        ):
+            item["RuleValidationResultUri"] = document.rule_validation_result.output_uri
+
+        if document.sections:
+            sections_data = []
+            for section in document.sections:
+                page_ids = []
+                for page_id in section.page_ids:
+                    try:
+                        page_ids.append(int(page_id))
+                    except ValueError:
+                        continue
+                section_data: Dict[str, Any] = {
+                    "Id": section.section_id,
+                    "PageIds": page_ids,
+                    "Class": section.classification,
+                    "OutputJSONUri": section.extraction_result_uri or "",
+                }
+                # Snapshot the per-section quality data alongside the structure,
+                # exactly as update_document does for the live doc item. Without
+                # these, a historical version renders "Low Confidence Fields: 0"
+                # and an empty Status for every section, because the UI derives
+                # both from these attributes (there is no other source once the
+                # run's outputs have been overwritten).
+                if section.confidence is not None:
+                    section_data["Confidence"] = Decimal(str(float(section.confidence)))
+                if section.confidence_threshold_alerts:
+                    section_data["ConfidenceThresholdAlerts"] = (
+                        serialize_confidence_threshold_alerts(section)
+                    )
+                if section.processing_issues:
+                    section_data["ProcessingIssues"] = serialize_processing_issues(
+                        section
+                    )
+                if section.instance_count:
+                    section_data["InstanceCount"] = section.instance_count
+                # Snapshot the exclusion flags too, so a historical version keeps
+                # the "Skipped" badge instead of showing an unexplained empty
+                # section.
+                if section.excluded:
+                    section_data["Excluded"] = True
+                    if section.exclusion_reason:
+                        section_data["ExclusionReason"] = section.exclusion_reason
+                sections_data.append(section_data)
+            item["Sections"] = sections_data
+
+        if document.pages:
+            pages_data = []
+            for page_id, page in document.pages.items():
+                try:
+                    page_id_int = int(page_id)
+                except ValueError:
+                    continue
+                page_snapshot: Dict[str, Any] = {
+                    "Id": page_id_int,
+                    "Class": page.classification or "",
+                    "ImageUri": page.image_uri or "",
+                    "TextUri": page.parsed_text_uri or page.raw_text_uri or "",
+                    "OcrPageDataUri": page.ocr_page_data_uri or "",
+                }
+                # Snapshot the classification signals too (confidence, reason,
+                # boundary), so a historical run can be audited for why its pages
+                # were classified — and its sections split — the way they were.
+                page_snapshot.update(serialize_page_classification_signals(page))
+                pages_data.append(page_snapshot)
+            if pages_data:
+                item["Pages"] = pages_data
+
+        if expires_after:
+            item["ExpiresAfter"] = expires_after
+
+        item = convert_floats_to_decimal(item)  # type: ignore[assignment]
+        # Idempotent create: EventBridge delivers Step Functions events
+        # at-least-once, so the same (stable) run_id can arrive twice. Only the
+        # first write should land — and only it should bump VersionCount — so a
+        # redelivery does not create a phantom duplicate version or over-count.
+        try:
+            self.client.put_item(item, condition_expression="attribute_not_exists(PK)")
+        except Exception as e:
+            error_code = getattr(e, "error_code", None)
+            if error_code == "ConditionalCheckFailedException":
+                logger.info(
+                    f"Run {run_id} already recorded for {document.input_key}; "
+                    "skipping duplicate (at-least-once redelivery)"
+                )
+                return run_id
+            raise
+
+        # Maintain a version counter on the doc item (detail-page display).
+        # Not projected into the TypeDateIndex GSI, so this is a plain
+        # attribute update with no index implications.
+        try:
+            self.client.update_item(
+                key={"PK": f"doc#{document.input_key}", "SK": "none"},
+                update_expression="ADD #VersionCount :one",
+                expression_attribute_names={"#VersionCount": "VersionCount"},
+                expression_attribute_values={":one": 1},
+                return_values="NONE",
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to increment VersionCount for {document.input_key}: {e}"
+            )
+
+        logger.info(
+            f"Created run record for {document.input_key}: run_id={run_id}, "
+            f"{file_count} files pinned"
+        )
+        return run_id
+
+    def list_document_runs(self, object_key: str) -> List[Dict[str, Any]]:
+        """
+        List all run (version) items for a document, newest first.
+
+        Returns:
+            List of run items (native Python types)
+        """
+        runs: List[Dict[str, Any]] = []
+        exclusive_start_key = None
+        while True:
+            kwargs: Dict[str, Any] = {
+                "key_condition_expression": "PK = :pk AND begins_with(SK, :run)",
+                "expression_attribute_values": {
+                    ":pk": f"doc#{object_key}",
+                    ":run": "run#",
+                },
+            }
+            if exclusive_start_key:
+                kwargs["exclusive_start_key"] = exclusive_start_key
+            response = self.client.query(**kwargs)
+            runs.extend(response.get("Items", []))
+            exclusive_start_key = response.get("LastEvaluatedKey")
+            if not exclusive_start_key:
+                break
+        # run_id is timestamp-prefixed, so SK order is chronological.
+        runs.sort(key=lambda r: r.get("SK", ""), reverse=True)
+        return convert_decimals_to_native(runs)  # type: ignore[return-value]
+
+    def get_document_run(
+        self, object_key: str, run_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get a single run (version) item for a document."""
+        item = self.client.get_item({"PK": f"doc#{object_key}", "SK": f"run#{run_id}"})
+        return convert_decimals_to_native(item) if item else None  # type: ignore[return-value]
+
+    def delete_document_run(self, object_key: str, run_id: str) -> bool:
+        """
+        Delete a run (version) item and decrement the doc's VersionCount.
+
+        S3 artifact cleanup (the pinned object versions and the manifest) is
+        the caller's responsibility — see
+        idp_common.document_versions.delete_run_artifacts.
+        """
+        self.client.delete_item({"PK": f"doc#{object_key}", "SK": f"run#{run_id}"})
+        try:
+            self.client.update_item(
+                key={"PK": f"doc#{object_key}", "SK": "none"},
+                update_expression="ADD #VersionCount :neg",
+                expression_attribute_names={"#VersionCount": "VersionCount"},
+                expression_attribute_values={":neg": -1},
+                return_values="NONE",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to decrement VersionCount for {object_key}: {e}")
+        logger.info(f"Deleted run record for {object_key}: run_id={run_id}")
+        return True
 
     def calculate_ttl(self, days: int = 30) -> int:
         """

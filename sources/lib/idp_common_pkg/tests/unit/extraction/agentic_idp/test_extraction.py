@@ -11,14 +11,16 @@ import boto3
 import pypdfium2 as pdfium
 import pytest
 import yaml
-from idp_common.models import Document, Page, Section
 from moto import mock_aws
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
+from idp_common.models import Document, Page, Section
+
 # Check if strands is actually available (not mocked)
 try:
     import strands  # noqa: F401
+
     from idp_common.extraction.agentic_idp import structured_output
     from idp_common.extraction.service import ExtractionService
 
@@ -92,6 +94,12 @@ class License(BaseModel):
         return value
 
 
+# LIVE Bedrock: the s3_bucket fixture passes bedrock URLs through to real AWS,
+# and this one calls the model directly. Marked `integration` so the default
+# gate (`-m "not integration"`) excludes it — it costs money and needs
+# credentials. It previously carried only `agentic`, which nothing filters on,
+# so it was one unconditional stub away from billing CI five times per run.
+@pytest.mark.integration
 @pytest.mark.agentic
 @pytest.mark.parametrize("execution_number", range(5))
 @pytest.mark.skipif(not STRANDS_AVAILABLE, reason="strands package not available")
@@ -109,6 +117,7 @@ def test_structured_output_call_license(execution_number):
     assert result.expiration_date == "08/20/1970", result.expiration_date
 
 
+@pytest.mark.integration  # LIVE Bedrock — see the note above.
 @pytest.mark.agentic
 @pytest.mark.parametrize("execution_number", range(1))
 @pytest.mark.skipif(not STRANDS_AVAILABLE, reason="strands package not available")
@@ -117,7 +126,7 @@ def test_payslip(execution_number, s3_bucket):
     Test agentic extraction using lending_package.pdf sample config.
 
     This test validates the agentic extraction flow:
-    - Loads pattern-2 lending-package-sample config
+    - Loads the unified lending-package-sample config
     - Processes first page of lending_package.pdf (Payslip)
     - Verifies extraction results structure
     """
@@ -134,7 +143,10 @@ def test_payslip(execution_number, s3_bucket):
     config_path = (
         Path(__file__).parent.parent.parent.parent.parent.parent.parent
         / "config_library"
-        / "pattern-2"
+        # `pattern-2` was removed by the unification; the preset lives under
+        # `unified` now. The old path had rotted unnoticed because this test
+        # never ran.
+        / "unified"
         / "lending-package-sample"
         / "config.yaml"
     )

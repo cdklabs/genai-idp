@@ -3,12 +3,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Box, Button, SpaceBetween } from '@cloudscape-design/components';
-import { generateClient } from 'aws-amplify/api';
+import { generateClient } from '../../api/client-shim';
 import { ConsoleLogger } from 'aws-amplify/utils';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
+import SafeMarkdown from '../common/SafeMarkdown';
 import { getFileContents } from '../../graphql/generated';
+import { useDocumentVersion } from '../../contexts/document-version';
+
 import './MarkdownViewer.css';
 
 interface MarkdownViewerProps {
@@ -194,9 +194,7 @@ const MarkdownViewer = ({
         } as Record<string, unknown>)}
       >
         {content ? (
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-            {content}
-          </ReactMarkdown>
+          <SafeMarkdown>{content}</SafeMarkdown>
         ) : (
           <Box textAlign="center" padding="l">
             No content to display
@@ -263,15 +261,14 @@ const MarkdownViewer = ({
           maxHeight: 'calc(100vh - 400px)',
         }}
       >
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-          {content}
-        </ReactMarkdown>
+        <SafeMarkdown>{content}</SafeMarkdown>
       </div>
     </Box>
   );
 };
 
 const MarkdownReport = ({ reportUri, documentId, title = 'Report', emptyMessage }: MarkdownReportProps): React.JSX.Element | null => {
+  const { versionIdForUri, runId } = useDocumentVersion();
   const [reportContent, setReportContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -287,7 +284,7 @@ const MarkdownReport = ({ reportUri, documentId, title = 'Report', emptyMessage 
 
         const response = await client.graphql({
           query: getFileContents,
-          variables: { s3Uri: reportUri },
+          variables: { s3Uri: reportUri, versionId: versionIdForUri(reportUri) },
         });
 
         // Get content from the updated response structure
@@ -313,7 +310,7 @@ const MarkdownReport = ({ reportUri, documentId, title = 'Report', emptyMessage 
     };
 
     fetchReport();
-  }, [reportUri, title]);
+  }, [reportUri, title, runId]);
 
   if (!reportUri) {
     return (

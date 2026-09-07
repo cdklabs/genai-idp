@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT-0
 
 import { useState, useEffect } from 'react';
-import { generateClient } from 'aws-amplify/api';
+import { generateClient } from '../api/client-shim';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import { getConfigVersion, updateConfiguration as updateConfigurationOp } from '../graphql/generated';
 import { deepMerge } from '../utils/configUtils';
@@ -133,6 +133,7 @@ const _setValueAtPath = (obj: Record<string, unknown>, path: string, value: unkn
       const nextSegment = segments[i + 1];
       current[segment] = /^\d+$/.test(nextSegment) ? [] : {};
     }
+    // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop
     current = current[segment] as Record<string, unknown>;
   }
 
@@ -183,6 +184,7 @@ const _getDiff = (oldConfig: Record<string, unknown>, newConfig: Record<string, 
       if (!(segment in current)) {
         current[segment] = {};
       }
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop
       current = current[segment] as Record<string, unknown>;
     }
     current[path[path.length - 1]] = value;

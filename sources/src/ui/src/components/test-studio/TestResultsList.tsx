@@ -1,12 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
-import { Table, Button, SpaceBetween, ButtonDropdown, Pagination, Box, TextFilter, Flashbar } from '@cloudscape-design/components';
+import { Table, Button, SpaceBetween, ButtonDropdown, Pagination, Box, TextFilter, Flashbar, Badge } from '@cloudscape-design/components';
 import type { IconProps } from '@cloudscape-design/components';
 import { useCollection } from '@cloudscape-design/collection-hooks';
-import { generateClient } from 'aws-amplify/api';
-import { getTestRuns, deleteTests } from '../../graphql/generated';
+import { generateClient } from '../../api/client-shim';
+import { getTestRuns, deleteTests, abortTestRuns } from '../../graphql/generated';
 import DeleteTestModal from './DeleteTestModal';
+import AbortTestModal from './AbortTestModal';
 import DateRangeModal from '../common/DateRangeModal';
 import { paginationLabels } from '../common/labels';
 import TestRunnerStatus from './TestRunnerStatus';
@@ -42,6 +43,12 @@ interface TestRunItem {
   completedAt: string | null;
   context: string;
   configVersion?: string | null;
+  /** Revision of that profile the run scored against, when one was pinned. */
+  configRevision?: number | null;
+  /** Test-set version pinned for scoring; null when the run scored current labels. */
+  testSetVersion?: number | null;
+  /** With current labels: the version an open annotation transition was heading toward. */
+  testSetDraftVersion?: number | null;
 }
 
 interface ActiveTestRun {
@@ -123,10 +130,13 @@ const TestResultsList = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [isAbortModalVisible, setIsAbortModalVisible] = useState(false);
   const [isDateRangeModalVisible, setIsDateRangeModalVisible] = useState(false);
   const [customDateRange, setCustomDateRange] = useState<DateRange | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [abortLoading, setAbortLoading] = useState(false);
   const [pageSize, setPageSize] = useState(10);
 
   // Load saved time period from localStorage on mount
@@ -169,12 +179,36 @@ const TestResultsList = ({
   };
 
   const getTestRunIdCell = (item: TestRunItem) => <TestRunIdCell item={item} onSelect={handleTestRunSelect} />;
-  const getTestSetNameCell = (item: TestRunItem) => <TextCell text={item.testSetName} />;
+  // Which labels the run scored against, beside the set: a pinned version, or
+  // current labels while a transition was open. Without it two runs of one set
+  // can differ for a reason nothing on this table shows.
+  const getTestSetNameCell = (item: TestRunItem) => (
+    <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+      <TextCell text={item.testSetName} />
+      {item.testSetVersion != null ? (
+        <Badge color="grey">v{item.testSetVersion}</Badge>
+      ) : item.testSetDraftVersion != null ? (
+        <Badge color="blue">current &rarr; v{item.testSetDraftVersion}</Badge>
+      ) : null}
+    </SpaceBetween>
+  );
   const getContextCell = (item: TestRunItem) => <TextCell text={item.context || 'N/A'} />;
 
   const getStatusCell = (item: TestRunItem) => {
-    if (item.isActive) {
-      return <TestRunnerStatus testRunId={item.testRunId} onComplete={() => onTestComplete(item.testRunId)} />;
+    const terminalStatuses = ['COMPLETE', 'PARTIAL_COMPLETE', 'FAILED', 'ABORTED'];
+
+    if (!terminalStatuses.includes(item.status || '')) {
+      return (
+        <TestRunnerStatus
+          testRunId={item.testRunId}
+          createdAt={item.createdAt}
+          onComplete={() => onTestComplete(item.testRunId)}
+          onAbort={() => {
+            setSelectedItems([item]);
+            setIsAbortModalVisible(true);
+          }}
+        />
+      );
     }
     return item.status;
   };
@@ -185,14 +219,10 @@ const TestResultsList = ({
       const variables = customDateRange
         ? { startDateTime: customDateRange.startDateTime, endDateTime: customDateRange.endDateTime }
         : { timePeriodHours };
-      console.log('Fetching test runs with variables:', variables);
       const result = (await client.graphql({
         query: getTestRuns,
         variables,
       })) as GqlResult;
-      console.log('Raw GraphQL result:', result);
-      console.log('getTestRuns data:', result.data.getTestRuns);
-      console.log('Number of test runs returned:', result.data.getTestRuns?.length || 0);
 
       const completedRuns = result.data.getTestRuns || [];
 
@@ -200,7 +230,7 @@ const TestResultsList = ({
       const activeRunsWithProgress = activeTestRuns.map((run) => ({
         testRunId: run.testRunId,
         testSetName: run.testSetName,
-        status: 'Running',
+        status: 'RUNNING',
         isActive: true,
         progress: Math.min(90, Math.floor(((Date.now() - run.startTime.getTime()) / 1000 / 60) * 10)), // Simulate progress
         filesCount: run.filesCount || 0,
@@ -221,11 +251,11 @@ const TestResultsList = ({
     } catch (err) {
       console.error('Error fetching test runs:', err);
       const typedErr = err as { errors?: Array<{ message: string }> };
-      const errorMessage =
+      const fetchErrorMsg =
         typedErr.errors?.length && typedErr.errors.length > 0
           ? typedErr.errors.map((e: { message: string }) => e.message).join('; ')
           : 'Failed to load test runs';
-      setError(errorMessage);
+      setError(fetchErrorMsg);
     } finally {
       setLoading(false);
     }
@@ -237,12 +267,12 @@ const TestResultsList = ({
 
   const downloadToExcel = () => {
     // Convert test runs data to CSV format
-    const headers = ['Test Run ID', 'Test Set', 'Context', 'Config Version', 'Status', 'Files Count', 'Created At', 'Completed At'];
+    const headers = ['Test Run ID', 'Test Set', 'Context', 'Config Profile', 'Status', 'Files Count', 'Created At', 'Completed At'];
     const csvData = testRuns.map((run) => [
       run.testRunId,
       run.testSetName || '',
       run.context || '',
-      formatConfigVersionText(run.configVersion, versions),
+      formatConfigVersionText(run.configVersion, versions, run.configRevision),
       run.status,
       run.filesCount || 0,
       run.createdAt || '',
@@ -278,13 +308,11 @@ const TestResultsList = ({
     try {
       setDeleteLoading(true);
       const testRunIds = selectedItems.map((item) => item.testRunId);
-      console.log('Attempting to delete test runs:', testRunIds);
 
       const result = (await client.graphql({
         query: deleteTests,
         variables: { testRunIds },
       })) as GqlResult;
-      console.log('Delete result:', result);
 
       const count = selectedItems.length;
       setSuccessMessage(`Successfully deleted ${count} test run${count > 1 ? 's' : ''}`);
@@ -305,6 +333,45 @@ const TestResultsList = ({
     }
   };
 
+  const confirmAbort = async () => {
+    try {
+      setAbortLoading(true);
+      const testRunIds = selectedItems.map((item) => item.testRunId);
+
+      const result = (await client.graphql({
+        query: abortTestRuns,
+        variables: { testRunIds },
+      })) as GqlResult;
+
+      const abortResult = result.data.abortTestRuns;
+      if (abortResult.success) {
+        const { abortedCount, failedCount } = abortResult;
+        let message = `Successfully aborted ${abortedCount} test run${abortedCount > 1 ? 's' : ''}`;
+        if (failedCount > 0) {
+          message += `, ${failedCount} failed`;
+        }
+        setSuccessMessage(message);
+        setSelectedItems([]);
+        setIsAbortModalVisible(false);
+        fetchTestRuns(); // Refresh the list
+
+        // Clear success message after 5 seconds
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        setErrorMessage(`Abort failed: ${abortResult.message}`);
+        setTimeout(() => setErrorMessage(null), 5000);
+      }
+
+      return abortResult;
+    } catch (err) {
+      setErrorMessage('Error aborting test runs');
+      setTimeout(() => setErrorMessage(null), 5000);
+      return null;
+    } finally {
+      setAbortLoading(false);
+    }
+  };
+
   if (loading) return <div>Loading test runs...</div>;
   if (error) return <div>Error loading test runs: {error}</div>;
 
@@ -318,6 +385,18 @@ const TestResultsList = ({
               content: successMessage,
               dismissible: true,
               onDismiss: () => setSuccessMessage(null),
+            },
+          ]}
+        />
+      )}
+      {errorMessage && (
+        <Flashbar
+          items={[
+            {
+              type: 'error',
+              content: errorMessage,
+              dismissible: true,
+              onDismiss: () => setErrorMessage(null),
             },
           ]}
         />
@@ -388,8 +467,8 @@ const TestResultsList = ({
           },
           {
             id: 'configVersion',
-            header: 'Config Version',
-            cell: (item) => formatConfigVersionLink(item.configVersion, versions),
+            header: 'Config Profile',
+            cell: (item) => formatConfigVersionLink(item.configVersion, versions, undefined, item.configRevision),
             sortingField: 'configVersion',
             width: 150,
           },
@@ -468,6 +547,14 @@ const TestResultsList = ({
         selectedItems={selectedItems}
         itemType="test run"
         loading={deleteLoading}
+      />
+
+      <AbortTestModal
+        visible={isAbortModalVisible}
+        onDismiss={() => setIsAbortModalVisible(false)}
+        onConfirm={confirmAbort}
+        selectedItems={selectedItems}
+        loading={abortLoading}
       />
 
       <DateRangeModal

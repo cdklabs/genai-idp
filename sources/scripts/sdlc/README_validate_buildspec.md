@@ -12,7 +12,7 @@ A Python script to validate AWS CodeBuild `buildspec.yml` files for syntax error
 
 ## Installation
 
-The validator requires Python 3.6+ and PyYAML:
+The validator requires Python 3.12+ and PyYAML:
 
 ```bash
 pip install pyyaml

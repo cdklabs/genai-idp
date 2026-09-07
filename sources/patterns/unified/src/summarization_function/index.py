@@ -73,7 +73,8 @@ def handler(event, context):
         
         # Load configuration - use document's version if specified, otherwise use active version
         config_version = getattr(document, 'config_version', None)
-        config = get_config(as_model=True, version=config_version)
+        config_revision = getattr(document, 'config_revision', None)
+        config = get_config(as_model=True, version=config_version, revision=config_revision)
         
         if config_version:
             logger.info(f"Using configuration version {config_version} for document {document.id}")
@@ -90,7 +91,20 @@ def handler(event, context):
         
         # Check if document processing failed
         if processed_document.status == Status.FAILED:
-            error_message = f"Summarization failed for document {processed_document.id}"
+            # Surface the underlying cause (e.g. a Bedrock ResourceNotFoundException
+            # for a retired model, a context-window overflow, etc.) instead of a
+            # bare "Summarization failed" wrapper. The real error is otherwise only
+            # visible in the Lambda logs, which sends failure triage down the wrong
+            # path (GitHub #504). SummarizationService records the cause on
+            # document.errors / status_reason.
+            detail = getattr(processed_document, "status_reason", None)
+            if not detail and processed_document.errors:
+                detail = "; ".join(str(e) for e in processed_document.errors)
+            error_message = (
+                f"Summarization failed for document {processed_document.id}: {detail}"
+                if detail
+                else f"Summarization failed for document {processed_document.id}"
+            )
             logger.error(error_message)
             raise Exception(error_message)
         

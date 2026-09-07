@@ -1,11 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback, useImperativeHandle } from 'react';
 import { Box, Spinner, Button } from '@cloudscape-design/components';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import generateS3PresignedUrl from './generate-s3-presigned-url';
 import useAppContext from '../../contexts/app';
+import { useDocumentVersion } from '../../contexts/document-version';
 
 const logger = new ConsoleLogger('PageImageViewer');
 
@@ -208,6 +209,10 @@ interface BoundingBoxOverlay {
   label?: string;
 }
 
+export interface PageImageViewerHandle {
+  zoomToField: (geometry: BoundingBoxGeometry) => void;
+}
+
 interface PageImageViewerProps {
   pageIds?: string[];
   documentPages?: DocumentPage[];
@@ -217,6 +222,11 @@ interface PageImageViewerProps {
   height?: string;
   showControls?: boolean;
   boundingBoxes?: BoundingBoxOverlay[];
+  /**
+   * Optional handle exposing `zoomToField`, so a caller can bind zooming to its
+   * own gesture (human review uses double-click) instead of to every highlight.
+   */
+  zoomHandle?: React.Ref<PageImageViewerHandle>;
 }
 
 const PageImageViewer = ({
@@ -228,13 +238,18 @@ const PageImageViewer = ({
   height = '700px',
   showControls = true,
   boundingBoxes = [],
+  zoomHandle,
 }: PageImageViewerProps): React.JSX.Element => {
   const { currentCredentials } = useAppContext();
+  // Pin page images to the selected run's object versions when viewing history.
+  const { versionIdForUri, runId: viewingRunId } = useDocumentVersion();
   const [pageImages, setPageImages] = useState<Record<string, string>>({});
   const [loadingImages, setLoadingImages] = useState(true);
   const [currentPage, setCurrentPage] = useState<string | null>(initialPage || (pageIds.length > 0 ? pageIds[0] : null));
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const imageRef = useRef<HTMLImageElement | null>(null);
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -257,9 +272,17 @@ const PageImageViewer = ({
             const page = documentPages.find((p) => p.Id === pageId);
 
             if (page?.ImageUri) {
+              // Only s3:// URIs need presigning; blob:/data:/https: URIs
+              // (e.g. pages rendered client-side from a PDF) are usable as-is.
+              if (!page.ImageUri.startsWith('s3://')) {
+                images[pageId] = page.ImageUri;
+                return;
+              }
               try {
                 logger.debug(`PageImageViewer - generating presigned URL for page ${pageId}`);
-                const url = await generateS3PresignedUrl(page.ImageUri, currentCredentials as Record<string, unknown>);
+                const url = await generateS3PresignedUrl(page.ImageUri, currentCredentials as Record<string, unknown>, {
+                  versionId: versionIdForUri(page.ImageUri),
+                });
                 images[pageId] = url;
               } catch (err) {
                 logger.error(`Error generating presigned URL for page ${pageId}:`, err);
@@ -271,7 +294,11 @@ const PageImageViewer = ({
         logger.debug('PageImageViewer - Successfully loaded images for', Object.keys(images).length, 'pages');
         setPageImages(images);
 
-        if (!currentPage && pageIds.length > 0) {
+        // Also reset when the page list changed and no longer contains the
+        // current page (e.g. the ground-truth editor switching to a section
+        // whose split_document.page_indices are a different page set) —
+        // otherwise the viewer waits forever on an image that will never load.
+        if (pageIds.length > 0 && (!currentPage || !pageIds.includes(currentPage))) {
           setCurrentPage(pageIds[0]);
         }
       } catch (err) {
@@ -282,7 +309,7 @@ const PageImageViewer = ({
     };
 
     loadImages();
-  }, [pageIds, documentPages, currentCredentials]);
+  }, [pageIds, documentPages, currentCredentials, viewingRunId]);
 
   // Handle geometry-based page switching
   useEffect(() => {
@@ -320,14 +347,35 @@ const PageImageViewer = ({
     setPanOffset({ x: 0, y: 0 });
   }, []);
 
-  // Handle mouse wheel for zoom
+  // Handle mouse wheel for zoom (matches the section Visual Editor: plain wheel zooms)
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY < 0 ? 1.1 : 0.9;
-      setZoomLevel((prev) => Math.min(Math.max(prev * delta, 0.25), 4));
-    }
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1.1 : 0.9;
+    setZoomLevel((prev) => Math.min(Math.max(prev * delta, 0.25), 4));
   }, []);
+
+  // Drag-to-pan (only meaningful when zoomed in), mirroring the section editor.
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (zoomLevel <= 1) return;
+      e.preventDefault();
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    },
+    [zoomLevel, panOffset],
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      setPanOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+    },
+    [isDragging, dragStart],
+  );
+
+  const handleMouseUp = useCallback(() => setIsDragging(false), []);
+  const handleMouseLeave = useCallback(() => setIsDragging(false), []);
 
   // Handle page navigation
   const goToPreviousPage = useCallback(() => {
@@ -354,54 +402,53 @@ const PageImageViewer = ({
     }
   }, [currentPage, pageIds, onPageChange]);
 
-  // Public method to zoom to a specific field
+  /**
+   * Zoom to a field and centre it.
+   *
+   * Measured from the element's LAYOUT box (offsetWidth/offsetLeft), not
+   * getBoundingClientRect(): the rect reports the already-transformed box, so
+   * feeding it back in folds the current zoom and pan into the next calculation
+   * and the image walks off toward a corner on each call.
+   *
+   * The image is scaled about its centre, so a point sitting `d` px from that
+   * centre unzoomed sits `d * zoom` px from it once scaled — hence the single
+   * multiplication by targetZoom below. `panOffset` is in screen px (the render
+   * divides it back out by the zoom inside translate()).
+   */
   const zoomToField = useCallback((geometry: BoundingBoxGeometry) => {
-    if (geometry && imageRef.current && imageContainerRef.current) {
-      const targetZoom = 2.0;
-      setZoomLevel(targetZoom);
+    const bbox = geometry?.boundingBox;
+    if (!bbox || !imageRef.current || !imageContainerRef.current) return;
 
-      setTimeout(() => {
-        if (imageRef.current && imageContainerRef.current) {
-          const img = imageRef.current;
-          const container = imageContainerRef.current;
-          const imgRect = img.getBoundingClientRect();
-          const containerRect = container.getBoundingClientRect();
+    const targetZoom = 2.0;
+    setZoomLevel(targetZoom);
 
-          const imageWidth = img.width || img.naturalWidth;
-          const imageHeight = img.height || img.naturalHeight;
-          const offsetX = imgRect.left - containerRect.left;
-          const offsetY = imgRect.top - containerRect.top;
+    // Deferred one frame: the layout box is stable, but the browser has not yet
+    // applied the new zoom, and reading mid-transition yields a torn value.
+    requestAnimationFrame(() => {
+      const img = imageRef.current;
+      const container = imageContainerRef.current;
+      if (!img || !container) return;
 
-          const bbox = geometry.boundingBox;
+      const w = img.offsetWidth;
+      const h = img.offsetHeight;
+      if (!w || !h) return;
 
-          if (bbox) {
-            const { left, top, width, height: bboxHeight } = bbox;
-            const fieldCenterX = (left + width / 2) * imageWidth + offsetX;
-            const fieldCenterY = (top + bboxHeight / 2) * imageHeight + offsetY;
-            const viewportCenterX = containerRect.width / 2;
-            const viewportCenterY = containerRect.height / 2;
-            const imageCenterX = offsetX + imageWidth / 2;
-            const imageCenterY = offsetY + imageHeight / 2;
-            const relativeX = fieldCenterX - imageCenterX;
-            const relativeY = fieldCenterY - imageCenterY;
-            const scaledRelativeX = relativeX * targetZoom;
-            const scaledRelativeY = relativeY * targetZoom;
-            const requiredPanX = viewportCenterX - (imageCenterX + scaledRelativeX);
-            const requiredPanY = viewportCenterY - (imageCenterY + scaledRelativeY);
+      const centreX = img.offsetLeft + w / 2;
+      const centreY = img.offsetTop + h / 2;
+      const fieldU = bbox.left + bbox.width / 2;
+      const fieldV = bbox.top + bbox.height / 2;
 
-            setPanOffset({ x: requiredPanX, y: requiredPanY });
-          }
-        }
-      }, 100);
-    }
+      setPanOffset({
+        x: container.clientWidth / 2 - centreX - (fieldU - 0.5) * w * targetZoom,
+        y: container.clientHeight / 2 - centreY - (fieldV - 0.5) * h * targetZoom,
+      });
+    });
   }, []);
 
-  // Expose zoomToField method
-  useEffect(() => {
-    if (imageContainerRef.current) {
-      (imageContainerRef.current as unknown as Record<string, unknown>).zoomToField = zoomToField;
-    }
-  }, [zoomToField]);
+  // Exposed imperatively rather than fired from an effect on activeFieldGeometry:
+  // highlighting a field and zooming to it are separate gestures (single- vs
+  // double-click), and an effect keyed on the geometry cannot tell them apart.
+  useImperativeHandle(zoomHandle, () => ({ zoomToField }), [zoomToField]);
 
   const fallbackImage =
     'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6' +
@@ -436,6 +483,7 @@ const PageImageViewer = ({
     <div style={{ position: 'relative', height, overflow: 'hidden' }}>
       {/* Image container - must exactly match VisualEditorModal structure for bounding box positioning
           The BoundingBox calculates position relative to this container */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
         ref={imageContainerRef}
         style={{
@@ -445,9 +493,14 @@ const PageImageViewer = ({
           display: 'flex',
           justifyContent: 'center',
           overflow: 'hidden',
-          cursor: zoomLevel > 1 ? 'grab' : 'default',
+          cursor: isDragging ? 'grabbing' : zoomLevel > 1 ? 'grab' : 'default',
+          userSelect: 'none',
         }}
         onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
       >
         {currentPage !== null && pageImages[currentPage] ? (
           <>
