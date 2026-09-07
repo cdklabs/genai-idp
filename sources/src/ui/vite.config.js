@@ -8,6 +8,13 @@ import { resolve } from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  // Public base path. Defaults to '/' (CloudFront hosting / local dev). When the
+  // Web UI is served from API Gateway (WebUIHosting=APIGateway) the SPA lives
+  // under the REST API stage prefix (/api), so CodeBuild sets
+  // VITE_UI_BASE_PATH=/api/ and Vite rewrites all asset URLs and the manifest to
+  // that base. Must be an absolute directory path ending in '/'.
+  base: process.env.VITE_UI_BASE_PATH || '/',
+
   plugins: [
     react({
       // Use automatic JSX runtime (React 17+)
@@ -103,6 +110,14 @@ export default defineConfig(({ mode }) => ({
     environment: 'jsdom',
     setupFiles: './src/setupTests.ts',
     include: ['src/**/*.test.{ts,tsx}'],
+    // Above vitest's 5s default, for CI runner variance rather than to license
+    // slow tests. Rendering a Cloudscape table in jsdom costs hundreds of
+    // milliseconds, and the shared CI runner has been observed ~5x slower than a
+    // developer machine — enough that a test passing locally in 1s timed out
+    // there. That failure mode is invisible until the pipeline runs, so it costs a
+    // round-trip every time. The fix for a genuinely slow test is still to make it
+    // cheaper; a real hang still fails, just later.
+    testTimeout: 10000,
   },
 
   // CSS configuration

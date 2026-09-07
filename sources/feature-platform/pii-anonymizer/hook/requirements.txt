@@ -1,0 +1,26 @@
+# Runtime dependencies for the PII Anonymization preprocessing hook Lambda.
+# These back the vendored pii-anonymizer document closure (see
+# vendor/PROVENANCE.md). boto3 is provided by the Lambda runtime.
+#
+# NOTE: python-Levenshtein / fuzzywuzzy / termcolor / aws-xray-sdk / matplotlib
+# are NOT needed by the document closure (textract_helper uses stdlib difflib).
+# Audio deps (ffmpeg) are intentionally excluded — documents only in v1.
+pypdf>=5.1.0
+pypdfium2>=4.30.0
+# Cap lifted. 12.3.0 fixes 9 HIGH advisories (heap OOB writes in
+# Image.paste/crop and ImageCmsTransform, decompression-bomb DoS in the PDF and
+# font parsers) that matter here because this hook renders untrusted customer
+# PDFs. It publishes no `manylinux2014_aarch64` wheel, which is the single tag
+# SAM's PythonPipBuilder asks for — so this function is built by hook/Makefile
+# (BuildMethod: makefile), which names `manylinux_2_28_aarch64` explicitly. See
+# that file before changing this pin or the build method.
+pillow>=12.3.0
+python-docx>=0.8.11
+openpyxl>=3.0.10
+faker>=30.0.0
+defusedxml>=0.7.1
+PyYAML>=6.0
+# NOTE: no idp_common dependency and no delete logic here. In
+# redactcopy_and_stop mode the HOST workflow_tracker deletes the original
+# (race-free, since it is the last writer for the execution) — the hook only
+# writes the redacted copy and returns halt=true.

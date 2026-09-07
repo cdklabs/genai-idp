@@ -7,14 +7,169 @@ The Evaluation Service component provides functionality to evaluate document ext
 
 ## Backend Integration
 
-The evaluation service uses **[Stickler](https://github.com/awslabs/stickler)** as its backend evaluation engine. Stickler is an AWS open-source library that provides sophisticated comparison algorithms and flexible configuration options. The IDP evaluation service provides an abstraction layer through `SticklerConfigMapper` that:
+The evaluation service uses **[Stickler](https://github.com/awslabs/stickler)** as its backend evaluation engine (installed from PyPI; pinned in the top-level `pyproject.toml` — see `stickler_version.STICKLER_VERSION` for the resolved version). Stickler is an AWS open-source library that provides sophisticated comparison algorithms and flexible configuration options.
+
+### Package layout — single import boundary
+
+All code that touches `stickler.*` lives under `idp_common/evaluation/stickler_backend/`:
+
+- `mapper.py` — IDP → Stickler schema-extension translation (`SticklerConfigMapper`).
+- `model_factory.py` — build a `StructuredModel` subclass from an IDP config (`get_stickler_model`), including the two upstream-tagged shims (`make_model_fields_nullable`, `clean_null_descriptions`).
+- `comparators.py` — `LLMComparator` and `register_idp_comparators()` (public-API registration).
+- `results.py` — Stickler `compare_with` dict → IDP `SectionEvaluationResult` (no re-scoring; encodes R3).
+- `doc_split.py` — thin adapters over `stickler.doc_split` for `load_sections_for_doc_split` and `compute_graded_packet_metrics` (R14).
+
+Outside that boundary:
+
+- `baseline_migration.py` — pure helpers for migrating stored evaluation
+  baselines to/from the multi-instance shape (GitHub #715). The operational S3
+  walker is `scripts/migrate_multi_instance_baselines.py` (dry-run by default,
+  idempotent, `--direction unwrap` to roll back).
+
+## Multi-instance classes (#715) — baselines must match the prediction's shape
+
+A class flagged `x-aws-idp-multi-instance` extracts
+`{"instances": [ …record… ]}`. Evaluation compares against a stored baseline **of
+the same shape**, so a wrapped prediction against a flat baseline scores every
+field as missing-on-one-side: the class reads ~0 accuracy and nothing explains
+why. This is the single biggest risk the feature introduces.
+
+Three things handle it:
+
+1. `stickler_backend/mapper.py` `build_all_stickler_configs` wraps each class
+   before translating it. Built from the flat schema, the prediction's only key is
+   `instances`, zero declared fields match, and the section **silently scores
+   0.0**.
+2. ⚠️ **Report granularity degrades, and the obvious fix is wrong.** For a wrapped
+   class every row's `expected_key` is `instances[i].Field`, so
+   `contract.py` `row_root_attribute` groups them all under the single attribute
+   `instances`: the per-attribute report is one giant attribute rather than one per
+   field. Stepping past the synthesized root here was tried and **reverted** — it
+   made the helper return `CheckNumber`, which matches no attribute at all, because
+   the attribute list is built from the class SCHEMA and a wrapped class has exactly
+   one property. All 24 of Stickler's `field_comparisons` rows were then dropped
+   from `field_comparison_details` (measured live), emptying the report's per-field
+   drilldown and the UI's mismatch highlighting, which joins on `expected_key`.
+   Section metrics stayed correct, so accuracy still read 1.000 with an empty
+   drilldown — invisible in the numbers. Recovering per-field granularity means
+   changing how the ATTRIBUTE LIST is constructed for a flagged class, not how rows
+   are keyed.
+3. `service.py` `_warn_on_multi_instance_shape_mismatch` logs a warning naming the
+   migration command when the two shapes disagree, in **either** direction
+   (rollback fails just as silently). Advisory only; it never changes a score.
+
+## Confidence-curve keys (`curve_store.py`)
+
+⚠️ **Key-shape change.** `_flatten_confidences` / `_flatten_values` used to key the
+list index off list *length* (`prefix if len(node) == 1 else prefix[i]`), so any
+single-element list lost its index: a one-row table keyed `Transactions.date`
+while a two-row table keyed `Transactions[0].date`. They now key off *depth* — only
+the outer `explainability_info` wrapper is un-indexed — so a list is always
+`Field[i].Sub`.
+
+Consequence to be honest about: a list whose length *varied* never joined and now
+does. But a list that was **always** single-element joined fine before, and its
+stored history is now orphaned — there is no migration and no read-side fallback,
+so those curve points will not join with new ones.
+
+Everything else — `service.py` (orchestration), `models.py` (dataclasses),
+`stickler_mapper.py` / `llm_comparator.py` (thin re-export shims for
+backward compatibility) — is backend-agnostic. A future Stickler upgrade is
+a one-package review, not a cross-cutting hunt.
+
+The cross-Lambda `results.json` contract (S3 key template, `compare_with`
+flag set, result-version stamp) is formalized in `contract.py` — bump
+`STICKLER_RESULT_VERSION` when the raw Stickler blob shape changes.
+
+The IDP evaluation service provides an abstraction layer through `SticklerConfigMapper` that:
 
 - Translates IDP evaluation extensions (`x-aws-idp-evaluation-*`) to Stickler format
 - Maintains backend-agnostic configuration in IDP
 - Enables seamless integration with Stickler's advanced evaluation capabilities
-- Tracks Stickler version information for compatibility and debugging
 
-For version information and features available in the current Stickler integration, see `stickler_version.py`.
+### Confidence Calibration Metrics
+
+Bulk evaluation surfaces the standard calibration metrics:
+
+- **ECE (Expected Calibration Error)**: Measures how well confidence scores match actual accuracy (0.0 = perfect calibration)
+- **Brier Score**: Mean squared error between confidence and outcome (lower is better; 0.0 = perfect, 0.25 = random)
+- **AUROC**: How well confidence discriminates correct from incorrect predictions (1.0 = perfect discrimination)
+- **Per-Field Metrics**: Field-level calibration analysis to identify poorly calibrated fields
+- **Coverage Tracking**: Ratio of fields with confidence data to total fields
+
+These are computed in the aggregation Lambda via Stickler's `BulkStructuredModelEvaluator` (see `patterns/unified/src/test_execution_aggregation_function/index.py`).
+
+### Confidence→accuracy curve and the review-effort estimator
+
+`confidence_curve.py` and `curve_store.py` implement the engine behind Test
+Studio's "how many documents must I review?" estimate. They answer it from a
+measured `P(correct | confidence)` curve rather than a fixed heuristic.
+
+**Import-safety note.** Both modules depend only on the standard library and
+boto3 — deliberately, because the Lambdas that use them (the test-set resolver,
+the HITL review function) run on the shared base layer, which excludes the
+`[evaluation]` extra and its ~50MB of Stickler dependencies. For the same reason
+`evaluation/__init__.py` resolves `EvaluationService`, `SticklerConfigMapper` and
+`LLMComparator` **lazily** via a module-level `__getattr__`; importing them
+eagerly made every module in the package un-importable without the extra.
+Accessing a Stickler-backed name without it installed raises an error naming the
+extra rather than an opaque `ModuleNotFoundError` at cold start.
+
+**The curve** is a reliability table: per-confidence-bin counts of
+`(observations, correct)`. Chosen over a fitted model (e.g. isotonic regression)
+because it is explainable, ~230 bytes serialized, and additive — folding in new
+observations is two counter increments per bin, which lets `CurveStore` use
+DynamoDB `ADD` and stay correct when several reviewers finish at once. The bin
+edges match Stickler's `ECEMetric`, so its output folds in without rebinning.
+
+**Three observation sources**, in increasing fidelity:
+
+| Source | Where it is recorded | Covers |
+|---|---|---|
+| Prior | `CurveStore.get_global_prior()` | Cross-set fallback for a cold start |
+| Human review | `complete_section_review` → `record_curve_observations` | Low-confidence range (review is worst-first) |
+| Scoring run | aggregation Lambda → `add_ece_bins` | The full range, including high confidence |
+
+A field a reviewer *changed* is an incorrect observation; one they *left alone* is
+correct. `observations_from_baseline_review` derives those pairs by diffing the
+drafted label against the saved one — which is why the review Lambda must read
+the previous baseline **before** overwriting it.
+
+Curves are keyed by `(test set, config version)` since confidence semantics shift
+across models and prompts, with fallback to the set aggregate and then the global
+prior.
+
+**Safety.** `estimate_for_target` never returns a bare number. It reports an
+`EstimateConfidence` state (`prior` / `partially-measured` / `measured` /
+`unreliable`), a `CalibrationHealth` block, and a docs-to-review *range* that
+widens when the curve is prior-driven. Two failure modes are detected explicitly
+because either would let the estimator certify an inaccurate set:
+
+- **Overconfident** (wrong *and* confident) — errors hide in the high-confidence
+  zone worst-first review never visits. Detected from ECE plus a high-confidence
+  accuracy gap; mitigated by `audit_sample_size`, a random sample of that zone.
+- **Degenerate** (confidence barely varies) — no signal to rank by. **ECE does not
+  catch this**: a single populated bin is trivially well-calibrated, so bin
+  coverage is tracked as an independent signal.
+
+Either sets `estimateConfidence="unreliable"` and `recommendReviewAll=True`.
+
+**Quality tiers.** `quality_tier()` derives a `QualityTier` (`gold` / `silver` /
+`bronze` / `unrated`) from the estimated accuracy *and* how it was obtained: 99%
+computed from a cross-set prior says nothing about these labels, so only a curve
+measured on this set can earn `gold`. An unreliable curve is `unrated` rather than
+graded, since no accuracy claim is defensible when confidence cannot rank
+correctness.
+
+The tier is deliberately a derived value, not a settable field — it must be
+earnable and losable rather than assertable. Note that the UI leads with the
+estimated accuracy and treats the tier name as shorthand: "gold data" carries a
+specific connotation for customers, and a badge alone reads as a certification.
+
+The effort model is a flat heuristic (fields × per-field seconds + sections ×
+per-section seconds), measured from the test set where possible. It does not model
+field complexity or annotator speed; per-annotator timings from claim→complete
+durations would be the next refinement.
 
 ## Features
 
@@ -192,12 +347,86 @@ The service supports multiple evaluation methods that can be configured for each
 - `EXACT`: Exact string match (after normalizing whitespace and punctuation)
 - `NUMERIC_EXACT`: Exact match for numeric values (after normalizing currency symbols)
 - `FUZZY`: Fuzzy string matching with configurable evaluation_threshold
+- `DATE`: Format-insensitive date comparison (Stickler v0.5.0+ `DateComparator`). Parses both values into dates before comparing, so `01/05/2024`, `2024-01-05`, and `January 5, 2024` all match. Also handles date ranges (e.g. `2024-01-01 to 2024-01-31`). Optional per-field tuning via `x-aws-idp-evaluation-method-config` (e.g. `dayfirst`, `tolerance`, `range_mode`).
 - `HUNGARIAN`: Optimal matching for lists of values using the Hungarian algorithm with configurable comparator types:
   - `EXACT`: Default comparator for exact string matching (after normalization)
   - `FUZZY`: Fuzzy string matching with configurable threshold
   - `NUMERIC`: Numeric comparison after normalizing currency symbols and formats
 - `SEMANTIC`: Efficient semantic similarity comparison using Bedrock Titan embeddings (amazon.titan-embed-text-v1)
-- `LLM`: LLM-based evaluation using Bedrock models (Claude or Titan) for semantically comparable values with detailed explanations
+- `LLM`: LLM-based evaluation using Bedrock models (Claude or Titan) for semantically comparable values with detailed explanations. **Not supported on fields inside a structured list — see below.**
+
+#### ⚠️ `LLM` is not usable inside a structured list
+
+An `LLM` method on a field **inside a list's items** is downgraded to that field's
+deterministic type default (string → Levenshtein, number → Numeric, boolean →
+Exact), with a warning naming the field.
+
+Structured lists are matched with the Hungarian algorithm, which builds a full
+`N_ground_truth × N_predicted` similarity matrix and invokes each item field's
+comparator **once per cell**, then scores the matched pairs — measured at
+`N² + 2N` comparator calls. One Bedrock round trip per cell means a 54-row
+invoice needs ~3,000 sequential calls (~45 minutes), so the 900 s evaluation
+Lambda can never finish it at any retry count. This was observed wedging an
+entire stack: every affected document burned 9 × 900 s attempts before failing,
+and the leaked workflow-concurrency slots stopped the pipeline accepting new
+documents.
+
+A matching cost function wants a cheap, deterministic similarity anyway, so the
+downgrade is also the right shape. To override on a small, bounded list:
+
+```yaml
+LineItems:
+  type: array
+  items:
+    type: object
+    properties:
+      Description:
+        type: string
+        x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-allow-llm-in-list: true   # accepts the O(N²) cost
+```
+
+Note also that an evaluation method on the **array itself** has never had any
+effect (lists score through their item fields, and row matching is Hungarian).
+That is now logged as a warning rather than silently discarded.
+
+#### Field context in the `LLM` prompt
+
+The `LLM` prompt interpolates `{DOCUMENT_CLASS}`, `{ATTRIBUTE_NAME}` and
+`{ATTRIBUTE_DESCRIPTION}`. Stickler's comparator protocol is
+`compare(value1, value2)` and carries no field context, so `SticklerConfigMapper`
+supplies each LLM-method field's class, name and description through the same
+per-field `x-aws-stickler-comparator-config` channel the model config uses, and
+`LLMComparator` forwards them.
+
+> Before this was wired up, every judge call went out as
+> `for a document of class: . For the attribute named "" described as "":` — the
+> model was asked to decide whether two bare strings meant the same thing with no
+> idea what field it was grading. Scores produced by the `LLM` method before this
+> fix are context-free and not comparable with scores produced after it.
+
+Identical values (after case and whitespace normalization) short-circuit to a
+match with **no** Bedrock call, and repeated `(expected, actual)` pairs are
+memoized per comparator instance.
+
+#### DATE method configuration
+
+The `DATE` method accepts an optional `x-aws-idp-evaluation-method-config` object that is passed through to Stickler's `DateComparator`:
+
+```yaml
+InvoiceDate:
+  type: string
+  format: date
+  description: Invoice issue date
+  x-aws-idp-evaluation-method: DATE
+  x-aws-idp-evaluation-method-config:
+    dayfirst: false        # false = month-first (US); true = day-first (EU); omit to try both
+    range_mode: graded     # graded (default) | strict | contains | reject
+```
+
+Notes:
+- `DATE` is for calendar dates only. Time-only values (e.g. `19:02`) score `0.0` — keep those on `EXACT`.
+- Fields that merely mention "date" in free text (e.g. a narrative statement) should stay on `LLM`/`SEMANTIC`, not `DATE`.
 
 ### Semantic vs LLM Evaluation
 
@@ -225,18 +454,54 @@ The evaluation produces:
 
 ## Metrics
 
-The evaluation calculates the following metrics:
+The evaluation calculates the following metrics. As of v0.6.7, counts come
+directly from
+Stickler's row-level `field_comparisons` — one count per drilldown row the
+UI displays — with item-level rejected/missing/extra rows weighted by their
+leaf count so a truncated 5-item list and a partially-wrong 5-item list
+contribute the same leaf-normalized units.
 
-- **Precision**: Accuracy of positive predictions (TP / (TP + FP))
-- **Recall**: Coverage of actual positive cases (TP / (TP + FN))
-- **F1 Score**: Harmonic mean of precision and recall
-- **Accuracy**: Overall correctness (TP + TN) / (TP + TN + FP + FN)
-- **False Alarm Rate (FAR)**: Rate of false positives among negatives (FP / (FP + TN))
-  - Measures how often the system extracts information that wasn't present in the document
-- **False Discovery Rate (FDR)**: Rate of false positives among positive predictions (FP / (FP + TP))
-  - Measures what proportion of the extracted information is incorrect
+- **Precision**: `TP / (TP + FP)` where `FP = FA + FD`
+- **Recall**: `TP / (TP + FN)`
+- **F1 Score**: `2·TP / (2·TP + FP + FN)`
+- **Accuracy**: `(TP + TN) / (TP + FP + FN + TN)`
+- **False Alarm Rate (FAR)**: `FA / (FA + TN)`
+  - Rate of *hallucinated* fields (predicted values where none was expected)
+    among true-negatives. Stickler splits `FP` into `fa` (false alarm) and
+    `fd` (false discovery); FAR measures the hallucination side.
+- **False Discovery Rate (FDR)**: `FD / (FD + TP)`
+  - Rate of *wrong-value* fields among positive predictions. The other side
+    of the `fa`/`fd` split — measures incorrect extractions.
 
-These metrics are calculated at both the attribute level (per field), section level (per document class), and document level (overall performance).
+The `fa`/`fd` distinction matters because they represent different failure
+modes and warrant different remediations — FAR isolates hallucinations, FDR
+isolates wrong extractions. These metrics are calculated at attribute
+level (per field), section level (per document class), and document level.
+
+**Historical data note:** runs recorded on v0.6.3–v0.6.6 predate this
+counting semantics and may show inflated (leaves-inside-kept-items masked)
+or deflated (item-level rows counted as one unit each) section metrics on
+list-heavy configs. See [issue #625](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/625);
+re-run those evaluations after upgrading for accurate comparison.
+
+### Failure and exclusion flags in section metrics
+
+A section's `metrics` dict can also carry non-numeric state that distinguishes
+*not scored* from *scored zero*. Consumers of `results.json` should branch on
+these before reading the numbers:
+
+| Key | Meaning |
+|-----|---------|
+| `evaluation_skipped: True` | Nothing to score (class has no extractable fields, or is excluded from processing). `weighted_overall_score` is `None` and the section is dropped from the document weighted mean and confusion-matrix rollup. |
+| `evaluation_failed: True` | Evaluation was attempted and failed. Metrics are zeroed and **do** count against document-level aggregates. |
+| `failure_type: str` | Set alongside `evaluation_failed`; names the cause — `missing_schema_configuration`, `empty_nested_object`, `extraction_parsing_failed`, `baseline_data_validation_error`, `schema_configuration_error`, `unexpected_error`. |
+| `skipped_field_count: int` | Some fields were dropped from scoring after per-field validation errors; the rest were scored normally. |
+
+`DocumentEvaluationResult.to_markdown` keys the failure block's "How to fix"
+guidance on `failure_type`, and renders none when it is absent (results written
+before the field existed) rather than guessing — advice for the wrong cause is
+worse than no advice. When adding a new failure branch, set `failure_type` and
+add a matching case in `_failure_remediation`.
 
 ## Visual Reporting
 
@@ -579,29 +844,14 @@ The evaluation service provides specialized metrics for evaluating document spli
 
 ### Usage
 
-```python
-from idp_common.evaluation.doc_split_classification_metrics import DocSplitClassificationMetrics
-
-# Initialize calculator
-doc_split_calculator = DocSplitClassificationMetrics()
-
-# Load ground truth and predicted sections
-doc_split_calculator.load_sections(
-    ground_truth_sections=expected_document.sections,
-    predicted_sections=actual_document.sections
-)
-
-# Calculate all metrics
-metrics = doc_split_calculator.calculate_all_metrics()
-
-# Generate markdown report
-report = doc_split_calculator.generate_markdown_report(metrics)
-
-# Access individual metric types
-page_level = metrics["page_level_accuracy"]
-split_no_order = metrics["split_accuracy_without_order"]
-split_with_order = metrics["split_accuracy_with_order"]
-```
+Doc-split metrics are computed by `EvaluationService.evaluate_document` and
+surfaced through `DocumentEvaluationResult.doc_split_metrics` (see
+`models.DocSplitMetrics`); the markdown rendering is part of the
+service-owned `DocumentEvaluationResult.to_markdown` output. If you need the
+raw calculator (e.g. for a custom driver), it lives upstream at
+`stickler.doc_split.doc_split_classification_metrics.DocSplitClassificationMetrics`
+and accepts plain section dicts of the form
+`{"section_id": ..., "document_class": {...}, "split_document": {"page_indices": [...]}}`.
 
 ### Metrics Explained
 
@@ -627,17 +877,27 @@ page_level = {
             "page_index": 0,
             "ground_truth_class": "Invoice",
             "predicted_class": "Invoice",
-            "correct": True
+            "correct": True,
+            "predicted_confidence": 0.91
         },
         {
             "page_index": 5,
             "ground_truth_class": "W2",
             "predicted_class": "Receipt",
-            "correct": False
+            "correct": False,
+            "predicted_confidence": 0.48
         }
     ]
 }
 ```
+
+`predicted_confidence` is the classifier's own confidence in the class it
+predicted (`None` when the page was not scored — the default; see
+[classification confidence](../classification/README.md#classification-confidence-confidence-classification_reason)).
+Paired with `correct` on the same row it is the **calibration** measurement: if
+confident-and-wrong pages score as high as confident-and-right ones, the
+confidence carries no information and must not drive escalation. The benchmark
+harness computes exactly that separation from these rows.
 
 #### 2. Split Accuracy (Without Order)
 
@@ -715,49 +975,10 @@ split_with_order = {
 
 ### Visual Reporting
 
-The `generate_markdown_report()` method creates comprehensive visual reports with:
-
-#### Summary Dashboard
-```markdown
-## 🎯 Split Classification Summary
-
-- **Page Level Accuracy**: 🟢 19/20 pages [███████████████████░] 95%
-- **Split Accuracy (Without Order)**: 🟢 9/10 sections [██████████████████░░] 90%
-- **Split Accuracy (With Order)**: 🟡 8/10 sections [████████████████░░░░] 80%
-```
-
-#### Metrics Table
-```markdown
-| Metric | Accuracy | Rating | Correct/Total |
-| ------ | :------: | :----: | :-----------: |
-| Page Level Classification | 0.9500 | 🟢 Excellent | 19/20 pages |
-| Document Split (Without Page Order) | 0.9000 | 🟢 Excellent | 9/10 sections |
-| Document Split (With Page Order) | 0.8000 | 🟡 Good | 8/10 sections |
-```
-
-#### Combined Section Analysis
-```markdown
-| Section Match | Page Order Match | Section ID | Expected Class | Expected Pages | Pred Class | Pred Pages | Matched Section |
-| :-----------: | :--------------: | ---------- | -------------- | -------------- | ---------- | ---------- | --------------- |
-| ✅ | ✅ | section_1 | Invoice | [0, 1, 2] | Invoice | [0, 1, 2] | pred_section_1 |
-| ✅ | ❌ | section_2 | W2 | [3, 4] | W2 | [4, 3] | pred_section_2 |
-| ❌ | ❌ | section_3 | Receipt | [5, 6] | Invoice | [5] | N/A |
-| ❌ | ❌ | N/A | No Match | N/A | Receipt | [6, 7] | pred_section_4 |
-```
-
-**Column Definitions:**
-- **Section Match**: ✅ if pages match as a set with same class (order independent)
-- **Page Order Match**: ✅ if Section Match is true AND page order matches exactly
-- **Matched Section**: ID of the predicted section that corresponds to ground truth
-- **Unmatched Predicted Sections**: Rows with "N/A" for ground truth indicate over-segmentation
-
-#### Color-Coded Ratings
-
-The reports use visual indicators for quick assessment:
-- 🟢 **Excellent** (≥ 90% accuracy)
-- 🟡 **Good** (70-89% accuracy)
-- 🟠 **Fair** (50-69% accuracy)
-- 🔴 **Poor** (< 50% accuracy)
+Doc-split visualization is emitted as part of `DocumentEvaluationResult.to_markdown`
+(in `models.py`) — a single service-owned renderer that interleaves split
+metrics with extraction metrics and excluded-section annotations. The
+upstream calculator's `generate_markdown_report` is not called by IDP.
 
 ### Integration with Evaluation Service
 
@@ -810,38 +1031,7 @@ The calculator gracefully handles missing or malformed data:
 
 ### Example: Complete Workflow
 
-```python
-from idp_common.evaluation.doc_split_classification_metrics import DocSplitClassificationMetrics
-
-# Initialize
-calculator = DocSplitClassificationMetrics()
-
-# Load sections (from Document objects)
-calculator.load_sections(
-    ground_truth_sections=baseline_document.sections,
-    predicted_sections=processed_document.sections
-)
-
-# Calculate all metrics
-all_metrics = calculator.calculate_all_metrics()
-
-# Generate and save report
-report = calculator.generate_markdown_report(all_metrics)
-with open("split_classification_report.md", "w") as f:
-    f.write(report)
-
-# Access specific metrics for analysis
-page_acc = all_metrics["page_level_accuracy"]["accuracy"]
-split_acc_no_order = all_metrics["split_accuracy_without_order"]["accuracy"]
-split_acc_with_order = all_metrics["split_accuracy_with_order"]["accuracy"]
-
-print(f"Page Classification: {page_acc:.2%}")
-print(f"Split Accuracy (no order): {split_acc_no_order:.2%}")
-print(f"Split Accuracy (with order): {split_acc_with_order:.2%}")
-
-# Check for errors
-if all_metrics.get("errors"):
-    print(f"\nWarnings/Errors: {len(all_metrics['errors'])}")
-    for error in all_metrics["errors"]:
-        print(f"  - {error}")
-```
+The standard workflow is via `EvaluationService.evaluate_document`, which
+calculates doc-split metrics automatically and surfaces them on the returned
+`DocumentEvaluationResult`. For direct use of the upstream calculator, see
+[Usage](#usage) above.

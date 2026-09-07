@@ -5,7 +5,6 @@ import datetime
 import json
 import logging
 import os
-from urllib.parse import urlparse
 
 import boto3
 from idp_common import s3, utils
@@ -23,11 +22,11 @@ logging.getLogger("idp_common.bedrock.client").setLevel(
 s3_client = boto3.client("s3")
 
 
-def is_hitl_enabled(config_version=None):
+def is_hitl_enabled(config_version=None, config_revision=None):
     """Check if HITL is enabled from configuration."""
     try:
-        config = get_config(as_model=True, version=config_version)
-        return config.assessment.hitl_enabled
+        config = get_config(as_model=True, version=config_version, revision=config_revision)
+        return config.hitl.enabled
     except Exception as e:
         logger.warning(f"Failed to get HITL config: {e}")
         return False  # Default to disabled if config unavailable
@@ -57,14 +56,15 @@ def handler(event, context):
 
     # Load configuration - use document's version if specified, otherwise use active version
     config_version = getattr(document, 'config_version', None)
-    config = get_config(as_model=True, version=config_version)
+    config_revision = getattr(document, 'config_revision', None)
+    config = get_config(as_model=True, version=config_version, revision=config_revision)
 
     extraction_results = event.get("ExtractionResults", [])
     execution_arn = event.get("execution_arn", "")
     execution_id = execution_arn.split(":")[-1] if execution_arn else "unknown"
 
     # Get confidence threshold from configuration
-    confidence_threshold = config.assessment.default_confidence_threshold
+    confidence_threshold = config.hitl.confidence_threshold
     logger.info(f"Using confidence threshold: {confidence_threshold}")
 
     # Update document status to POSTPROCESSING
@@ -100,7 +100,7 @@ def handler(event, context):
                 logger.info(
                     f"section.confidence_threshold_alerts: {section.confidence_threshold_alerts}"
                 )
-                hitl_enabled = is_hitl_enabled(config_version)
+                hitl_enabled = is_hitl_enabled(config_version, config_revision)
                 logger.info(f"is_hitl_enabled: {hitl_enabled}")
                 document.sections.append(section)
 
@@ -180,10 +180,10 @@ def handler(event, context):
     rule_validation_enabled = False
     if hasattr(config, 'rule_validation'):
         rule_validation_enabled = config.rule_validation.enabled
-        # Also check if there are any rules configured
-        if rule_validation_enabled and hasattr(config, 'rule_classes'):
-            if not config.rule_classes or len(config.rule_classes) == 0:
-                logger.info("Rule validation is enabled but no rule_classes configured - skipping rule validation")
+        if rule_validation_enabled:
+            policy_classes = getattr(config, 'policy_classes', None) or []
+            if len(policy_classes) == 0:
+                logger.info("Rule validation is enabled but no policy_classes configured - skipping rule validation")
                 rule_validation_enabled = False
         logger.info(f"Rule validation enabled: {rule_validation_enabled}")
     
@@ -219,10 +219,11 @@ def create_metadata_file(file_uri, class_type, file_type=None):
     Creates a metadata file alongside the given URI file with the same name plus '.metadata.json'
     """
     try:
-        # Parse the S3 URI to get bucket and key
-        parsed_uri = urlparse(file_uri)
-        bucket = parsed_uri.netloc
-        key = parsed_uri.path.lstrip("/")
+        # Parse the S3 URI to get bucket and key. Use parse_s3_uri (plain
+        # string split) rather than urllib.parse.urlparse: object keys may
+        # contain '#', which urlparse treats as a URL fragment delimiter and
+        # silently truncates, producing a wrong metadata key.
+        bucket, key = utils.parse_s3_uri(file_uri)
 
         # Create the metadata key by adding '.metadata.json' to the original key
         metadata_key = f"{key}.metadata.json"

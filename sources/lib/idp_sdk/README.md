@@ -45,23 +45,29 @@ print(f"Requeued: {reprocess_result.documents_queued} documents")
 
 ## Configuration Management
 
-The SDK supports configuration versioning and management:
+The SDK manages **Configuration Profiles** — named configurations, each with its
+own revision history.
+
+> `config_profile=` is the current keyword. `config_version=` is the former name
+> and is still accepted on every method that took it, so existing code keeps
+> working; passing both with different values raises `ValueError`. See
+> [configuration-profiles.md](../../docs/configuration-profiles.md).
 
 ```python
 from idp_sdk import IDPClient
 
 client = IDPClient(stack_name="my-idp-stack")
 
-# Upload configuration to specific version
+# Upload configuration to a specific profile
 client.config.upload(
     config_file="config.yaml",
-    config_version="production-v2",
+    config_profile="production-v2",
     description="Updated model settings for new document types"
 )
 
-# Download specific configuration version
+# Download a specific configuration profile
 client.config.download(
-    config_version="production-v2",
+    config_profile="production-v2",
     output="downloaded-config.yaml"
 )
 
@@ -70,10 +76,10 @@ validation = client.config.validate(config_file="config.yaml")
 if validation.valid:
     print("Configuration is valid")
 
-# Process documents using specific version
+# Process documents using a specific profile
 result = client.batch.process(
     directory="./documents/",
-    config_version="production-v2"
+    config_profile="production-v2"
 )
 ```
 
@@ -119,6 +125,30 @@ The SDK organizes functionality into 9 operation namespaces:
 - **search**: Query processed documents with natural language
 - **testing**: Performance and load testing
 
+## Buckets the CLI creates
+
+Two S3 buckets are created imperatively (outside CloudFormation) and are
+hardened with the same `EnforceSSLOnly` bucket policy the stack's own buckets
+carry — deny `s3:*` when `aws:SecureTransport` is false, on the bucket and its
+objects:
+
+| Bucket | Created by | Purpose |
+|---|---|---|
+| `<basename>-<region>` (default `idp-accelerator-artifacts-<account>-<region>`) | `idp-cli publish` | Build artifacts, templates, Lambda zips |
+| `idp-cli-config-<account>-<region>-<suffix>` | `idp-cli deploy` | Staging a `--custom-config` upload (30-day lifecycle) |
+
+The policy is merged additively — your own statements survive, and a stale
+`EnforceSSLOnly` is replaced rather than duplicated, so re-running is
+idempotent. It is applied to **pre-existing** buckets too (unlike Block Public
+Access, which is never modified on a bucket the CLI didn't create, so a manual
+remediation can't be reverted); there it's best-effort, warning and continuing
+if the account restricts `s3:PutBucketPolicy`. ARNs use the region's real
+partition, so GovCloud gets `arn:aws-us-gov:`.
+
+To supply your own pre-hardened bucket (KMS CMK, access logging, tags), pass
+`--bucket-basename` — see
+[Enterprise artifact bucket hardening](../../docs/deployment-private-network.md).
+
 ## Common Patterns
 
 ### Batch Processing with Monitoring
@@ -160,17 +190,17 @@ reprocess = client.batch.reprocess(
 ### Configuration Versioning
 
 ```python
-# Create and upload new config version
+# Create and upload a new configuration profile
 client.config.upload(
     config_file="config.yaml",
-    config_version="v2.0",
+    config_profile="v2.0",
     description="Updated extraction rules"
 )
 
-# Process with specific version
+# Process with a specific profile
 result = client.batch.process(
     directory="./docs/",
-    config_version="v2.0"
+    config_profile="v2.0"
 )
 ```
 

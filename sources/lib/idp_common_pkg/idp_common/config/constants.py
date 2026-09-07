@@ -21,12 +21,28 @@ CONFIG_TYPE_CUSTOM = "Custom"
 CONFIG_TYPE_DEFAULT_PRICING = "DefaultPricing"
 CONFIG_TYPE_CUSTOM_PRICING = "CustomPricing"
 
+# Model Config Limits Configuration Types (mirrors DefaultPricing/CustomPricing)
+CONFIG_TYPE_DEFAULT_MODEL_CONFIG_LIMITS = "DefaultModelConfigLimits"
+CONFIG_TYPE_CUSTOM_MODEL_CONFIG_LIMITS = "CustomModelConfigLimits"
+
 # All valid configuration types
 VALID_CONFIG_TYPES = [
     CONFIG_TYPE_SCHEMA,
     CONFIG_TYPE_CONFIG,
     CONFIG_TYPE_DEFAULT_PRICING,
     CONFIG_TYPE_CUSTOM_PRICING,
+    CONFIG_TYPE_DEFAULT_MODEL_CONFIG_LIMITS,
+    CONFIG_TYPE_CUSTOM_MODEL_CONFIG_LIMITS,
     CONFIG_TYPE_DEFAULT,  # Legacy
     CONFIG_TYPE_CUSTOM,   # Legacy
 ]
+
+# Sentinel record holding a pointer to the active Configuration Profile. Read
+# with a single get_item at queue time instead of scanning every profile.
+ACTIVE_POINTER_VERSION = "__active"
+ACTIVE_POINTER_KEY = f"{CONFIG_TYPE_CONFIG}#{ACTIVE_POINTER_VERSION}"
+
+# Profile names that would collide with a sentinel record and must be refused.
+# Without this guard a user could create a profile literally named "__active"
+# and overwrite the active-profile pointer.
+RESERVED_VERSION_NAMES = frozenset({ACTIVE_POINTER_VERSION})

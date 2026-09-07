@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getDocumentConfidenceAlertCount } from './confidence-alerts-utils';
+import { getDocumentProcessingIssueCount } from './processing-issues-utils';
 import { parseMetering, parseHITLReviewHistory } from '../../graphql/awsjson-parsers';
 
 interface DocumentApiItem {
@@ -35,7 +36,9 @@ interface DocumentApiItem {
   HITLReviewedByEmail?: string;
   HITLReviewHistory?: string | Record<string, unknown>[];
   ConfidenceAlertCount?: number;
+  ProcessingIssueCount?: number;
   ConfigVersion?: string;
+  ConfigRevision?: number | null;
 }
 
 // Helper function to determine Review Status without nested ternaries
@@ -54,7 +57,7 @@ const isHitlCompleted = (status: string | undefined): boolean => {
 };
 
 /* Maps document attributes from API to a format that can be used in tables and panel */
-// eslint-disable-next-line arrow-body-style
+
 const mapDocumentsAttributes = (documents: DocumentApiItem[]): Record<string, unknown>[] => {
   return documents.map((item) => {
     const {
@@ -79,6 +82,7 @@ const mapDocumentsAttributes = (documents: DocumentApiItem[]): Record<string, un
       HITLStatus: hitlStatus,
       HITLReviewURL: hitlReviewURL,
       ConfigVersion: configVersion,
+      ConfigRevision: configRevision,
     } = item;
 
     // Extract HITL sections arrays
@@ -113,6 +117,14 @@ const mapDocumentsAttributes = (documents: DocumentApiItem[]): Record<string, un
         ? apiConfidenceAlertCount
         : getDocumentConfidenceAlertCount((sections ?? null) as Parameters<typeof getDocumentConfidenceAlertCount>[0]);
 
+    // Processing-issue count: prefer the server-side ProcessingIssueCount (GSI /
+    // getDocument), else derive from the sections' ProcessingIssues arrays.
+    const apiProcessingIssueCount = item.ProcessingIssueCount;
+    const processingIssueCount =
+      apiProcessingIssueCount != null
+        ? apiProcessingIssueCount
+        : getDocumentProcessingIssueCount((sections ?? null) as Parameters<typeof getDocumentProcessingIssueCount>[0]);
+
     // Extract HITL metadata - use HITLTriggered from backend, fallback to status check
     const hitlTriggered = item.HITLTriggered === true || (hitlStatus && hitlStatus !== 'N/A');
     const hitlCompleted = isHitlCompleted(hitlStatus);
@@ -145,6 +157,7 @@ const mapDocumentsAttributes = (documents: DocumentApiItem[]): Record<string, un
       summaryReportUri,
       ruleValidationResultUri,
       confidenceAlertCount,
+      processingIssueCount,
       listPK,
       listSK,
       hitlTriggered,
@@ -160,6 +173,7 @@ const mapDocumentsAttributes = (documents: DocumentApiItem[]): Record<string, un
       hitlReviewedByEmail,
       hitlReviewHistory,
       configVersion,
+      configRevision,
     };
 
     return mapping;

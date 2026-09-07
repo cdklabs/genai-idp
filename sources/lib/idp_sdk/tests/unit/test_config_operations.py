@@ -8,6 +8,7 @@ Unit tests for Config operations (mocked).
 from unittest.mock import patch
 
 import pytest
+
 from idp_sdk import IDPClient
 from idp_sdk.models import ConfigCreateResult, ConfigValidationResult
 
@@ -18,18 +19,22 @@ class TestConfigOperationsMocked:
     """Test config operations with mocked file I/O."""
 
     @patch("idp_common.config.merge_utils.generate_config_template")
-    def test_create_config(self, mock_generate):
+    def test_create_config(self, mock_generate, tmp_path):
         """Test creating config file."""
         # Setup mock
         mock_generate.return_value = "key: value"
 
+        # Write to a temp path — not the repo root — so the test leaves no
+        # stray config.yaml in the working tree.
+        output = tmp_path / "config.yaml"
+
         # Test
         client = IDPClient()
-        result = client.config.create(features="min", output="config.yaml")
+        result = client.config.create(features="min", output=str(output))
 
         assert isinstance(result, ConfigCreateResult)
         assert result.yaml_content
-        assert result.output_path == "config.yaml"
+        assert result.output_path == str(output)
 
     @patch("idp_common.config.merge_utils.validate_config")
     @patch("idp_common.config.merge_utils.load_yaml_file")
@@ -82,9 +87,9 @@ class TestConfigOperationsMocked:
         client = IDPClient(stack_name="test-stack")
         result = client.config.list()
 
-        assert result["count"] == 2
-        assert len(result["versions"]) == 2
-        assert result["versions"][0]["versionName"] == "default"
+        assert result.count == 2
+        assert len(result.versions) == 2
+        assert result.versions[0].version_name == "default"
 
     @patch("boto3.client")
     @patch("idp_common.config.configuration_manager.ConfigurationManager")
@@ -114,8 +119,8 @@ class TestConfigOperationsMocked:
         client = IDPClient(stack_name="test-stack")
         result = client.config.activate("v1")
 
-        assert result["success"] is True
-        assert result["activated_version"] == "v1"
+        assert result.success is True
+        assert result.activated_version == "v1"
         mock_manager.activate_version.assert_called_once_with("v1")
 
     @patch("boto3.client")
@@ -143,8 +148,9 @@ class TestConfigOperationsMocked:
         client = IDPClient(stack_name="test-stack")
         result = client.config.activate("nonexistent")
 
-        assert result["success"] is False
-        assert "does not exist" in result["error"]
+        assert result.success is False
+        assert result.error is not None
+        assert "does not exist" in result.error
 
     @patch("boto3.client")
     @patch("idp_common.config.configuration_manager.ConfigurationManager")
@@ -171,8 +177,8 @@ class TestConfigOperationsMocked:
         client = IDPClient(stack_name="test-stack")
         result = client.config.delete("old-version")
 
-        assert result["success"] is True
-        assert result["deleted_version"] == "old-version"
+        assert result.success is True
+        assert result.deleted_version == "old-version"
         mock_manager.delete_configuration.assert_called_once_with(
             "Config", version="old-version"
         )
@@ -204,5 +210,126 @@ class TestConfigOperationsMocked:
         client = IDPClient(stack_name="test-stack")
         result = client.config.delete("active-version")
 
-        assert result["success"] is False
-        assert "Cannot delete active version" in result["error"]
+        assert result.success is False
+        assert result.error is not None
+        assert "Cannot delete active version" in result.error
+
+    @patch("builtins.open", create=True)
+    @patch("boto3.client")
+    def test_upload_managed_config_rejected(self, mock_boto3, mock_open):
+        """Test that uploading a managed config is rejected."""
+        import io
+
+        # Setup mocks
+        mock_cfn = mock_boto3.return_value
+        mock_paginator = mock_cfn.get_paginator.return_value
+        mock_paginator.paginate.return_value = [
+            {
+                "StackResourceSummaries": [
+                    {
+                        "LogicalResourceId": "ConfigurationTable",
+                        "PhysicalResourceId": "test-table",
+                    }
+                ]
+            }
+        ]
+
+        # Mock file content with managed: true
+        yaml_content = """managed: true
+use_bda: false
+classes: []
+"""
+        mock_open.return_value.__enter__.return_value = io.StringIO(yaml_content)
+
+        # Test
+        client = IDPClient(stack_name="test-stack")
+        result = client.config.upload(
+            config_file="managed_config.yaml", config_version="test-version"
+        )
+
+        assert result.success is False
+        assert result.error is not None
+        assert "Cannot upload managed configuration" in result.error
+        assert "managed: true" in result.error or "managed: false" in result.error
+
+    @patch("builtins.open", create=True)
+    @patch("boto3.client")
+    @patch("idp_common.config.configuration_manager.ConfigurationManager")
+    def test_upload_non_managed_config_sets_managed_false(
+        self, mock_manager_class, mock_boto3, mock_open
+    ):
+        """Test that uploading a config without managed field sets it to false."""
+        import io
+
+        # Setup mocks
+        mock_cfn = mock_boto3.return_value
+        mock_paginator = mock_cfn.get_paginator.return_value
+        mock_paginator.paginate.return_value = [
+            {
+                "StackResourceSummaries": [
+                    {
+                        "LogicalResourceId": "ConfigurationTable",
+                        "PhysicalResourceId": "test-table",
+                    }
+                ]
+            }
+        ]
+
+        mock_manager = mock_manager_class.return_value
+        mock_manager.get_configuration.return_value = None  # New version
+        mock_manager.handle_update_custom_configuration.return_value = True
+
+        # Mock file content without managed field
+        yaml_content = """use_bda: false
+classes: []
+"""
+        mock_open.return_value.__enter__.return_value = io.StringIO(yaml_content)
+
+        # Test
+        client = IDPClient(stack_name="test-stack")
+        result = client.config.upload(
+            config_file="config.yaml", config_version="test-version", validate=False
+        )
+
+        assert result.success is True
+
+        # Verify that the config passed to manager has managed=False
+        call_args = mock_manager.handle_update_custom_configuration.call_args
+        import json
+
+        config_passed = json.loads(call_args[0][0])
+        assert config_passed["managed"] is False
+
+    @patch("builtins.open", create=True)
+    @patch("boto3.client")
+    def test_upload_json_config_rejected_if_managed(self, mock_boto3, mock_open):
+        """Test that uploading a JSON config with managed=true is rejected."""
+        import io
+
+        # Setup mocks
+        mock_cfn = mock_boto3.return_value
+        mock_paginator = mock_cfn.get_paginator.return_value
+        mock_paginator.paginate.return_value = [
+            {
+                "StackResourceSummaries": [
+                    {
+                        "LogicalResourceId": "ConfigurationTable",
+                        "PhysicalResourceId": "test-table",
+                    }
+                ]
+            }
+        ]
+
+        # Mock JSON file content with managed: true
+        json_content = '{"managed": true, "use_bda": false, "classes": []}'
+        mock_open.return_value.__enter__.return_value = io.StringIO(json_content)
+
+        # Test
+        client = IDPClient(stack_name="test-stack")
+        result = client.config.upload(
+            config_file="managed_config.json", config_version="test-version"
+        )
+
+        assert result.success is False
+        assert result.error is not None
+        assert "Cannot upload managed configuration" in result.error

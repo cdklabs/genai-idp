@@ -28,7 +28,6 @@ import pytest
 # Finally import application modules
 from idp_common.evaluation.service import EvaluationService
 from idp_common.evaluation.models import (
-    EvaluationMethod,
     AttributeEvaluationResult,
     SectionEvaluationResult,
 )
@@ -155,475 +154,6 @@ class TestEvaluationService:
 
         return doc
 
-    @pytest.mark.skip(
-        reason="Internal method removed in Stickler migration - see test_evaluation_service_stickler.py"
-    )
-    def test_init(self, mock_config):
-        """Test initialization with configuration."""
-        service = EvaluationService(
-            region="us-west-2", config=mock_config, max_workers=5
-        )
-
-        assert service.region == "us-west-2"
-        assert service.max_workers == 5
-        # Note: These attributes don't exist in the Stickler-based implementation
-        # assert service.default_model == "anthropic.claude-3-sonnet-20240229-v1:0"
-        # assert service.default_temperature == 0.0
-        # assert service.default_top_k == 5
-        # assert "You are an evaluator" in service.default_system_prompt
-        # assert "Compare" in service.default_task_prompt
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    def test_get_attributes_for_class(self, service):
-        """Test getting attributes for a document class."""
-        # Test with existing class
-        invoice_attrs = service._get_attributes_for_class("invoice")
-        assert len(invoice_attrs) == 3
-        assert invoice_attrs[0].name == "invoice_number"
-        assert invoice_attrs[0].evaluation_method == EvaluationMethod.EXACT
-        assert invoice_attrs[1].name == "invoice_date"
-        assert invoice_attrs[1].evaluation_method == EvaluationMethod.FUZZY
-        assert invoice_attrs[1].evaluation_threshold == 0.9
-        assert invoice_attrs[2].name == "total_amount"
-        assert invoice_attrs[2].evaluation_method == EvaluationMethod.LLM
-
-        # Test with non-existent class
-        unknown_attrs = service._get_attributes_for_class("unknown")
-        assert len(unknown_attrs) == 0
-
-        # Test case insensitivity
-        invoice_attrs_upper = service._get_attributes_for_class("INVOICE")
-        assert len(invoice_attrs_upper) == 3
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    @patch("idp_common.s3.get_json_content")
-    def test_load_extraction_results(self, mock_get_json_content, service):
-        """Test loading extraction results from S3."""
-        # Test with inference_result wrapper
-        mock_get_json_content.return_value = {
-            "inference_result": {
-                "invoice_number": "INV-123",
-                "invoice_date": "2023-05-08",
-            }
-        }
-
-        extraction_results, confidence_scores = service._load_extraction_results(
-            "s3://bucket/path"
-        )
-        assert extraction_results == {
-            "invoice_number": "INV-123",
-            "invoice_date": "2023-05-08",
-        }
-        assert confidence_scores == {}
-
-        # Test without wrapper
-        mock_get_json_content.return_value = {
-            "invoice_number": "INV-123",
-            "invoice_date": "2023-05-08",
-        }
-
-        extraction_results, confidence_scores = service._load_extraction_results(
-            "s3://bucket/path"
-        )
-        assert extraction_results == {
-            "invoice_number": "INV-123",
-            "invoice_date": "2023-05-08",
-        }
-        assert confidence_scores == {}
-
-        # Test with error
-        mock_get_json_content.side_effect = Exception("S3 error")
-        extraction_results, confidence_scores = service._load_extraction_results(
-            "s3://bucket/path"
-        )
-        assert extraction_results == {}
-        assert confidence_scores == {}
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    def test_count_classifications_both_empty(self, service):
-        """Test counting classifications when both values are empty."""
-        with patch(
-            "idp_common.evaluation.comparator.compare_values"
-        ) as mock_compare_values:
-            tn, fp, fn, tp, fp1, fp2, score, reason = service._count_classifications(
-                attr_name="test_attr",
-                expected=None,
-                actual=None,
-                evaluation_method=EvaluationMethod.EXACT,
-                threshold=0.8,
-            )
-
-            assert tn == 1
-            assert fp == 0
-            assert fn == 0
-            assert tp == 0
-            assert fp1 == 0
-            assert fp2 == 0
-            assert score == 1.0
-            assert "missing" in reason.lower()
-
-            # Mock compare_values was not called
-            mock_compare_values.assert_not_called()
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    def test_count_classifications_expected_empty_actual_not(self, service):
-        """Test counting classifications when expected is empty but actual is not."""
-        with patch(
-            "idp_common.evaluation.comparator.compare_values"
-        ) as mock_compare_values:
-            tn, fp, fn, tp, fp1, fp2, score, reason = service._count_classifications(
-                attr_name="test_attr",
-                expected=None,
-                actual="value",
-                evaluation_method=EvaluationMethod.EXACT,
-                threshold=0.8,
-            )
-
-            assert tn == 0
-            assert fp == 1
-            assert fn == 0
-            assert tp == 0
-            assert fp1 == 1
-            assert fp2 == 0
-            assert score == 0.0
-            assert reason is None
-
-            # Mock compare_values was not called
-            mock_compare_values.assert_not_called()
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    def test_count_classifications_expected_not_empty_actual_empty(self, service):
-        """Test counting classifications when expected is not empty but actual is."""
-        with patch(
-            "idp_common.evaluation.comparator.compare_values"
-        ) as mock_compare_values:
-            tn, fp, fn, tp, fp1, fp2, score, reason = service._count_classifications(
-                attr_name="test_attr",
-                expected="value",
-                actual=None,
-                evaluation_method=EvaluationMethod.EXACT,
-                threshold=0.8,
-            )
-
-            assert tn == 0
-            assert fp == 0
-            assert fn == 1
-            assert tp == 0
-            assert fp1 == 0
-            assert fp2 == 0
-            assert score == 0.0
-            assert reason is None
-
-            # Mock compare_values was not called
-            mock_compare_values.assert_not_called()
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    def test_count_classifications_both_not_empty_match(self, service):
-        """Test counting classifications when both values are not empty and match."""
-        with patch(
-            "idp_common.evaluation.service.compare_values"
-        ) as mock_compare_values:
-            # Configure mock to return a match
-            mock_compare_values.return_value = (True, 1.0, "Values match")
-
-            tn, fp, fn, tp, fp1, fp2, score, reason = service._count_classifications(
-                attr_name="test_attr",
-                expected="value1",
-                actual="value1",
-                evaluation_method=EvaluationMethod.EXACT,
-                threshold=0.8,
-            )
-
-            assert tn == 0
-            assert fp == 0
-            assert fn == 0
-            assert tp == 1
-            assert fp1 == 0
-            assert fp2 == 0
-            assert score == 1.0
-            # The reason might be None in the actual implementation
-            # We're just checking that compare_values was called
-            mock_compare_values.assert_called_once()
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    def test_count_classifications_both_not_empty_no_match(self, service):
-        """Test counting classifications when both values are not empty but don't match."""
-        with patch(
-            "idp_common.evaluation.service.compare_values"
-        ) as mock_compare_values:
-            # Configure mock to return no match
-            mock_compare_values.return_value = (False, 0.0, "Values don't match")
-
-            tn, fp, fn, tp, fp1, fp2, score, reason = service._count_classifications(
-                attr_name="test_attr",
-                expected="value1",
-                actual="value2",
-                evaluation_method=EvaluationMethod.EXACT,
-                threshold=0.8,
-            )
-
-            assert tn == 0
-            assert fp == 1
-            assert fn == 0
-            assert tp == 0
-            assert fp1 == 0
-            assert fp2 == 1
-            assert score == 0.0
-            # The reason might be None in the actual implementation
-            # We're just checking that compare_values was called
-            mock_compare_values.assert_called_once()
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    def test_evaluate_single_attribute_match(self, service):
-        """Test evaluating a single attribute that matches."""
-        with patch(
-            "idp_common.evaluation.comparator.compare_values"
-        ) as mock_compare_values:
-            # Configure mock to return a match
-            mock_compare_values.return_value = (True, 1.0, "Values match")
-
-            with patch.object(service, "_count_classifications") as mock_count:
-                # Configure mock to return appropriate values
-                mock_count.return_value = (0, 0, 0, 1, 0, 0, 1.0, "Values match")
-
-                result, metrics = service._evaluate_single_attribute(
-                    attr_name="invoice_number",
-                    expected_value="INV-123",
-                    actual_value="INV-123",
-                    evaluation_method=EvaluationMethod.EXACT,
-                    evaluation_threshold=0.8,
-                    document_class="invoice",
-                    attr_description="The invoice number",
-                )
-
-                # Check result
-                assert result.name == "invoice_number"
-                assert result.expected == "INV-123"
-                assert result.actual == "INV-123"
-                assert result.matched is True
-                assert result.score == 1.0
-                assert result.reason == "Values match"
-                assert result.evaluation_method == "EXACT"
-                assert result.evaluation_threshold is None  # Not included for EXACT
-
-                # Check metrics
-                assert metrics["tp"] == 1
-                assert metrics["fp"] == 0
-                assert metrics["fn"] == 0
-                assert metrics["tn"] == 0
-                assert metrics["fp1"] == 0
-                assert metrics["fp2"] == 0
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    def test_evaluate_single_attribute_no_match(self, service):
-        """Test evaluating a single attribute that doesn't match."""
-        with patch(
-            "idp_common.evaluation.comparator.compare_values"
-        ) as mock_compare_values:
-            # Configure mock to return no match
-            mock_compare_values.return_value = (False, 0.0, "Values don't match")
-
-            with patch.object(service, "_count_classifications") as mock_count:
-                # Configure mock to return appropriate values
-                mock_count.return_value = (0, 1, 0, 0, 0, 1, 0.0, "Values don't match")
-
-                result, metrics = service._evaluate_single_attribute(
-                    attr_name="invoice_number",
-                    expected_value="INV-123",
-                    actual_value="INV-456",
-                    evaluation_method=EvaluationMethod.EXACT,
-                    evaluation_threshold=0.8,
-                    document_class="invoice",
-                    attr_description="The invoice number",
-                )
-
-                # Check result
-                assert result.name == "invoice_number"
-                assert result.expected == "INV-123"
-                assert result.actual == "INV-456"
-                assert result.matched is False
-                assert result.score == 0.0
-                assert result.reason == "Values don't match"
-                assert result.evaluation_method == "EXACT"
-                assert result.evaluation_threshold is None  # Not included for EXACT
-
-                # Check metrics
-                assert metrics["tp"] == 0
-                assert metrics["fp"] == 1
-                assert metrics["fn"] == 0
-                assert metrics["tn"] == 0
-                assert metrics["fp1"] == 0
-                assert metrics["fp2"] == 1
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    def test_evaluate_single_attribute_fuzzy(self, service):
-        """Test evaluating a single attribute with fuzzy matching."""
-        with patch(
-            "idp_common.evaluation.comparator.compare_values"
-        ) as mock_compare_values:
-            # Configure mock to return a match
-            mock_compare_values.return_value = (
-                True,
-                0.92,
-                "Values match with fuzzy comparison",
-            )
-
-            with patch.object(service, "_count_classifications") as mock_count:
-                # Configure mock to return appropriate values
-                mock_count.return_value = (
-                    0,
-                    0,
-                    0,
-                    1,
-                    0,
-                    0,
-                    0.92,
-                    "Values match with fuzzy comparison",
-                )
-
-                result, metrics = service._evaluate_single_attribute(
-                    attr_name="invoice_date",
-                    expected_value="2023-05-08",
-                    actual_value="May 8, 2023",
-                    evaluation_method=EvaluationMethod.FUZZY,
-                    evaluation_threshold=0.9,
-                    document_class="invoice",
-                    attr_description="The invoice date",
-                )
-
-                # Check result
-                assert result.name == "invoice_date"
-                assert result.expected == "2023-05-08"
-                assert result.actual == "May 8, 2023"
-                assert result.matched is True
-                assert result.score == 0.92
-                assert result.reason == "Values match with fuzzy comparison"
-                assert result.evaluation_method == "FUZZY"
-                assert result.evaluation_threshold == 0.9  # Included for FUZZY
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    def test_evaluate_single_attribute_unconfigured(self, service):
-        """Test evaluating an unconfigured attribute."""
-        with patch(
-            "idp_common.evaluation.comparator.compare_values"
-        ) as mock_compare_values:
-            # Configure mock to return a match
-            mock_compare_values.return_value = (True, 0.95, "Values match")
-
-            with patch.object(service, "_count_classifications") as mock_count:
-                # Configure mock to return appropriate values
-                mock_count.return_value = (0, 0, 0, 1, 0, 0, 0.95, "Values match")
-
-                result, metrics = service._evaluate_single_attribute(
-                    attr_name="unconfigured_attr",
-                    expected_value="value1",
-                    actual_value="value1",
-                    evaluation_method=EvaluationMethod.LLM,
-                    evaluation_threshold=0.8,
-                    document_class="invoice",
-                    attr_description="Unconfigured attribute",
-                    is_unconfigured=True,
-                )
-
-                # Check result
-                assert result.name == "unconfigured_attr"
-                assert result.matched is True
-                assert "Default method" in result.reason
-
-                # Check metrics
-                assert metrics["tp"] == 1
-                assert metrics["fp"] == 0
-
-    @pytest.mark.skip(reason="Internal method removed in Stickler migration")
-    @patch("idp_common.s3.get_json_content")
-    def test_evaluate_section(self, mock_get_json_content, service):
-        """Test evaluating a document section."""
-        # Create a section
-        section = Section(section_id="1", classification="invoice", page_ids=["1", "2"])
-
-        # Define expected and actual results
-        expected_results = {
-            "invoice_number": "INV-123",
-            "invoice_date": "2023-05-08",
-            "total_amount": "$100.00",
-        }
-
-        actual_results = {
-            "invoice_number": "INV-123",
-            "invoice_date": "May 8, 2023",
-            "total_amount": "$100.00",
-        }
-
-        # Mock the _evaluate_single_attribute method
-        with patch.object(service, "_evaluate_single_attribute") as mock_evaluate:
-            # Configure mock to return successful matches for all attributes
-            mock_evaluate.side_effect = [
-                (
-                    AttributeEvaluationResult(
-                        name="invoice_number",
-                        expected="INV-123",
-                        actual="INV-123",
-                        matched=True,
-                        score=1.0,
-                        reason="Exact match",
-                        evaluation_method="EXACT",
-                    ),
-                    {"tp": 1, "fp": 0, "fn": 0, "tn": 0, "fp1": 0, "fp2": 0},
-                ),
-                (
-                    AttributeEvaluationResult(
-                        name="invoice_date",
-                        expected="2023-05-08",
-                        actual="May 8, 2023",
-                        matched=True,
-                        score=0.92,
-                        reason="Fuzzy match",
-                        evaluation_method="FUZZY",
-                        evaluation_threshold=0.9,
-                    ),
-                    {"tp": 1, "fp": 0, "fn": 0, "tn": 0, "fp1": 0, "fp2": 0},
-                ),
-                (
-                    AttributeEvaluationResult(
-                        name="total_amount",
-                        expected="$100.00",
-                        actual="$100.00",
-                        matched=True,
-                        score=1.0,
-                        reason="Exact match",
-                        evaluation_method="LLM",
-                    ),
-                    {"tp": 1, "fp": 0, "fn": 0, "tn": 0, "fp1": 0, "fp2": 0},
-                ),
-            ]
-
-            # Patch the calculate_metrics function
-            with patch(
-                "idp_common.evaluation.metrics.calculate_metrics"
-            ) as mock_metrics:
-                mock_metrics.return_value = {
-                    "precision": 1.0,
-                    "recall": 1.0,
-                    "f1_score": 1.0,
-                }
-
-                # Evaluate section
-                result = service.evaluate_section(
-                    section=section,
-                    expected_results=expected_results,
-                    actual_results=actual_results,
-                )
-
-                # Check result
-                assert result.section_id == "1"
-                assert result.document_class == "invoice"
-                assert len(result.attributes) == 3
-
-                # Check metrics
-                assert result.metrics["precision"] == 1.0
-                assert result.metrics["recall"] == 1.0
-                assert result.metrics["f1_score"] == 1.0
-
     @patch("idp_common.s3.get_json_content")
     @patch("idp_common.evaluation.service.EvaluationService._process_section")
     @patch("idp_common.s3.write_content")
@@ -662,26 +192,19 @@ class TestEvaluationService:
             {"tp": 1, "fp": 0, "fn": 0, "tn": 0, "fp1": 0, "fp2": 0},
         )
 
-        # Patch the calculate_metrics function
-        with patch("idp_common.evaluation.metrics.calculate_metrics") as mock_metrics:
-            mock_metrics.return_value = {
-                "precision": 1.0,
-                "recall": 1.0,
-                "f1_score": 1.0,
-            }
+        # Document-level metrics now come from Stickler counts (R10 removed
+        # the calculate_metrics module the previous test used to patch).
+        result = service.evaluate_document(
+            actual_document=sample_document, expected_document=expected_document
+        )
 
-            # Evaluate document
-            result = service.evaluate_document(
-                actual_document=sample_document, expected_document=expected_document
-            )
+        # Check result
+        assert result.evaluation_report_uri is not None
+        assert result.status == Status.COMPLETED
+        assert result.evaluation_result is not None
 
-            # Check result
-            assert result.evaluation_report_uri is not None
-            assert result.status == Status.COMPLETED
-            assert result.evaluation_result is not None
-
-            # Verify write_content was called twice (for JSON and Markdown)
-            assert mock_write_content.call_count == 2
+        # Verify write_content was called twice (for JSON and Markdown)
+        assert mock_write_content.call_count == 2
 
     @patch("idp_common.s3.get_json_content")
     @patch("idp_common.evaluation.service.EvaluationService._process_section")
@@ -703,3 +226,400 @@ class TestEvaluationService:
         # Check result
         assert len(result.errors) > 0
         assert "Processing error" in result.errors[0]
+
+    def test_flatten_confidence_scores_with_item_wrappers(self, service):
+        """Test that _flatten_confidence_scores correctly unwraps Item_N wrappers in array elements."""
+        # Simulate the structure seen in RealKIE-FCC-Verified extraction results
+        # where some LineItems have direct fields and others are wrapped in Item_N keys
+        confidence_scores = {
+            "Agency": {"confidence": 0.99, "geometry": []},
+            "LineItems": [
+                {
+                    "LineItemRate": {"confidence": 1.0, "geometry": []},
+                    "LineItemDays": {"confidence": 0.8, "geometry": []},
+                },
+                {
+                    "LineItemRate": {"confidence": 1.0, "geometry": []},
+                    "LineItemDays": {"confidence": 0.95, "geometry": []},
+                },
+                {
+                    "Item_6": {
+                        "LineItemRate": {"confidence": 1.0, "geometry": []},
+                        "LineItemDays": {"confidence": 0.95, "geometry": []},
+                        "LineItemStartDate": {"confidence": 1.0, "geometry": []},
+                    },
+                    "confidence_threshold": 0.9,
+                },
+                {
+                    "Item_7": {
+                        "LineItemRate": {"confidence": 0.95, "geometry": []},
+                        "LineItemDays": {"confidence": 0.9, "geometry": []},
+                    },
+                    "confidence_threshold": 0.9,
+                },
+            ],
+        }
+
+        # Test Rich Value conversion with wrapper keys
+        inference_result = {
+            "Agency": "BUYING TIME, LLC",
+            "LineItems": [
+                {"LineItemRate": 600.0, "LineItemDays": "MTWT---"},
+                {"LineItemRate": 500.0, "LineItemDays": "MTWT---"},
+                {
+                    "LineItemRate": 450.0,
+                    "LineItemDays": "MTWT---",
+                    "LineItemStartDate": "10/09/12",
+                },
+                {"LineItemRate": 400.0, "LineItemDays": "MTWT---"},
+            ],
+        }
+
+        rich_values = service._convert_to_rich_values(
+            inference_result, confidence_scores
+        )
+
+        # Verify Agency field has rich value with confidence
+        assert rich_values["Agency"] == {
+            "_value": "BUYING TIME, LLC",
+            "_confidence": 0.99,
+        }
+
+        # Verify LineItems array items have rich values with confidence
+        assert rich_values["LineItems"][0]["LineItemRate"] == {
+            "_value": 600.0,
+            "_confidence": 1.0,
+        }
+        assert rich_values["LineItems"][0]["LineItemDays"] == {
+            "_value": "MTWT---",
+            "_confidence": 0.8,
+        }
+        assert rich_values["LineItems"][2]["LineItemStartDate"] == {
+            "_value": "10/09/12",
+            "_confidence": 1.0,
+        }
+
+    def test_convert_to_rich_values_with_various_wrapper_patterns(self, service):
+        """Test that _convert_to_rich_values handles nested structures."""
+        # Test nested confidence structures
+        confidence_scores = {
+            "Records": [
+                {
+                    "RecordID": {"confidence": 0.99, "geometry": []},
+                    "RecordDate": {"confidence": 1.0, "geometry": []},
+                },
+                {
+                    "RecordID": {"confidence": 0.95, "geometry": []},
+                    "RecordDate": {"confidence": 0.98, "geometry": []},
+                    "RecordAmount": {"confidence": 0.97, "geometry": []},
+                },
+                {
+                    "RecordID": {"confidence": 0.92, "geometry": []},
+                    "RecordDate": {"confidence": 0.94, "geometry": []},
+                },
+            ]
+        }
+
+        inference_result = {
+            "Records": [
+                {"RecordID": "R001", "RecordDate": "2024-01-01"},
+                {"RecordID": "R002", "RecordDate": "2024-01-02", "RecordAmount": 100.0},
+                {"RecordID": "R003", "RecordDate": "2024-01-03"},
+            ]
+        }
+
+        rich_values = service._convert_to_rich_values(
+            inference_result, confidence_scores
+        )
+
+        # Verify array items have rich values with confidence
+        assert rich_values["Records"][0]["RecordID"] == {
+            "_value": "R001",
+            "_confidence": 0.99,
+        }
+        assert rich_values["Records"][1]["RecordAmount"] == {
+            "_value": 100.0,
+            "_confidence": 0.97,
+        }
+        assert rich_values["Records"][2]["RecordDate"] == {
+            "_value": "2024-01-03",
+            "_confidence": 0.94,
+        }
+
+    def test_convert_to_rich_values_preserves_legitimate_nesting(self, service):
+        """Test that nested objects are correctly converted to rich values."""
+        confidence_scores = {
+            "Invoice": [
+                {
+                    "InvoiceDetails": {
+                        "InvoiceID": {"confidence": 0.99, "geometry": []},
+                    },
+                }
+            ]
+        }
+
+        inference_result = {
+            "Invoice": [
+                {
+                    "InvoiceDetails": {
+                        "InvoiceID": "INV001",
+                    }
+                }
+            ]
+        }
+
+        rich_values = service._convert_to_rich_values(
+            inference_result, confidence_scores
+        )
+
+        # InvoiceDetails nesting should be preserved in rich value structure
+        assert rich_values["Invoice"][0]["InvoiceDetails"]["InvoiceID"] == {
+            "_value": "INV001",
+            "_confidence": 0.99,
+        }
+
+    # ------------------------------------------------------------------
+    # Confidence-envelope unwrapping (issue #713)
+    #
+    # The unwrap exists because assessment output sometimes nests an
+    # object's confidence map under a synthetic key ("Item #6") that has no
+    # counterpart in the extracted value; left in place, every confidence
+    # lookup misses. It used to fire on key count alone, which also
+    # unwrapped any legitimately single-property object and silently
+    # discarded all of its confidence.
+    # ------------------------------------------------------------------
+
+    def test_single_top_level_object_property_keeps_its_confidence(self, service):
+        """Regression (#713): a class with ONE top-level object property.
+
+        By key count this is indistinguishable from a wrapper, so the old
+        heuristic unwrapped it and every confidence score underneath was
+        dropped. The property name appears in the extracted value, which is
+        the evidence that it is a declared field rather than an envelope.
+        """
+        inference_result = {
+            "InvoiceDetails": {
+                "InvoiceID": "INV001",
+                "InvoiceDate": "2024-01-01",
+            }
+        }
+        confidence_scores = {
+            "InvoiceDetails": {
+                "InvoiceID": {"confidence": 0.99, "geometry": []},
+                "InvoiceDate": {"confidence": 0.88, "geometry": []},
+            }
+        }
+
+        rich_values = service._convert_to_rich_values(
+            inference_result, confidence_scores
+        )
+
+        assert rich_values["InvoiceDetails"]["InvoiceID"] == {
+            "_value": "INV001",
+            "_confidence": 0.99,
+        }
+        assert rich_values["InvoiceDetails"]["InvoiceDate"] == {
+            "_value": "2024-01-01",
+            "_confidence": 0.88,
+        }
+
+    def test_single_object_property_in_list_element_keeps_its_confidence(self, service):
+        """Same misfire one level down: a list element with one object field."""
+        inference_result = {
+            "Records": [
+                {"Detail": {"Amount": 100.0, "Currency": "USD"}},
+                {"Detail": {"Amount": 200.0, "Currency": "EUR"}},
+            ]
+        }
+        confidence_scores = {
+            "Records": [
+                {
+                    "Detail": {
+                        "Amount": {"confidence": 0.91, "geometry": []},
+                        "Currency": {"confidence": 0.92, "geometry": []},
+                    }
+                },
+                {
+                    "Detail": {
+                        "Amount": {"confidence": 0.93, "geometry": []},
+                        "Currency": {"confidence": 0.94, "geometry": []},
+                    }
+                },
+            ]
+        }
+
+        rich_values = service._convert_to_rich_values(
+            inference_result, confidence_scores
+        )
+
+        assert rich_values["Records"][0]["Detail"]["Amount"] == {
+            "_value": 100.0,
+            "_confidence": 0.91,
+        }
+        assert rich_values["Records"][1]["Detail"]["Amount"] == {
+            "_value": 200.0,
+            "_confidence": 0.93,
+        }
+        assert rich_values["Records"][1]["Detail"]["Currency"] == {
+            "_value": "EUR",
+            "_confidence": 0.94,
+        }
+
+    def test_synthetic_wrapper_key_is_still_unwrapped(self, service):
+        """The case the unwrap was written for must not regress.
+
+        ``Item #6`` exists only on the confidence side, and its contents name
+        fields that do exist in the value - so it is an envelope and comes off.
+        """
+        inference_result = {
+            "LineItems": [
+                {"LineItemRate": 1000.0, "LineItemDays": "------S"},
+            ]
+        }
+        confidence_scores = {
+            "LineItems": [
+                {
+                    "Item #6": {
+                        "LineItemRate": {"confidence": 1.0, "geometry": []},
+                        "LineItemDays": {"confidence": 0.8, "geometry": []},
+                    }
+                },
+            ]
+        }
+
+        rich_values = service._convert_to_rich_values(
+            inference_result, confidence_scores
+        )
+
+        assert rich_values["LineItems"][0]["LineItemRate"] == {
+            "_value": 1000.0,
+            "_confidence": 1.0,
+        }
+        assert rich_values["LineItems"][0]["LineItemDays"] == {
+            "_value": "------S",
+            "_confidence": 0.8,
+        }
+
+    def test_synthetic_wrapper_around_single_field_is_unwrapped(self, service):
+        """A wrapper holding ONE field is now unwrapped too.
+
+        The old ``>= 2 confidence children`` rule dropped this element's
+        confidence for exactly the reason the unwrap exists. The evidence
+        (key absent from the value, contents naming a real field) does not
+        depend on how many children the envelope has.
+        """
+        inference_result = {"LineItems": [{"LineItemRate": 450.0}]}
+        confidence_scores = {
+            "LineItems": [
+                {
+                    "Item_9": {"LineItemRate": {"confidence": 0.77, "geometry": []}},
+                    "confidence_threshold": 0.9,
+                }
+            ]
+        }
+
+        rich_values = service._convert_to_rich_values(
+            inference_result, confidence_scores
+        )
+
+        assert rich_values["LineItems"][0]["LineItemRate"] == {
+            "_value": 450.0,
+            "_confidence": 0.77,
+        }
+
+    def test_unmatched_single_key_is_left_alone(self, service):
+        """Ambiguous case: a lone key that matches nothing on either side.
+
+        It is absent from the value, but nothing inside it names a field of
+        the value either - so unwrapping would recover no confidence and
+        there is no evidence it is an envelope. Left as-is; the object simply
+        scores without confidence, exactly as it did before.
+        """
+        inference_result = {"Alpha": "a", "Beta": "b"}
+        confidence_scores = {
+            "Mystery": {
+                "Gamma": {"confidence": 0.5, "geometry": []},
+                "Delta": {"confidence": 0.5, "geometry": []},
+            }
+        }
+
+        rich_values = service._convert_to_rich_values(
+            inference_result, confidence_scores
+        )
+
+        assert rich_values == {"Alpha": "a", "Beta": "b"}
+
+    def test_lone_field_confidence_entry_is_not_treated_as_wrapper(self, service):
+        """A leaf confidence entry is a field's own scores, not an envelope.
+
+        Handled before the envelope check, but assert it: a single-field
+        object whose one confidence entry is a leaf must still be annotated.
+        """
+        inference_result = {"Agency": "BUYING TIME, LLC"}
+        confidence_scores = {
+            "Agency": {"confidence": 0.99, "geometry": [], "confidence_threshold": 0.8}
+        }
+
+        rich_values = service._convert_to_rich_values(
+            inference_result, confidence_scores
+        )
+
+        assert rich_values["Agency"] == {
+            "_value": "BUYING TIME, LLC",
+            "_confidence": 0.99,
+        }
+
+    def test_clean_null_descriptions(self, service):
+        """Test that null descriptions are replaced with empty strings."""
+        schema = {
+            "$id": "Invoice",
+            "type": "object",
+            "properties": {
+                "Agency": {"type": "string", "description": None},
+                "ValidDescription": {
+                    "type": "string",
+                    "description": "A valid description",
+                },
+                "LineItems": {
+                    "type": "array",
+                    "description": None,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "Description": {"type": "string", "description": None}
+                        },
+                    },
+                },
+            },
+            "$defs": {
+                "SomeGroup": {
+                    "type": "object",
+                    "properties": {"Field1": {"type": "string", "description": None}},
+                }
+            },
+        }
+
+        from idp_common.evaluation.stickler_backend.model_factory import (
+            clean_null_descriptions,
+        )
+
+        cleaned = clean_null_descriptions(schema)
+
+        # Null descriptions should be replaced with empty strings
+        assert cleaned["properties"]["Agency"]["description"] == ""
+        assert cleaned["properties"]["LineItems"]["description"] == ""
+        assert (
+            cleaned["properties"]["LineItems"]["items"]["properties"]["Description"][
+                "description"
+            ]
+            == ""
+        )
+        assert (
+            cleaned["$defs"]["SomeGroup"]["properties"]["Field1"]["description"] == ""
+        )
+
+        # Valid descriptions should be unchanged
+        assert (
+            cleaned["properties"]["ValidDescription"]["description"]
+            == "A valid description"
+        )

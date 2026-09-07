@@ -19,6 +19,9 @@ The web interface allows real-time configuration updates without stack redeploym
 - **Extraction Attributes**: Configure fields to extract for each document class (defined as JSON Schema properties)
 - **Few Shot Examples**: Upload and configure example documents to improve accuracy (supported in Pattern 2)
 - **Model Selection**: Choose between available Bedrock models for classification and extraction
+  > **💡 Cost Attribution Tip:** You can replace standard model IDs with [Bedrock Application Inference Profile](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-create.html) ARNs to enable cost-allocation tagging (e.g., for MAP migration tracking). This is a configuration-only change — no code modifications required. See [Cost Attribution with Application Inference Profiles](./cost-calculator.md#cost-attribution-with-bedrock-application-inference-profiles) for step-by-step instructions.
+  > **🤖 OpenAI GPT-5.x:** `openai.gpt-5.4`, `openai.gpt-5.5`, and the GPT-5.6 family (`openai.gpt-5.6-sol` / `-terra` / `-luna`) are selectable for OCR, classification, extraction, assessment, summarization, evaluation, and chat (US regions only), and are tuned via a `reasoning_effort` field instead of temperature/top_p. They are **not** supported for agentic extraction or Discovery. See [OpenAI GPT-5.x Models](./openai-models.md) for the full support matrix and caveats.
+  > **🤖 xAI Grok:** `us.xai.grok-4.6` (US regions) and `global.xai.grok-4.6` (EU/APAC too, and cheaper) are selectable for OCR, classification, extraction — **including agentic extraction** — assessment, summarization, evaluation, chat, and the rule-validation/agent paths. Grok runs on the standard Converse API, is tuned via `reasoning_effort` (`none`/`low`/`medium`/`high`/`xhigh`) instead of temperature/top_p, and is **not** supported for Discovery or Policy Discovery. Flex/Priority tiers and prompt caching do **not** work despite being advertised. See [xAI Grok Models](./grok-models.md) for the full support matrix and caveats.
 - **Prompt Engineering**: Customize system and task prompts for optimal results
 - **OCR Features**: Configure Textract features (TABLES, FORMS, SIGNATURES, LAYOUT) for enhanced data capture
 - **Evaluation Methods**: Set evaluation methods and thresholds for each attribute
@@ -35,12 +38,23 @@ Key capabilities:
 - **Track** which version was used for each processed document and test run
 - **Select** a specific version when uploading documents, running tests, or using the CLI
 
-For comprehensive documentation, see [configuration-versions.md](configuration-versions.md).
+#### Managed Configuration Versions
+
+The stack automatically deploys **managed configuration versions** for each pre-deployed test set (`fake-w2`, `docsplit`, `ocr-benchmark`, `realkie-fcc-verified`). These are marked with `managed: true` and have the following behavior:
+
+- **Overwritten on stack updates** — always reflect the latest defaults shipped with the solution
+- **Save disabled** — the Save button is disabled and an info banner explains the config is stack-managed
+- **Delete disabled** — managed versions cannot be deleted in the UI or via the API
+- **Editable copies** — use **Create profile** in the Configuration Profiles table to create a custom, editable copy
+- **Not importable** — managed configs are stored separately (`config_library/managed_config/`) and do not appear in the configuration import browser
+- **Test Studio integration** — when a test set is selected, the matching managed config version is auto-selected
+
+For comprehensive documentation, see [configuration-profiles.md](configuration-profiles.md).
 
 ### Configuration Management Features
 
-- **Save Changes**: Save your current configuration changes. The button is **enabled only when you have unsaved changes** (comparing your edits against the last saved configuration). After a successful save, a confirmation banner is displayed.
-- **Unsaved Changes Indicator**: Individual fields with unsaved edits display an orange dot next to the field label, and an info banner with a "Discard changes" button appears when the configuration form has unsaved edits.
+- **Save Changes**: Save your current configuration changes. The button is **enabled only when you have unsaved changes** (comparing your edits against the last saved configuration); when it's disabled on a stack-managed version, hovering it explains why. After a successful save, a confirmation banner **and** a brief success toast (top-right notification area) are shown. Less-frequent actions (Export, Save as default, Restore default (All), Save current edits as new profile, and BDA sync) are grouped under an **Actions** menu next to Save changes. To create a new profile from an existing one's *saved* state, use **Create profile** in the Configuration Profiles table instead.
+- **Unsaved Changes Indicator**: Individual fields with unsaved edits display an orange dot next to the field label, and an info banner with a "Discard changes" button appears when the configuration form has unsaved edits (shown on all versions, including the stack-managed `default`).
 - **Browser Navigation Guard**: The browser warns before leaving the page when unsaved configuration changes exist (both on browser close/refresh and SPA navigation).
 - **Save as Default**: Save your current version's configuration as the new default baseline. This replaces the existing default configuration. **Warning**: Default configurations may be overwritten during solution upgrades - export your configuration first for backup.
 - **Restore Default (All)**: Reset the current version's configuration back to the default values, replacing all customizations.
@@ -135,6 +149,32 @@ classes:
 
 All other settings (OCR, classification, extraction, assessment, evaluation, summarization, discovery, agents) are inherited from the pattern's system defaults.
 
+### The system defaults are the canonical list of every setting
+
+This page is organized by topic and covers the settings people ask about most — it is
+**not** an exhaustive key reference, and a newly added option may not be described here
+yet. The authoritative enumeration is the `system_defaults/` directory itself:
+
+| file | covers |
+|---|---|
+| `base.yaml` | top-level keys shared by every pattern |
+| `base-ocr.yaml` | OCR backends and image handling |
+| `base-classification.yaml` | classification, `sectionSplitting`, `contextPagesCount` |
+| `base-extraction.yaml` | extraction, `agentic.*`, `forced_tool.*`, `multi_instance_detection.*` |
+| `base-confidence.yaml` | assessment / confidence |
+| `base-evaluation.yaml`, `base-summarization.yaml`, `base-discovery.yaml`, `base-agents.yaml`, `base-chat.yaml`, `base-geometry.yaml`, `base-rule-validation.yaml`, `base-rule-discovery.yaml`, `base-classes.yaml`, `base-notes.yaml` | the remaining stages |
+| `pattern-1.yaml` / `pattern-2.yaml` | which of the above compose for BDA vs Pipeline mode |
+
+Every key in those files carries its shipped default and an inline comment explaining
+what it does, when to change it, and — where it has been measured — the evidence. Reading
+them is the reliable way to find out what is tunable; they are also what the **Web UI
+shows** for `Config#default`, so what you read there is what the UI presents.
+
+For **measured** guidance on which settings are worth changing — including the ones added
+most recently — see the [Configuration Guidance paper](./benchmarking/config-guidance.md).
+Its §7 covers the current release's options with the A/B numbers behind each
+recommendation, and states plainly where a setting was measured to buy nothing.
+
 ### Override Example
 
 To override specific settings while keeping others at defaults:
@@ -146,10 +186,10 @@ notes: "Configuration with custom classification method"
 classification:
   classificationMethod: textbasedHolisticClassification
 
-# Override assessment to enable granular mode
-assessment:
-  granular:
-    enabled: true
+# Override confidence to use integrated mode
+extraction:
+  confidence:
+    mode: integrated
 
 classes:
   # ... your document classes
@@ -170,6 +210,37 @@ The `config_library/` directory contains example configurations demonstrating th
 - **Overrides** - Only settings that differ from system defaults
 
 See the [config_library README](../config_library/README.md) for available configurations and usage examples.
+
+### Retired and legacy Bedrock models
+
+Bedrock retires model versions over time. A retired model is removed from the
+model picklists (the enums in `patterns/unified/template.yaml` and
+`template.yaml`) and from `config_library/pricing.yaml`. Model IDs in a
+configuration are plain strings, not a closed enum, so **a stored configuration
+that still names a retired model keeps loading** — it just fails at invoke time
+with:
+
+```
+ResourceNotFoundException: This model version has reached the end of its life.
+```
+
+The failing stage's model is named in the Lambda log line and by the Error
+Analyzer agent's `fetch_pipeline_configuration` tool. Repoint the stage at a
+current model to fix it.
+
+Two failure shapes to distinguish:
+
+- **End of life** — the model is gone for everyone. It is removed from the
+  picklists. `us.anthropic.claude-3-5-haiku-20241022-v1:0` is the most recent
+  example.
+- **Provider-legacy, account-scoped** — the model still exists but access is
+  withdrawn per account after inactivity:
+  `ResourceNotFoundException: Access denied. This Model is marked by provider as
+  Legacy and you have not been actively using the model in the last 30 days.`
+  `us.amazon.nova-premier-v1:0` is currently in this state for some accounts. It
+  remains selectable because it works for accounts that have used it recently —
+  if you hit this error, either pick a current model or request access again in
+  the Bedrock console.
 
 ## Summarization Configuration
 
@@ -200,28 +271,38 @@ summarization:
 
 **Note:** Prior to v0.4.0, this feature was controlled by the `IsSummarizationEnabled` CloudFormation parameter. The configuration-based approach provides runtime control without requiring stack redeployment.
 
-## Assessment Configuration
+## Confidence (Assessment) Configuration
 
-### Enable/Disable Assessment
+As of **config v0.6**, per-field **confidence** and **geometry** are **outputs of
+extraction**, configured under `extraction.confidence.*` and
+`extraction.geometry.*` — there is no top-level `assessment.{model, geometry_mode,
+...}` block anymore. Human-in-the-loop review is configured under the top-level
+`hitl.*` block. See [Extraction & Confidence](./extraction-and-confidence.md) for
+the full reference.
 
-Similar to summarization, assessment can now be controlled via the configuration file rather than CloudFormation stack parameters. This provides more flexibility and eliminates the need for stack redeployment when changing assessment behavior.
+### Enable/Disable Confidence
+
+Confidence is controlled via the configuration file rather than CloudFormation
+stack parameters. This provides runtime control without stack redeployment.
 
 **Configuration-based Control (Recommended):**
 ```yaml
-assessment:
-  enabled: true  # Set to false to disable assessment
-  model: us.amazon.nova-lite-v1:0
-  temperature: 0.0
-  # ... other assessment settings
+extraction:
+  confidence:
+    enabled: true             # false disables confidence entirely (zero LLM cost)
+    mode: separate            # off | separate (default) | integrated
+    model: us.amazon.nova-lite-v1:0
+    temperature: 0.0
+    list_batch_size: 25       # rows per assessment batch for large lists
+    # ... other confidence settings
 ```
 
-**Key Benefits:**
-- **Runtime Control**: Enable/disable without stack redeployment
-- **Cost Optimization**: Zero LLM costs when disabled (`enabled: false`)
-- **Simplified Architecture**: No conditional logic in state machines
-- **Backward Compatible**: Defaults to `enabled: true` when property is missing
+**Confidence modes** (`extraction.confidence.mode`):
+- **`separate`** *(default)* — on the Simple path, confidence runs as the standalone Assessment step; on the Advanced (agentic) path it runs inside each extraction shard and the standalone step auto-skips.
+- **`integrated`** — a single extraction inference returns values **and** inline confidence together (works on **both** the simple and agentic paths); the standalone Assessment step auto-skips.
+- **`off`** — no confidence scoring (equivalent to `enabled: false`); zero LLM cost.
 
-**Behavior When Disabled:**
+**Behavior When Disabled** (`enabled: false` or `mode: off`):
 - Assessment lambda is still called (minimal overhead)
 - Service immediately returns with logging: "Assessment is disabled via configuration"
 - No LLM API calls or S3 operations are performed
@@ -229,33 +310,70 @@ assessment:
 
 **Note:** Prior to v0.4.0, this feature was controlled by the `IsAssessmentEnabled` CloudFormation parameter. The configuration-based approach provides runtime control without requiring stack redeployment.
 
-### Advanced Assessment Configuration
+### Large lists (`list_batch_size`)
 
-For complex documents with many attributes, enable granular assessment for improved accuracy and performance:
+For complex documents with large lists (bank statements with hundreds of
+transactions, line-item tables), the standalone Assessment step **batches large
+lists automatically**: it slices the largest list field into
+`extraction.confidence.list_batch_size` chunks (default **25**), scores each chunk
+sequentially, then reconciles so every list cell gets its own confidence and
+bounding box. A bounded missing-row retry re-scores any dropped rows so coverage
+reaches 100%. Lower `list_batch_size` if a chunk under-enumerates; raise it to cut
+inference count.
 
 ```yaml
-assessment:
-  enabled: true
-  model: us.amazon.nova-lite-v1:0
-  granular_mode: true  # Enable granular assessment
-  simple_batch_size: 5  # Group simple attributes (3-5 recommended)
-  list_batch_size: 1    # Process list items individually for accuracy
-  max_workers: 10       # Parallel processing threads
+extraction:
+  confidence:
+    enabled: true
+    mode: separate
+    list_batch_size: 25       # rows per assessment batch for large lists
 ```
 
-**Benefits:**
-- Better accuracy through focused prompts
-- Cost optimization via prompt caching
-- Reduced latency through parallel processing
-- Scalability for documents with 100+ attributes
+> **Granular assessment is retired.** The former "granular assessment" service
+> (parallel thread-pool fan-out with DynamoDB caching, formerly `assessment.granular`
+> / `extraction.confidence.granular` with `max_workers` / `simple_batch_size` / etc.)
+> has been **retired and deleted**. Large-list batching is its full replacement and
+> `list_batch_size` is the one knob. Any leftover `granular.*` keys still validate
+> but are ignored — no config edit required.
 
-**Ideal For:**
-- Bank statements with hundreds of transactions
-- Documents with 10+ attributes
-- Complex nested structures
-- Performance-critical scenarios
+**For large documents**, prefer **Advanced (agentic) extraction** — it shards both
+extraction and confidence assessment and yields the best-calibrated confidence.
 
-For detailed information, see [assessment.md](assessment.md).
+### Classification confidence (`classification.confidence.*`)
+
+Separate from the extraction confidence above, and **on by default** — so an
+existing deployment that never set it starts paying for it on upgrade.
+
+```yaml
+classification:
+  confidence:
+    mode: topk          # topk (default) | off
+    top_k_candidates: 3 # alternative classes returned per page
+```
+
+Each page's classification returns its top-K candidate classes with
+probabilities, giving a per-page confidence you can threshold on and a visible
+reason when a page is ambiguous.
+
+⚠️ **It costs output tokens on every page.** Unlike extraction confidence, which
+is per *section*, this scales with page count. Measured at roughly **+17% of the
+classification step**, which is a small share of a typical bill because
+classification is cheap relative to extraction — but on a page-heavy corpus it is
+not free. Set `mode: off` to return to the previous behaviour.
+
+See [Classification](./classification.md) for the full reference, including how the
+score reaches the UI and what a `None` confidence means.
+
+### v0.5 → v0.6 config migration
+
+- **Confidence and geometry moved under `extraction.*`** in v0.6: the former top-level `assessment.*` confidence settings are now `extraction.confidence.*`, and `assessment.geometry_mode` / `assessment.ground_geometry_in_ocr` are now `extraction.geometry.mode`. HITL moved to the top-level `hitl.*` block.
+- **Migrate-on-read handles old configs automatically** — pre-v0.6 configurations are migrated transparently when loaded; **no manual edit is required**.
+- **Granular assessment is retired** and its config keys are a **no-op** (they validate but are ignored).
+- **`list_batch_size`** is the knob for large lists; for large documents, Advanced (agentic) extraction is recommended.
+
+See [Granular Assessment Retirement](./migration-granular-retirement.md) for details.
+
+For detailed information, see [Extraction & Confidence](extraction-and-confidence.md).
 
 ## Stack Parameters
 
@@ -267,16 +385,18 @@ Key parameters that can be configured during CloudFormation deployment:
 - `MaxConcurrentWorkflows`: Control concurrent document processing (default: 100)
 - `DataRetentionInDays`: Set retention period for documents and tracking records (default: 365 days)
 - `ErrorThreshold`: Number of workflow errors that trigger alerts (default: 1)
-- `ExecutionTimeThresholdMs`: Maximum acceptable execution time before alerting (default: 30000 ms)
-- `LogLevel`: Set logging level (DEBUG, INFO, WARN, ERROR)
+- `ExecutionTimeThresholdMs`: Maximum acceptable execution time before alerting (default: 300000 ms)
+- `QueueStalledAgeThresholdSeconds`: How long the oldest queued document may wait *with no queue progress at all* before `DocumentQueueStalledAlarm` fires (default: 1800 s). Not a backlog limit — see [Monitoring](./monitoring.md#documentqueuestalledalarm--why-it-is-not-a-queue-depth-alarm)
+- `LogLevel`: Set logging level (DEBUG, INFO, WARN, ERROR). At `INFO` or `DEBUG`, access logging is also enabled on the web UI's REST API stage (request metadata only — no request/response bodies), capturing requests that fail before reaching a Lambda (e.g. authorizer 401/403s, WAF blocks)
 - `WAFAllowedIPv4Ranges`: IP restrictions for web UI access (default: allow all)
-- `CloudFrontPriceClass`: Set CloudFront price class for UI distribution
-- `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access
+- `CloudFrontPriceClass`: Set CloudFront price class for UI distribution (CloudFront hosting only)
+- `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access (CloudFront hosting only)
+- `WebUIHosting`: Select hosting mode — `CloudFront` (default) or `APIGateway` for VPC-based hosting (see [API Gateway Hosting](./apigateway-hosting.md))
 - `CustomConfigPath`: Optional S3 URI to a custom configuration file that overrides pattern presets. Leave blank to use selected pattern configuration. Example: s3://my-bucket/custom-config/config.yaml
 
 ### Integration and Tracing Parameters
 - `EnableXRayTracing`: Enable X-Ray tracing for Lambda functions and Step Functions (default: true). Provides distributed tracing capabilities for debugging and performance analysis.
-- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-integration.md](mcp-integration.md) for details.
+- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-server.md](mcp-server.md) for details.
 - `EnableECRImageScanning`: Enable automatic vulnerability scanning for Lambda container images in ECR for Patterns 1-3 (default: false). Recommended for production deployments but may impact deployment reliability. See [troubleshooting.md](troubleshooting.md) for guidance.
 
 ### Pattern Selection
@@ -339,6 +459,7 @@ Guardrails provide:
 - **Content Filtering**: Block harmful, inappropriate, or sensitive content
 - **Topic Restrictions**: Prevent processing of specific topic areas
 - **Data Protection**: Redact or block personally identifiable information (PII)
+- **Automated Reasoning Checks**: Enable formal verification of model outputs against defined policies using [Automated Reasoning](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning.html), ensuring factual consistency and logical correctness
 - **Custom Filters**: Define organization-specific content policies
 
 ### Configuring Guardrails
@@ -454,7 +575,8 @@ Document class schemas support evaluation-specific extensions for fine-grained c
 
 ### Available Extensions
 
-- `x-aws-idp-evaluation-method`: Comparison method (EXACT, FUZZY, NUMERIC_EXACT, SEMANTIC, LLM, HUNGARIAN)
+- `x-aws-idp-evaluation-method`: Comparison method (EXACT, FUZZY, LEVENSHTEIN, NUMERIC_EXACT, SEMANTIC, DATE, LLM, HUNGARIAN)
+- `x-aws-idp-evaluation-method-config`: Optional comparator config (used by DATE: `dayfirst`, `tolerance`, `range_mode`)
 - `x-aws-idp-evaluation-threshold`: Minimum score to consider a match (0.0-1.0)
 - `x-aws-idp-evaluation-weight`: Field importance for weighted scoring (default: 1.0, higher values = more important)
 
@@ -552,6 +674,10 @@ classification:
 - Cost reduction for documents with consistent patterns
 - Simplified processing for homogeneous document types
 
+## Prompt Preview
+
+The Configuration page includes a **Prompt Preview** tab that lets you see the actual prompts sent to the LLM for each processing step (Classification, Extraction, Assessment, Summarization) with your configuration values filled in. This is useful for optimizing document class schemas and prompt templates — you can see exactly how your class names, descriptions, and JSON Schema attributes appear in the prompt that the LLM receives. See [web-ui.md](web-ui.md#prompt-preview) for details.
+
 ## Prompt Optimization
 
 ### Bedrock Prompt Caching
@@ -637,7 +763,8 @@ Patterns 2 and 3 support multiple OCR backend engines for flexible document proc
 
 ### Available Backends
 
-- **Textract** (default): AWS Textract with advanced feature support (TABLES, FORMS, SIGNATURES, LAYOUT)
+- **Textract** (default): AWS Textract with advanced feature support (TABLES, FORMS, SIGNATURES, LAYOUT). Cheapest for raw text (~$1.50/1K pages); TABLES +$15/1K, FORMS +$50/1K.
+- **BDA**: Amazon Bedrock Data Automation "standard output" used as a pure OCR engine — reading-order markdown with **tables and layout** plus word-level confidence/bounding boxes in one call, flat **$10/1K pages**. Auto-enables the agentic extraction table tool. Best for table-heavy documents and predictable pricing without composing Textract features. (Distinct from the whole-pipeline BDA mode `use_bda`, which also does classification/extraction.)
 - **Bedrock**: LLM-based OCR using Claude/Nova models with customizable prompts for better handling of complex documents
 - **None**: Image-only processing without OCR (useful for pure visual analysis)
 
@@ -645,13 +772,153 @@ Patterns 2 and 3 support multiple OCR backend engines for flexible document proc
 
 ```yaml
 ocr:
-  backend: textract  # or "bedrock", "none"
-  
+  backend: textract  # or "bda", "bedrock", "none"
+
+  # Textract features. DEFAULT: TABLES + LAYOUT + SIGNATURES (see trade-off below).
+  features:
+    - name: TABLES
+    - name: LAYOUT
+    - name: SIGNATURES
+
+  # For BDA backend (optional): use a specific standard-output SYNC project
+  # instead of the per-stack <stackname>_OCR_StdOutput project the stack
+  # provisions (delivered via the BDA_OCR_PROJECT_ARN env var).
+  #
+  # NOTE: backend "bda" is COMMERCIAL-PARTITION ONLY. GovCloud and China offer
+  # Bedrock Data Automation but reject the SYNC document-modality project this
+  # backend needs, so the stack does not create it there and the ARN is empty.
+  # See docs/govcloud-deployment.md#bedrock-data-automation-as-the-ocr-backend.
+  bda_project_arn: null
+
   # For Bedrock backend:
   bedrock_model: us.anthropic.claude-3-5-sonnet-20241022-v2:0
   system_prompt: "You are an OCR expert..."
   task_prompt: "Extract all text from this document..."
 ```
+
+### When to choose BDA vs Textract for OCR
+
+- **BDA** — you want table-aware OCR (bank/brokerage statements, invoices) with a
+  single flat per-page price and no feature tuning. One call returns markdown
+  tables, layout, word confidence, and bounding boxes; per-page processing scales
+  past BDA's ~10-page synchronous limit automatically.
+- **Textract** — you need only raw text (much cheaper: ~$0.0015/page), or you
+  already tune specific Textract features. For table-heavy docs, `TABLES` on
+  Textract (~$0.015/page, with `LAYOUT` and `SIGNATURES` free alongside it) costs
+  somewhat more per page than BDA ($0.01/page) up to 1M pages/month and the same
+  above it (Textract's `TABLES` tier drops to $0.010); benchmark accuracy on your
+  corpus rather than choosing on price alone.
+
+### Textract features & the TABLES cost/accuracy trade-off
+
+`ocr.features` selects which Amazon Textract analysis features run. The default is
+**`TABLES` + `LAYOUT` + `SIGNATURES`** — of which only `TABLES` is billed (see
+below).
+
+- **`TABLES` is on by default because tables are common and the accuracy gain is
+  large.** It makes Textract emit structured Table/Cell blocks (with per-cell text,
+  confidence, and geometry) that linearize into clean Markdown pipe-tables for the
+  agentic table parser — yielding more complete extraction *and* more accurate
+  confidence/geometry on table-heavy documents. In validation on a 24-page
+  brokerage statement, `TABLES` extracted **all 1,440 rows (every page)** while
+  `LAYOUT`-only silently dropped ~5 pages (~300 rows) where the plain-text
+  linearization mis-segmented the table.
+- **Cost trade-off** (`TABLES` ≈ **$0.015/page**, with `LAYOUT` and `SIGNATURES`
+  free alongside it, vs `LAYOUT`-only ≈ **$0.004/page** — ~3.75× on the Textract
+  line item):
+  - **Documents *with* tables:** the extra OCR cost is typically *more*
+    cost-effective and scalable end-to-end — cleaner cell structure means fewer LLM
+    extraction retries, fewer confidence truncations/re-batches, and less downstream
+    correction than fighting a mis-linearized plain-text table.
+  - **Documents *without* tables:** `TABLES` adds cost with no benefit. If your
+    corpus is table-free (forms, prose, single-value docs), **remove the `TABLES`
+    entry** to fall back to cheaper `LAYOUT`-only OCR.
+
+Set `ocr.features` per configuration to match the documents each stack processes.
+
+### The `SIGNATURES` feature
+
+`SIGNATURES` is **on by default**, because signature presence is a common
+extraction target (loan packages, tax forms, claims, consents) and it adds **no
+Textract charge** in the default combination. The
+[Textract pricing page](https://aws.amazon.com/textract/pricing/) states it
+directly: *"Signatures feature is included free of cost with any combination of
+Forms, Tables, Queries, and Layout"* — AWS emits no usage type at all for a feature
+that is free in combination. Used **alone**, without any of those features,
+`SIGNATURES` is billed at ~$0.0035/page.
+
+With `SIGNATURES` enabled, Textract reports each region it believes contains a
+signature, as a **detection confidence plus a bounding box** — not text. Those
+detections reach the rest of the pipeline in three places:
+
+- **Page text** (used by the extraction prompt and the Web UI markdown view) —
+  the linearizer inserts an inline `[SIGNATURE]` token per detection, and an
+  `OCR signature detections` block is appended listing each one's normalized
+  position and confidence.
+- **`textConfidence.json`** (used by the confidence/assessment prompt) — the same
+  block, appended after the per-line confidence table.
+- **`pageData.json`** — a `signatures` array, which the Web UI page viewer lists
+  under **Signature detections** with a clickable bounding box and a
+  colour-coded confidence.
+
+**Read the confidence.** A detection is not proof of a signature: Textract will
+flag a stray pen mark, smudge or scanning artifact, typically at *low*
+confidence (single- or low-double-digit). The appended block reports each
+detection's confidence band, its page position in left/right + upper/lower terms,
+— because a bare `left=0.572` is not usable evidence in practice: on the form in
+[#634](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/634)
+both the extraction and the confidence model read that as *"the first (left)
+signature box"* when the detection was in the right-hand cell.
+
+#### Extracting a reliable signed/unsigned boolean
+
+Measured on that form — an unsigned Form 4549 whose left signature cell holds only
+a faint smudge, with a date filled in beside it (Claude Sonnet 4.5, temperature 0,
+page images attached, repeated runs). Prose alone does not do it: descriptions
+saying "smudges are not signatures" still returned `true`, as did few-shot examples
+alone, and as did the detections block alone.
+
+**What worked, 9/9 and then confirmed end-to-end on a live stack, is a description
+that turns the detection confidence into an explicit decision rule.** Give the
+boolean field a description along these lines:
+
+> Does a handwritten signature (a person's name or initials) exist in the LEFT
+> "Signature of taxpayer" box near the bottom of page 2? Decide with this rule, in
+> order: (1) Look at the `--- OCR signature detections ---` block in the document
+> text. It lists EVERY region the OCR engine flagged as a possible signature, each
+> with a detection confidence from 0-100. (2) Answer false unless that block
+> contains a detected region with confidence of 50 or higher that falls in the LEFT
+> signature box (left half of the page). A confidence below 50 means a faint or
+> ambiguous mark — a stray pen mark, smudge, speck or scanning artifact — and MUST
+> be treated as NOT a signature. (3) If the block lists no region for that box,
+> answer false. (4) A date in the adjacent Date column is NOT evidence of a
+> signature; handwriting elsewhere is NOT evidence. (5) Only answer true when a
+> qualifying detection (confidence >= 50) is present AND you can see a handwritten
+> name or initials there. (6) IGNORE any inline `[SIGNATURE]` marker in the text:
+> it is placed by reading order, so its position next to a field is NOT evidence
+> that that field is signed — use ONLY the detections block. (7) A faint mark you
+> can see does NOT override rules 2-3. When in doubt, answer false.
+
+Rules 6 and 7 are the ones that made it deterministic. Without 6 the model latches
+onto the inline token's accidental adjacency; without 7 it overrides the OCR
+evidence with its own read of the smudge.
+
+Two supporting measures, if you have them:
+
+- **Keep `SIGNATURES` enabled** so the block exists at all — the rule above depends
+  on it.
+- **A few-shot example of the negative case** (the unsigned document *with* a date
+  present) also works, and needs `{FEW_SHOT_EXAMPLES}` in the extraction
+  `task_prompt` — present in the shipped prompts; a custom prompt must add it. See
+  [few-shot-examples.md](few-shot-examples.md). Note that with examples but *no*
+  detections block the false positive did not disappear, it **moved to the other
+  taxpayer's field**: the model could tell a mark existed but not which cell owned
+  it.
+
+**If your corpus has no signature fields, remove the `SIGNATURES` entry.** Pages
+with a detection (including false positives on stray ink) add a few prompt tokens
+and an extra signal the model may over-read, for no benefit when nothing asks about
+signatures. Removing it costs nothing, since the feature was free to begin with.
 
 ### Bedrock OCR Benefits
 
@@ -704,29 +971,31 @@ See `notebooks/examples/demo-lambda/` for:
 - SAM deployment template for example Lambda
 - Complete documentation and examples
 
-For more details, see [extraction.md](extraction.md).
+For more details, see [Extraction & Confidence](extraction-and-confidence.md).
 
-### Review Agent Model (Agentic Extraction)
+### Tiered Models (Validation + Escalation)
 
-For agentic extraction workflows, you can specify a separate model for reviewing extraction work:
+Extraction supports a **cost-tiered** strategy: extract with a fast/cheap model, then automatically re-extract only the fields that fail schema validation with a stronger model. This is configured under `extraction.validation`:
 
 ```yaml
 extraction:
-  model: us.amazon.nova-pro-v1:0
-  review_agent_model: us.anthropic.claude-3-7-sonnet-20250219-v1:0  # Optional
+  model: us.amazon.nova-pro-v1:0          # fast/cheap primary extractor
+  validation:
+    enabled: true                          # on by default since v0.7
+    fail_action: escalate                  # default is 'warn' (free); escalate costs money
+    escalation_model: us.anthropic.claude-opus-4-8   # stronger tier, used only on failure
 ```
 
-If not specified, defaults to the main extraction model. This allows using a more powerful model for validation while using a cost-effective model for initial extraction.
+> **Moved in v0.7.** This block was `extraction.agentic.validation`. It now lives at
+> `extraction.validation` because Simple extraction runs the same validate-and-retry
+> path, so the setting is no longer agentic-only. Stored configurations are migrated
+> automatically on read — no action is required.
 
-**Benefits:**
-- Cost optimization by using different models for different tasks
-- Enhanced accuracy with specialized review model
-- Flexibility in model selection for extraction vs. validation
+When validation fails, only the failing top-level fields are re-extracted with `escalation_model` (a per-class `x-aws-idp-extraction-escalation-model` override takes precedence) and merged back — typically a small fraction of documents, so the stronger model's cost is incurred only where it's needed. See [Schema validation and model escalation](extraction-and-confidence.md#schema-validation-and-model-escalation) for the full feature, including the deterministic table-parsing tool, the completeness heuristic, and sharding for large documents.
 
-**Use Cases:**
-- Use Nova Pro for extraction, Claude Sonnet for review
-- Balance between cost and accuracy requirements
-- Experimentation with different model combinations
+> Validation and escalation are editable in the Web UI under **Configuration → Extraction → Schema Validation & Escalation**; the Advanced-mode options (table parsing, sharding) are under **Advanced extraction settings**. Sub-options are progressively revealed as you enable each feature.
+
+> **Deprecated:** the older `extraction.agentic.review_agent` / `review_agent_model` fields are no-ops retained only for backward compatibility — use `extraction.validation` + `escalation_model` above instead.
 
 ## Cost Tracking and Optimization
 

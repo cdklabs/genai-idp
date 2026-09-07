@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import concurrent.futures
 import io
+import json
 import logging
 import os
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -28,6 +30,25 @@ from idp_common.models import Document, Page, Status
 from idp_common.ocr.document_converter import DocumentConverter
 
 logger = logging.getLogger(__name__)
+
+# Render resolution used when ocr.image.dpi is not configured. Textract's ability
+# to detect small, faint or skewed glyphs (page numbers, box numbers, hand-filled
+# values) degrades sharply below ~200 dpi: at 150 dpi it silently drops them from
+# its response entirely, with no signal to the caller. See issue #729.
+DEFAULT_DPI = 300
+
+# Ceiling on the rendered page image, applied when ocr.image.target_width /
+# target_height are not configured. This is an out-of-memory guard, NOT a cost
+# control: it is deliberately set high enough that it does not bind for A4 or US
+# Letter at DEFAULT_DPI, so those render at full 300 dpi.
+#
+# Raising the render resolution costs almost nothing downstream. Bedrock
+# downscales images to its own long-edge ceiling before tokenizing, so the LLM
+# token spend saturates - measured end to end, moving from 897x1269 to 2000x2829
+# changed total input tokens by 1.4% (22,598 -> 22,914). What it does buy is OCR
+# accuracy, which improves consistently with resolution.
+DEFAULT_TARGET_WIDTH = 2600
+DEFAULT_TARGET_HEIGHT = 3600
 
 
 class OcrService:
@@ -117,10 +138,6 @@ class OcrService:
             else:
                 self.enhanced_features = False
 
-            # Apply sensible defaults for image sizing when not specified
-            DEFAULT_TARGET_WIDTH = 951
-            DEFAULT_TARGET_HEIGHT = 1268
-
             # Extract resize configuration (type-safe access)
             target_width = self.config.ocr.image.target_width
             target_height = self.config.ocr.image.target_height
@@ -139,8 +156,9 @@ class OcrService:
                     "target_height": DEFAULT_TARGET_HEIGHT,
                 }
                 logger.info(
-                    f"No image sizing configured, applying default limits: "
-                    f"{DEFAULT_TARGET_WIDTH}x{DEFAULT_TARGET_HEIGHT} to optimize resource usage and token consumption"
+                    f"No image sizing configured, applying default ceiling: "
+                    f"{DEFAULT_TARGET_WIDTH}x{DEFAULT_TARGET_HEIGHT} (out-of-memory guard; "
+                    f"does not bind for A4/Letter at {DEFAULT_DPI} dpi)"
                 )
             else:
                 # Handle empty strings by converting to None for validation
@@ -182,8 +200,8 @@ class OcrService:
                         "target_height": DEFAULT_TARGET_HEIGHT,
                     }
                     logger.info(
-                        f"Invalid image sizing configuration provided, applying default limits: "
-                        f"{DEFAULT_TARGET_WIDTH}x{DEFAULT_TARGET_HEIGHT} to optimize resource usage and token consumption"
+                        f"Invalid image sizing configuration provided, applying default ceiling: "
+                        f"{DEFAULT_TARGET_WIDTH}x{DEFAULT_TARGET_HEIGHT} (out-of-memory guard)"
                     )
 
             # Extract preprocessing configuration (type-safe)
@@ -226,9 +244,9 @@ class OcrService:
             )
 
         # Validate backend
-        if self.backend not in ["textract", "bedrock", "none"]:
+        if self.backend not in ["textract", "bedrock", "bda", "none"]:
             raise ValueError(
-                f"Invalid backend: {backend}. Must be 'textract', 'bedrock', or 'none'"
+                f"Invalid backend: {backend}. Must be 'textract', 'bedrock', 'bda', or 'none'"
             )
 
         # Initialize clients based on backend
@@ -287,6 +305,46 @@ class OcrService:
             logger.info(
                 f"OCR Service initialized with Bedrock backend, config: {self.bedrock_config}"
             )
+        elif self.backend == "bda":
+            # Bedrock Data Automation standard-output OCR. Enhanced features are
+            # not applicable (BDA always returns tables + layout + word geometry).
+            self.enhanced_features = False
+
+            adaptive_config = Config(
+                retries={"max_attempts": 100, "mode": "adaptive"},
+                max_pool_connections=self.max_workers * 3,
+            )
+            self.bda_runtime_client = boto3.client(
+                "bedrock-data-automation-runtime",
+                region_name=self.region,
+                config=adaptive_config,
+            )
+
+            # Resolve project + profile ARNs. Project ARN may be supplied via
+            # config; otherwise a standard-output SYNC OCR project is
+            # auto-created and reused. Resolution is deferred to first use to
+            # keep __init__ side-effect-free when possible.
+            # The stack-scoped BDA OCR project is provisioned at deploy time by
+            # the BDA OCR project CloudFormation custom resource and delivered
+            # via the BDA_OCR_PROJECT_ARN env var. An explicit config value
+            # overrides it. We never create the project at runtime.
+            self.bda_project_arn = (
+                (self.config.ocr.bda_project_arn if hasattr(self, "config") else None)
+                or os.environ.get("BDA_OCR_PROJECT_ARN")
+                or None
+            )
+            self._bda_profile_arn: Optional[str] = None
+            # Guards lazy profile-ARN resolution so parallel page workers build
+            # the profile ARN exactly once instead of racing.
+            self._bda_arn_lock = threading.Lock()
+            logger.info(
+                "OCR Service initialized with BDA backend"
+                + (
+                    f", project {self.bda_project_arn}"
+                    if self.bda_project_arn
+                    else " (no project ARN provided)"
+                )
+            )
         elif self.backend == "none":
             # No OCR processing - image-only mode
             self.enhanced_features = False
@@ -305,7 +363,7 @@ class OcrService:
         )
 
         # Initialize document converter for non-PDF formats
-        self.document_converter = DocumentConverter(dpi=self.dpi or 150)
+        self.document_converter = DocumentConverter(dpi=self.dpi or DEFAULT_DPI)
 
     def process_document(self, document: Document) -> Document:
         """
@@ -367,6 +425,7 @@ class OcrService:
                             raw_text_uri=ocr_result["raw_text_uri"],
                             parsed_text_uri=ocr_result["parsed_text_uri"],
                             text_confidence_uri=ocr_result["text_confidence_uri"],
+                            ocr_page_data_uri=ocr_result.get("ocr_page_data_uri"),
                         )
 
                         # Merge metering data
@@ -388,6 +447,10 @@ class OcrService:
                 if is_pdf:
                     # Determine which pages need processing (retry-safe: skip completed pages)
                     pdf_document = pdfium.PdfDocument(file_content)
+                    # Initialize form rendering engine so fillable PDF form fields
+                    # (text inputs, checkboxes, etc.) appear in rendered page images.
+                    # Without this, may_draw_forms=True in render() has no effect.
+                    pdf_document.init_forms()
                     num_pages = len(pdf_document)
                     document.num_pages = num_pages
 
@@ -422,6 +485,13 @@ class OcrService:
                     page_images: Dict[int, bytes] = {}
                     for i in pages_to_render:
                         page = pdf_document[i]
+                        # Flatten form fields into page content before rendering.
+                        # Many fillable PDFs (e.g., government forms) lack appearance
+                        # streams for form fields — flatten() forces PDFium to generate
+                        # them and merge into page content so render() can display them.
+                        # Only applies when PDF has form fields (formenv is set by init_forms).
+                        if page.formenv is not None:
+                            page.flatten()
                         page_images[i] = self._extract_page_image(page, True, i + 1)
 
                     pdf_document.close()
@@ -463,6 +533,9 @@ class OcrService:
                                         text_confidence_uri=ocr_result[
                                             "text_confidence_uri"
                                         ],
+                                        ocr_page_data_uri=ocr_result.get(
+                                            "ocr_page_data_uri"
+                                        ),
                                     )
 
                                     document.metering = utils.merge_metering_data(
@@ -501,6 +574,7 @@ class OcrService:
                         raw_text_uri=ocr_result["raw_text_uri"],
                         parsed_text_uri=ocr_result["parsed_text_uri"],
                         text_confidence_uri=ocr_result["text_confidence_uri"],
+                        ocr_page_data_uri=ocr_result.get("ocr_page_data_uri"),
                     )
                     document.metering = utils.merge_metering_data(
                         document.metering, page_metering
@@ -545,6 +619,21 @@ class OcrService:
         Note:
         - Layout feature is included free with any combination of Forms, Tables
         - Signatures feature is included free with Forms, Tables, and Layout
+
+        Both "free in combination" rules mean the returned key omits the free
+        feature, so it contributes nothing to metered cost. Per the Amazon Textract
+        pricing page (https://aws.amazon.com/textract/pricing/): "Signatures feature
+        is included free of cost with any combination of Forms, Tables, Queries, and
+        Layout", and correspondingly for Layout with Forms/Tables/Queries. AWS emits
+        no usage type at all for a feature that is free in combination, which is
+        what our bills show (long stretches of ``SyncTablesPagesProcessed`` with no
+        ``SyncLayoutPagesProcessed`` and no ``SyncSignaturesPagesProcessed`` despite
+        both features being enabled).
+
+        Signatures used ALONE is billed (~$0.0035/page), which is why the
+        ``-Signatures`` key exists. Revisit alongside
+        ``config_library/pricing.yaml`` if Textract's usage types or footnotes
+        change.
         """
         # TODO: Uncomment this when needed
         # Define valid Textract feature types
@@ -619,6 +708,14 @@ class OcrService:
         elif self.backend == "bedrock":
             return self._process_single_page_bedrock(
                 page_index, pdf_document, output_bucket, prefix
+            )
+        elif self.backend == "bda":
+            # BDA renders + OCRs per page from the page image, using the same
+            # image-based path as the parallel PDF workflow.
+            page = pdf_document[page_index]
+            img_bytes = self._extract_page_image(page, True, page_index + 1)
+            return self._process_page_with_image(
+                page_index, img_bytes, output_bucket, prefix
             )
         else:
             # Textract backend (default)
@@ -831,6 +928,10 @@ class OcrService:
                 content_type="application/json",
             )
 
+            page_data_raw = empty_ocr_response
+            page_data_text = ""
+            page_data_provider = "none"
+
         elif self.backend == "bedrock":
             # Process with Bedrock
             # Apply preprocessing if enabled
@@ -857,7 +958,12 @@ class OcrService:
                 temperature=0.0,
                 top_p=0.1,
                 top_k=5,
-                max_tokens=4096,
+                # None => Bedrock client resolves the model's max output tokens
+                # (model_config_limits.yaml); Bedrock's default-when-omitted truncates.
+                max_tokens=None,
+                reasoning_effort=getattr(self.config.ocr, "reasoning_effort", None)
+                if hasattr(self, "config")
+                else None,
                 context="OCR",
                 model_lambda_hook_arn=getattr(
                     self.config.ocr, "model_lambda_hook_arn", None
@@ -870,19 +976,20 @@ class OcrService:
             extracted_text = bedrock.extract_text_from_response(response_with_metering)
             metering = response_with_metering.get("metering", {})
 
-            # Store raw Bedrock response
+            # Persist structured OCR (Textract blocks with confidence + geometry)
+            # if the LambdaHook returned it; otherwise store raw text + placeholder.
+            raw_ocr_content, text_confidence_data = self._extract_bedrock_ocr_artifacts(
+                response_with_metering["response"]
+            )
+
+            # Store raw Bedrock response (or Textract blocks)
             raw_text_key = f"{prefix}/pages/{page_id}/rawText.json"
             s3.write_content(
-                response_with_metering["response"],
+                raw_ocr_content,
                 output_bucket,
                 raw_text_key,
                 content_type="application/json",
             )
-
-            # Generate text confidence data
-            text_confidence_data = {
-                "text": "| Text | Confidence |\n|:-----|:------------|\n| *No confidence data available from LLM OCR* | N/A |"
-            }
 
             text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
             s3.write_content(
@@ -901,6 +1008,57 @@ class OcrService:
                 parsed_text_key,
                 content_type="application/json",
             )
+
+            page_data_raw = raw_ocr_content
+            page_data_text = extracted_text
+            page_data_provider = "bedrock"
+
+        elif self.backend == "bda":
+            # BDA reads the image from S3 by s3Uri so extension-based modality
+            # routing (jpeg/png -> DOCUMENT) applies. BDA documents only accept
+            # PNG/JPG/TIFF and routing is only configured for jpeg/png, so any
+            # other stored format (gif, webp, bmp) is transcoded to JPEG and
+            # uploaded to a .jpg key for the BDA call. (BDA does its own image
+            # processing, so binarization preprocessing is not applied here.)
+            if img_ext in ("jpg", "png"):
+                bda_image_key = image_key
+            else:
+                from PIL import Image as _PILImage
+
+                _buf = io.BytesIO()
+                _pil = _PILImage.open(io.BytesIO(img_data))
+                if _pil.mode not in ("RGB", "L"):
+                    _pil = _pil.convert("RGB")
+                _pil.save(_buf, format="JPEG", quality=95)
+                bda_image_key = f"{prefix}/pages/{page_id}/image_bda.jpg"
+                s3.write_content(
+                    _buf.getvalue(),
+                    output_bucket,
+                    bda_image_key,
+                    content_type="image/jpeg",
+                )
+
+            # Dimensions of the stored page image (image.jpg) the UI overlays on;
+            # forwarded so BDA rectification corners map into its coordinate space.
+            _bda_img_size = self._image_size_from_bytes(img_data)
+
+            (
+                raw_ocr_content,
+                extracted_text,
+                raw_text_key,
+                text_confidence_key,
+                parsed_text_key,
+                metering,
+            ) = self._write_bda_page_artifacts(
+                f"s3://{output_bucket}/{bda_image_key}",
+                output_bucket,
+                prefix,
+                page_id,
+                original_image_size=_bda_img_size,
+            )
+            page_data_raw = raw_ocr_content
+            page_data_text = extracted_text
+            page_data_provider = "bda"
 
         else:
             # Process with Textract (default)
@@ -957,6 +1115,20 @@ class OcrService:
                 content_type="application/json",
             )
 
+            page_data_raw = textract_result
+            page_data_text = parsed_result.get("text", "")
+            page_data_provider = "textract"
+
+        # Persist consolidated OCR page data (text + confidence + geometry)
+        page_data_uri = self._write_page_data(
+            page_id,
+            output_bucket,
+            prefix,
+            page_data_raw,
+            page_data_text,
+            page_data_provider,
+        )
+
         t2 = time.time()
         logger.debug(f"Total processing time for image file: {t2 - t0:.6f} seconds")
 
@@ -965,6 +1137,7 @@ class OcrService:
             "raw_text_uri": f"s3://{output_bucket}/{raw_text_key}",
             "parsed_text_uri": f"s3://{output_bucket}/{parsed_text_key}",
             "text_confidence_uri": f"s3://{output_bucket}/{text_confidence_key}",
+            "ocr_page_data_uri": page_data_uri,
             "image_uri": f"s3://{output_bucket}/{image_key}",
         }
 
@@ -1047,6 +1220,10 @@ class OcrService:
                 content_type="application/json",
             )
 
+            page_data_raw = empty_ocr_response
+            page_data_text = ""
+            page_data_provider = "none"
+
         elif self.backend == "bedrock":
             # Process with Bedrock
             image_content = image.prepare_bedrock_image_attachment(ocr_img_bytes)
@@ -1059,7 +1236,12 @@ class OcrService:
                 temperature=0.0,
                 top_p=0.1,
                 top_k=5,
-                max_tokens=4096,
+                # None => Bedrock client resolves the model's max output tokens
+                # (model_config_limits.yaml); Bedrock's default-when-omitted truncates.
+                max_tokens=None,
+                reasoning_effort=getattr(self.config.ocr, "reasoning_effort", None)
+                if hasattr(self, "config")
+                else None,
                 context="OCR",
                 model_lambda_hook_arn=getattr(
                     self.config.ocr, "model_lambda_hook_arn", None
@@ -1071,17 +1253,20 @@ class OcrService:
             extracted_text = bedrock.extract_text_from_response(response_with_metering)
             metering = response_with_metering.get("metering", {})
 
+            # Persist structured OCR (Textract blocks with confidence + geometry)
+            # if the LambdaHook returned it; otherwise store raw text + placeholder.
+            raw_ocr_content, text_confidence_data = self._extract_bedrock_ocr_artifacts(
+                response_with_metering["response"]
+            )
+
             raw_text_key = f"{prefix}/pages/{page_id}/rawText.json"
             s3.write_content(
-                response_with_metering["response"],
+                raw_ocr_content,
                 output_bucket,
                 raw_text_key,
                 content_type="application/json",
             )
 
-            text_confidence_data = {
-                "text": "| Text | Confidence |\n|:-----|:------------|\n| *No confidence data available from LLM OCR* | N/A |"
-            }
             text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
             s3.write_content(
                 text_confidence_data,
@@ -1098,6 +1283,32 @@ class OcrService:
                 parsed_text_key,
                 content_type="application/json",
             )
+
+            page_data_raw = raw_ocr_content
+            page_data_text = extracted_text
+            page_data_provider = "bedrock"
+
+        elif self.backend == "bda":
+            # BDA reads the page image already uploaded to S3 (image_key) by
+            # s3Uri so extension-based modality routing applies. Pass the stored
+            # image's dimensions so BDA rectification corners map into its space.
+            (
+                raw_ocr_content,
+                extracted_text,
+                raw_text_key,
+                text_confidence_key,
+                parsed_text_key,
+                metering,
+            ) = self._write_bda_page_artifacts(
+                f"s3://{output_bucket}/{image_key}",
+                output_bucket,
+                prefix,
+                page_id,
+                original_image_size=self._image_size_from_bytes(img_bytes),
+            )
+            page_data_raw = raw_ocr_content
+            page_data_text = extracted_text
+            page_data_provider = "bda"
 
         else:
             # Process with Textract (default)
@@ -1141,9 +1352,23 @@ class OcrService:
                 content_type="application/json",
             )
 
-        # Memory cleanup
-        img_bytes = None
-        ocr_img_bytes = None
+            page_data_raw = textract_result
+            page_data_text = parsed_result.get("text", "")
+            page_data_provider = "textract"
+
+        # Persist consolidated OCR page data (text + confidence + geometry)
+        page_data_uri = self._write_page_data(
+            page_id,
+            output_bucket,
+            prefix,
+            page_data_raw,
+            page_data_text,
+            page_data_provider,
+        )
+
+        # Memory cleanup - delete references to free large image buffers
+        del img_bytes
+        del ocr_img_bytes
 
         t2 = time.time()
         logger.debug(
@@ -1154,6 +1379,7 @@ class OcrService:
             "raw_text_uri": f"s3://{output_bucket}/{raw_text_key}",
             "parsed_text_uri": f"s3://{output_bucket}/{parsed_text_key}",
             "text_confidence_uri": f"s3://{output_bucket}/{text_confidence_key}",
+            "ocr_page_data_uri": page_data_uri,
             "image_uri": f"s3://{output_bucket}/{image_key}",
         }
 
@@ -1305,6 +1531,16 @@ class OcrService:
             content_type="application/json",
         )
 
+        # Persist consolidated OCR page data (text + confidence + geometry)
+        page_data_uri = self._write_page_data(
+            page_id,
+            output_bucket,
+            prefix,
+            textract_result,
+            parsed_result.get("text", ""),
+            "textract",
+        )
+
         t2 = time.time()
         logger.debug(f"Time for Textract (page {page_id}): {t2 - t1:.6f} seconds")
 
@@ -1313,6 +1549,7 @@ class OcrService:
             "raw_text_uri": f"s3://{output_bucket}/{raw_text_key}",
             "parsed_text_uri": f"s3://{output_bucket}/{parsed_text_key}",
             "text_confidence_uri": f"s3://{output_bucket}/{text_confidence_key}",
+            "ocr_page_data_uri": page_data_uri,
             "image_uri": f"s3://{output_bucket}/{image_key}",
         }
 
@@ -1349,8 +1586,8 @@ class OcrService:
                     page_height = page.get_height()
 
                     if is_pdf:
-                        # For PDF files, calculate dimensions at specified DPI (default to 150 if None)
-                        dpi = self.dpi or 150
+                        # For PDF files, calculate dimensions at specified DPI
+                        dpi = self.dpi or DEFAULT_DPI
                         original_width = int(page_width * (dpi / 72))
                         original_height = int(page_height * (dpi / 72))
                     else:
@@ -1370,7 +1607,7 @@ class OcrService:
                         # Extract at reduced size using matrix transformation
                         if is_pdf:
                             # For PDF, combine DPI scaling with size reduction
-                            dpi = self.dpi or 150
+                            dpi = self.dpi or DEFAULT_DPI
                             base_scale = dpi / 72  # Convert PDF points to pixels
                             final_scale = base_scale * scale_factor
                             matrix = final_scale
@@ -1388,7 +1625,7 @@ class OcrService:
                     else:
                         # No resize needed - image is already smaller than targets
                         if is_pdf:
-                            dpi = self.dpi or 150
+                            dpi = self.dpi or DEFAULT_DPI
                             pil_img = page.render(scale=dpi / 72).to_pil()  # type: ignore[attr-defined]
                         else:
                             pil_img = page.render().to_pil()  # type: ignore[attr-defined]
@@ -1401,7 +1638,7 @@ class OcrService:
                 else:
                     # No valid target dimensions - use original extraction
                     if is_pdf:
-                        dpi = self.dpi or 150
+                        dpi = self.dpi or DEFAULT_DPI
                         pil_img = page.render(scale=dpi / 72).to_pil()  # type: ignore[attr-defined]
                     else:
                         pil_img = page.render().to_pil()  # type: ignore[attr-defined]
@@ -1414,7 +1651,7 @@ class OcrService:
             else:
                 # No resize config - extract at original size
                 if is_pdf:
-                    dpi = self.dpi or 150
+                    dpi = self.dpi or DEFAULT_DPI
                     pil_img = page.render(scale=dpi / 72).to_pil()  # type: ignore[attr-defined]
                 else:
                     pil_img = page.render().to_pil()  # type: ignore[attr-defined]
@@ -1495,7 +1732,12 @@ class OcrService:
             temperature=0.0,  # Use lowest temperature for OCR accuracy
             top_p=0.1,
             top_k=5,
-            max_tokens=4096,
+            # None => Bedrock client resolves the model's max output tokens
+            # (model_config_limits.yaml); Bedrock's default-when-omitted truncates.
+            max_tokens=None,
+            reasoning_effort=getattr(self.config.ocr, "reasoning_effort", None)
+            if hasattr(self, "config")
+            else None,
             context="OCR",
             model_lambda_hook_arn=getattr(
                 self.config.ocr, "model_lambda_hook_arn", None
@@ -1511,20 +1753,21 @@ class OcrService:
         t2 = time.time()
         logger.debug(f"Time for Bedrock OCR (page {page_id}): {t2 - t1:.6f} seconds")
 
-        # Store raw Bedrock response
+        # Persist structured OCR (Textract blocks with confidence + geometry) if
+        # the LambdaHook returned it; otherwise store raw text + placeholder.
+        # LLM OCR via plain Bedrock models doesn't provide real confidence scores.
+        raw_ocr_content, text_confidence_data = self._extract_bedrock_ocr_artifacts(
+            response_with_metering["response"]
+        )
+
+        # Store raw Bedrock response (or Textract blocks)
         raw_text_key = f"{prefix}/pages/{page_id}/rawText.json"
         s3.write_content(
-            response_with_metering["response"],
+            raw_ocr_content,
             output_bucket,
             raw_text_key,
             content_type="application/json",
         )
-
-        # Generate and store text confidence data
-        # For Bedrock, we use empty markdown table since LLM OCR doesn't provide real confidence scores
-        text_confidence_data = {
-            "text": "| Text | Confidence |\n|:-----|:------------|\n| *No confidence data available from LLM OCR* | N/A |"
-        }
 
         text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
         s3.write_content(
@@ -1544,11 +1787,22 @@ class OcrService:
             content_type="application/json",
         )
 
+        # Persist consolidated OCR page data (text + confidence + geometry)
+        page_data_uri = self._write_page_data(
+            page_id,
+            output_bucket,
+            prefix,
+            raw_ocr_content,
+            extracted_text,
+            "bedrock",
+        )
+
         # Create and return page result
         result = {
             "raw_text_uri": f"s3://{output_bucket}/{raw_text_key}",
             "parsed_text_uri": f"s3://{output_bucket}/{parsed_text_key}",
             "text_confidence_uri": f"s3://{output_bucket}/{text_confidence_key}",
+            "ocr_page_data_uri": page_data_uri,
             "image_uri": f"s3://{output_bucket}/{image_key}",
         }
 
@@ -1624,6 +1878,16 @@ class OcrService:
             content_type="application/json",
         )
 
+        # Persist consolidated OCR page data (empty - no OCR performed)
+        page_data_uri = self._write_page_data(
+            page_id,
+            output_bucket,
+            prefix,
+            empty_ocr_response,
+            "",
+            "none",
+        )
+
         t2 = time.time()
         logger.debug(
             f"Time for image-only processing (page {page_id}): {t2 - t1:.6f} seconds"
@@ -1637,6 +1901,7 @@ class OcrService:
             "raw_text_uri": f"s3://{output_bucket}/{raw_text_key}",
             "parsed_text_uri": f"s3://{output_bucket}/{parsed_text_key}",
             "text_confidence_uri": f"s3://{output_bucket}/{text_confidence_key}",
+            "ocr_page_data_uri": page_data_uri,
             "image_uri": f"s3://{output_bucket}/{image_key}",
         }
 
@@ -1701,6 +1966,213 @@ class OcrService:
             else "detect_document_text"
         )
 
+    def _extract_bedrock_ocr_artifacts(
+        self, response_payload: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """
+        Determine what to persist as rawText.json and textConfidence.json for a
+        Bedrock/LambdaHook OCR response.
+
+        A LambdaHook OCR function may optionally return structured OCR results in
+        Amazon Textract response format under a top-level "textractBlocks" key
+        (an object with a "Blocks" list). When present, this carries per-line/word
+        OCR confidence scores and bounding-box geometry, so we persist the
+        Textract blocks as the raw OCR result and generate a real text-confidence
+        table from them. This lets downstream assessment (the
+        {OCR_TEXT_CONFIDENCE} placeholder) and the UI (geometry highlighting) use
+        the same data as the native Textract backend.
+
+        Hooks (or Bedrock models) that return only text fall back to the previous
+        behavior: the raw response is stored as-is and a placeholder confidence
+        table is written.
+
+        Args:
+            response_payload: The "response" object from invoke_model
+
+        Returns:
+            Tuple of (raw_ocr_content_to_store, text_confidence_data)
+        """
+        textract_blocks = (
+            response_payload.get("textractBlocks")
+            if isinstance(response_payload, dict)
+            else None
+        )
+        if textract_blocks and textract_blocks.get("Blocks"):
+            return textract_blocks, self._generate_text_confidence_data(textract_blocks)
+
+        placeholder = {
+            "text": "| Text | Confidence |\n|:-----|:------------|\n| *No confidence data available from LLM OCR* | N/A |"
+        }
+        return response_payload, placeholder
+
+    def _ensure_bda_arns(self) -> None:
+        """Lazily build the BDA profile ARN on first use.
+
+        The project ARN must have been provided via config or the
+        ``BDA_OCR_PROJECT_ARN`` env var (the stack provisions a per-stack BDA
+        OCR project via a CloudFormation custom resource). We never create the
+        project at runtime; if no ARN is available we raise a clear error.
+        Serialized with a lock so parallel page workers build the profile ARN
+        exactly once rather than racing.
+        """
+        if self.bda_project_arn and self._bda_profile_arn:
+            return
+        from idp_common.bda import bda_ocr
+
+        with self._bda_arn_lock:
+            if not self.bda_project_arn:
+                raise ValueError(
+                    "BDA OCR backend selected but no project ARN is available. "
+                    "Set ocr.bda_project_arn in config or the BDA_OCR_PROJECT_ARN "
+                    "environment variable (provisioned by the stack's BDA OCR "
+                    "project custom resource). Use the Textract OCR backend "
+                    "instead where this project cannot be provisioned: regions "
+                    "without Bedrock Data Automation, and the GovCloud/China "
+                    "partitions — which do offer BDA, but reject the SYNC "
+                    "document-modality project this backend requires, so the "
+                    "stack deliberately does not create it there."
+                )
+            if not self._bda_profile_arn:
+                identity = boto3.client(
+                    "sts", region_name=self.region
+                ).get_caller_identity()
+                account_id = identity["Account"]
+                # Derive the partition from the caller ARN (arn:<partition>:...)
+                # so the profile ARN is correct in GovCloud / China partitions.
+                partition = identity["Arn"].split(":")[1]
+                self._bda_profile_arn = bda_ocr.build_profile_arn(
+                    self.region, account_id, partition
+                )
+
+    @staticmethod
+    def _image_size_from_bytes(
+        img_bytes: Optional[bytes],
+    ) -> Optional[Tuple[int, int]]:
+        """Return ``(width, height)`` of image bytes, or None if undecodable.
+
+        Used to give the BDA converter the original page-image dimensions so it
+        can rescale rectification corners into original-image space.
+        """
+        if not img_bytes:
+            return None
+        try:
+            from PIL import Image as _PILImage
+
+            with _PILImage.open(io.BytesIO(img_bytes)) as im:
+                return im.size
+        except Exception:
+            logger.warning("Could not determine page image size for BDA geometry")
+            return None
+
+    def _run_bda_ocr(
+        self,
+        image_s3_uri: str,
+        original_image_size: Optional[Tuple[int, int]] = None,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], str, Dict[str, Any]]:
+        """Run BDA standard-output OCR on a single page image.
+
+        Invokes the synchronous ``InvokeDataAutomation`` API on the page image
+        already uploaded to S3 (sync is capped at ~10 pages, so we always send a
+        single page), converts the standard output to Textract-format blocks,
+        and derives the confidence table.
+
+        The image is passed by ``s3Uri`` (not inline ``bytes``) deliberately: the
+        project's modality-routing override (``jpeg``/``png`` -> ``DOCUMENT``)
+        keys off the file extension, so an extension-bearing S3 URI guarantees
+        document text extraction. Inline bytes carry no extension and BDA falls
+        back to content-based classification, which under concurrent load
+        misclassifies some pages as IMAGE and yields empty OCR.
+
+        Args:
+            image_s3_uri: S3 URI of the page image to OCR.
+            original_image_size: ``(width, height)`` of that image, passed to the
+                converter so BDA's rectification corners (normalized against the
+                rectified crop) are rescaled into original-image space. Without
+                it, boxes are misplaced when BDA rectifies to a page sub-region.
+
+        Returns:
+            Tuple of (raw_ocr_blocks, text_confidence_data, parsed_text, metering).
+        """
+        from idp_common.bda import bda_ocr
+
+        self._ensure_bda_arns()
+
+        response = self.bda_runtime_client.invoke_data_automation(
+            inputConfiguration={"s3Uri": image_s3_uri},
+            dataAutomationConfiguration={
+                "dataAutomationProjectArn": self.bda_project_arn,
+                "stage": "LIVE",
+            },
+            dataAutomationProfileArn=self._bda_profile_arn,
+        )
+
+        segments = response.get("outputSegments", [])
+        standard_output = segments[0]["standardOutput"] if segments else {}
+        if isinstance(standard_output, str):
+            standard_output = json.loads(standard_output)
+
+        raw_ocr_blocks = bda_ocr.bda_standard_output_to_textract_blocks(
+            standard_output, original_image_size=original_image_size
+        )
+        parsed_text = bda_ocr.extract_markdown(standard_output)
+        text_confidence_data = self._generate_text_confidence_data(raw_ocr_blocks)
+        # Metering key maps to the pricing.yaml entry `bda/documents-standard`
+        # ($0.01/page) via reporting/save_reporting_data.py::_get_unit_cost.
+        metering = {"OCR/bda/documents-standard": {"pages": 1}}
+
+        return raw_ocr_blocks, text_confidence_data, parsed_text, metering
+
+    def _write_bda_page_artifacts(
+        self,
+        image_s3_uri: str,
+        output_bucket: str,
+        prefix: str,
+        page_id: int,
+        original_image_size: Optional[Tuple[int, int]] = None,
+    ) -> Tuple[Dict[str, Any], str, str, str, str, Dict[str, Any]]:
+        """Run BDA OCR for a page image (in S3) and persist artifacts.
+
+        ``original_image_size`` (``(width, height)`` of the page image) is
+        forwarded to the converter so BDA rectification corners are rescaled into
+        original-image space (see ``_run_bda_ocr``).
+
+        Returns (page_data_raw, page_data_text, raw_text_key, text_confidence_key,
+        parsed_text_key, metering) so callers can build page_data + result dict.
+        """
+        raw_ocr_blocks, text_confidence_data, parsed_text, metering = self._run_bda_ocr(
+            image_s3_uri, original_image_size=original_image_size
+        )
+
+        raw_text_key = f"{prefix}/pages/{page_id}/rawText.json"
+        s3.write_content(
+            raw_ocr_blocks, output_bucket, raw_text_key, content_type="application/json"
+        )
+
+        text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
+        s3.write_content(
+            text_confidence_data,
+            output_bucket,
+            text_confidence_key,
+            content_type="application/json",
+        )
+
+        parsed_text_key = f"{prefix}/pages/{page_id}/result.json"
+        s3.write_content(
+            {"text": parsed_text},
+            output_bucket,
+            parsed_text_key,
+            content_type="application/json",
+        )
+
+        return (
+            raw_ocr_blocks,
+            parsed_text,
+            raw_text_key,
+            text_confidence_key,
+            parsed_text_key,
+            metering,
+        )
+
     def _generate_text_confidence_data(
         self, raw_ocr_data: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -1741,7 +2213,391 @@ class OcrService:
         # Join all lines into a single markdown string
         markdown_table = "\n".join(markdown_lines)
 
+        # Signature detections are their own block type with no Text, so the
+        # LINE-only loop above skips them entirely — which meant the SIGNATURES
+        # feature's output (and, critically, its confidence) never reached the
+        # confidence/assessment prompt that consumes this artifact.
+        signature_summary = self._format_signature_summary(
+            self._extract_signature_detections(blocks)
+        )
+        if signature_summary:
+            markdown_table = f"{markdown_table}\n\n{signature_summary}"
+
         return {"text": markdown_table}
+
+    @staticmethod
+    def _extract_signature_detections(
+        blocks: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        Pull SIGNATURE detections out of Textract-format blocks.
+
+        Emitted only when the OCR backend was asked for the ``SIGNATURES``
+        feature. Each detection carries a confidence and geometry but no text, so
+        every LINE-oriented consumer drops it unless handled explicitly.
+
+        Args:
+            blocks: Textract-format block list.
+
+        Returns:
+            ``[{"id", "confidence", "geometry"}, ...]`` in block order, where
+            ``confidence`` is 0-100 rounded to 1dp (or None) and ``geometry`` is
+            the normalized 0-1 dict from :meth:`_extract_geometry` (or None).
+        """
+        signatures: List[Dict[str, Any]] = []
+        for index, block in enumerate(blocks or [], start=1):
+            if not isinstance(block, dict) or block.get("BlockType") != "SIGNATURE":
+                continue
+            confidence = block.get("Confidence")
+            if confidence is not None:
+                confidence = round(confidence, 1)
+            signatures.append(
+                {
+                    "id": block.get("Id") or f"sig{index}",
+                    "confidence": confidence,
+                    "geometry": OcrService._extract_geometry(block),
+                }
+            )
+        return signatures
+
+    # Detection-confidence bands used to word the signature summary. Textract's
+    # signature confidence is a detection score, not a "how much like a signature"
+    # score, so a very low value routinely means a stray pen mark or scan artifact.
+    _SIGNATURE_CONFIDENCE_BANDS = (
+        (25.0, "very low"),
+        (50.0, "low"),
+        (75.0, "moderate"),
+    )
+
+    @staticmethod
+    def _describe_signature_position(box: Dict[str, Any]) -> str:
+        """
+        Describe a normalized box in the left/right, upper/lower terms schemas use.
+
+        Field descriptions say things like "the taxpayer 1 signature on the left
+        lower side of the page", so a bare ``left=0.572`` forces the consumer to do
+        the spatial mapping itself — which is exactly where it goes wrong on a form
+        with two identically-labelled signature cells.
+        """
+        center_x = box.get("left", 0.0) + box.get("width", 0.0) / 2
+        center_y = box.get("top", 0.0) + box.get("height", 0.0) / 2
+
+        half = "left half" if center_x < 0.5 else "right half"
+        if center_y < 0.33:
+            band = "upper area"
+        elif center_y < 0.66:
+            band = "middle area"
+        else:
+            band = "lower area"
+
+        return f"{half}, {band} (x={center_x:.0%}, y={center_y:.0%})"
+
+    @classmethod
+    def _format_signature_summary(cls, signatures: List[Dict[str, Any]]) -> str:
+        """
+        Render signature detections as a compact, self-describing text block.
+
+        Appended to both the page text and the text-confidence artifact so the
+        extraction and confidence prompts see *which* signature regions were
+        detected, *where*, and with *what* confidence.
+
+        The inline ``[SIGNATURE]`` token the linearizer emits carries none of that,
+        and is worse than silent: its position comes from reading order, so on an
+        IRS Form 4549 it landed immediately after the taxpayer-1 date while the
+        detection itself was in the taxpayer-2 cell. Both the extraction and the
+        confidence model then attributed the mark to the wrong taxpayer ("the OCR
+        detected a signature region in the first (left) signature box" for a box at
+        x=57%). Hence: plain-language position, an explicit total, and a caveat that
+        the inline token's placement is not evidence of field membership.
+
+        WHAT IS DELIBERATELY *NOT* HERE: an earlier version also named the OCR text
+        surrounding each detection ("at: 'Signature of taxpayer'; right: 'Date'").
+        It reads as more helpful and measured worse — naming a signature *label*
+        beside the mark biases the model toward true. On the issue-#634 document with
+        a threshold rule in the field descriptions, the entry below passed 9/9 while
+        the same entry plus that context passed 2/5. Do not re-add it without
+        measuring.
+
+        Deliberately NOT a markdown table either — page text is scanned by the
+        agentic extraction table parser, which would otherwise pick this up as a
+        document table.
+
+        Args:
+            signatures: Output of :meth:`_extract_signature_detections`.
+
+        Returns:
+            The summary block, or "" when there are no detections.
+        """
+        if not signatures:
+            return ""
+
+        total = len(signatures)
+        plural = "" if total == 1 else "s"
+        lines = [
+            "--- OCR signature detections ---",
+            f"The OCR engine flagged {total} region{plural} on this page as "
+            f"containing a signature, listed below with its page position. No "
+            f"signature was detected anywhere else on the page. Confidence is the engine's signature-DETECTION confidence "
+            f"(0-100): a low value means a faint or ambiguous mark, which may be a "
+            f"stray pen mark or scan artifact rather than a signature. NOTE: the "
+            f"inline [SIGNATURE] token in the text above is placed by reading "
+            f"order, NOT at the detected location — use the positions here to "
+            f"decide which field a signature belongs to.",
+        ]
+        for index, sig in enumerate(signatures, start=1):
+            confidence = sig.get("confidence")
+            if confidence is None:
+                confidence_text = "unknown"
+            else:
+                band = next(
+                    (
+                        label
+                        for limit, label in cls._SIGNATURE_CONFIDENCE_BANDS
+                        if confidence < limit
+                    ),
+                    "high",
+                )
+                confidence_text = f"{confidence} ({band})"
+
+            box = (sig.get("geometry") or {}).get("boundingBox") or {}
+            position = cls._describe_signature_position(box) if box else "unknown"
+            lines.append(
+                f"signature {index}: confidence={confidence_text} "
+                f"— page position: {position}"
+            )
+        return "\n".join(lines)
+
+    # Current consolidated OCR page-data schema version. Bump when the shape of
+    # pageData.json changes in a backward-incompatible way.
+    PAGE_DATA_SCHEMA_VERSION = 1
+
+    @staticmethod
+    def _extract_geometry(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Extract normalized (0-1) geometry from a Textract-format block.
+
+        Returns a dict with a ``boundingBox`` ({left, top, width, height}) and an
+        optional ``polygon`` ([{x, y}, ...]), or None when the block carries no
+        geometry (e.g. Mistral WORD blocks, LLM OCR).
+        """
+        geom = block.get("Geometry")
+        if not isinstance(geom, dict):
+            return None
+
+        bbox = geom.get("BoundingBox")
+        if not isinstance(bbox, dict):
+            return None
+
+        result: Dict[str, Any] = {
+            "boundingBox": {
+                "left": bbox.get("Left", 0.0),
+                "top": bbox.get("Top", 0.0),
+                "width": bbox.get("Width", 0.0),
+                "height": bbox.get("Height", 0.0),
+            }
+        }
+
+        polygon = geom.get("Polygon")
+        if isinstance(polygon, list) and polygon:
+            result["polygon"] = [
+                {"x": pt.get("X", 0.0), "y": pt.get("Y", 0.0)}
+                for pt in polygon
+                if isinstance(pt, dict)
+            ]
+
+        return result
+
+    def _build_page_data(
+        self,
+        raw_ocr_content: Dict[str, Any],
+        parsed_text: str,
+        provider_hint: str,
+    ) -> Dict[str, Any]:
+        """
+        Build a consolidated, backend-agnostic per-page OCR data structure.
+
+        Consolidates text + confidence + geometry (which today live in three
+        separate artifacts at backend-dependent granularities) into a single
+        LINE-primary schema with optional WORD children. ``confidence`` and
+        ``geometry`` are *independently optional* on every unit, so each backend
+        contributes whatever it has:
+
+        - Textract: per-LINE and per-WORD confidence + geometry (box + polygon).
+        - Mistral LambdaHook: per-LINE/WORD confidence; geometry is paragraph-level
+          (sibling lines share a box, flagged via ``geometrySource: "paragraph"``);
+          WORD blocks have no geometry.
+        - Chandra / plain Bedrock LLM / none: text only (lines synthesized from
+          the parsed markdown), no confidence or geometry.
+
+        Geometry is normalized 0-1 (Textract convention), matching what the UI
+        bounding-box renderer already consumes.
+
+        Signature detections (Textract ``SIGNATURES`` feature) are carried in a
+        separate ``signatures`` list rather than as pseudo-lines: they have
+        confidence and geometry but no text, so mixing them into ``lines`` would
+        expose them to the value-matching geometry grounder as if they were text.
+
+        Args:
+            raw_ocr_content: Textract-format dict ({"Blocks": [...]}) when the
+                backend produced structured OCR, otherwise the raw response.
+            parsed_text: The parsed markdown/plain text for this page (used to
+                synthesize lines when no structured blocks are available).
+            provider_hint: One of "textract", "bedrock", "none", "converted".
+
+        Returns:
+            The consolidated pageData dict.
+        """
+        blocks = (
+            raw_ocr_content.get("Blocks", [])
+            if isinstance(raw_ocr_content, dict)
+            else []
+        )
+        has_blocks = isinstance(blocks, list) and len(blocks) > 0
+
+        # Resolve the provenance tag. Bedrock splits into LambdaHook (structured
+        # blocks present) vs. plain LLM OCR (text only).
+        if provider_hint == "bedrock":
+            provider = "bedrock-lambdahook" if has_blocks else "bedrock-llm"
+        else:
+            provider = provider_hint
+
+        lines: List[Dict[str, Any]] = []
+        confidence_available = False
+        geometry_available = False
+        words_available = False
+
+        if has_blocks:
+            # Index blocks by Id so LINE -> WORD CHILD relationships resolve.
+            blocks_by_id = {b.get("Id"): b for b in blocks if b.get("Id")}
+
+            # Detect paragraph-shared geometry: a bounding box reused by more than
+            # one LINE indicates the backend (e.g. Mistral) only has paragraph-level
+            # geometry, so we flag those lines as geometrySource="paragraph".
+            box_counts: Dict[tuple, int] = {}
+            for b in blocks:
+                if b.get("BlockType") == "LINE":
+                    g = self._extract_geometry(b)
+                    if g:
+                        bb = g["boundingBox"]
+                        key = (bb["left"], bb["top"], bb["width"], bb["height"])
+                        box_counts[key] = box_counts.get(key, 0) + 1
+
+            line_idx = 0
+            for block in blocks:
+                if block.get("BlockType") != "LINE" or not block.get("Text"):
+                    continue
+                line_idx += 1
+
+                geometry = self._extract_geometry(block)
+                confidence = block.get("Confidence")
+                if confidence is not None:
+                    confidence = round(confidence, 1)
+                    confidence_available = True
+
+                if geometry:
+                    geometry_available = True
+                    bb = geometry["boundingBox"]
+                    key = (bb["left"], bb["top"], bb["width"], bb["height"])
+                    geometry_source = (
+                        "paragraph" if box_counts.get(key, 0) > 1 else "line"
+                    )
+                else:
+                    geometry_source = "none"
+
+                # Resolve WORD children via CHILD relationships.
+                words: List[Dict[str, Any]] = []
+                for rel in block.get("Relationships", []) or []:
+                    if rel.get("Type") != "CHILD":
+                        continue
+                    for child_id in rel.get("Ids", []) or []:
+                        child = blocks_by_id.get(child_id)
+                        if not child or child.get("BlockType") != "WORD":
+                            continue
+                        word_geom = self._extract_geometry(child)
+                        word_conf = child.get("Confidence")
+                        if word_conf is not None:
+                            word_conf = round(word_conf, 1)
+                        if word_geom:
+                            geometry_available = True
+                        words.append(
+                            {
+                                "text": child.get("Text", ""),
+                                "confidence": word_conf,
+                                "geometry": word_geom,
+                            }
+                        )
+                if words:
+                    words_available = True
+
+                lines.append(
+                    {
+                        "id": block.get("Id") or f"l{line_idx}",
+                        "text": block.get("Text", ""),
+                        "confidence": confidence,
+                        "geometry": geometry,
+                        "geometrySource": geometry_source,
+                        "textType": block.get("TextType"),
+                        "words": words or None,
+                    }
+                )
+        else:
+            # No structured blocks (LLM/Chandra/none): synthesize text-only lines
+            # from the parsed markdown so the viewer can still list page text.
+            for idx, raw_line in enumerate((parsed_text or "").split("\n"), start=1):
+                if not raw_line.strip():
+                    continue
+                lines.append(
+                    {
+                        "id": f"l{idx}",
+                        "text": raw_line,
+                        "confidence": None,
+                        "geometry": None,
+                        "geometrySource": "none",
+                        "textType": None,
+                        "words": None,
+                    }
+                )
+
+        signatures = self._extract_signature_detections(blocks)
+        if signatures and any(sig.get("geometry") for sig in signatures):
+            geometry_available = True
+
+        return {
+            "schemaVersion": self.PAGE_DATA_SCHEMA_VERSION,
+            "provider": provider,
+            "page": None,
+            "geometryAvailable": geometry_available,
+            "confidenceAvailable": confidence_available,
+            "wordsAvailable": words_available,
+            "signaturesAvailable": bool(signatures),
+            "lines": lines,
+            "signatures": signatures,
+        }
+
+    def _write_page_data(
+        self,
+        page_id: int,
+        output_bucket: str,
+        prefix: str,
+        raw_ocr_content: Dict[str, Any],
+        parsed_text: str,
+        provider_hint: str,
+    ) -> str:
+        """
+        Build and persist the consolidated pageData.json artifact for a page.
+
+        Returns the s3:// URI of the written artifact. Page processors add this to
+        their result dict as ``ocr_page_data_uri``.
+        """
+        page_data = self._build_page_data(raw_ocr_content, parsed_text, provider_hint)
+        page_data_key = f"{prefix}/pages/{page_id}/pageData.json"
+        s3.write_content(
+            page_data,
+            output_bucket,
+            page_data_key,
+            content_type="application/json",
+        )
+        return f"s3://{output_bucket}/{page_data_key}"
 
     def _parse_textract_response(
         self, response: Dict[str, Any], page_id: int = None
@@ -1814,6 +2670,22 @@ class OcrService:
                 logger.error(f"No text content found in document{page_info}")
             else:
                 logger.info(f"Successfully extracted basic text{page_info}")
+
+        # Append the signature detections. The linearizer renders each one as a
+        # bare inline "[SIGNATURE]" token — placed by reading order, with no
+        # confidence — so on its own it cannot be attributed to a specific field
+        # (on a two-column signature block it lands beside the wrong one), and a
+        # 10%-confidence smudge is indistinguishable from a real signature. The
+        # summary supplies position, neighbouring text, and confidence instead.
+        page_blocks = response.get("Blocks", [])
+        signatures = self._extract_signature_detections(page_blocks)
+        summary = self._format_signature_summary(signatures)
+        if summary:
+            logger.info(
+                f"Appended {len(signatures)} signature detection(s){page_info} "
+                f"to page text"
+            )
+            text = f"{text}\n\n{summary}"
 
         return {"text": text}
 
@@ -1896,7 +2768,12 @@ class OcrService:
                     temperature=0.0,
                     top_p=0.1,
                     top_k=5,
-                    max_tokens=4096,
+                    # None => Bedrock client resolves the model's max output tokens
+                    # (model_config_limits.yaml); Bedrock's default-when-omitted truncates.
+                    max_tokens=None,
+                    reasoning_effort=getattr(self.config.ocr, "reasoning_effort", None)
+                    if hasattr(self, "config")
+                    else None,
                     context="OCR",
                 )
                 return bedrock.extract_text_from_response(response_with_metering)
@@ -2052,6 +2929,17 @@ class OcrService:
             content_type="application/json",
         )
 
+        # Persist consolidated OCR page data (per-line placeholder confidence,
+        # no geometry — built from the synthetic Textract-format blocks above)
+        page_data_uri = self._write_page_data(
+            page_id,
+            output_bucket,
+            prefix,
+            ocr_response,
+            page_text,
+            "converted",
+        )
+
         t1 = time.time()
         logger.debug(
             f"Time for converted page processing (page {page_id}): {t1 - t0:.6f} seconds"
@@ -2065,6 +2953,7 @@ class OcrService:
             "raw_text_uri": f"s3://{output_bucket}/{raw_text_key}",
             "parsed_text_uri": f"s3://{output_bucket}/{parsed_text_key}",
             "text_confidence_uri": f"s3://{output_bucket}/{text_confidence_key}",
+            "ocr_page_data_uri": page_data_uri,
             "image_uri": f"s3://{output_bucket}/{image_key}",
         }
 

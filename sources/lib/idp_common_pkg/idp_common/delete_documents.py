@@ -10,6 +10,7 @@ This module provides robust document deletion functions that handle:
 - List entry cleanup with timestamp-aware shard handling
 """
 
+import fnmatch
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -283,6 +284,39 @@ def delete_list_entries_robust(
     return deleted_any
 
 
+def _delete_run_records(tracking_table, object_key: str) -> int:
+    """
+    Delete all document version (run) items for a document.
+
+    Run items are keyed PK=doc#<key>, SK=run#<run_id>. Returns the number of
+    run items deleted. Idempotent — safe on documents with no runs.
+    """
+    doc_pk = f"doc#{object_key}"
+    deleted = 0
+    exclusive_start_key = None
+    while True:
+        query_kwargs: Dict[str, Any] = {
+            "KeyConditionExpression": Key("PK").eq(doc_pk)
+            & Key("SK").begins_with("run#"),
+            "ProjectionExpression": "PK, SK",
+        }
+        if exclusive_start_key:
+            query_kwargs["ExclusiveStartKey"] = exclusive_start_key
+        response = tracking_table.query(**query_kwargs)
+        for item in response.get("Items", []):
+            try:
+                tracking_table.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+                deleted += 1
+            except Exception as e:
+                logger.error(f"Error deleting run item {item.get('SK')}: {str(e)}")
+        exclusive_start_key = response.get("LastEvaluatedKey")
+        if not exclusive_start_key:
+            break
+    if deleted:
+        logger.info(f"Deleted {deleted} run records for {object_key}")
+    return deleted
+
+
 def delete_single_document(
     object_key: str,
     tracking_table,
@@ -317,6 +351,7 @@ def delete_single_document(
             "output_files": 0,
             "list_entries": False,
             "document_record": False,
+            "run_records": 0,
         },
         "errors": [],
     }
@@ -350,19 +385,32 @@ def delete_single_document(
         logger.error(error_msg)
         result["errors"].append(error_msg)
 
-    # Delete from output bucket
+    # Delete from output bucket. The output bucket is versioning-enabled, and
+    # document version history pins prior runs' output bytes as noncurrent
+    # object versions. A versionless delete_object would only add delete markers
+    # and leak those pinned bytes forever, so on a full document delete we purge
+    # ALL versions (and any delete markers) under the prefix to reclaim storage.
     try:
-        paginator = s3_client.get_paginator("list_objects_v2")
+        paginator = s3_client.get_paginator("list_object_versions")
         deleted_output_count = 0
 
         for page in paginator.paginate(Bucket=output_bucket, Prefix=object_key):
-            if "Contents" in page:
-                for obj in page["Contents"]:
-                    s3_client.delete_object(Bucket=output_bucket, Key=obj["Key"])
-                    deleted_output_count += 1
+            entries = page.get("Versions", []) + page.get("DeleteMarkers", [])
+            objects = [
+                {"Key": e["Key"], "VersionId": e["VersionId"]}
+                for e in entries
+                if e.get("VersionId")
+            ]
+            # delete_objects accepts up to 1000 keys per call
+            for i in range(0, len(objects), 1000):
+                batch = objects[i : i + 1000]
+                s3_client.delete_objects(
+                    Bucket=output_bucket, Delete={"Objects": batch, "Quiet": True}
+                )
+                deleted_output_count += len(batch)
 
         result["deleted"]["output_files"] = deleted_output_count
-        logger.debug(f"Deleted {deleted_output_count} output files")
+        logger.debug(f"Deleted {deleted_output_count} output object versions")
     except Exception as e:
         error_msg = f"Error deleting from output bucket: {str(e)}"
         logger.error(error_msg)
@@ -376,6 +424,18 @@ def delete_single_document(
         result["deleted"]["list_entries"] = deletion_success
     except Exception as e:
         error_msg = f"Error in list entry deletion: {str(e)}"
+        logger.error(error_msg)
+        result["errors"].append(error_msg)
+
+    # Delete document version (run) records. The pinned output object versions
+    # and run manifests they reference were already purged above (the
+    # all-versions prefix delete covers the runs/ prefix too), so only the run
+    # tracking items remain.
+    try:
+        run_count = _delete_run_records(tracking_table, object_key)
+        result["deleted"]["run_records"] = run_count
+    except Exception as e:
+        error_msg = f"Error deleting run records: {str(e)}"
         logger.error(error_msg)
         result["errors"].append(error_msg)
 
@@ -464,6 +524,38 @@ def delete_documents(
     }
 
 
+def _scan_all_document_keys(
+    tracking_table, status_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Scan all document items from the tracking table.
+
+    Args:
+        tracking_table: DynamoDB table resource
+        status_filter: Optional status filter ('COMPLETED', 'FAILED', 'PROCESSING', etc.)
+
+    Returns:
+        List of DynamoDB items with PK starting with 'doc#'
+    """
+    from boto3.dynamodb.conditions import Attr
+
+    items: List[Dict[str, Any]] = []
+    filter_expr = Attr("PK").begins_with("doc#")
+    if status_filter:
+        filter_expr = filter_expr & Attr("Status").eq(status_filter)
+
+    scan_kwargs: Dict[str, Any] = {"FilterExpression": filter_expr}
+
+    while True:
+        response = tracking_table.scan(**scan_kwargs)
+        items.extend(response.get("Items", []))
+        if "LastEvaluatedKey" not in response:
+            break
+        scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
+    return items
+
+
 def get_documents_by_batch(
     tracking_table, batch_id: str, status_filter: Optional[str] = None
 ) -> List[str]:
@@ -481,29 +573,47 @@ def get_documents_by_batch(
     object_keys = []
 
     try:
-        # Query the GSI for batch documents (if available) or scan with filter
-        # For now, we'll use a prefix-based query on the tracking table
-        paginator = tracking_table.meta.client.get_paginator("scan")
-
-        filter_expression = "begins_with(PK, :pk_prefix)"
-        expression_values = {":pk_prefix": {"S": "doc#"}}
-
-        if status_filter:
-            filter_expression += " AND #status = :status"
-            expression_values[":status"] = {"S": status_filter}
-
-        for page in paginator.paginate(
-            TableName=tracking_table.table_name,
-            FilterExpression=filter_expression,
-            ExpressionAttributeValues=expression_values,
-            ExpressionAttributeNames={"#status": "Status"} if status_filter else {},
-        ):
-            for item in page.get("Items", []):
-                object_key = item.get("ObjectKey", {}).get("S", "")
-                if batch_id in object_key:
-                    object_keys.append(object_key)
-
+        items = _scan_all_document_keys(tracking_table, status_filter)
+        for item in items:
+            object_key = item.get("ObjectKey", "")
+            if batch_id in object_key:
+                object_keys.append(object_key)
     except Exception as e:
         logger.error(f"Error getting documents for batch {batch_id}: {str(e)}")
+
+    return object_keys
+
+
+def get_documents_by_pattern(
+    tracking_table, pattern: str, status_filter: Optional[str] = None
+) -> List[str]:
+    """
+    Get all document object keys matching a wildcard pattern.
+
+    Uses fnmatch-style patterns (*, ?, [seq], [!seq]).
+
+    Examples:
+        - ``"batch-123/*"`` — all docs in batch-123
+        - ``"*/invoice*.pdf"`` — any invoice PDF in any batch
+        - ``"*2025*"`` — any doc with 2025 in the key
+
+    Args:
+        tracking_table: DynamoDB table resource
+        pattern: Wildcard pattern to match against object keys
+        status_filter: Optional status filter ('COMPLETED', 'FAILED', 'PROCESSING', etc.)
+
+    Returns:
+        List of matching object keys
+    """
+    object_keys = []
+
+    try:
+        items = _scan_all_document_keys(tracking_table, status_filter)
+        for item in items:
+            object_key = item.get("ObjectKey", "")
+            if fnmatch.fnmatch(object_key, pattern):
+                object_keys.append(object_key)
+    except Exception as e:
+        logger.error(f"Error getting documents for pattern {pattern}: {str(e)}")
 
     return object_keys

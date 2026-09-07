@@ -13,6 +13,7 @@ import strands
 
 from idp_common.config import get_config
 
+from ..common.cost_metrics import with_cost_hook
 from ..common.strands_bedrock_model import create_strands_bedrock_model
 from .config import get_error_analyzer_model_id
 from .tools import (
@@ -20,6 +21,7 @@ from .tools import (
     analyze_system_performance,
     analyze_workflow_execution,
     fetch_document_record,
+    fetch_pipeline_configuration,
     fetch_recent_records,
     retrieve_document_context,
     search_cloudwatch_logs,
@@ -55,6 +57,7 @@ def create_error_analyzer_agent(
         search_performance_issues,
         fetch_document_record,
         fetch_recent_records,
+        fetch_pipeline_configuration,
         retrieve_document_context,
         analyze_workflow_execution,
         analyze_document_trace,
@@ -78,4 +81,5 @@ def create_error_analyzer_agent(
         tools=tools,
         system_prompt=config.agents.error_analyzer.system_prompt,
         model=bedrock_model,
+        hooks=with_cost_hook(kwargs.get("hooks"), "error-analyzer", model_id),
     )

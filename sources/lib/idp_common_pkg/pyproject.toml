@@ -17,15 +17,17 @@ exclude = [
 # Include YAML and MD files for system defaults configuration
 [tool.setuptools.package-data]
 "idp_common.config.system_defaults" = ["*.yaml", "*.md"]
+"idp_common.discovery.prompts" = ["*.jinja2"]
+"idp_common.rule_validation.z3.config" = ["*.yaml"]
 
 [project]
 name = "idp_common"
-version = "0.5.2"
+version = "0.6.7"
 description = "Common utilities for GenAI IDP Accelerator patterns"
 authors = [{ name = "AWS", email = "noreply@amazon.com" }]
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.12,<3.14"
 dependencies = [
-  "boto3==1.42.0",      # Core dependency for AWS services
+  "boto3>=1.42.86,<1.43.0",      # Core dependency for AWS services (>=1.42.86 required by bedrock-agentcore>=1.6.1)
   "jsonschema>=4.25.1",
   "pydantic>=2.12.0",
   "deepdiff>=6.0.0",
@@ -51,11 +53,14 @@ dev = [
 ]
 
 # Image handling dependencies
-image = ["Pillow==11.2.1"]
+image = [
+  "Pillow==12.3.0",
+  "pypdfium2>=5.5.0",  # PDF page extraction for discovery multi-section support
+]
 
 # OCR module dependencies
 ocr = [
-  "Pillow==11.2.1",
+  "Pillow==12.3.0",
   "pypdfium2>=5.5.0",
   "amazon-textract-textractor[pandas]==1.9.2",
   "numpy==1.26.4",
@@ -66,56 +71,106 @@ ocr = [
 
 # Classification module dependencies
 classification = [
-  "Pillow==11.2.1", # For image handling
+  "Pillow==12.3.0", # For image handling
 ]
 
 # Extraction module dependencies
 extraction = [
-  "Pillow==11.2.1",  # For image handling
+  "Pillow==12.3.0",  # For image handling
 ]
 
 # Assessment module dependencies
 assessment = [
-  "Pillow==11.2.1",               # For image handling
+  "Pillow==12.3.0",               # For image handling
   "aws-lambda-powertools>=3.2.0", # Structured logging and observability
 ]
 
 # Evaluation module dependencies
 evaluation = [
-  "stickler-eval==0.1.4",
+  # Note: the `[llm]` extra (strands-based LLM comparator) is intentionally
+  # NOT installed — IDP provides its own Bedrock-backed comparator via
+  # ``idp_common.evaluation.llm_comparator.LLMComparator``, which rides
+  # ``idp_common.bedrock`` (retry/throttling, cost metering, GovCloud endpoints,
+  # robust JSON response parsing) that upstream's strands-based comparator does
+  # not replicate.
+  "stickler-eval==0.5.0",
   "genson==1.3.0",  # For automatic JSON Schema generation from data
-  "munkres>=1.1.4", # For Hungarian algorithm (legacy, may be removed)
-  "numpy==1.26.4",  # For numeric operations
+  # Numpy pin relaxed: stickler-eval declares ``numpy>=1.26,<3``; an exact 1.26.4
+  # pin invited resolver conflicts on upgrade. Kept above 1.26 so the eval
+  # extras still install into environments that need matching numpy on other
+  # extras.
+  "numpy>=1.26,<3",
   # Explicitly prevent ruamel-yaml C extensions (they require compilation in Lambda)
   "ruamel-yaml>=0.17.0,<0.19.0; python_version>='3.10'",  # Pure Python YAML, no C extensions
 ]
 
 # Rule validation module dependencies
 rule_validation = [
-  # No additional dependencies needed - uses only base dependencies
+  "z3-solver==4.15.4.0",
 ]
 
 # Reporting module dependencies
 reporting = [
-  "pyarrow==20.0.0", # For Parquet conversion
+  "pyarrow==23.0.1", # For Parquet conversion
 ]
 
 # Appsync module dependencies
-appsync = ["requests==2.32.4"]
+appsync = ["requests<3.0.0,>=2.32.3"]
 
 # Agents module dependencies
+#
+# bedrock-agentcore stays capped below 1.9.0 despite GHSA-j6g5-3hh3-pgw8 (HIGH,
+# argument-delimiter injection, fixed in 1.18.1). The vulnerable entry point is
+# the SDK's ``install_packages()`` helper, which this repo never calls — the
+# only code-interpreter tools invoked are ``writeFiles``/``listFiles``/
+# ``executeCode`` (see agents/analytics/tools/code_interpreter_tools.py), so the
+# advisory is unreachable here. Upgrading is not a local change either: 1.18.1
+# requires boto3>=1.43.31, which breaks the deliberate ``boto3<1.43.0`` pin
+# above and would move every Lambda and layer onto the 1.43 line. Revisit this
+# together with that boto3 migration, or sooner if install_packages() is ever
+# used.
 agents = [
   "strands-agents==1.14.0; python_version>='3.10'",
-  "strands-agents-tools==0.2.13; python_version>='3.10'",
-  "bedrock-agentcore>=0.1.1; python_version>='3.10'",    # Specifically for the code interpreter tool
+  "strands-agents-tools==0.2.22; python_version>='3.10'",
+  "bedrock-agentcore>=1.6.1,<1.9.0; python_version>='3.10'",    # Specifically for the code interpreter tool
+  "jsonschema>=4.0.0",
+]
+
+# Multi-document discovery dependencies (clustering + agent analysis)
+multi_document_discovery = [
+  "scikit-learn>=1.5.0",       # KMeans clustering and silhouette analysis
+  "scipy>=1.14.0",             # KDTree for nearest-neighbor search
+  "numpy==1.26.4",             # Embedding matrices and vector operations
+  "Pillow==12.3.0",            # Image processing for document rendering
+  "pypdfium2>=5.5.0",          # PDF page rendering
+  "jinja2>=3.1.0",             # Prompt template rendering
+  "strands-agents==1.14.0; python_version>='3.10'",  # Agentic schema generation
+]
+
+# Synthesis / cold-start bootstrap dependencies. Schema authoring + config /
+# test-set creation only need jsonschema; the document GENERATOR is a separate,
+# heavier extra (see synthesis-generator) so the base capability stays light.
+synthesis = [
+  "jsonschema>=4.0.0",
+]
+
+# Optional synthetic-document generator (SEED). Heavy (Strands + Bedrock +
+# rendering); install only where document generation actually runs. The engine
+# adapter imports it lazily and degrades gracefully when absent.
+# NOTE: seed-data requires numpy 2.x (opencv/scikit-image/numba), which conflicts
+# with the numpy==1.26.4 pin in the ocr/evaluation/all extras. Install this in an
+# isolated environment (the generator's own container / AgentCore runtime), NOT
+# alongside idp_common[ocr|evaluation|all].
+synthesis-generator = [
+  "seed-data>=0.0.6",
 ]
 
 # Code intelligence module dependencies
 code_intel = [
-    "requests==2.32.4",
+    "requests==2.33.0",
     "strands-agents==1.14.0",
-    "strands-agents-tools==0.2.13",
-    "bedrock-agentcore>=0.1.1",
+    "strands-agents-tools==0.2.22",
+    "bedrock-agentcore>=1.6.1,<1.9.0",  # cap rationale: see the [agents] extra
     "PyYAML>=6.0.0",
     "pathspec>=0.11.0",
     "chardet>=5.0.0"
@@ -124,57 +179,61 @@ code_intel = [
 # Document service factory dependencies (includes both appsync and dynamodb support)
 # This includes all dependencies needed for both backends
 docs_service = [
-  "requests==2.32.4", # Required for appsync module (dynamodb only needs boto3 which is core)
+  "requests==2.33.0", # Required for appsync module (dynamodb only needs boto3 which is core)
   "aws-xray-sdk>=2.14.0", # Required for X-Ray tracing
 ]
 
 # Testing dependencies
 test = [
-  "pytest>=7.4.0",
+  "pytest>=9.0.3",
   "pytest-cov>=4.1.0",
   "pytest-xdist>=3.3.1",            # For parallel test execution
   "requests (>=2.32.3,<3.0.0)",
-  "pyarrow==20.0.0",
+  "pyarrow==23.0.1",
   "PyYAML==6.0.2",
   "openpyxl==3.1.5",
   "python-docx==1.2.0",
-  "moto[s3]==5.1.8",                # For mocking AWS services in tests
-  "Pillow==11.2.1",                 # Required for image processing in assessment tests
+  "moto[s3,cloudformation]==5.1.8", # For mocking AWS services in tests (cloudformation extra needed by feature-platform launch-url tests)
+  "Pillow==12.3.0",                 # Required for image processing in assessment tests
   "rich>=13.0.0",                   # Required for publish tests
+  "graphql-core>=3.2,<4",           # Real GraphQL parser: oracle for the API-validation-spec parser-correctness test
   "idp_common[agentic-extraction]", # Required for agentic_idp tests
   # "s3fs==2023.12.2",  # Required for criteria validation tests - disabled till we fix package dependencies
   "moto>=5.1.8",
   "pytest-asyncio>=1.1.0",
   "typer>=0.19.2",
-  "ruff>=0.14.0",
+  # Keep in sync with the ruff pin in .gitlab-ci.yml. Cap below 0.16: ruff 0.16
+  # formats Python code blocks in Markdown files, which fails `ruff format
+  # --check` on ~49 README/skill-file snippets during CodeBuild publish.
+  "ruff>=0.14.0,<0.16",
   "deepdiff>=6.0.0",                    # Required for BDA blueprint service tests
-  "datamodel-code-generator>=0.25.0",   # Required for schema/pydantic generator tests
+  "datamodel-code-generator>=0.64.0",   # Required for schema/pydantic generator tests
   "mypy-boto3-bedrock-runtime>=1.39.0", # Required for bedrock_utils tests
   # Evaluation module dependencies (from evaluation group)
-  "stickler-eval==0.1.4",
+  "stickler-eval==0.5.0",
   "genson==1.3.0",
-  "munkres>=1.1.4",
-  "numpy==1.26.4",
+  "numpy>=1.26,<3",
   "build==1.3.0",
+  "z3-solver==4.15.4.0",                  # Required for Z3 engine validation tests (pinned - newer versions require building from source)
 ]
 
 # Full package with all dependencies
 all = [
-  "stickler-eval==0.1.4",
+  "stickler-eval==0.5.0",
   "genson==1.3.0",
-  "Pillow==11.2.1",
+  "Pillow==12.3.0",
   "pypdfium2>=5.5.0",
   "amazon-textract-textractor[pandas]==1.9.2",
-  "munkres>=1.1.4",
   "numpy==1.26.4",
   "pandas==2.2.3",
-  "requests==2.32.4",
-  "pyarrow==20.0.0",
+  "requests==2.33.0",
+  "pyarrow==23.0.1",
   "openpyxl==3.1.5",
   "python-docx==1.2.0",
   "strands-agents==1.14.0; python_version>='3.10'",
-  "strands-agents-tools==0.2.13; python_version>='3.10'",
-  "bedrock-agentcore>=0.1.1; python_version>='3.10'",
+  "strands-agents-tools==0.2.22; python_version>='3.10'",
+  "bedrock-agentcore>=1.6.1,<1.9.0; python_version>='3.10'",  # cap rationale: see the [agents] extra
+  "jsonschema>=4.0.0",
   # "s3fs==2023.12.2" - - disabled till we fix package dependencies
 ]
 agentic-extraction = [
@@ -185,7 +244,7 @@ agentic-extraction = [
   "email-validator>=2.3.0",
   "tabulate>=0.9.0",
   "aws-lambda-powertools>=3.2.0",                          # Structured logging and observability
-  "datamodel-code-generator>=0.25.0",                      # Generate Pydantic models from JSON Schema
+  "datamodel-code-generator>=0.64.0",                      # Generate Pydantic models from JSON Schema
   "mypy-boto3-bedrock-runtime>=1.39.0",                    # Type stubs for bedrock_utils.py
 ]
 

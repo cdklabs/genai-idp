@@ -11,15 +11,21 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from idp_common.evaluation.contract import _is_match_true
+
 
 class EvaluationMethod(Enum):
     """Evaluation method types for different field comparison approaches."""
 
     EXACT = "EXACT"  # Exact string match after stripping punctuation and whitespace
-    NUMERIC_EXACT = "NUMERIC_EXACT"  # Exact numeric match after normalizing
+    NUMERIC_EXACT = (
+        "NUMERIC_EXACT"  # Exact numeric match, ±tolerance via evaluation-threshold
+    )
     SEMANTIC = "SEMANTIC"  # Semantic similarity comparison using embeddings
     HUNGARIAN = "HUNGARIAN"  # Bipartite matching for lists of values
     FUZZY = "FUZZY"  # Fuzzy string matching
+    LEVENSHTEIN = "LEVENSHTEIN"  # Levenshtein-distance-based string comparison
+    DATE = "DATE"  # Semantic date comparison (format-insensitive, ranges)
     LLM = "LLM"  # LLM-based comparison using Bedrock models
 
 
@@ -69,7 +75,13 @@ class SectionEvaluationResult:
     section_id: str
     document_class: str
     attributes: List[AttributeEvaluationResult]
-    metrics: Dict[str, float] = field(default_factory=dict)
+    # ``Dict[str, Any]`` because the runtime dict carries nested dicts
+    # (``_stickler_counts``), booleans (``evaluation_failed``), and
+    # strings (``failure_type``) alongside the derived-metric floats.
+    metrics: Dict[str, Any] = field(default_factory=dict)
+    stickler_comparison_result: Optional[Dict[str, Any]] = (
+        None  # Raw Stickler result for bulk aggregation
+    )
 
     def get_attribute_results(self) -> Dict[str, AttributeEvaluationResult]:
         """Get results indexed by attribute name."""
@@ -95,6 +107,16 @@ class DocSplitMetrics:
         default_factory=list
     )  # All predicted sections for unmatched display
     errors: List[str] = field(default_factory=list)
+    # Graded packet metrics (R14, from stickler.doc_split.packet_evaluation_metrics.
+    # evaluate_packet — V-measure / Rand index / ordering score). Optional
+    # because the exact-match counters above already have meaning on their own
+    # and older results.json files won't carry these fields. All values are
+    # in [0.0, 1.0] where 1.0 is perfect.
+    final_score: Optional[float] = None
+    clustering_score: Optional[float] = None
+    v_measure: Optional[float] = None
+    rand_index: Optional[float] = None
+    avg_ordering_score: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
@@ -112,6 +134,11 @@ class DocSplitMetrics:
             "section_details_with_order": self.section_details_with_order,
             "predicted_sections": self.predicted_sections,
             "errors": self.errors,
+            "final_score": self.final_score,
+            "clustering_score": self.clustering_score,
+            "v_measure": self.v_measure,
+            "rand_index": self.rand_index,
+            "avg_ordering_score": self.avg_ordering_score,
         }
 
 
@@ -125,6 +152,12 @@ class DocumentEvaluationResult:
     execution_time: float = 0.0
     output_uri: Optional[str] = None
     doc_split_metrics: Optional[DocSplitMetrics] = None
+
+    # Sections whose class was marked x-aws-idp-exclude-from-processing=true.
+    # These sections are NOT included in accuracy metrics but ARE listed in
+    # the markdown report with an "Excluded" annotation, so users can see
+    # what was intentionally skipped.
+    excluded_sections: List[Dict[str, Any]] = field(default_factory=list)
 
     def _format_nested_comparisons(
         self, field_comparisons: List[Dict[str, Any]], indent_level: int = 0
@@ -157,6 +190,8 @@ class DocumentEvaluationResult:
             "<th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Actual Value</th>"
             "<th style='padding: 8px; border: 1px solid #ddd; text-align: center;'>Match</th>"
             "<th style='padding: 8px; border: 1px solid #ddd; text-align: center;'>Score</th>"
+            "<th style='padding: 8px; border: 1px solid #ddd; text-align: center;'>Weight</th>"
+            "<th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Method</th>"
             "<th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Reason</th>"
             "</tr></thead><tbody>"
         )
@@ -166,8 +201,18 @@ class DocumentEvaluationResult:
             actual_key = fc.get("actual_key", "N/A")
             expected_val = str(fc.get("expected_value", ""))[:100]
             actual_val = str(fc.get("actual_value", ""))[:100]
-            match = fc.get("match", False)
+            # Use the SHARED predicate so the drilldown's green/red painting
+            # agrees with section counts and per-attribute verdict on the
+            # same row. Raw ``bool(fc.get("match", False))`` would paint the
+            # string ``"false"`` or a numeric score like ``0.5`` GREEN
+            # while the row was counted as a failure — the exact parent-
+            # vs-drilldown contradiction #625 exists to eliminate.
+            match = _is_match_true(fc.get("match"))
             score = fc.get("score", 0.0)
+            weight = fc.get("weight")
+            # Per-field comparison method (annotated in service.py); fall back to
+            # empty when comparing results produced before this was surfaced.
+            method = fc.get("evaluation_method", "")
             reason = fc.get("reason", "")
 
             # Escape HTML special characters
@@ -189,6 +234,15 @@ class DocumentEvaluationResult:
                 if reason
                 else ""
             )
+            method_escaped = (
+                str(method)
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                if method
+                else ""
+            )
+            weight_str = f"{weight:.2f}" if weight is not None else "1.00"
 
             # Style based on match status
             row_style = "background: #d4edda;" if match else "background: #f8d7da;"
@@ -202,6 +256,8 @@ class DocumentEvaluationResult:
                 f"<td style='padding: 8px; border: 1px solid #ddd;'>{actual_val}</td>"
                 f"<td style='padding: 8px; border: 1px solid #ddd; text-align: center;'>{match_symbol}</td>"
                 f"<td style='padding: 8px; border: 1px solid #ddd; text-align: center;'>{score:.3f}</td>"
+                f"<td style='padding: 8px; border: 1px solid #ddd; text-align: center;'>{weight_str}</td>"
+                f"<td style='padding: 8px; border: 1px solid #ddd; font-size: 0.85em;'>{method_escaped}</td>"
                 f"<td style='padding: 8px; border: 1px solid #ddd; font-size: 0.85em;'>{reason_escaped}</td>"
                 "</tr>"
             )
@@ -221,6 +277,7 @@ class DocumentEvaluationResult:
                     "section_id": sr.section_id,
                     "document_class": sr.document_class,
                     "metrics": sr.metrics,
+                    "stickler_comparison_result": sr.stickler_comparison_result,  # Include for bulk aggregation
                     "attributes": [
                         {
                             "name": ar.name,
@@ -249,7 +306,65 @@ class DocumentEvaluationResult:
         if self.doc_split_metrics:
             result["doc_split_metrics"] = self.doc_split_metrics.to_dict()
 
+        # Add excluded sections (not evaluated, but surfaced for transparency)
+        if self.excluded_sections:
+            result["excluded_sections"] = list(self.excluded_sections)
+
+        # NOTE: ``stickler_result_version`` is NOT stamped here. Stamping in
+        # ``to_dict()`` would silently upgrade the version on any round-trip
+        # (load a historical v1.0 ``results.json``, wrap it in a
+        # ``DocumentEvaluationResult``, re-serialize) — defeating the
+        # drift-detection soft gate the stamp exists to enable. The single
+        # writer path in ``service.py`` stamps at write time; new callers
+        # must do the same explicitly rather than inheriting it as a
+        # side-effect of ``to_dict()``.
+
         return result
+
+    @staticmethod
+    def _failure_remediation(sr: "SectionEvaluationResult") -> List[str]:
+        """Return "How to fix" lines appropriate to *this* section's failure.
+
+        Keyed on ``metrics["failure_type"]``, which ``evaluate_section`` sets
+        alongside ``evaluation_failed``. Results written before that field
+        existed carry no type; those get no remediation list rather than a
+        guessed one — the failure reason above already states the cause, and
+        advice for the wrong cause is worse than no advice.
+        """
+        failure_type = sr.metrics.get("failure_type")
+        steps: List[str] = []
+
+        if failure_type == "missing_schema_configuration":
+            steps = [
+                f"1. Add a configuration for '{sr.document_class}' in your `evaluation` config YAML",
+                "2. Ensure the document class name matches exactly (case-insensitive)",
+                "3. Or provide baseline/expected data when calling evaluate_document() to enable auto-generation",
+            ]
+        elif failure_type == "empty_nested_object":
+            steps = [
+                "1. Add at least one property to the nested object named above, or remove it from the schema",
+                "2. Re-run the evaluation",
+            ]
+        elif failure_type == "extraction_parsing_failed":
+            steps = [
+                "1. Open the section's extraction output — the model's response was not parseable JSON",
+                "2. Check whether the response was truncated (raise `max_tokens`) or wrapped in commentary",
+                "3. Re-run extraction for this document, then re-evaluate",
+            ]
+        elif failure_type == "baseline_data_validation_error":
+            steps = [
+                "1. Compare the baseline (expected) values against the class schema — the types disagree",
+                "2. Fix the baseline data (or widen the schema field type) and re-run the evaluation",
+            ]
+        elif failure_type == "schema_configuration_error":
+            steps = [
+                f"1. Review the `evaluation` schema for '{sr.document_class}' against the error above",
+                "2. Re-run the evaluation once the schema is valid",
+            ]
+
+        if not steps:
+            return []
+        return ["**How to fix:**", *steps, ""]
 
     def to_markdown(self) -> str:
         """Convert evaluation results to clean, portable markdown format."""
@@ -362,22 +477,58 @@ class DocumentEvaluationResult:
             f"- **Precision**: {precision:.2f} | **Recall**: {recall:.2f} | **F1 Score**: {f1_indicator} {f1_score:.2f}"
         )
 
-        # Add weighted overall score if available
-        weighted_score = self.overall_metrics.get("weighted_overall_score", 0)
-        if weighted_score >= 0.9:
-            weighted_indicator = "🟢"
-        elif weighted_score >= 0.7:
-            weighted_indicator = "🟡"
-        elif weighted_score >= 0.5:
-            weighted_indicator = "🟠"
+        # Add weighted overall score if available. When every section was a
+        # scoring no-op (no extractable schema), the weighted score is None —
+        # render as "N/A — Excluded" instead of a misleading 0.0000. The
+        # ``None`` sentinel is authoritative: service.py sets
+        # ``evaluation_excluded`` iff the score is None.
+        weighted_score = self.overall_metrics.get("weighted_overall_score")
+        if weighted_score is None:
+            sections.append(
+                "- **Weighted Overall Score**: ⚪ N/A — Excluded "
+                "(no extractable schema for any section)"
+            )
         else:
-            weighted_indicator = "🔴"
+            if weighted_score >= 0.9:
+                weighted_indicator = "🟢"
+            elif weighted_score >= 0.7:
+                weighted_indicator = "🟡"
+            elif weighted_score >= 0.5:
+                weighted_indicator = "🟠"
+            else:
+                weighted_indicator = "🔴"
 
-        sections.append(
-            f"- **Weighted Overall Score**: {weighted_indicator} {weighted_score:.4f} (Stickler's field-weighted aggregate)"
-        )
+            sections.append(
+                f"- **Weighted Overall Score**: {weighted_indicator} {weighted_score:.4f} (Stickler's field-weighted aggregate)"
+            )
 
         sections.append("")
+
+        # Report excluded sections (intentionally skipped from evaluation).
+        # These are surfaced here so users understand why section counts in
+        # the Overall Metrics table may be lower than the number of sections
+        # in the source document.
+        if self.excluded_sections:
+            sections.append("## Excluded Sections (Not Evaluated)")
+            sections.append("")
+            sections.append(
+                "The following sections were skipped during evaluation and do "
+                "**not** contribute to the accuracy metrics above. Sections are "
+                "excluded either because their class was marked "
+                "`x-aws-idp-exclude-from-processing: true` (whole-pipeline skip) "
+                "or because the class has no extractable attributes defined in "
+                "the evaluation schema (evaluation-only skip)."
+            )
+            sections.append("")
+            sections.append("| Section | Classification | Exclusion Reason | Pages |")
+            sections.append("| ------- | -------------- | ---------------- | ----- |")
+            for es in self.excluded_sections:
+                sid = es.get("section_id", "")
+                cls = es.get("classification", "")
+                reason = es.get("exclusion_reason") or "excluded"
+                pages = ", ".join(str(p) for p in es.get("page_ids") or [])
+                sections.append(f"| {sid} | {cls} | {reason} | {pages} |")
+            sections.append("")
 
         # Add overall metrics with two separate tables
         sections.append("## Overall Metrics")
@@ -428,12 +579,22 @@ class DocumentEvaluationResult:
             sections.append(doc_split_table)
             sections.append("")
 
-        # Add extraction metrics table
+        # Add extraction metrics table. ``overall_metrics`` can carry
+        # non-numeric entries — ``weighted_overall_score`` is None when every
+        # section was excluded, and companion flags like ``evaluation_excluded``
+        # / ``exclusion_reason`` / ``skipped_section_count`` document *why*.
+        # Render those as-is instead of trying to ``{value:.4f}`` them.
         sections.append("### Document Extraction Metrics")
         extraction_table = "| Metric | Value | Rating |\n| ------ | :----: | :----: |\n"
         for metric, value in self.overall_metrics.items():
-            indicator = get_rating_for_metric(metric, value)
-            extraction_table += f"| {metric} | {value:.4f} | {indicator} |\n"
+            if value is None:
+                extraction_table += f"| {metric} | N/A | ⚪ Excluded |\n"
+                continue
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                indicator = get_rating_for_metric(metric, value)
+                extraction_table += f"| {metric} | {value:.4f} | {indicator} |\n"
+            else:
+                extraction_table += f"| {metric} | {value} |  |\n"
         sections.append(extraction_table)
         sections.append("")
 
@@ -540,19 +701,22 @@ class DocumentEvaluationResult:
 
             # Check if this section had an evaluation failure
             if sr.metrics.get("evaluation_failed", False):
+                failure_reason = (
+                    sr.attributes[0].reason
+                    if sr.attributes and sr.attributes[0].reason
+                    else ""
+                )
                 sections.append("")
                 sections.append("⚠️ **EVALUATION FAILED**")
                 sections.append("")
+                # State the actual cause. This block used to assert that no
+                # configuration was found for the class, and print the matching
+                # "how to fix" list, for *every* failure — so a parsing error or
+                # a baseline type mismatch was described as a missing config,
+                # sending users to fix something that was not wrong.
                 sections.append(
-                    f"This section could not be evaluated because no configuration was found for document class: **{sr.document_class}**"
-                )
-                sections.append("")
-                sections.append("**Reasons for failure:**")
-                sections.append(
-                    "- No schema configuration exists for this document class in your evaluation config"
-                )
-                sections.append(
-                    "- No baseline data was provided to auto-generate a schema"
+                    failure_reason
+                    or f"This section could not be evaluated for document class: **{sr.document_class}**"
                 )
                 sections.append("")
                 sections.append("**Impact:**")
@@ -563,36 +727,50 @@ class DocumentEvaluationResult:
                     "- The failure is reflected in document-level aggregate metrics"
                 )
                 sections.append("")
-                sections.append("**How to fix:**")
-                sections.append(
-                    f"1. Add a configuration for '{sr.document_class}' in your `evaluation` config YAML"
-                )
-                sections.append(
-                    "2. Ensure the document class name matches exactly (case-insensitive)"
-                )
-                sections.append(
-                    "3. Or provide baseline/expected data when calling evaluate_document() to enable auto-generation"
-                )
-                sections.append("")
 
-                # Show the failure reason from attributes if available
-                if sr.attributes and sr.attributes[0].reason:
-                    sections.append("**Detailed error:**")
-                    sections.append(f"```\n{sr.attributes[0].reason}\n```")
-                    sections.append("")
+                for line in self._failure_remediation(sr):
+                    sections.append(line)
 
                 # Still show the metrics (all zeros) for transparency
                 sections.append("### Metrics (Failure State)")
+                sections.append("")
+                # Say what the zeros are. They are placeholders for a section
+                # that was never scored, not measurements of a bad extraction —
+                # read as accuracy they look alarming next to a healthy
+                # document-level score.
+                sections.append(
+                    "> These zeros mean *not scored*, not *scored zero* — this section "
+                    "was never evaluated, so there is nothing measured to report. They "
+                    "do count against the document-level aggregates above."
+                )
+                sections.append("")
                 metrics_table = (
                     "| Metric | Value | Rating |\n| ------ | :----: | :----: |\n"
                 )
                 for metric, value in sr.metrics.items():
-                    if metric == "evaluation_failed":
-                        continue  # Skip the flag itself in the table
-                    metrics_table += f"| {metric} | {value:.4f} | ❌ Failed |\n"
+                    if metric in ("evaluation_failed", "failure_type"):
+                        continue  # Skip internal flags in the table
+                    formatted_value = (
+                        f"{value:.4f}"
+                        if isinstance(value, (int, float))
+                        else str(value)
+                    )
+                    metrics_table += f"| {metric} | {formatted_value} | ❌ Failed |\n"
                 sections.append(metrics_table)
                 sections.append("")
                 continue  # Skip attribute display for failed sections
+
+            # Note any fields excluded from scoring due to validation errors, so
+            # reduced coverage is explicit rather than hidden in the attribute table.
+            skipped_count = sr.metrics.get("skipped_field_count", 0)
+            if skipped_count:
+                sections.append(
+                    f"> ⚠️ **{skipped_count} field(s) were excluded from scoring** "
+                    f"because they could not be validated against the schema. "
+                    f"The remaining fields were evaluated normally. See the "
+                    f"`__SKIPPED__` rows below for details."
+                )
+                sections.append("")
 
             # Section metrics with enhanced formatting (normal case)
             sections.append("#### Metrics")
@@ -600,8 +778,16 @@ class DocumentEvaluationResult:
                 "| Metric | Value | Rating |\n| ------ | :----: | :----: |\n"
             )
             for metric, value in sr.metrics.items():
-                # Skip the evaluation_failed flag in normal display
-                if metric == "evaluation_failed":
+                # Skip the evaluation_failed flag and the skipped-field count
+                # (rendered as a note above, not a scored metric)
+                if metric in ("evaluation_failed", "skipped_field_count"):
+                    continue
+                # Section metrics can carry non-numeric internal state (e.g.
+                # ``_stickler_counts``, a nested dict of raw Stickler tp/fa/fd/
+                # fp/tn/fn used for the document-level rollup). Skip anything
+                # that can't be formatted as ``{:.4f}`` so a new internal
+                # metric doesn't crash ``to_markdown``.
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
                     continue
 
                 # Add a visual indicator based on metric value
@@ -814,8 +1000,19 @@ class DocumentEvaluationResult:
             "   - Use for: Text where meaning matters more than exact wording"
         )
         sections.append("")
+        sections.append("6. **DATE** - Format-insensitive date / date-range comparison")
         sections.append(
-            "6. **LLM** - Advanced semantic evaluation using **AWS Bedrock LLMs**"
+            "   - Compares dates by resolved value, not surface form"
+            " (e.g. `2024-01-05` == `January 5, 2024`)"
+        )
+        sections.append(
+            "   - Optional per-field config via `x-aws-idp-evaluation-method-config`:"
+            " `dayfirst`, `range_mode`, `tolerance`"
+        )
+        sections.append("   - Use for: Dates in mixed formats, date ranges, birthdates")
+        sections.append("")
+        sections.append(
+            "7. **LLM** - Advanced semantic evaluation using **AWS Bedrock LLMs**"
         )
         sections.append("   - Configured via `evaluation.llm_method` section:")
         sections.append("     - `model`: Bedrock model ID (e.g., Claude Haiku, Sonnet)")
@@ -834,7 +1031,7 @@ class DocumentEvaluationResult:
         sections.append("### Array-Level Matching")
         sections.append("")
         sections.append(
-            "7. **HUNGARIAN** - Bipartite graph matching for arrays of structured objects"
+            "8. **HUNGARIAN** - Bipartite graph matching for arrays of structured objects"
         )
         sections.append(
             "   - Finds optimal 1:1 mapping between expected and actual lists"
@@ -847,7 +1044,7 @@ class DocumentEvaluationResult:
         )
         sections.append("")
         sections.append(
-            "8. **LLM for Arrays** - Semantic evaluation of entire list structures"
+            "9. **LLM for Arrays** - Semantic evaluation of entire list structures"
         )
         sections.append("   - Evaluates whether lists semantically match as a whole")
         sections.append(
@@ -857,7 +1054,7 @@ class DocumentEvaluationResult:
         sections.append("### Field Weighting")
         sections.append("")
         sections.append(
-            "Fields can be assigned importance weights using `x-aws-stickler-weight` in the schema:"
+            "Fields can be assigned importance weights using `x-aws-idp-evaluation-weight` in the schema:"
         )
         sections.append("- **Default weight**: 1.0 (standard importance)")
         sections.append(

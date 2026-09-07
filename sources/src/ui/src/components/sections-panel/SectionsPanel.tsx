@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Container,
@@ -17,31 +17,47 @@ import {
   Textarea,
   Modal,
   Alert,
+  Badge,
+  Popover,
 } from '@cloudscape-design/components';
 import type { ButtonDropdownProps } from '@cloudscape-design/components';
-import { generateClient } from 'aws-amplify/api';
+import { useCollection } from '@cloudscape-design/collection-hooks';
+import { generateClient } from '../../api/client-shim';
 import { ConsoleLogger } from 'aws-amplify/utils';
 
 import FileViewer from '../document-viewer/JSONViewer';
 import { getSectionConfidenceAlertCount, getSectionConfidenceAlerts } from '../common/confidence-alerts-utils';
-import useConfiguration from '../../hooks/use-configuration';
+import { SectionClassMismatch } from '../common/ClassMismatchIndicator';
+import ClassNameText from '../common/ClassNameText';
+import { EMPTY_CLASSIFICATION_INDEX, type ClassificationIndex } from '../common/classification-comparison-utils';
+import { getConfigClassOptions } from '../common/config-class-options';
+import PageGroupingEditor from '../common/PageGroupingEditor';
+import type { GroupedSection } from '../common/section-grouping';
+import { updateDocumentSections } from '../../graphql/generated';
+import usePageThumbnails from '../../hooks/use-page-thumbnails';
+import { getErrorMessage } from '../../utils/errorUtils';
+import { getSectionIssueStatus } from '../common/processing-issues-utils';
+import type { EditableSection } from '../../types/documents';
 import useSettingsContext from '../../contexts/settings';
 import useUserRole from '../../hooks/use-user-role';
-import { processChanges, getFileContents, skipAllSectionsReview } from '../../graphql/generated';
+import { useDocumentVersion } from '../../contexts/document-version';
+import { processChanges, getFilePresignedUrl, skipAllSectionsReview } from '../../graphql/generated';
 import { parseHITLReviewHistory } from '../../graphql/awsjson-parsers';
 
 const client = generateClient();
 const logger = new ConsoleLogger('SectionsPanel');
 
-interface SectionItem {
-  Id: string;
-  Class: string;
-  PageIds: number[];
-  OutputJSONUri?: string;
-  OriginalId?: string | null;
-  isModified?: boolean;
-  isNew?: boolean;
-}
+/**
+ * The row shape for the sections table.
+ *
+ * Derived from the generated GraphQL `Section` via `EditableSection` (issue
+ * #711) — this used to be a second, hand-written interface, so a field added to
+ * `schema.graphql` was invisible here even after codegen, with nothing failing
+ * to say so. That is why `InstanceCount` needed hand-wiring in two places, and
+ * why `Excluded` / `ExclusionReason` / `ConfidenceThresholdAlerts` had already
+ * drifted between the two Section shapes.
+ */
+type SectionItem = EditableSection;
 
 interface PageItem {
   Id: number;
@@ -74,12 +90,127 @@ interface SectionsPanelProps {
   documentItem?: DocumentItem;
   mergedConfig?: Record<string, unknown> | null;
   onDocumentUpdate?: (updater: (prev: Record<string, unknown>) => Record<string, unknown>) => void;
+  /**
+   * Ground-truth-vs-predicted classification for this document, loaded once by
+   * the document page. Empty (the default) when there is no ground truth, in
+   * which case no class is annotated.
+   */
+  classificationIndex?: ClassificationIndex;
 }
 
 // Cell renderer components
 const IdCell = ({ item }: { item: SectionItem }): React.JSX.Element => <span>{item.Id}</span>;
-const ClassCell = ({ item }: { item: SectionItem }): React.JSX.Element => <span>{item.Class}</span>;
+
+// Render the class name, annotated with a "Skipped" badge when the section's
+// classification was marked x-aws-idp-exclude-from-processing=true in config,
+// and with a mismatch alert when ground truth expects a different class.
+const ClassCell = ({
+  item,
+  classificationIndex = EMPTY_CLASSIFICATION_INDEX,
+}: {
+  item: SectionItem;
+  classificationIndex?: ClassificationIndex;
+}): React.JSX.Element => {
+  // An excluded section is not extracted, so comparing its class to ground
+  // truth would flag a section nobody scored.
+  const mismatch = item.Excluded ? null : (
+    <SectionClassMismatch index={classificationIndex} pageNumbers={item.PageIds ?? []} predictedClass={item.Class} />
+  );
+
+  // Only rendered when the section holds more than one document, so a normal
+  // section is just its class name.
+  const instances = <MultiInstanceBadge item={item} />;
+
+  if (item.Excluded) {
+    return (
+      <SpaceBetween direction="horizontal" size="xs">
+        <ClassNameText color="#5f6b7a">{item.Class}</ClassNameText>
+        <Badge color="grey">Skipped: {item.ExclusionReason || 'excluded'}</Badge>
+      </SpaceBetween>
+    );
+  }
+  if (!mismatch && !instances) return <ClassNameText>{item.Class}</ClassNameText>;
+  return (
+    <SpaceBetween direction="horizontal" size="xs">
+      <ClassNameText>{item.Class}</ClassNameText>
+      {instances}
+      {mismatch}
+    </SpaceBetween>
+  );
+};
+
 const PageIdsCell = ({ item }: { item: SectionItem }): React.JSX.Element => <span>{item.PageIds.join(', ')}</span>;
+
+// Multi-instance annotation, rendered INSIDE the class cell rather than in a
+// column of its own. `InstanceCount` is how many separate documents of this
+// section's Class extraction found in it, and it is worth screen space in
+// exactly one case:
+//   > 1        -> the section holds several distinct documents that
+//                 classification did not split apart. A Badge (the same Badge
+//                 vocabulary the "Skipped" annotation uses) plus a hover Popover.
+//   1, 0, absent -> nothing at all. A column showed "1" on every row of a normal
+//                 document and cost width the table did not have (it wrapped its
+//                 own header to "Instanc/es" and pushed Actions off the panel).
+//                 It also distinguished "1" from "undetermined" — a diagnostic
+//                 distinction, still available on the API and in the Processing
+//                 Report, that no reader of this table was acting on.
+// The *warning* for the unflagged case is owned by the Status column (backend
+// raises a `extraction_multi_instance_detected` ProcessingIssue), so this stays
+// factual rather than alarming — a class configured for multiple instances is
+// working as intended.
+//
+// EXCEPT for the #753 case, where the count comes from the model's own answer to
+// "how many documents are in these pages" and the extra records were NOT
+// extracted. "Each one was extracted as its own instance" would be flatly untrue
+// there, so the badge reads the section's own
+// `extraction_multi_instance_suspected` issue — the authoritative signal, already
+// on the row — rather than needing a new `InstanceSource` field plumbed through
+// the whole Section chain.
+const SUSPECTED_ISSUE_CODE = 'extraction_multi_instance_suspected';
+
+const MultiInstanceBadge = ({ item }: { item: SectionItem }): React.JSX.Element | null => {
+  const count = item.InstanceCount ?? 0;
+
+  if (count <= 1) {
+    return null;
+  }
+
+  const suspected = (item.ProcessingIssues ?? []).some((issue) => issue?.code === SUSPECTED_ISSUE_CODE);
+
+  return (
+    <Popover
+      dismissButton={false}
+      position="top"
+      size="medium"
+      triggerType="custom"
+      header={suspected ? 'Documents may be missing from this section' : 'Multiple documents in one section'}
+      content={
+        <SpaceBetween size="xs">
+          {suspected ? (
+            <Box variant="p">
+              These pages appear to contain {count} separate {item.Class || 'document'} documents, but only the first was extracted — the
+              rest are not in the result.
+            </Box>
+          ) : (
+            <Box variant="p">
+              Extraction found {count} separate {item.Class || 'document'} documents in this section. Each one was extracted as its own
+              instance.
+            </Box>
+          )}
+          <Box variant="small" color="text-body-secondary">
+            {suspected
+              ? 'Split the section (classification section splitting), or turn on multi-instance extraction for this class so every document is extracted.'
+              : 'If these should be separate sections, review the classification settings for this class.'}
+          </Box>
+        </SpaceBetween>
+      }
+    >
+      <span style={{ cursor: 'pointer' }}>
+        <Badge color={suspected ? 'severity-medium' : 'blue'}>{count}</Badge>
+      </span>
+    </Popover>
+  );
+};
 
 // Confidence alerts cell showing only count
 const ConfidenceAlertsCell = ({
@@ -103,6 +234,60 @@ const ConfidenceAlertsCell = ({
   }
 
   return <StatusIndicator type="warning">{alertCount}</StatusIndicator>;
+};
+
+// Processing status cell: a worst-severity StatusIndicator over the section's
+// structured ProcessingIssues, wrapped in a hover Popover listing each issue's
+// message + root cause. Reuses the getSectionIssueStatus helper (mirrors the
+// hitl-status-renderer + confidence-alerts-utils conventions).
+const StatusCell = ({ item }: { item: SectionItem }): React.JSX.Element => {
+  const issues = item.ProcessingIssues || [];
+  const { type, label } = getSectionIssueStatus(item);
+
+  const indicator = <StatusIndicator type={type}>{label}</StatusIndicator>;
+
+  if (issues.length === 0) {
+    return indicator;
+  }
+
+  return (
+    <Popover
+      dismissButton={false}
+      position="top"
+      size="large"
+      triggerType="custom"
+      header="Processing issues"
+      content={
+        <SpaceBetween size="s">
+          {issues.map((issue, idx) => (
+            <div key={`${issue.code ?? 'issue'}-${issue.message?.slice(0, 24) ?? idx}`}>
+              <Box variant="awsui-key-label">
+                <StatusIndicator
+                  type={
+                    (issue.severity || 'info').toLowerCase() === 'error'
+                      ? 'error'
+                      : (issue.severity || 'info').toLowerCase() === 'warning'
+                        ? 'warning'
+                        : 'info'
+                  }
+                >
+                  {issue.code || issue.stage || 'issue'}
+                </StatusIndicator>
+              </Box>
+              <Box variant="p">{issue.message}</Box>
+              {issue.rootCause && (
+                <Box variant="small" color="text-body-secondary">
+                  Root cause: {issue.rootCause}
+                </Box>
+              )}
+            </div>
+          ))}
+        </SpaceBetween>
+      }
+    >
+      <span style={{ cursor: 'pointer' }}>{indicator}</span>
+    </Popover>
+  );
 };
 
 const ActionsCell = ({
@@ -206,23 +391,28 @@ const ActionsCell = ({
 
       logger.info(`Downloading ${type} data from:`, fileUri);
 
-      // Fetch file contents using GraphQL
+      // Resolve a presigned GET URL and fetch the bytes directly from S3.
+      // Section result.json files can exceed Lambda's 6 MB synchronous
+      // response cap, so we must not proxy the content through the resolver.
       const response = await client.graphql({
-        query: getFileContents,
+        query: getFilePresignedUrl,
         variables: { s3Uri: fileUri },
       });
 
-      const result = response.data.getFileContents;
+      const result = response.data.getFilePresignedUrl;
 
-      if (result?.isBinary) {
-        alert('This file contains binary content that cannot be downloaded');
-        return;
+      if (!result?.presignedUrl) {
+        throw new Error('No presigned URL returned');
       }
 
-      const content = result?.content;
+      const s3Response = await fetch(result.presignedUrl);
+      if (!s3Response.ok) {
+        throw new Error(`S3 fetch failed: ${s3Response.status} ${s3Response.statusText}`);
+      }
+      const content = await s3Response.text();
 
       // Create blob and download
-      const blob = new Blob([content as string], { type: 'application/json' });
+      const blob = new Blob([content], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
 
@@ -330,20 +520,30 @@ const EditableClassCell = ({
   validationErrors,
   updateSection,
   getAvailableClasses,
+  classificationIndex = EMPTY_CLASSIFICATION_INDEX,
 }: {
   item: SectionItem;
   validationErrors: Record<string, string[]>;
   updateSection: (id: string, field: string, value: string) => void;
-  getAvailableClasses: () => { value: string; label: string }[];
+  getAvailableClasses: () => { value: string; label: string; description?: string }[];
+  classificationIndex?: ClassificationIndex;
 }): React.JSX.Element => (
   <FormField errorText={validationErrors[item.Id]?.find((err) => err.includes('class'))}>
-    <Select
-      selectedOption={getAvailableClasses().find((option) => option.value === item.Class) || null}
-      onChange={({ detail }) => updateSection(item.Id, 'Class', detail.selectedOption.value ?? '')}
-      options={getAvailableClasses()}
-      placeholder="Select class/type"
-      invalid={validationErrors[item.Id]?.some((err) => err.includes('class'))}
-    />
+    <SpaceBetween size="xs">
+      <Select
+        selectedOption={getAvailableClasses().find((option) => option.value === item.Class) || null}
+        onChange={({ detail }) => updateSection(item.Id, 'Class', detail.selectedOption.value ?? '')}
+        options={getAvailableClasses()}
+        placeholder="Select class/type"
+        invalid={validationErrors[item.Id]?.some((err) => err.includes('class'))}
+        filteringType="auto"
+        expandToViewport
+      />
+      {/* Shown in edit mode too: this is where the class can actually be
+          corrected, so knowing what ground truth expects is most actionable
+          here. */}
+      <SectionClassMismatch index={classificationIndex} pageNumbers={item.PageIds ?? []} predictedClass={item.Class} />
+    </SpaceBetween>
   </FormField>
 );
 
@@ -481,6 +681,7 @@ const createColumnDefinitions = (
   openViewerSectionIndex: number | null,
   setOpenViewerSectionIndex: (index: number | null) => void,
   onNavigateToSection: (index: number) => void,
+  classificationIndex: ClassificationIndex,
 ) => {
   // Get completed sections from documentItem
   const completedSections = documentItem?.hitlSectionsCompleted || [];
@@ -498,7 +699,7 @@ const createColumnDefinitions = (
     {
       id: 'class',
       header: 'Class/Type',
-      cell: (item: SectionItem) => <ClassCell item={item} />,
+      cell: (item: SectionItem) => <ClassCell item={item} classificationIndex={classificationIndex} />,
       sortingField: 'Class',
       minWidth: 200,
       width: 200,
@@ -514,10 +715,18 @@ const createColumnDefinitions = (
     },
     {
       id: 'confidenceAlerts',
-      header: 'Low Confidence Fields',
+      header: 'Low-conf. fields',
       cell: (item: SectionItem) => <ConfidenceAlertsCell item={item} mergedConfig={mergedConfig} />,
       minWidth: 140,
       width: 140,
+      isResizable: true,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (item: SectionItem) => <StatusCell item={item} />,
+      minWidth: 150,
+      width: 150,
       isResizable: true,
     },
     {
@@ -563,6 +772,7 @@ const createPattern1EditColumnDefinitions = (
   openViewerSectionIndex: number | null,
   setOpenViewerSectionIndex: (index: number | null) => void,
   onNavigateToSection: (index: number) => void,
+  classificationIndex: ClassificationIndex,
 ) => {
   // Get completed sections from documentItem
   const completedSections = documentItem?.hitlSectionsCompleted || [];
@@ -580,7 +790,7 @@ const createPattern1EditColumnDefinitions = (
     {
       id: 'class',
       header: 'Class/Type',
-      cell: (item: SectionItem) => <ClassCell item={item} />,
+      cell: (item: SectionItem) => <ClassCell item={item} classificationIndex={classificationIndex} />,
       sortingField: 'Class',
       minWidth: 200,
       width: 200,
@@ -596,7 +806,7 @@ const createPattern1EditColumnDefinitions = (
     },
     {
       id: 'confidenceAlerts',
-      header: 'Low Confidence Fields',
+      header: 'Low-conf. fields',
       cell: (item: SectionItem) => <ConfidenceAlertsCell item={item} mergedConfig={mergedConfig} />,
       minWidth: 140,
       width: 140,
@@ -658,6 +868,7 @@ const createEditColumnDefinitions = (
   openViewerSectionIndex: number | null,
   setOpenViewerSectionIndex: (index: number | null) => void,
   onNavigateToSection: (index: number) => void,
+  classificationIndex: ClassificationIndex,
 ) => [
   {
     id: 'id',
@@ -676,6 +887,7 @@ const createEditColumnDefinitions = (
         validationErrors={validationErrors}
         updateSection={updateSection}
         getAvailableClasses={getAvailableClasses}
+        classificationIndex={classificationIndex}
       />
     ),
     minWidth: 200,
@@ -720,8 +932,19 @@ const createEditColumnDefinitions = (
   },
 ];
 
-const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDocumentUpdate }: SectionsPanelProps): React.JSX.Element => {
+const SectionsPanel = ({
+  sections,
+  pages = [],
+  documentItem,
+  mergedConfig,
+  onDocumentUpdate,
+  classificationIndex = EMPTY_CLASSIFICATION_INDEX,
+}: SectionsPanelProps): React.JSX.Element => {
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isRegrouping, setIsRegrouping] = useState(false);
+  const [isSavingGrouping, setIsSavingGrouping] = useState(false);
+  const [groupingNotice, setGroupingNotice] = useState<string | null>(null);
+  const thumbnailUrls = usePageThumbnails(pages);
   const [editedSections, setEditedSections] = useState<SectionItem[]>([]);
   const [validationErrors, setValidationErrors] = useState<Record<string, string[]>>({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -730,9 +953,17 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
   const [isSkipping, setIsSkipping] = useState(false);
   // Track which section's viewer is open for navigation
   const [openViewerSectionIndex, setOpenViewerSectionIndex] = useState<number | null>(null);
-  const { mergedConfig: configuration } = useConfiguration();
+  // `mergedConfig` is the config VERSION the document was processed with
+  // (see DocumentPanel: it fetches `documentVersionConfig` from the doc's
+  // `configVersion` and passes it in here). Using the current live config
+  // instead would show the wrong class vocabulary in Edit Mode for docs
+  // processed under a previous or different configuration profile.
+  const configuration = mergedConfig;
   const { settings: settings2 } = useSettingsContext();
   const { isReviewerOnly, canWrite, canReview } = useUserRole();
+  // When viewing a past document version, all edits are disabled — the panels
+  // write to the *current* output objects, not the historical snapshot.
+  const { isHistorical } = useDocumentVersion();
 
   // Check if current pattern is Pattern-1 (for data-only edit mode)
   const isPattern1 = () => {
@@ -746,7 +977,8 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
   const isHitlCompleted = hitlStatusLower === 'completed' || hitlStatusLower === 'reviewcompleted';
   const hasPendingHITL = documentItem?.hitlTriggered && !isHitlCompleted && !isHitlSkipped;
   // Show skip button only if HITL pending and not already completed/skipped
-  const showSkipAllButton = canReview && hasPendingHITL;
+  // (never while viewing a historical version — it mutates current state).
+  const showSkipAllButton = canReview && hasPendingHITL && !isHistorical;
 
   // Log for debugging
   logger.debug('HITL Status Check:', {
@@ -768,23 +1000,88 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
   const docStatus = documentItem?.objectStatus?.toLowerCase() || '';
   const isDocumentProcessing = processingStatuses.includes(docStatus);
 
+  /**
+   * Pages for the board, in the document's OWN numbering.
+   *
+   * Passed through unconverted, unlike the test-set path: document page ids are 1-based
+   * except BDA / Pattern-1, which is 0-based, and `section-grouping` is deliberately
+   * base-agnostic for exactly this reason. Converting here would put an off-by-one into
+   * the surface that has two numbering conventions.
+   */
+  const boardPages = useMemo(
+    () => (pages ?? []).map((page) => ({ id: page.Id, imageUri: thumbnailUrls[String(page.Id)] ?? null })),
+    [pages, thumbnailUrls],
+  );
+
+  const boardSections = useMemo<GroupedSection[]>(
+    () =>
+      (sections ?? []).map((section) => ({
+        sectionId: String(section.Id),
+        documentClass: section.Class ?? null,
+        pageIds: (section.PageIds ?? []).map((id) => Number(id)),
+      })),
+    [sections],
+  );
+
+  const handleSaveGrouping = async (next: GroupedSection[]) => {
+    const documentKey = documentItem?.objectKey || documentItem?.ObjectKey;
+    if (!documentKey) return;
+    setIsSavingGrouping(true);
+    try {
+      const response = await client.graphql({
+        query: updateDocumentSections,
+        variables: {
+          objectKey: documentKey,
+          sections: next.map((section) => ({
+            sectionId: section.sectionId,
+            classification: section.documentClass ?? undefined,
+            pageIds: section.pageIds.map((id) => String(id)),
+          })),
+        },
+      });
+      const result = response.data?.updateDocumentSections;
+      if (!result?.success) {
+        // Surfaced rather than thrown: the resolver returns a reasoned refusal for the
+        // cases a reviewer can act on — a document mid-pipeline, most of all.
+        setGroupingNotice(result?.message ?? 'The page grouping could not be saved.');
+        return;
+      }
+      setGroupingNotice(result.message ?? null);
+      setIsRegrouping(false);
+      // The document record changed underneath the page, so the caller refetches.
+      if (onDocumentUpdate) onDocumentUpdate((prev) => ({ ...prev }));
+    } catch (err) {
+      logger.error('Could not save the page grouping:', err);
+      setGroupingNotice(`Could not save the page grouping: ${getErrorMessage(err)}`);
+    } finally {
+      setIsSavingGrouping(false);
+    }
+  };
+
   // Disable edit mode if:
   // - User has no write or review permissions (Viewer role), OR
   // - REVIEWER only: HITL triggered but not claimed, document processing, or HITL completed/skipped
   // Admins and Authors can always edit
+  // - Viewing a historical version (read-only snapshot)
   const isEditModeDisabled =
+    isHistorical ||
     (!canWrite && !canReview) ||
     (isReviewerOnly && ((hitlTriggered && !hasReviewOwner) || isDocumentProcessing || isHitlCompleted || isHitlSkipped));
 
   logger.debug('Edit Mode Check:', { isReviewerOnly, isEditModeDisabled, isHitlCompleted, isHitlSkipped });
 
-  // Auto-exit edit mode for reviewers when document starts processing or HITL is completed/skipped
+  // Auto-exit edit mode when switching to a historical version, or (for
+  // reviewers) when the document starts processing or HITL is completed/skipped.
   useEffect(() => {
+    if (isHistorical && isEditMode) {
+      setIsEditMode(false);
+      return;
+    }
     if (isReviewerOnly && isEditMode && (isDocumentProcessing || isHitlCompleted || isHitlSkipped)) {
       logger.info('Auto-exiting edit mode due to status change');
       setIsEditMode(false);
     }
-  }, [isReviewerOnly, isDocumentProcessing, isHitlCompleted, isHitlSkipped, isEditMode]);
+  }, [isHistorical, isReviewerOnly, isDocumentProcessing, isHitlCompleted, isHitlSkipped, isEditMode]);
 
   // Handle skip all sections review (Admin only)
   const handleSkipAllSections = async () => {
@@ -855,23 +1152,10 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
     }
   }, [isEditMode, sections]);
 
-  // Get available classes from configuration
-  const getAvailableClasses = () => {
-    if (!configuration?.classes) return [];
-    return (configuration.classes as Record<string, unknown>[])
-      .map((cls: Record<string, unknown>) => {
-        // Support both JSON Schema and legacy formats
-        // JSON Schema: $id or x-aws-idp-document-type
-        // Legacy: name
-        const className = String(cls.$id || cls['x-aws-idp-document-type'] || cls.name || '');
-
-        return {
-          label: className,
-          value: className,
-        };
-      })
-      .filter((option) => option.value); // Remove any undefined entries
-  };
+  // Get available classes from the document's configuration profile (passed in as
+  // `mergedConfig`). Shared with Test Studio's annotation editor, which offers
+  // the same correction against the same config.
+  const getAvailableClasses = () => getConfigClassOptions(configuration);
 
   // Generate next sequential section ID
   const getNextSectionId = () => {
@@ -1083,9 +1367,12 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
       return true;
     }
 
-    // Check for changes in page IDs (deep comparison)
-    const originalPageIds = [...(originalSection.PageIds || [])].sort();
-    const currentPageIds = [...(section.PageIds || [])].sort();
+    // Page ids, compared in order. Both sides used to be sorted before comparing, which
+    // made a pure reorder invisible — Save would stay disabled on a real change — and the
+    // sort had no comparator, so it ordered numbers lexicographically (1, 10, 2). Order is
+    // part of the grouping: it is what `split_accuracy_with_order` scores.
+    const originalPageIds = originalSection.PageIds || [];
+    const currentPageIds = section.PageIds || [];
 
     if (originalPageIds.length !== currentPageIds.length) {
       return true;
@@ -1264,6 +1551,7 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
           openViewerSectionIndex,
           setOpenViewerSectionIndex,
           handleNavigateToSection,
+          classificationIndex,
         )
       : createEditColumnDefinitions(
           validationErrors,
@@ -1279,6 +1567,7 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
           openViewerSectionIndex,
           setOpenViewerSectionIndex,
           handleNavigateToSection,
+          classificationIndex,
         )
     : createColumnDefinitions(
         pages,
@@ -1291,9 +1580,22 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
         openViewerSectionIndex,
         setOpenViewerSectionIndex,
         handleNavigateToSection,
+        classificationIndex,
       );
 
-  const tableItems = isEditMode ? editedSections : sections || [];
+  // Sort sections by their starting page ID for consistent display order.
+  // During parallel Map state execution (Extraction/Assessment), subscription events
+  // may arrive out of order — the DynamoDB Sections array order depends on which
+  // parallel Lambda finishes first. Sorting ensures stable visual ordering.
+  const tableItems = isEditMode ? editedSections : sortSectionsByPageId(sections || []);
+
+  // Sorting via the design system's own collection hook rather than a hand-rolled
+  // sort: it honours BOTH `sortingField` and `sortingComparator` columns and owns
+  // the direction, so every column that declares a sort works. Starts unsorted,
+  // so the default view keeps its existing order. `sortedItems` feeds the table
+  // ONLY — `tableItems` still feeds everything else, which must stay in document
+  // order however the table is sorted.
+  const { items: sortedItems, collectionProps } = useCollection(tableItems, { sorting: {} });
 
   // Check if there are any validation errors
   const hasValidationErrors = Object.keys(validationErrors).length > 0;
@@ -1311,6 +1613,16 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
                     {showSkipAllButton && (
                       <Button variant="normal" onClick={() => setShowSkipAllModal(true)} disabled={isSkipping} loading={isSkipping}>
                         Skip All Reviews
+                      </Button>
+                    )}
+                    {/* Distinct from Edit Mode on purpose, and the labels carry the
+                        difference: this keeps the extracted values, whereas Edit Mode's
+                        save is already called "Process Changes" / "Save and Reprocess"
+                        because it regenerates them. Hidden for Pattern-1, where BDA owns
+                        the section structure. */}
+                    {!isPattern1() && (
+                      <Button iconName="edit" onClick={() => setIsRegrouping(true)} disabled={isEditModeDisabled}>
+                        Edit page grouping
                       </Button>
                     )}
                     <Button variant="primary" iconName="edit" onClick={handleEditSectionsClick} disabled={isEditModeDisabled}>
@@ -1346,6 +1658,32 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
           </Header>
         }
       >
+        {groupingNotice && (
+          <Alert type="info" dismissible onDismiss={() => setGroupingNotice(null)}>
+            {groupingNotice}
+          </Alert>
+        )}
+
+        {isRegrouping && (
+          <PageGroupingEditor
+            pages={boardPages}
+            sections={boardSections}
+            classOptions={getAvailableClasses()}
+            canChangeClass={!isEditModeDisabled}
+            consequence={
+              <>
+                Moving pages rewrites this document&apos;s <b>section grouping</b>. The extracted field values are <b>kept</b> — including
+                any a reviewer corrected — and the document is <b>not</b> reprocessed, so they may no longer match their pages. Use{' '}
+                <b>Edit Mode → Process Changes</b> afterwards if you would rather the pipeline redo them.
+              </>
+            }
+            saveLabel="Save page grouping"
+            isSaving={isSavingGrouping}
+            onSave={handleSaveGrouping}
+            onCancel={() => setIsRegrouping(false)}
+          />
+        )}
+
         {hasValidationErrors && (
           <Alert type="error" header="Validation Errors">
             Please fix the following errors before saving:
@@ -1367,8 +1705,8 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
         <div style={{ overflowX: 'auto', position: 'relative' }}>
           <Table
             columnDefinitions={columnDefinitions}
-            items={tableItems}
-            sortingDisabled
+            items={sortedItems}
+            {...collectionProps}
             variant="embedded"
             resizableColumns
             stickyHeader={false}

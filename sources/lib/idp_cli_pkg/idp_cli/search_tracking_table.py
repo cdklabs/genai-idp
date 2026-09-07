@@ -14,9 +14,10 @@ from typing import Optional
 
 import boto3
 from botocore.config import Config
-from idp_sdk.core.stack_info import StackInfo
 from rich.console import Console
 from rich.table import Table
+
+from idp_sdk import IDPClient
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -35,9 +36,9 @@ class TrackingTableSearcher:
         self.stack_name = stack_name
         self.region = region
 
-        # Get stack resources
-        stack_info = StackInfo(stack_name, region)
-        self.resources = stack_info.get_resources()
+        # Get stack resources via IDPClient
+        client = IDPClient(stack_name=stack_name, region=region)
+        self.resources = client.stack.get_resources()
 
         # Initialize DynamoDB client
         session = boto3.Session(region_name=region)
@@ -45,7 +46,7 @@ class TrackingTableSearcher:
         self.dynamodb = session.client("dynamodb", config=config)
 
         # Get table name
-        self.table_name = self.resources.get("DocumentsTable")
+        self.table_name = self.resources.documents_table
 
     def search_by_pk_and_status(self, pk: str, object_status: str) -> dict:
         """Search for documents by PK substring and ObjectStatus.

@@ -25,6 +25,8 @@ from .schema_constants import (
     X_AWS_IDP_ATTRIBUTES_PROMPT,
     X_AWS_IDP_IMAGE_PATH,
     X_AWS_IDP_DOCUMENT_NAME_REGEX,
+    X_AWS_IDP_EXCLUDE_FROM_PROCESSING,
+    X_AWS_IDP_EXCLUSION_REASON,
     X_AWS_IDP_PAGE_CONTENT_REGEX,
     VALID_EVALUATION_METHODS,
     MAX_PROMPT_OVERRIDE_LENGTH,
@@ -120,6 +122,50 @@ def is_json_schema_format(data: Union[Dict, List, Any]) -> bool:
     return not is_legacy_format(data)
 
 
+def _migrate_examples(examples: Any) -> Any:
+    """
+    Normalize a class's few-shot examples to the canonical ``x-aws-idp-*`` keys.
+
+    The examples *container* has always been migrated to ``x-aws-idp-examples``,
+    but each entry's fields kept their legacy camelCase names
+    (``classPrompt`` / ``attributesPrompt`` / ``imagePath``) even though the
+    canonical names are what the docs describe. Both spellings are accepted when
+    examples are consumed (see ``idp_common.utils.few_shot_example_builder``);
+    this converts them on migration so stored configs converge on one form.
+
+    A pre-existing canonical key always wins, and any other keys (``name``,
+    ``id``, ...) are preserved untouched. Non-list / non-dict input is returned
+    as-is so malformed config never breaks migration.
+
+    Args:
+        examples: The value of a class's examples list.
+
+    Returns:
+        The examples list with canonical field keys.
+    """
+    if not isinstance(examples, list):
+        return examples
+
+    aliases = (
+        (X_AWS_IDP_CLASS_PROMPT, LEGACY_CLASS_PROMPT),
+        (X_AWS_IDP_ATTRIBUTES_PROMPT, LEGACY_ATTRIBUTES_PROMPT),
+        (X_AWS_IDP_IMAGE_PATH, LEGACY_IMAGE_PATH),
+    )
+
+    migrated = []
+    for example in examples:
+        if not isinstance(example, dict):
+            migrated.append(example)
+            continue
+        entry = dict(example)
+        for canonical, legacy in aliases:
+            if legacy in entry:
+                value = entry.pop(legacy)
+                entry.setdefault(canonical, value)
+        migrated.append(entry)
+    return migrated
+
+
 def migrate_legacy_to_schema(
     legacy_classes: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -155,7 +201,9 @@ def migrate_legacy_to_schema(
 
         # Migrate examples if present
         if LEGACY_EXAMPLES in class_config:
-            migrated_class[X_AWS_IDP_EXAMPLES] = class_config[LEGACY_EXAMPLES]
+            migrated_class[X_AWS_IDP_EXAMPLES] = _migrate_examples(
+                class_config[LEGACY_EXAMPLES]
+            )
 
         # Migrate regex patterns if present
         if LEGACY_DOCUMENT_NAME_REGEX in class_config:
@@ -166,6 +214,26 @@ def migrate_legacy_to_schema(
         if LEGACY_DOCUMENT_PAGE_CONTENT_REGEX in class_config:
             migrated_class[X_AWS_IDP_PAGE_CONTENT_REGEX] = class_config[
                 LEGACY_DOCUMENT_PAGE_CONTENT_REGEX
+            ]
+
+        # Migrate excluded-class flags (support legacy snake_case and new
+        # x-aws-idp-* keys both as input)
+        if X_AWS_IDP_EXCLUDE_FROM_PROCESSING in class_config:
+            migrated_class[X_AWS_IDP_EXCLUDE_FROM_PROCESSING] = class_config[
+                X_AWS_IDP_EXCLUDE_FROM_PROCESSING
+            ]
+        elif "exclude_from_processing" in class_config:
+            migrated_class[X_AWS_IDP_EXCLUDE_FROM_PROCESSING] = class_config[
+                "exclude_from_processing"
+            ]
+
+        if X_AWS_IDP_EXCLUSION_REASON in class_config:
+            migrated_class[X_AWS_IDP_EXCLUSION_REASON] = class_config[
+                X_AWS_IDP_EXCLUSION_REASON
+            ]
+        elif "exclusion_reason" in class_config:
+            migrated_class[X_AWS_IDP_EXCLUSION_REASON] = class_config[
+                "exclusion_reason"
             ]
 
         legacy_attributes = class_config.get(LEGACY_ATTRIBUTES, [])
@@ -183,9 +251,9 @@ def migrate_legacy_to_schema(
             else:
                 schema_attr = _migrate_simple_attribute(attr)
 
-            migrated_class[LEGACY_ATTRIBUTES][SCHEMA_PROPERTIES][
-                attr_name
-            ] = schema_attr
+            migrated_class[LEGACY_ATTRIBUTES][SCHEMA_PROPERTIES][attr_name] = (
+                schema_attr
+            )
 
         migrated_classes.append(migrated_class)
 
@@ -463,13 +531,18 @@ def _convert_classes_to_json_schema(
         if required:
             schema[SCHEMA_REQUIRED] = required
 
-        # Add examples if present (check both legacy and new key)
+        # Add examples if present (check both legacy and new key). Entry fields are
+        # normalized to the canonical x-aws-idp-* names either way.
         if LEGACY_EXAMPLES in doc_type_class and doc_type_class[LEGACY_EXAMPLES]:
-            schema[X_AWS_IDP_EXAMPLES] = doc_type_class[LEGACY_EXAMPLES]
+            schema[X_AWS_IDP_EXAMPLES] = _migrate_examples(
+                doc_type_class[LEGACY_EXAMPLES]
+            )
         elif (
             X_AWS_IDP_EXAMPLES in doc_type_class and doc_type_class[X_AWS_IDP_EXAMPLES]
         ):
-            schema[X_AWS_IDP_EXAMPLES] = doc_type_class[X_AWS_IDP_EXAMPLES]
+            schema[X_AWS_IDP_EXAMPLES] = _migrate_examples(
+                doc_type_class[X_AWS_IDP_EXAMPLES]
+            )
 
         # Add regex patterns if present
         if X_AWS_IDP_DOCUMENT_NAME_REGEX in doc_type_class:
@@ -480,6 +553,17 @@ def _convert_classes_to_json_schema(
         if X_AWS_IDP_PAGE_CONTENT_REGEX in doc_type_class:
             schema[X_AWS_IDP_PAGE_CONTENT_REGEX] = doc_type_class[
                 X_AWS_IDP_PAGE_CONTENT_REGEX
+            ]
+
+        # Propagate excluded-class flags into final schema
+        if X_AWS_IDP_EXCLUDE_FROM_PROCESSING in doc_type_class:
+            schema[X_AWS_IDP_EXCLUDE_FROM_PROCESSING] = doc_type_class[
+                X_AWS_IDP_EXCLUDE_FROM_PROCESSING
+            ]
+
+        if X_AWS_IDP_EXCLUSION_REASON in doc_type_class:
+            schema[X_AWS_IDP_EXCLUSION_REASON] = doc_type_class[
+                X_AWS_IDP_EXCLUSION_REASON
             ]
 
         if defs:

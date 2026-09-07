@@ -36,6 +36,73 @@ for md_file in "$PROJECT_ROOT"/docs/*.md; do
 done
 echo "   ✅ Linked $count documentation files"
 
+# Step 1b: Symlink per-extension docs from docs/extensions/ into
+# src/content/docs/extensions/ so they publish under the "extensions/<slug>"
+# route (matching the docsUrl slug each OSS feature declares in feature.yaml).
+if [ -d "$PROJECT_ROOT/docs/extensions" ]; then
+    echo ""
+    echo "🔗 Creating symlinks for extension docs..."
+    mkdir -p "$CONTENT_DOCS/extensions"
+    ext_count=0
+    for md_file in "$PROJECT_ROOT"/docs/extensions/*.md; do
+        [ -e "$md_file" ] || continue
+        filename=$(basename "$md_file")
+        target="$CONTENT_DOCS/extensions/$filename"
+        # Path: docs-site/src/content/docs/extensions/ → 5 levels up to project root
+        [ -L "$target" ] && rm "$target"
+        ln -s "../../../../../docs/extensions/$filename" "$target"
+        ext_count=$((ext_count + 1))
+    done
+    echo "   ✅ Linked $ext_count extension docs"
+fi
+
+# Step 1c: Symlink the docs/benchmarking/ folder (guide + config-guidance + the
+# per-release audit trail under releases/) into src/content/docs/benchmarking/.
+if [ -d "$PROJECT_ROOT/docs/benchmarking" ]; then
+    echo ""
+    echo "🔗 Creating symlinks for benchmarking docs..."
+    mkdir -p "$CONTENT_DOCS/benchmarking/releases"
+    bench_count=0
+    for md_file in "$PROJECT_ROOT"/docs/benchmarking/*.md; do
+        [ -e "$md_file" ] || continue
+        filename=$(basename "$md_file")
+        target="$CONTENT_DOCS/benchmarking/$filename"
+        # Path: docs-site/src/content/docs/benchmarking/ → 5 levels up to project root
+        [ -L "$target" ] && rm "$target"
+        ln -s "../../../../../docs/benchmarking/$filename" "$target"
+        bench_count=$((bench_count + 1))
+    done
+    for md_file in "$PROJECT_ROOT"/docs/benchmarking/releases/*.md; do
+        [ -e "$md_file" ] || continue
+        filename=$(basename "$md_file")
+        target="$CONTENT_DOCS/benchmarking/releases/$filename"
+        # Path: docs-site/src/content/docs/benchmarking/releases/ → 6 levels up
+        [ -L "$target" ] && rm "$target"
+        ln -s "../../../../../../docs/benchmarking/releases/$filename" "$target"
+        bench_count=$((bench_count + 1))
+    done
+    echo "   ✅ Linked $bench_count benchmarking docs"
+fi
+
+# Step 1d: Symlink the docs/release-validation/ folder (index + the per-release
+# validation record) into src/content/docs/release-validation/.
+if [ -d "$PROJECT_ROOT/docs/release-validation" ]; then
+    echo ""
+    echo "🔗 Creating symlinks for release-validation docs..."
+    mkdir -p "$CONTENT_DOCS/release-validation"
+    relval_count=0
+    for md_file in "$PROJECT_ROOT"/docs/release-validation/*.md; do
+        [ -e "$md_file" ] || continue
+        filename=$(basename "$md_file")
+        target="$CONTENT_DOCS/release-validation/$filename"
+        # Path: docs-site/src/content/docs/release-validation/ → 5 levels up
+        [ -L "$target" ] && rm "$target"
+        ln -s "../../../../../docs/release-validation/$filename" "$target"
+        relval_count=$((relval_count + 1))
+    done
+    echo "   ✅ Linked $relval_count release-validation docs"
+fi
+
 # Step 2: Symlink images/ into src/content/images/ (for ../images/ relative paths in docs)
 # Path: docs-site/src/content/ → 3 levels up to project root
 echo ""

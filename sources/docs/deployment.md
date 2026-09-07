@@ -20,6 +20,8 @@ The GenAI IDP Accelerator can be deployed using either the AWS CloudFormation co
 - **For Administrators**: Use the deployment options below with your existing administrator privileges
 - **For Delegated Access**: See [iam-roles/cloudformation-management/README.md](../iam-roles/cloudformation-management/README.md) for instructions on provisioning a CloudFormation service role that allows non-administrator users to deploy and maintain IDP stacks without requiring administrator permissions
 
+For the full breakdown of AWS services and the IAM permission scopes required for deployment and runtime, see [AWS Services and IAM Role Requirements](./aws-services-and-roles.md).
+
 ### Option 1: One-Click CloudFormation Console Deployment (Recommended for First-Time Users)
 
 1. Choose your region and click the Launch Stack button:
@@ -45,8 +47,8 @@ For programmatic deployment, updates, and batch processing, use the IDP CLI.
 #### Install the CLI
 
 ```bash
-cd lib/idp_cli_pkg
-pip install -e .
+make setup-venv
+source .venv/bin/activate
 ```
 
 #### Deploy a New Stack
@@ -114,10 +116,11 @@ You need to have the following packages installed on your computer:
 1. bash shell (Linux, MacOS, Windows-WSL)
 2. aws (AWS CLI)
 3. [sam (AWS SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
-4. python 3.11 or later
-5. A local Docker daemon
-6. Python packages: `pip install boto3 rich typer PyYAML botocore setuptools ruff build cfn-lint`
-7. **Node.js 22.12+** and **npm** (required for UI validation in publish script)
+4. python 3.12 or later
+5. Python packages: `pip install boto3 rich typer PyYAML botocore setuptools ruff build cfn-lint`
+6. **Node.js 22.12+** and **npm** (required for UI validation in publish script)
+
+> **Docker is NOT required on your workstation.** Lambda functions are packaged as source code by `idp-cli publish` and uploaded to S3; AWS CodeBuild builds the container images during stack deployment.
 
 For guidance on setting up a development environment, see:
 
@@ -132,13 +135,13 @@ Copy the repo to your computer. Either:
 
 ### Option A: IDP CLI `--from-code` (Recommended)
 
-The easiest way to build, publish, and deploy from source in a single command is using the IDP CLI with the `--from-code` option. This builds all artifacts using `publish.py`, publishes them to S3, and deploys the CloudFormation stack — all in one step.
+The easiest way to build, publish, and deploy from source in a single command is using the IDP CLI with the `--from-code` option. This builds all artifacts, publishes them to S3, and deploys the CloudFormation stack — all in one step.
 
 #### Install the CLI
 
 ```bash
-cd lib/idp_cli_pkg
-pip install -e .
+make setup-venv
+source .venv/bin/activate
 ```
 
 #### Deploy a New Stack from Source
@@ -161,7 +164,7 @@ idp-cli deploy \
 ```
 
 **What `--from-code` does:**
-- Runs `publish.py` to build SAM templates, Lambda layers, container images, and the UI
+- Builds SAM templates, Lambda layers, container images, and the UI
 - Publishes all artifacts to an S3 bucket in your account
 - Creates or updates the CloudFormation stack with the newly published template
 - With `--wait`, monitors the deployment until completion
@@ -174,48 +177,57 @@ idp-cli deploy \
 
 ### Option B: Publish Templates + Deploy Separately
 
-If you prefer to publish artifacts first and then deploy as a separate step, use `publish.py` to build and publish, then deploy using the AWS CloudFormation console or CLI.
+If you prefer to publish artifacts first and then deploy as a separate step, use `idp-cli publish` to build and publish, then deploy using the AWS CloudFormation console or CLI.
 
-#### Step 1: Build and Publish with publish.py
+#### Step 1: Build and Publish with `idp-cli publish`
 
 ```bash
-python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [--verbose] [--no-validate] [--clean-build] [--max-workers N]
+idp-cli publish --source-dir . --region <region> [--bucket-basename <bucket>] [--prefix <prefix>] [--verbose] [--no-validate] [--clean-build] [--max-workers N]
 ```
 
 **Parameters:**
 
-- `cfn_bucket_basename`: A prefix for the S3 bucket name (e.g., `idp-1234567890` to ensure global uniqueness)
-- `cfn_prefix`: S3 prefix for artifacts (e.g., `idp` or `idp-dev`)
-- `region`: AWS region for deployment (e.g., `us-east-1`)
+- `--source-dir`: Path to the IDP project root directory (default: `.`)
+- `--region`: AWS region for deployment (e.g., `us-east-1`)
+- `--bucket-basename`: (Optional) S3 bucket basename for artifacts (auto-generated if not provided)
+- `--prefix`: (Optional) S3 key prefix for artifacts (default: `idp-cli`)
 - `--verbose` or `-v`: (Optional) Enable detailed error output for debugging build failures
 - `--clean-build`: (Optional) Force a clean rebuild of all artifacts
 - `--max-workers N`: (Optional) Number of parallel build workers
+- `--headless`: (Optional) Also generate a **headless (no-UI) template variant**. Useful for API-only / pipeline integrations. See [Headless Deployment](./headless-deployment.md).
+- `--govcloud`: (Optional) Also generate a **GovCloud template variant** that keeps the full Web UI: removes all `AWS::CloudFront::*` resources and Lambda Function URLs (unavailable in GovCloud) and forces API Gateway UI hosting. Mutually exclusive with `--headless`. See [GovCloud Deployment](./govcloud-deployment.md).
 
 **Example:**
 
 ```bash
-python3 publish.py idp-1234567890 idp us-east-1
+idp-cli publish --source-dir . --region us-east-1
 ```
 
-The publish script:
+With custom bucket and prefix:
+
+```bash
+idp-cli publish --source-dir . --bucket-basename idp-1234567890 --prefix idp --region us-east-1
+```
+
+The publish command:
 
 - Checks your system dependencies for required packages
 - Builds SAM templates, Lambda layers, and container images
 - Packages and uploads the UI
-- Publishes all templates and assets to an S3 bucket (`<cfn_bucket_basename>-<region>`, created if it doesn't exist)
+- Publishes all templates and assets to an S3 bucket (auto-created if it doesn't exist)
 
-When completed, the script displays:
+When completed, the command displays:
 
 - The CloudFormation template's S3 URL
 - A 1-click URL for launching the stack creation in the CloudFormation console
 
-> **Note**: Ensure Docker is running — Lambda functions are deployed as container images built during the publish process.
+> **Note**: Docker is **not required** on your workstation for `idp-cli publish`. The publish script packages source code and uploads it to S3; AWS CodeBuild builds the Lambda container images in the cloud during the subsequent CloudFormation stack deployment.
 
 **Troubleshooting Build Issues:**
 If the build fails, use the `--verbose` flag to see detailed error messages:
 
 ```bash
-python3 publish.py idp-1234567890 idp us-east-1 --verbose
+idp-cli publish --source-dir . --region us-east-1 --verbose
 ```
 
 This will show:
@@ -257,13 +269,7 @@ aws cloudformation update-stack \
   --parameters ParameterKey=AdminEmail,ParameterValue="<your-email>"
 ```
 
-#### Using publish.sh (Legacy)
-
-`publish.sh` is a Bash wrapper around `publish.py`. Use `publish.py` directly for new deployments.
-
-```bash
-./publish.sh <cfn_bucket_basename> <cfn_prefix> <region>
-```
+> **Note**: The legacy `publish.py` script is deprecated. Use `idp-cli publish` for all new deployments.
 
 ---
 
@@ -282,8 +288,8 @@ The solution **automatically** deploys all Lambda functions as container images 
 
 ### Prerequisites
 
-- **Docker** must be running on your build machine (for local builds via `publish.py` or `idp-cli --from-code`)
-- Your AWS credentials must have **ECR permissions**
+- **Docker is NOT required on your workstation** — `idp-cli publish` packages source code and uploads it to S3; AWS CodeBuild builds all Lambda container images in the cloud during stack deployment.
+- Your AWS credentials must have **ECR permissions** (for CodeBuild to push images during deployment)
 
 ### How It Works
 

@@ -3,8 +3,16 @@
 
 """Lambda function for user management operations with DynamoDB storage and Cognito sync.
 
-Supports four roles (Cognito groups): Admin, Author, Reviewer, Viewer.
+Supports five roles (Cognito groups): Admin, Author, Reviewer, Annotator, Viewer.
 Users can optionally have allowedConfigVersions for config-version scoping.
+
+Annotator is a least-privilege role for ground-truth annotation, scoped by
+``allowedTestSets``. Because access is gated by the scoped Cognito session, a
+shared annotation-queue link only deep-links and is useless on its own.
+
+``allowedTestSets`` and ``allowedConfigVersions`` are independent axes — which
+test sets a user may annotate versus which config versions' documents they may
+see. A user can carry both.
 """
 
 import logging
@@ -27,6 +35,7 @@ USER_POOL_ID = os.environ.get("USER_POOL_ID", "")
 ADMIN_GROUP = os.environ.get("ADMIN_GROUP", "Admin")
 AUTHOR_GROUP = os.environ.get("AUTHOR_GROUP", "Author")
 REVIEWER_GROUP = os.environ.get("REVIEWER_GROUP", "Reviewer")
+ANNOTATOR_GROUP = os.environ.get("ANNOTATOR_GROUP", "Annotator")
 VIEWER_GROUP = os.environ.get("VIEWER_GROUP", "Viewer")
 ALLOWED_SIGNUP_EMAIL_DOMAINS = os.environ.get("ALLOWED_SIGNUP_EMAIL_DOMAINS", "")
 
@@ -35,6 +44,7 @@ VALID_PERSONAS = {
     "Admin": ADMIN_GROUP,
     "Author": AUTHOR_GROUP,
     "Reviewer": REVIEWER_GROUP,
+    "Annotator": ANNOTATOR_GROUP,
     "Viewer": VIEWER_GROUP,
 }
 
@@ -66,6 +76,22 @@ def handler(event, context):
     field = event.get("info", {}).get("fieldName", "")
     arguments = event.get("arguments", {})
 
+    # Defense-in-depth authorization. The GraphQL schema restricts these
+    # operations to the Admin group via @aws_cognito_user_pools(cognito_groups),
+    # but the REST dispatcher's Cognito authorizer only authenticates — it does
+    # not enforce the group — so we also enforce it server-side. listUsers is
+    # included because it exposes every user's email + role; it must be Admin-only
+    # (closes GAP-04, where any authenticated user — incl. Viewer/Reviewer — could
+    # enumerate all users). getMyProfile stays open (a caller reads only itself).
+    if field in ("createUser", "updateUser", "deleteUser", "listUsers"):
+        caller = _get_caller_identity(event)
+        if not caller["is_admin"]:
+            logger.warning(
+                f"Forbidden: caller {caller['email']} (groups={caller['groups']}) "
+                f"attempted Admin-only operation '{field}'"
+            )
+            raise Exception("Unauthorized: Admin group membership required")
+
     if field == "createUser":
         return create_user(arguments)
     elif field == "updateUser":
@@ -85,6 +111,7 @@ def create_user(args):
     email = args["email"]
     persona = args["persona"]
     allowed_config_versions = args.get("allowedConfigVersions")
+    allowed_test_sets = args.get("allowedTestSets")
     user_id = str(uuid.uuid4())
 
     # Validate email format
@@ -95,7 +122,9 @@ def create_user(args):
     # Validate email domain if restrictions are configured
     if ALLOWED_SIGNUP_EMAIL_DOMAINS and ALLOWED_SIGNUP_EMAIL_DOMAINS.strip():
         allowed_domains = [
-            d.strip().lower() for d in ALLOWED_SIGNUP_EMAIL_DOMAINS.split(",") if d.strip()
+            d.strip().lower()
+            for d in ALLOWED_SIGNUP_EMAIL_DOMAINS.split(",")
+            if d.strip()
         ]
         if allowed_domains:  # Only validate if there are actual domains configured
             if "@" not in email:
@@ -107,7 +136,7 @@ def create_user(args):
                     f"Allowed domains: {', '.join(allowed_domains)}"
                 )
 
-    # Validate persona - support all four roles
+    # Validate persona - support all five roles
     if persona not in VALID_PERSONAS:
         raise ValueError(
             f"Invalid persona: {persona}. Must be one of: {', '.join(VALID_PERSONAS.keys())}"
@@ -140,6 +169,8 @@ def create_user(args):
     # Store allowedConfigVersions if provided
     if allowed_config_versions is not None:
         user_record["allowedConfigVersions"] = allowed_config_versions
+    if allowed_test_sets is not None:
+        user_record["allowedTestSets"] = allowed_test_sets
 
     table.put_item(Item=user_record)
 
@@ -153,24 +184,27 @@ def create_user(args):
         raise e
 
     logger.info(f"User {email} created successfully")
-    result = {
-        "userId": user_id,
-        "email": email,
-        "persona": persona,
-        "status": "active",
-        "createdAt": user_record["createdAt"],
-    }
-    if allowed_config_versions is not None:
-        result["allowedConfigVersions"] = allowed_config_versions
-    return result
+    return user_response_from_item(user_record)
 
 
 def update_user(args):
-    """Update user's allowedConfigVersions in DynamoDB. Admin-only operation."""
-    user_id = args["userId"]
-    allowed_config_versions = args.get("allowedConfigVersions")
+    """Update a user's scope (config versions and/or test sets). Admin-only.
 
-    logger.info(f"Updating user {user_id} scope: {allowed_config_versions}")
+    Each axis is only touched when ``args`` mentions it, so updating one does not
+    clear the other. Presence matters, not truthiness: an explicit ``null``/empty
+    list means "remove the restriction", which a plain ``.get()`` could not
+    distinguish from omitting the axis.
+    """
+    user_id = args["userId"]
+    config_versions_given = "allowedConfigVersions" in args
+    test_sets_given = "allowedTestSets" in args
+    allowed_config_versions = args.get("allowedConfigVersions")
+    allowed_test_sets = args.get("allowedTestSets")
+
+    logger.info(
+        f"Updating user {user_id} scope: configVersions={allowed_config_versions} "
+        f"testSets={allowed_test_sets}"
+    )
 
     table = dynamodb.Table(USERS_TABLE_NAME)
 
@@ -181,20 +215,33 @@ def update_user(args):
 
     user_record = response["Item"]
 
-    # Don't allow editing Admin users' scope
+    # Admin is unscoped on every axis (config versions and test sets), so scoping
+    # one would read as a restriction the authorizers do not enforce.
     if user_record.get("persona") == "Admin":
-        raise ValueError("Cannot set config version scope for Admin users")
+        raise ValueError("Cannot set access scope for Admin users")
 
-    # Update the allowedConfigVersions field
-    update_expr = "SET updatedAt = :now"
+    set_parts = ["updatedAt = :now"]
+    remove_parts = []
     expr_values = {":now": datetime.utcnow().isoformat() + "Z"}
 
-    if allowed_config_versions is not None and len(allowed_config_versions) > 0:
-        update_expr += ", allowedConfigVersions = :acv"
-        expr_values[":acv"] = allowed_config_versions
-    else:
-        # Remove scope restriction (unrestricted access)
-        update_expr += " REMOVE allowedConfigVersions"
+    if config_versions_given:
+        if allowed_config_versions:
+            set_parts.append("allowedConfigVersions = :acv")
+            expr_values[":acv"] = allowed_config_versions
+        else:
+            # null or [] = remove the restriction (unrestricted access).
+            remove_parts.append("allowedConfigVersions")
+
+    if test_sets_given:
+        if allowed_test_sets:
+            set_parts.append("allowedTestSets = :ats")
+            expr_values[":ats"] = allowed_test_sets
+        else:
+            remove_parts.append("allowedTestSets")
+
+    update_expr = f"SET {', '.join(set_parts)}"
+    if remove_parts:
+        update_expr += f" REMOVE {', '.join(remove_parts)}"
 
     table.update_item(
         Key={"PK": f"USER#{user_id}", "SK": f"USER#{user_id}"},
@@ -204,18 +251,7 @@ def update_user(args):
 
     # Return updated user
     updated = table.get_item(Key={"PK": f"USER#{user_id}", "SK": f"USER#{user_id}"})
-    item = updated["Item"]
-
-    result = {
-        "userId": item["userId"],
-        "email": item["email"],
-        "persona": item["persona"],
-        "status": item.get("status", "active"),
-        "createdAt": format_datetime(item.get("createdAt")),
-    }
-    if "allowedConfigVersions" in item:
-        result["allowedConfigVersions"] = item["allowedConfigVersions"]
-    return result
+    return user_response_from_item(updated["Item"])
 
 
 def delete_user(args):
@@ -275,7 +311,18 @@ def get_my_profile(event):
             "status": "active",
         }
 
-    item = items[0]
+    return user_response_from_item(items[0])
+
+
+_SCOPE_ATTRIBUTES = ("allowedConfigVersions", "allowedTestSets")
+
+
+def user_response_from_item(item):
+    """Build the GraphQL ``User`` shape from a DynamoDB user item.
+
+    Every read path goes through this so the scope axes cannot drift between them.
+    Absent axes are omitted rather than returned empty.
+    """
     result = {
         "userId": item["userId"],
         "email": item["email"],
@@ -283,8 +330,9 @@ def get_my_profile(event):
         "status": item.get("status", "active"),
         "createdAt": format_datetime(item.get("createdAt")),
     }
-    if "allowedConfigVersions" in item:
-        result["allowedConfigVersions"] = item["allowedConfigVersions"]
+    for attr in _SCOPE_ATTRIBUTES:
+        if attr in item:
+            result[attr] = item[attr]
     return result
 
 
@@ -306,6 +354,10 @@ def _determine_persona_from_groups(groups):
         return "Author"
     if REVIEWER_GROUP in group_names:
         return "Reviewer"
+    # Annotator outranks Viewer: it may annotate its allowed test sets, where
+    # Viewer is read-only. Reversing the order hides the annotation queue.
+    if ANNOTATOR_GROUP in group_names:
+        return "Annotator"
     if VIEWER_GROUP in group_names:
         return "Viewer"
     return "Viewer"
@@ -319,6 +371,8 @@ def _determine_persona_from_cognito_groups(group_list):
         return "Author"
     if "Reviewer" in group_list:
         return "Reviewer"
+    if "Annotator" in group_list:
+        return "Annotator"
     if "Viewer" in group_list:
         return "Viewer"
     return "Viewer"
@@ -341,25 +395,24 @@ def list_users(event):
 
     table = dynamodb.Table(USERS_TABLE_NAME)
 
-    # Scan for all user records
-    response = table.scan(
-        FilterExpression="begins_with(PK, :pk_prefix)",
-        ExpressionAttributeValues={":pk_prefix": "USER#"},
-    )
+    # Scan for all user records. Must paginate: DynamoDB applies the 1MB page
+    # size to the items EXAMINED, not the items matching FilterExpression, so a
+    # single call silently truncates the user list once the table outgrows one
+    # page — the admin sees fewer users than exist, with no error.
+    scan_kwargs = {
+        "FilterExpression": "begins_with(PK, :pk_prefix)",
+        "ExpressionAttributeValues": {":pk_prefix": "USER#"},
+    }
+    items = []
+    while True:
+        response = table.scan(**scan_kwargs)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        scan_kwargs["ExclusiveStartKey"] = last_key
 
-    users = []
-    for item in response.get("Items", []):
-        user = {
-            "userId": item["userId"],
-            "email": item["email"],
-            "persona": item["persona"],
-            "status": item.get("status", "active"),
-            "createdAt": format_datetime(item.get("createdAt")),
-        }
-        # Include allowedConfigVersions if present
-        if "allowedConfigVersions" in item:
-            user["allowedConfigVersions"] = item["allowedConfigVersions"]
-        users.append(user)
+    users = [user_response_from_item(item) for item in items]
 
     # Sort by creation date (newest first)
     users.sort(key=lambda x: x.get("createdAt") or "", reverse=True)
@@ -374,13 +427,27 @@ def sync_cognito_users_to_dynamodb():
 
     table = dynamodb.Table(USERS_TABLE_NAME)
 
-    # Get existing emails in DynamoDB for quick lookup
-    existing_response = table.scan(
-        FilterExpression="begins_with(PK, :pk_prefix)",
-        ExpressionAttributeValues={":pk_prefix": "USER#"},
-        ProjectionExpression="email",
-    )
-    existing_emails = {item["email"] for item in existing_response.get("Items", [])}
+    # Get existing emails in DynamoDB for quick lookup. Must paginate: the 1MB
+    # page size bounds the items EXAMINED, not the items matching
+    # FilterExpression, so a single call yields an INCOMPLETE email set once the
+    # table outgrows one page — and every user missing from it gets re-created
+    # below under a fresh uuid4, duplicating the record. (The Cognito paginator
+    # further down pages Cognito, not this scan.)
+    existing_scan_kwargs = {
+        "FilterExpression": "begins_with(PK, :pk_prefix)",
+        "ExpressionAttributeValues": {":pk_prefix": "USER#"},
+        "ProjectionExpression": "email",
+    }
+    existing_emails = set()
+    while True:
+        existing_response = table.scan(**existing_scan_kwargs)
+        existing_emails.update(
+            item["email"] for item in existing_response.get("Items", [])
+        )
+        last_key = existing_response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        existing_scan_kwargs["ExclusiveStartKey"] = last_key
 
     # List all Cognito users
     paginator = cognito.get_paginator("list_users")
@@ -456,9 +523,13 @@ def sync_user_to_cognito(user_id, email, persona, operation):
             cognito.admin_add_user_to_group(
                 UserPoolId=USER_POOL_ID, Username=email, GroupName=group_name
             )
-            logger.info(f"User {email} synced to Cognito and added to group {group_name}")
+            logger.info(
+                f"User {email} synced to Cognito and added to group {group_name}"
+            )
         else:
-            logger.warning(f"Unknown persona '{persona}' - user created without group assignment")
+            logger.warning(
+                f"Unknown persona '{persona}' - user created without group assignment"
+            )
 
     elif operation == "delete":
         # Delete user from Cognito

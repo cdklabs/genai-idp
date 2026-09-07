@@ -3,17 +3,26 @@
 
 import React, { useState } from 'react';
 import { Box } from '@cloudscape-design/components';
-import { generateClient } from 'aws-amplify/api';
+import { generateClient } from '../../api/client-shim';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import DOMPurify from 'dompurify';
 // Note: XLSX and mammoth imports removed since we're using download approach for Excel/Docx files
 import useSettingsContext from '../../contexts/settings';
 import generateS3PresignedUrl from '../common/generate-s3-presigned-url';
 import useAppContext from '../../contexts/app';
-import { getFileContents } from '../../graphql/generated';
+import { getFileContents, getFilePresignedUrl } from '../../graphql/generated';
+import { useDocumentVersion } from '../../contexts/document-version';
 
 interface FileViewerProps {
   objectKey: string;
+  // Bucket holding the object; defaults to the stack's InputBucket.
+  bucket?: string;
+  // How to mint the presigned GET URL for binary content. 'client' signs with
+  // the user's Cognito identity-pool credentials (works only for buckets that
+  // role can read: Input/Output/Configuration). 'server' asks the
+  // getFilePresignedUrl resolver, whose allow-list also covers e.g. the
+  // TestSetBucket.
+  presignVia?: 'client' | 'server';
 }
 
 const client = generateClient();
@@ -66,7 +75,9 @@ const detectFileType = (objectKey: string, contentType: string | null): string =
   return 'unknown';
 };
 
-const FileViewer = ({ objectKey }: FileViewerProps): React.JSX.Element => {
+const FileViewer = ({ objectKey, bucket, presignVia = 'client' }: FileViewerProps): React.JSX.Element => {
+  // Fetch pinned bytes when viewing a past document version.
+  const { versionIdForUri } = useDocumentVersion();
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [contentType, setContentType] = useState<string | null>(null);
@@ -84,7 +95,7 @@ const FileViewer = ({ objectKey }: FileViewerProps): React.JSX.Element => {
       logger.info('Fetching file contents via GraphQL for:', s3Url);
       const response = await client.graphql({
         query: getFileContents,
-        variables: { s3Uri: s3Url },
+        variables: { s3Uri: s3Url, versionId: versionIdForUri(s3Url) },
       });
 
       const result = (response as { data: { getFileContents: { contentType: string; isBinary: boolean; content: string } } }).data
@@ -141,12 +152,16 @@ const FileViewer = ({ objectKey }: FileViewerProps): React.JSX.Element => {
     setIsLoading(true);
     setError(null);
     try {
-      if (!(settings as Record<string, unknown>).InputBucket) {
+      const sourceBucket = bucket || ((settings as Record<string, unknown>).InputBucket as string | undefined);
+      if (!sourceBucket) {
         throw new Error('Input bucket not configured');
       }
 
-      const region = import.meta.env.VITE_AWS_REGION;
-      const s3Url = `https://${(settings as Record<string, unknown>).InputBucket}.s3.${region}.amazonaws.com/${objectKey}`;
+      // Use s3:// URI scheme (matches what every other file viewer in the app does).
+      // Avoids dependence on the VITE_AWS_REGION build-time env var (which, if missing,
+      // produces an invalid URL like https://<bucket>.s3.undefined.amazonaws.com/<key>),
+      // and sidesteps S3 HTTPS URL encoding issues for keys with special characters.
+      const s3Url = `s3://${sourceBucket}/${objectKey}`;
 
       // First fetch the content via GraphQL to determine content type
       const result = await fetchFileContents(s3Url);
@@ -163,9 +178,23 @@ const FileViewer = ({ objectKey }: FileViewerProps): React.JSX.Element => {
 
       // Generate presigned URL only if needed
       if (needsPresignedUrl) {
-        logger.info('Generating presigned URL for:', s3Url);
-        const url = await generateS3PresignedUrl(s3Url, currentCredentials as Record<string, unknown>);
-        setPresignedUrl(url);
+        logger.info(`Generating presigned URL (${presignVia}) for:`, s3Url);
+        if (presignVia === 'server') {
+          const response = await client.graphql({
+            query: getFilePresignedUrl,
+            variables: { s3Uri: s3Url, versionId: versionIdForUri(s3Url) },
+          });
+          const url = response.data?.getFilePresignedUrl?.presignedUrl;
+          if (!url) {
+            throw new Error('No presigned URL returned by server');
+          }
+          setPresignedUrl(url);
+        } else {
+          const url = await generateS3PresignedUrl(s3Url, currentCredentials as Record<string, unknown>, {
+            versionId: versionIdForUri(s3Url),
+          });
+          setPresignedUrl(url);
+        }
       } else {
         logger.info('Using content-based viewing, no presigned URL needed');
       }
@@ -187,7 +216,7 @@ const FileViewer = ({ objectKey }: FileViewerProps): React.JSX.Element => {
 
   React.useEffect(() => {
     generateUrl();
-  }, [objectKey]);
+  }, [objectKey, bucket]);
 
   if (error) {
     return (
@@ -240,18 +269,35 @@ const FileViewer = ({ objectKey }: FileViewerProps): React.JSX.Element => {
     logger.info('Presigned URL:', presignedUrl);
 
     if (isPdf) {
-      // Special handling for PDFs - use object tag instead of iframe for better PDF support
+      // Render PDFs in an iframe rather than <object> to comply with the hardened
+      // CloudFront Content-Security-Policy (`object-src 'none'`, introduced in v0.5.9).
+      // Modern browsers render PDFs natively inside iframes using their built-in
+      // viewer (Chrome's PDFium, Firefox's pdf.js, Safari's WebKit PDF viewer).
+      //
+      // Intentionally no `sandbox` attribute on this iframe: Chrome's built-in PDF
+      // viewer relies on its own internal scripts and is blocked by Chromium when
+      // loaded inside a sandboxed iframe ("This page has been blocked by Chrome").
+      // The content is an S3 presigned URL to a file in a bucket owned by this stack
+      // and served as `Content-Type: application/pdf` with `Content-Disposition: inline`,
+      // so there is no HTML/JS execution risk from the iframe source itself.
+      //
+      // A visible "Open PDF in a new tab" link is included as a fallback for browsers
+      // that have their built-in PDF viewer disabled.
       return (
         <Box className="document-container" padding={{ top: 's' }}>
-          <object data={presignedUrl} type="application/pdf" width="100%" height="800px" className="h-full w-full">
-            <p>
-              It appears your browser does not support embedded PDFs. You can{' '}
-              <a href={presignedUrl} target="_blank" rel="noopener noreferrer">
-                download the PDF
-              </a>{' '}
-              instead.
-            </p>
-          </object>
+          <iframe
+            src={presignedUrl}
+            title="PDF Viewer"
+            width="100%"
+            height="800px"
+            className="h-full w-full"
+            referrerPolicy="no-referrer"
+          />
+          <Box padding={{ top: 'xs' }}>
+            <a href={presignedUrl} target="_blank" rel="noopener noreferrer">
+              Open PDF in a new tab
+            </a>
+          </Box>
         </Box>
       );
     }

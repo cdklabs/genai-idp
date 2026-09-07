@@ -263,18 +263,22 @@ def _list_local_images(directory_path: str, image_extensions: set) -> List[str]:
         raise
 
 
-def find_matching_files(bucket: str, pattern: str) -> List[str]:
+def find_matching_files(
+    bucket: str, pattern: str, modified_after: str | None = None
+) -> List[str]:
     """
     Find files in S3 bucket that match a given pattern.
 
     Args:
         bucket: S3 bucket name
         pattern: File pattern with wildcards (* and ?) - case sensitive, * doesn't match /
+        modified_after: Optional ISO 8601 timestamp to filter files modified after this time
 
     Returns:
         List of matching file keys
     """
     import re
+    from datetime import datetime, timezone
 
     try:
         s3 = get_s3_client()
@@ -284,17 +288,39 @@ def find_matching_files(bucket: str, pattern: str) -> List[str]:
         regex_pattern = pattern.replace("*", "[^/]*").replace("?", "[^/]")
         regex = re.compile(f"^{regex_pattern}$")
 
+        # Parse modified_after filter if provided
+        cutoff_time = None
+        if modified_after:
+            cutoff_time = datetime.fromisoformat(modified_after.replace("Z", "+00:00"))
+            if cutoff_time.tzinfo is None:
+                cutoff_time = cutoff_time.replace(tzinfo=timezone.utc)
+            logger.info(f"Filtering files modified after {cutoff_time.isoformat()}")
+
         matching_files = []
 
         for page in paginator.paginate(Bucket=bucket):
             if "Contents" in page:
                 for obj in page["Contents"]:
                     key = obj["Key"]
+                    # Skip S3 "folder" pseudo-objects (zero-byte keys ending
+                    # in '/' created by the S3 console). They are not documents
+                    # and must never be pulled into a test set.
+                    if key.endswith("/"):
+                        continue
                     if regex.match(key):
+                        if cutoff_time and obj.get("LastModified"):
+                            last_modified = obj["LastModified"]
+                            if last_modified.tzinfo is None:
+                                last_modified = last_modified.replace(
+                                    tzinfo=timezone.utc
+                                )
+                            if last_modified < cutoff_time:
+                                continue
                         matching_files.append(key)
 
         logger.info(
             f"Found {len(matching_files)} files matching pattern '{pattern}' in bucket '{bucket}'"
+            + (f" (modified after {modified_after})" if modified_after else "")
         )
         return sorted(matching_files)
 

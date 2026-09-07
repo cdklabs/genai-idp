@@ -13,28 +13,84 @@ import logging
 import os
 import time
 import traceback
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
 if TYPE_CHECKING:
-    from stickler import StructuredModel
+    from idp_common.evaluation.stickler_backend import StructuredModel
 
 from idp_common import s3
 from idp_common.config.models import IDPConfig
-from idp_common.evaluation.doc_split_classification_metrics import (
-    DocSplitClassificationMetrics,
+from idp_common.evaluation.contract import (
+    STICKLER_RESULT_VERSION,
+    evaluation_results_key,
 )
-from idp_common.evaluation.metrics import calculate_metrics
 from idp_common.evaluation.models import (
     AttributeEvaluationResult,
     DocSplitMetrics,
     DocumentEvaluationResult,
     SectionEvaluationResult,
 )
-from idp_common.evaluation.stickler_mapper import SticklerConfigMapper
+from idp_common.evaluation.stickler_backend import (
+    DocSplitClassificationMetrics,
+    SticklerConfigMapper,
+    attach_page_confidence,
+    compute_graded_packet_metrics,
+    get_stickler_model,
+    load_sections_for_doc_split,
+    register_idp_comparators,
+    transform_stickler_result,
+)
 from idp_common.models import Document, Section, Status
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_derived_metrics(
+    tp: int,
+    fp: int,
+    fn: int,
+    tn: int = 0,
+    fa: int = 0,
+    fd: int = 0,
+) -> Dict[str, float]:
+    """Compute the same precision/recall/F1/accuracy/FAR/FDR that Stickler's
+    ``DerivedMetricsCalculator`` computes per field, but over aggregated counts.
+
+    ``fa`` (false alarm — predicted when should be absent) and ``fd`` (false
+    discovery — predicted wrong value) are Stickler's finer split of ``fp``;
+    FAR = fa / (fa + tn), FDR = fd / (fd + tp). Both denominators guard
+    against divide-by-zero.
+    """
+    denom_p = tp + fp
+    denom_r = tp + fn
+    denom_a = tp + fp + fn + tn
+    precision = tp / denom_p if denom_p > 0 else 0.0
+    recall = tp / denom_r if denom_r > 0 else 0.0
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if (precision + recall) > 0
+        else 0.0
+    )
+    accuracy = (tp + tn) / denom_a if denom_a > 0 else 0.0
+    denom_far = fa + tn
+    denom_fdr = fd + tp
+    far = fa / denom_far if denom_far > 0 else 0.0
+    fdr = fd / denom_fdr if denom_fdr > 0 else 0.0
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1,
+        "accuracy": accuracy,
+        "false_alarm_rate": far,
+        "false_discovery_rate": fdr,
+    }
+
+
+# _compute_graded_packet_metrics moved to
+# idp_common.evaluation.stickler_backend.doc_split.compute_graded_packet_metrics
+# (§6 reorg, R14 landing site).
 
 
 def _normalize_comparator_name(comparator: str) -> str:
@@ -53,9 +109,96 @@ def _normalize_comparator_name(comparator: str) -> str:
         "NumericComparator": "NumericExact",
         "LevenshteinComparator": "Levenshtein",
         "SemanticComparator": "Semantic",
+        "DateComparator": "Date",
         "LLMComparator": "LLM",
     }
     return mapping.get(comparator, comparator)
+
+
+# Comparison methods whose display string includes a similarity threshold.
+# NumericExact uses tolerance (not threshold) and LLM returns a binary match,
+# so neither shows a threshold suffix.
+#
+# The actual applied threshold comes from Stickler's model at compare time
+# (read in stickler_backend/results.py from
+# ``model_fields[...].json_schema_extra._threshold`` and threaded here as
+# ``field_specific_threshold``). When the caller can't produce that value
+# (auto-generated section that failed to build a model, non-Stickler path
+# reusing this helper), we render just the method name without a threshold
+# suffix rather than guessing at a hardcoded default that could disagree
+# with whatever Stickler actually scored against.
+_METHODS_WITH_THRESHOLD_DISPLAY = frozenset({"Fuzzy", "Semantic", "Levenshtein"})
+
+
+def _format_evaluation_method(
+    comparator_method: Optional[str],
+    expected_value: Any,
+    actual_value: Any,
+    field_specific_threshold: Optional[float],
+    match_threshold: float,
+    list_match_threshold: Optional[float] = None,
+) -> str:
+    """
+    Build the human-readable evaluation-method string shown in reports.
+
+    This is the single source of truth for the "Method" column in both the
+    top-level attributes table and the Nested Field Comparison table, so the two
+    stay consistent (e.g. "Fuzzy (threshold: 0.70)", "Hungarian (threshold: 0.80)",
+    "NumericExact", "AggregateObject").
+
+    Args:
+        comparator_method: Explicit Stickler comparator name for the field, if any.
+        expected_value: Expected value (used for type inference when no comparator).
+        actual_value: Actual value (used for type inference when no comparator).
+        field_specific_threshold: Field-level similarity threshold, if configured.
+        match_threshold: Document-level Hungarian match threshold fallback.
+        list_match_threshold: Field-level Hungarian match threshold, if configured.
+
+    Returns:
+        Formatted method string for display.
+    """
+    if comparator_method:
+        # Normalize comparator name to UI-friendly format
+        method = _normalize_comparator_name(comparator_method)
+
+        # Show threshold ONLY for methods that use similarity thresholds AND
+        # when the caller supplied the applied value. Missing threshold →
+        # render just the method name (no fake-default suffix).
+        if (
+            method in _METHODS_WITH_THRESHOLD_DISPLAY
+            and field_specific_threshold is not None
+        ):
+            method = f"{method} (threshold: {field_specific_threshold:.2f})"
+        # Exact, NumericExact, LLM, Date don't show thresholds
+        return method
+
+    if isinstance(expected_value, list) or isinstance(actual_value, list):
+        # Arrays use Hungarian matching - show field-specific or document-level threshold
+        display_threshold = list_match_threshold or match_threshold
+        return f"Hungarian (threshold: {display_threshold:.2f})"
+
+    if isinstance(expected_value, dict) or isinstance(actual_value, dict):
+        # Nested objects - no threshold
+        return "AggregateObject"
+
+    # Infer method based on data types when no explicit comparator
+    if isinstance(expected_value, bool) or isinstance(actual_value, bool):
+        # Booleans use exact matching - no threshold
+        return "Exact"
+    if isinstance(expected_value, (int, float)) or isinstance(
+        actual_value, (int, float)
+    ):
+        # Numbers use tolerance-based comparison - no threshold display
+        return "NumericExact"
+    if isinstance(expected_value, str) or isinstance(actual_value, str):
+        # Strings default to fuzzy matching. Only include the threshold suffix
+        # when the caller could supply one (same reasoning as above).
+        if field_specific_threshold is not None:
+            return f"Fuzzy (threshold: {field_specific_threshold:.2f})"
+        return "Fuzzy"
+
+    # Safe default for any other types
+    return "Exact"
 
 
 def _convert_numpy_types(obj: Any) -> Any:
@@ -127,24 +270,19 @@ class EvaluationService:
         self.region = region or os.environ.get("AWS_REGION")
         self.max_workers = max_workers
 
-        # Import and check Stickler availability
+        # Import and check Stickler availability. StructuredModel is re-exported
+        # via stickler_backend to preserve the single-boundary rule.
         try:
-            from stickler import StructuredModel
+            from idp_common.evaluation.stickler_backend import StructuredModel
 
             self._StructuredModel = StructuredModel
 
-            # Set up global LLM configuration for LLMComparator
-            # This must be done BEFORE building Stickler models
+            # Register IDP's LLM comparator with Stickler before any model is
+            # built (the mapper's "IDPLLMComparator" reference resolves at
+            # model-construction time). Registration is idempotent — safe to
+            # call from every EvaluationService init.
             try:
-                from stickler.structured_object_evaluator.models.comparator_registry import (
-                    _global_registry,
-                    register_comparator,
-                )
-
-                from idp_common.evaluation.llm_comparator import (
-                    LLMComparator,  # noqa: F401
-                    set_global_llm_config,
-                )
+                register_idp_comparators()
 
                 # Build config dict for extraction
                 if hasattr(config_model, "model_dump"):
@@ -157,28 +295,6 @@ class EvaluationService:
                         if not isinstance(config_model, dict)
                         else config_model
                     )
-
-                # Extract and set global LLM config if present
-                evaluation_config = config_dict.get("evaluation", {})
-                if isinstance(evaluation_config, dict):
-                    llm_config = evaluation_config.get("llm_method")
-                    if llm_config:
-                        set_global_llm_config(llm_config)
-
-                # Register our LLMComparator with Stickler
-                # Force-replace Stickler's built-in LLMComparator with ours
-                if _global_registry.is_registered("LLMComparator"):
-                    # Directly replace in registry (no unregister method available)
-                    _global_registry._registry["LLMComparator"] = LLMComparator  # type: ignore[assignment]
-                    logger.info(
-                        "Replaced Stickler's LLMComparator with IDP LLMComparator in registry"
-                    )
-                else:
-                    register_comparator("LLMComparator", LLMComparator)  # type: ignore[arg-type]
-                    logger.info(
-                        "Registered IDP LLMComparator with Stickler comparator registry"
-                    )
-
             except ImportError as e:
                 logger.warning(f"LLMComparator setup failed: {e}")
                 config_dict = None
@@ -259,6 +375,13 @@ class EvaluationService:
         # with null values in baseline data, which Stickler doesn't support
         self._normalize_null_types(schema)
 
+        # Strip 'required' arrays - genson marks every observed key as required, but
+        # for evaluation a field that wasn't extracted (None, then removed by
+        # _remove_none_values) is a scored miss, not a hard validation failure. Making
+        # all fields optional matches the semantics of explicit IDP configs (which omit
+        # 'required') and avoids "Field required [type=missing]" errors.
+        self._strip_required(schema)
+
         # Add evaluation method extensions recursively
         self._add_evaluation_extensions_recursive(schema)
 
@@ -272,6 +395,37 @@ class EvaluationService:
         )
 
         return schema
+
+    def _strip_required(self, schema: Dict[str, Any]) -> None:
+        """
+        Recursively remove all 'required' arrays from an auto-generated schema.
+
+        genson marks every key it observes as required. For evaluation, a field
+        present in the baseline but absent from a prediction (or vice versa) should
+        score as a miss, not raise a hard "Field required" validation error. Explicit
+        IDP configs omit 'required' entirely (all fields optional); this aligns the
+        auto-generated schema with that convention.
+
+        Args:
+            schema: Schema object to modify in-place
+        """
+        if not isinstance(schema, dict):
+            return
+
+        schema.pop("required", None)
+
+        if "properties" in schema:
+            for prop_schema in schema["properties"].values():
+                self._strip_required(prop_schema)
+
+        if "items" in schema:
+            items = schema["items"]
+            if isinstance(items, dict):
+                self._strip_required(items)
+
+        if "$defs" in schema:
+            for def_schema in schema["$defs"].values():
+                self._strip_required(def_schema)
 
     def _normalize_null_types(self, schema: Dict[str, Any]) -> None:
         """
@@ -408,252 +562,72 @@ class EvaluationService:
     def _get_stickler_model(
         self, document_class: str, expected_data: Optional[Dict[str, Any]] = None
     ) -> Type["StructuredModel"]:
+        """Thin delegate to
+        ``stickler_backend.model_factory.get_stickler_model``.
+
+        The real implementation lives in ``stickler_backend/`` — this method
+        just threads the service's cache dicts through so multiple sections
+        share model instances.
         """
-        Get or create Stickler model for document class.
+        return get_stickler_model(
+            document_class=document_class,
+            stickler_models=self.stickler_models,
+            model_cache=self._model_cache,
+            auto_generated_models=self._auto_generated_models,
+            infer_schema_fn=self._infer_schema_from_data,
+            expected_data=expected_data,
+        )
 
-        Uses Stickler's JsonSchemaFieldConverter to handle JSON Schema natively,
-        including $ref resolution, required fields, and nested structures.
+    def _has_no_extractable_schema(
+        self,
+        document_class: str,
+        expected_results: Optional[Dict[str, Any]],
+    ) -> bool:
+        """Return True if the section's class has no fields to evaluate.
 
-        If no configuration exists and expected_data is provided, automatically
-        generates a schema from the expected data structure.
-
-        Args:
-            document_class: Document class name
-            expected_data: Optional expected data for auto-generating schema
-
-        Returns:
-            Stickler StructuredModel class for this document type
-
-        Raises:
-            ValueError: If no configuration found and no expected_data provided
+        A section is a scoring no-op when there is nothing to compare against:
+        the class is either absent from the schema config (and there is no
+        expected data to auto-infer from) or the class is configured with an
+        empty attribute list. Scoring these as ``0.0`` — the previous
+        behavior — drags document-level and run-level weighted averages down
+        even though no extraction failure occurred. Treat them as excluded so
+        the aggregation loop can omit them from the weighted mean.
         """
-        # Check cache
         cache_key = document_class.lower()
-        if cache_key in self._model_cache:
-            logger.debug(f"Using cached Stickler model for class: {document_class}")
-            return self._model_cache[cache_key]
+        config = self.stickler_models.get(cache_key)
+        if config is None:
+            # No config — evaluatable only if expected data lets us auto-infer.
+            return not expected_results
+        schema = config.get("schema") or {}
+        properties = schema.get("properties") or {}
+        return len(properties) == 0
 
-        # Get Stickler config for this class
-        stickler_config = self.stickler_models.get(cache_key)
-        if not stickler_config:
-            # Try to auto-generate schema from expected data
-            if expected_data:
-                logger.info(
-                    f"No configuration found for '{document_class}'. "
-                    f"Auto-generating schema from expected data structure."
-                )
+    @staticmethod
+    def _build_excluded_section_result(
+        section: Section,
+        document_class: str,
+        exclusion_reason: str,
+        message: str,
+    ) -> SectionEvaluationResult:
+        """Build a stub ``SectionEvaluationResult`` for an excluded section.
 
-                # Infer schema from data
-                inferred_schema = self._infer_schema_from_data(
-                    expected_data, document_class
-                )
-
-                # Build Stickler config from inferred schema
-                stickler_config = SticklerConfigMapper.build_stickler_model_config(
-                    inferred_schema
-                )
-
-                # Cache the auto-generated config for this session
-                self.stickler_models[cache_key] = stickler_config
-
-                # Mark this model as auto-generated
-                self._auto_generated_models.add(cache_key)
-            else:
-                raise ValueError(
-                    f"No schema configuration found for document class: {document_class}. "
-                    f"Cannot auto-generate schema without expected data."
-                )
-
-        # Extract the schema and model info
-        schema = stickler_config["schema"]
-        model_name = stickler_config["model_name"]
-
-        # Enhanced logging: Log schema details before creating model
-        logger.info(
-            f"Creating Stickler model for class: {document_class}\n"
-            f"  Schema summary:\n"
-            f"    - Properties: {list(schema.get('properties', {}).keys())}\n"
-            f"    - Required fields: {schema.get('required', [])}\n"
-            f"    - Schema ID: {schema.get('$id', 'N/A')}\n"
-            f"    - Model name: {model_name}"
+        The stub carries ``evaluation_skipped=True`` and ``weighted_overall_score=None``
+        in ``metrics`` so downstream aggregation can distinguish "no fields to
+        score" from a legitimate zero. Field names (``exclusion_reason`` /
+        ``message``) mirror the vocabulary used by ``section_exclusion.py`` so
+        the two exclusion paths share one namespace.
+        """
+        return SectionEvaluationResult(
+            section_id=section.section_id,
+            document_class=document_class,
+            attributes=[],
+            metrics={
+                "weighted_overall_score": None,
+                "evaluation_skipped": True,
+                "exclusion_reason": exclusion_reason,
+                "message": message,
+            },
         )
-
-        # Log expected and actual data structure for troubleshooting
-        if expected_data:
-            logger.info(
-                f"  Expected data keys for {document_class}: {list(expected_data.keys())}"
-            )
-
-        # DEBUG: Log full JSON Schema for detailed troubleshooting
-        if logger.isEnabledFor(logging.DEBUG):
-            import json
-
-            logger.debug(
-                f"Full JSON Schema for {document_class}: "
-                f"{json.dumps(schema, default=str)}"
-            )
-
-        try:
-            # Use JsonSchemaFieldConverter to handle the full JSON Schema natively
-            from stickler.structured_object_evaluator.models.json_schema_field_converter import (
-                JsonSchemaFieldConverter,
-            )
-
-            logger.debug(f"Converting schema properties for {document_class}")
-
-            converter = JsonSchemaFieldConverter(schema)
-            field_definitions = converter.convert_properties_to_fields(
-                schema.get("properties", {}), schema.get("required", [])
-            )
-
-            logger.info(
-                f"Successfully converted schema for {document_class} with {len(field_definitions)} fields"
-            )
-
-            # DEBUG: Log converted field definitions with detailed type information
-            if logger.isEnabledFor(logging.DEBUG):
-                properties = schema.get("properties", {})
-                field_details = []
-                for name, field_info in field_definitions.items():
-                    prop_schema = properties.get(name, {})
-                    comparator = prop_schema.get(
-                        "x-aws-stickler-comparator", "inferred"
-                    )
-                    threshold = prop_schema.get("x-aws-stickler-threshold")
-                    weight = prop_schema.get("x-aws-stickler-weight")
-
-                    detail = f"  - {name}: {field_info[0].__name__ if hasattr(field_info[0], '__name__') else field_info[0]}"
-                    if comparator != "inferred":
-                        detail += f" (comparator={comparator}"
-                        if threshold is not None:
-                            detail += f", threshold={threshold}"
-                        if weight is not None:
-                            detail += f", weight={weight}"
-                        detail += ")"
-
-                    field_details.append(detail)
-
-                logger.debug(
-                    f"Converted field definitions for {document_class}:\n"
-                    + "\n".join(field_details)
-                )
-
-        except Exception as e:
-            # Enhanced error handling with user guidance
-            import json
-            import re
-
-            error_message = str(e)
-
-            # Check if it's a JSON Schema validation error
-            if (
-                "jsonschema.exceptions.SchemaError" in str(type(e))
-                or "Invalid JSON Schema" in error_message
-            ):
-                # Try to extract the problematic field from the error
-                field_match = re.search(
-                    r"On schema\['properties'\]\['([^']+)'\]", error_message
-                )
-                field_name = field_match.group(1) if field_match else "unknown"
-
-                # Parse for constraint information
-                constraint_match = re.search(
-                    r"\['([^']+)'\]\s*:\s*'([^']+)'", error_message
-                )
-                constraint = (
-                    constraint_match.group(1) if constraint_match else "unknown"
-                )
-                bad_value = constraint_match.group(2) if constraint_match else "unknown"
-
-                # Build helpful error message
-                helpful_message = (
-                    f"Invalid JSON Schema for document class '{document_class}'.\n\n"
-                    f"Problem detected:\n"
-                    f"  Field: {field_name}\n"
-                    f"  Constraint: {constraint}\n"
-                    f"  Current value: '{bad_value}' (type: {type(bad_value).__name__})\n\n"
-                    f"Common fixes:\n"
-                    f"  1. If '{constraint}' should be a number, remove quotes in your config:\n"
-                    f"     {constraint}: '{bad_value}' → {constraint}: {bad_value}\n"
-                    f"  2. Check your config YAML for field '{field_name}' in class '{document_class}'\n"
-                    f"  3. Ensure all numeric constraints (maxItems, minItems, minimum, maximum, etc.) are numbers, not strings\n\n"
-                    f"Original error: {error_message}"
-                )
-
-                logger.error(helpful_message)
-                logger.error(
-                    f"Full schema that caused the error:\n{json.dumps(schema, indent=2, default=str)}"
-                )
-                raise ValueError(helpful_message) from e
-            else:
-                # Re-raise other errors with schema details
-                logger.error(
-                    f"Unexpected error creating Stickler model for {document_class}: {error_message}"
-                )
-                logger.error(
-                    f"Schema being processed:\n{json.dumps(schema, indent=2, default=str)}"
-                )
-                raise
-
-        # Create the model using Pydantic's create_model
-        from pydantic import create_model
-
-        # Type checker can't understand dynamic field unpacking - this is expected
-        model_class = create_model(  # type: ignore  # pyright: reportArgumentType=false
-            model_name, **field_definitions, __base__=self._StructuredModel
-        )
-
-        # Cache for reuse
-        self._model_cache[cache_key] = model_class
-        logger.debug(f"Cached Stickler model: {model_class.__name__}")
-
-        # DEBUG: Log Pydantic model structure for verification
-        if logger.isEnabledFor(logging.DEBUG):
-            model_fields_info = (
-                model_class.model_fields if hasattr(model_class, "model_fields") else {}
-            )
-            field_types = [
-                f"    {k}: {v.annotation}" for k, v in model_fields_info.items()
-            ]
-            logger.debug(
-                f"Created Pydantic model structure for {document_class}:\n"
-                f"  Model: {model_class.__name__}\n"
-                f"  Base classes: {[base.__name__ for base in model_class.__bases__]}\n"
-                f"  Field count: {len(model_fields_info)}\n"
-                f"  Field types:\n" + "\n".join(field_types)
-                if field_types
-                else "    (no fields)"
-            )
-
-        # DEBUG: Test instantiation with expected data (if available)
-        if expected_data and logger.isEnabledFor(logging.DEBUG):
-            try:
-                # Clean and coerce data before test instantiation
-                cleaned_data = self._remove_none_values(expected_data)
-                coerced_data = self._coerce_data_to_schema(cleaned_data, model_class)
-                test_instance = model_class(**coerced_data)
-
-                # Serialize the instance to show what Stickler will work with
-                if hasattr(test_instance, "model_dump"):
-                    serialized = test_instance.model_dump()
-                elif hasattr(test_instance, "dict"):
-                    serialized = test_instance.dict()
-                else:
-                    serialized = dict(test_instance)
-
-                import json
-
-                logger.debug(
-                    f"Test instantiation successful for {document_class}: "
-                    f"{json.dumps(serialized, default=str)}"
-                )
-            except Exception as e:
-                logger.debug(
-                    f"Test instantiation failed for {document_class} "
-                    f"(this is informational only): {str(e)}"
-                )
-
-        return model_class
 
     def _prepare_stickler_data(self, uri: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
@@ -691,6 +665,173 @@ class EvaluationService:
                 f"Error loading extraction results from {uri}: {str(e)}", exc_info=True
             )
             return {}, {}
+
+    @staticmethod
+    def _unwrap_confidence_envelope(
+        value: Dict[str, Any],
+        conf_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Strip a synthetic wrapper key off a confidence map, if there is one.
+
+        Some assessment output nests an object's confidence map inside a
+        synthetic key that has no counterpart in the extracted value —
+        ``{"Item #6": {"LineItemRate": {...}, "LineItemDays": {...}}}`` against
+        an inference result of ``{"LineItemRate": 1000.0, "LineItemDays": "..."}``.
+        Left in place, every confidence lookup misses and the whole object
+        scores with no confidence at all, so the envelope has to come off.
+
+        The original heuristic keyed off shape alone: a single non-metadata key
+        whose value held >= 2 confidence children was assumed to be an
+        envelope. That misfires on any class whose schema legitimately declares
+        **one** top-level object property — ``{"InvoiceDetails": {...}}`` is
+        indistinguishable from a wrapper by key count — and the unwrap then
+        silently discarded every confidence score beneath it (issue #713).
+
+        This gates the unwrap on evidence from the data instead:
+
+        1. The candidate key names **no field present in** ``value``. A real
+           field would appear on both sides; a synthetic envelope key appears
+           only on the confidence side. This is the discriminating signal.
+        2. Its contents **do** name at least one field present in ``value``,
+           so unwrapping demonstrably recovers confidence rather than
+           guessing.
+        3. Its contents are not themselves a leaf confidence entry (no
+           ``confidence`` key), which would make it a field's own scores
+           rather than a map of sibling fields.
+
+        Note (1) also makes the unwrap strictly non-destructive: a key absent
+        from ``value`` can never be matched by the caller's per-field lookup,
+        so the envelope contributes nothing before it is stripped. Because the
+        evidence no longer depends on how many children the envelope has, a
+        wrapper around a *single* field is now unwrapped too — previously its
+        confidence was dropped for the same reason.
+
+        Args:
+            value: The extracted object (values only) being annotated.
+            conf_data: The confidence map that may be wrapped in one synthetic key.
+
+        Returns:
+            The inner confidence map when the evidence above holds, otherwise
+            ``conf_data`` unchanged.
+        """
+        candidate_keys = [k for k in conf_data if k != "confidence_threshold"]
+        if len(candidate_keys) != 1:
+            return conf_data
+
+        candidate_key = candidate_keys[0]
+        inner = conf_data[candidate_key]
+        if not isinstance(inner, dict):
+            return conf_data
+
+        if candidate_key in value:
+            # Declared field of this object, not an envelope - leave it alone.
+            return conf_data
+        if "confidence" in inner:
+            # A field's own confidence entry, not a map of sibling fields.
+            return conf_data
+        if not any(k in value for k in inner):
+            # Nothing under it matches this object - unwrapping would recover
+            # no confidence, so there is no evidence it is an envelope.
+            return conf_data
+
+        logger.debug(
+            f"Unwrapping synthetic confidence envelope {candidate_key!r} "
+            f"(absent from extracted value; contents match "
+            f"{sorted(k for k in inner if k in value)})"
+        )
+        return inner
+
+    def _convert_to_rich_values(
+        self,
+        inference_result: Dict[str, Any],
+        explainability_info: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Convert inference result to Stickler Rich Value format.
+
+        Stickler natively supports rich values with embedded confidence:
+        {"_value": actual_value, "_confidence": 0.99}
+
+        When using ModelClass(**rich_values), Stickler automatically extracts
+        confidence and makes it available in the comparison result as 'prediction_confidences'.
+
+        Handles wrapper keys (Item_N, Record_N) by detecting and unwrapping them
+        for backward compatibility with existing extraction data. See
+        ``_unwrap_confidence_envelope`` for the evidence that gates the unwrap.
+
+        Args:
+            inference_result: Actual extraction output (values only)
+            explainability_info: Confidence data from extraction service (already unwrapped dict)
+
+        Returns:
+            Dict with rich value format: {"field": {"_value": val, "_confidence": conf}}
+        """
+        if not explainability_info:
+            return inference_result
+
+        def add_confidence(value: Any, conf_data: Any) -> Any:
+            """Recursively merge value with confidence data."""
+            if conf_data is None:
+                return value
+
+            # Simple field with confidence
+            if isinstance(conf_data, dict) and "confidence" in conf_data:
+                return {"_value": value, "_confidence": conf_data["confidence"]}
+
+            # Array field
+            if isinstance(value, list):
+                logger.debug(
+                    f"Processing array with {len(value)} elements, conf_data type: {type(conf_data).__name__}"
+                )
+                if isinstance(conf_data, list):
+                    # conf_data is a list - direct indexing
+                    logger.debug(
+                        f"Array: conf_data is list with {len(conf_data)} elements"
+                    )
+                    return [
+                        add_confidence(
+                            value[i], conf_data[i] if i < len(conf_data) else None
+                        )
+                        for i in range(len(value))
+                    ]
+                elif isinstance(conf_data, dict):
+                    # conf_data is a dict with string indices like {"0": {...}, "1": {...}}
+                    logger.debug(
+                        f"Array: conf_data is dict with keys: {list(conf_data.keys())}"
+                    )
+                    return [
+                        add_confidence(value[i], conf_data.get(str(i)))
+                        for i in range(len(value))
+                    ]
+                else:
+                    # No confidence data for array
+                    logger.debug(
+                        f"Array: no confidence data (conf_data is {type(conf_data).__name__})"
+                    )
+                    return value
+
+            # Object field - strip a synthetic confidence envelope first
+            if isinstance(value, dict) and isinstance(conf_data, dict):
+                conf_data = self._unwrap_confidence_envelope(value, conf_data)
+
+                # Standard object processing
+                result = {}
+                for key in value.keys():
+                    # R15 (deferred): ``geometry`` is intentionally dropped
+                    # here. Stickler 0.5.0 supports a ``_bbox`` rich-value key
+                    # + ``BBoxIoUComparator`` / ``BBoxMAPAccumulator``; to score
+                    # localization quality, emit
+                    # ``{"_value": v, "_confidence": c, "_bbox": [...]}`` and
+                    # enable bbox metrics in bulk aggregation. See §4 R15 in
+                    # STICKLER_INTEGRATION_RECOMMENDATIONS.md.
+                    if key not in ("geometry", "confidence_threshold"):
+                        result[key] = add_confidence(value.get(key), conf_data.get(key))
+                return result
+
+            # No confidence data available
+            return value
+
+        return add_confidence(inference_result, explainability_info)
 
     def _get_nested_value(self, obj: Any, path: str) -> Any:
         """
@@ -841,283 +982,36 @@ class EvaluationService:
         actual_instance: "StructuredModel",
         stickler_result: Dict[str, Any],
         confidence_scores: Dict[str, Any],
+        document_context: str = "",
     ) -> SectionEvaluationResult:
+        """Delegate to ``stickler_backend.results.transform_stickler_result``.
+
+        The real implementation lives in ``stickler_backend/results.py``; this
+        method threads the service's per-instance state (stickler_models,
+        auto_generated_models) and display callbacks through.
         """
-        Transform Stickler comparison result to IDP SectionEvaluationResult.
-
-        Extracts field scores from Stickler, creates AttributeEvaluationResult
-        objects, injects confidence scores, and calculates metrics.
-
-        Args:
-            section: Document section being evaluated
-            expected_instance: Stickler model instance with expected values
-            actual_instance: Stickler model instance with actual values
-            stickler_result: Result from Stickler's compare_with() method
-            confidence_scores: Confidence scores from assessment
-
-        Returns:
-            SectionEvaluationResult with all attribute results and metrics
-        """
-        attribute_results = []
-
-        # Convert Pydantic model instances to dicts upfront using Pydantic's serialization
-        # Use mode='python' to ensure nested Pydantic models are fully serialized
-        if hasattr(expected_instance, "model_dump"):
-            expected_dict = expected_instance.model_dump(mode="python")
-        elif hasattr(expected_instance, "dict"):
-            expected_dict = expected_instance.dict()
-        else:
-            expected_dict = dict(expected_instance)
-
-        if hasattr(actual_instance, "model_dump"):
-            actual_dict = actual_instance.model_dump(mode="python")
-        elif hasattr(actual_instance, "dict"):
-            actual_dict = actual_instance.dict()
-        else:
-            actual_dict = dict(actual_instance)
-
-        # Get field scores from Stickler result
-        field_scores = stickler_result.get("field_scores", {})
-
-        # Get field_comparisons from Stickler result (sticker-eval v0.1.4+)
-        field_comparisons = stickler_result.get("field_comparisons", [])
-
-        # Group field comparisons by top-level field name for attachment to attributes
-        # field_comparisons is a flat list, we need to group by the root field
-        field_comparison_map: Dict[str, List[Dict[str, Any]]] = {}
-        for fc in field_comparisons:
-            # Extract the root field name from expected_key (e.g., "LineItems" from "LineItems[0].Description")
-            expected_key = fc.get("expected_key", "")
-            root_field = (
-                expected_key.split("[")[0].split(".")[0] if expected_key else ""
-            )
-
-            if root_field:
-                if root_field not in field_comparison_map:
-                    field_comparison_map[root_field] = []
-                field_comparison_map[root_field].append(fc)
-
-        # Get Stickler configuration for this document class
-        stickler_config = self.stickler_models.get(section.classification.lower(), {})
-        match_threshold = stickler_config.get("match_threshold", 0.8)
-
-        # Check if this model was auto-generated
-        is_auto_generated = (
-            section.classification.lower() in self._auto_generated_models
+        return transform_stickler_result(
+            section=section,
+            expected_instance=expected_instance,
+            actual_instance=actual_instance,
+            stickler_result=stickler_result,
+            confidence_scores=confidence_scores,
+            stickler_models=self.stickler_models,
+            auto_generated_models=self._auto_generated_models,
+            get_nested_value=self._get_nested_value,
+            get_confidence_for_field=self._get_confidence_for_field,
+            generate_reason=self._generate_reason,
+            format_evaluation_method=_format_evaluation_method,
+            document_context=document_context,
         )
 
-        # Extract field configs from schema properties
-        schema = stickler_config.get("schema", {})
-        properties = schema.get("properties", {})
+    # _transform_stickler_result / _annotate_nested_comparison_methods /
+    # _resolve_leaf_schema moved to
+    # idp_common.evaluation.stickler_backend.results (§6 reorg — R3 lives there).
 
-        # Build a field config map from the schema
-        field_configs = {}
-        for field_name, field_schema in properties.items():
-            field_configs[field_name] = {
-                "threshold": field_schema.get("x-aws-stickler-threshold"),
-                "match_threshold": field_schema.get("x-aws-stickler-match-threshold"),
-                "comparator": field_schema.get("x-aws-stickler-comparator"),
-                "weight": field_schema.get("x-aws-stickler-weight"),
-            }
-
-        # Track metrics
-        tp = fp = fn = tn = fp1 = fp2 = 0
-
-        for field_name, score in field_scores.items():
-            # Get field configuration
-            field_config = field_configs.get(field_name, {})
-
-            # Extract expected and actual values from dicts (already plain data)
-            expected_value = self._get_nested_value(expected_dict, field_name)
-            actual_value = self._get_nested_value(actual_dict, field_name)
-
-            # Get confidence from assessment if available
-            confidence_info = self._get_confidence_for_field(
-                confidence_scores, field_name
-            )
-
-            # Determine threshold for matching decision
-            # IMPORTANT: Never use match_threshold for field comparisons - it's only for Hungarian
-            field_specific_threshold = field_config.get("threshold")
-
-            # Determine appropriate threshold based on method and data type
-            comparator_method = field_config.get("comparator")
-            if comparator_method:
-                # Use field-specific or method default
-                method_name = _normalize_comparator_name(comparator_method)
-                method_defaults = {
-                    "Fuzzy": 0.7,
-                    "Semantic": 0.7,
-                    "Levenshtein": 0.7,
-                }
-                field_threshold = (
-                    field_specific_threshold
-                    if field_specific_threshold is not None
-                    else method_defaults.get(method_name, 0.8)
-                )
-            elif isinstance(expected_value, list) or isinstance(actual_value, list):
-                # Arrays use match_threshold for Hungarian item pairing
-                field_threshold = field_config.get("match_threshold") or match_threshold
-            elif isinstance(expected_value, str) or isinstance(actual_value, str):
-                # Inferred string comparison - use field-specific or Fuzzy default
-                field_threshold = (
-                    field_specific_threshold
-                    if field_specific_threshold is not None
-                    else 0.7
-                )
-            else:
-                # Other types (numbers, booleans, objects) - use field-specific or high default
-                field_threshold = (
-                    field_specific_threshold
-                    if field_specific_threshold is not None
-                    else 0.99
-                )
-
-            matched = score >= field_threshold
-
-            # Check for empty values
-            exp_empty = expected_value is None or (
-                isinstance(expected_value, str) and not str(expected_value).strip()
-            )
-            act_empty = actual_value is None or (
-                isinstance(actual_value, str) and not str(actual_value).strip()
-            )
-
-            # Update metrics
-            if exp_empty and act_empty:
-                tn += 1
-                matched = True  # Both empty is considered a match
-            elif exp_empty and not act_empty:
-                fp += 1
-                fp1 += 1
-                matched = False
-            elif not exp_empty and act_empty:
-                fn += 1
-                matched = False
-            elif matched:
-                tp += 1
-            else:
-                fp += 1
-                fp2 += 1
-
-            # Generate reason (include auto-generation notice if applicable)
-            reason = self._generate_reason(
-                field_name,
-                expected_value,
-                actual_value,
-                score,
-                matched,
-                field_config.get("comparator"),
-                is_auto_generated=is_auto_generated,
-            )
-
-            # Build formatted evaluation method string that matches markdown display
-            comparator_method = field_config.get("comparator")
-
-            # Only these methods use similarity thresholds
-            # Note: NumericExact uses tolerance (not threshold), LLM returns binary match
-            THRESHOLD_BASED_METHODS = {
-                "Fuzzy": 0.7,
-                "Semantic": 0.7,
-                "Levenshtein": 0.7,
-            }
-
-            if comparator_method:
-                # Normalize comparator name to UI-friendly format
-                evaluation_method_value = _normalize_comparator_name(comparator_method)
-
-                # Show threshold ONLY for methods that use similarity thresholds
-                if evaluation_method_value in THRESHOLD_BASED_METHODS:
-                    # Use field-specific threshold if set, else use method default
-                    display_threshold = (
-                        field_specific_threshold
-                        if field_specific_threshold is not None
-                        else THRESHOLD_BASED_METHODS[evaluation_method_value]
-                    )
-                    evaluation_method_value = f"{evaluation_method_value} (threshold: {display_threshold:.2f})"
-                # Exact, NumericExact, LLM, AggregateObject don't show thresholds
-
-            elif isinstance(expected_value, list) or isinstance(actual_value, list):
-                # Arrays use Hungarian matching - show field-specific or document-level match_threshold
-                display_threshold = (
-                    field_config.get("match_threshold") or match_threshold
-                )
-                evaluation_method_value = (
-                    f"Hungarian (threshold: {display_threshold:.2f})"
-                )
-
-            elif isinstance(expected_value, dict) or isinstance(actual_value, dict):
-                # Nested objects - no threshold
-                evaluation_method_value = "AggregateObject"
-
-            else:
-                # Infer method based on data types when no explicit comparator
-                if isinstance(expected_value, bool) or isinstance(actual_value, bool):
-                    # Booleans use exact matching - no threshold
-                    evaluation_method_value = "Exact"
-                elif isinstance(expected_value, (int, float)) or isinstance(
-                    actual_value, (int, float)
-                ):
-                    # Numbers use tolerance-based comparison - no threshold display
-                    evaluation_method_value = "NumericExact"
-                elif isinstance(expected_value, str) or isinstance(actual_value, str):
-                    # Strings use fuzzy matching - show threshold
-                    display_threshold = (
-                        field_specific_threshold
-                        if field_specific_threshold is not None
-                        else THRESHOLD_BASED_METHODS["Fuzzy"]
-                    )
-                    evaluation_method_value = (
-                        f"Fuzzy (threshold: {display_threshold:.2f})"
-                    )
-                else:
-                    # Safe default for any other types
-                    evaluation_method_value = "Exact"
-
-            # Get detailed field comparisons for this attribute (sticker-eval v0.1.4+)
-            detailed_comparisons = field_comparison_map.get(field_name, None)
-
-            # Create AttributeEvaluationResult with field comparison details
-            attribute_result = AttributeEvaluationResult(
-                name=field_name,
-                expected=expected_value,
-                actual=actual_value,
-                matched=matched,
-                score=score,
-                reason=reason,
-                evaluation_method=evaluation_method_value,
-                evaluation_threshold=field_threshold,
-                comparator_type=field_config.get("comparator"),
-                confidence=(
-                    confidence_info.get("confidence") if confidence_info else None
-                ),
-                confidence_threshold=(
-                    confidence_info.get("confidence_threshold")
-                    if confidence_info
-                    else None
-                ),
-                weight=field_config.get("weight"),  # Stickler field weight
-                field_comparison_details=detailed_comparisons,  # Nested field-by-field comparisons
-            )
-
-            attribute_results.append(attribute_result)
-
-        # Sort attribute results for consistent output
-        attribute_results.sort(key=lambda ar: ar.name)
-
-        # Calculate metrics
-        metrics = calculate_metrics(tp=tp, fp=fp, fn=fn, tn=tn, fp1=fp1, fp2=fp2)
-
-        # Add Stickler's weighted overall score to metrics
-        weighted_score = stickler_result.get("overall_score", 0.0)
-        metrics["weighted_overall_score"] = weighted_score
-
-        return SectionEvaluationResult(
-            section_id=section.section_id,
-            document_class=section.classification,
-            attributes=attribute_results,
-            metrics=metrics,
-        )
+    # _clean_null_descriptions moved to
+    # idp_common.evaluation.stickler_backend.model_factory.clean_null_descriptions
+    # (§6 reorg — called inside get_stickler_model, no other callers).
 
     def _remove_none_values(self, data: Any) -> Any:
         """
@@ -1195,41 +1089,14 @@ class EvaluationService:
                     value, field_annotation, key
                 )
 
-            # Second pass: add defaults for missing required fields
-            # This handles cases where LLM returned null for required fields
-            # and _remove_none_values() removed them
-            for field_name, field_info in model_fields.items():
-                if field_name in coerced_data:
-                    continue  # Already have a value
-
-                # Check if field is required (no default and not Optional)
-                is_required = field_info.is_required()
-
-                if is_required:
-                    # Get the field's annotation to determine appropriate default
-                    field_annotation = field_info.annotation
-
-                    # Handle Optional types
-                    origin = getattr(field_annotation, "__origin__", None)
-                    if origin is Union:
-                        args = getattr(field_annotation, "__args__", ())
-                        # If None is in the Union, field accepts None
-                        if type(None) in args:
-                            continue  # Optional field, skip
-                        field_annotation = next(
-                            (arg for arg in args if arg is not type(None)),
-                            field_annotation,
-                        )
-
-                    # Provide type-appropriate default for required field
-                    default_value = self._get_default_for_type(
-                        field_annotation, field_name
-                    )
-                    if default_value is not None:
-                        logger.debug(
-                            f"Required field '{field_name}' missing from data, providing default: {default_value!r}"
-                        )
-                        coerced_data[field_name] = default_value
+            # R4: previously a second pass here injected type-appropriate
+            # defaults ("", 0, 0.0, False, [], {}) for any "required" field
+            # missing from ``coerced_data``. That path was dead in practice
+            # (the mapper clears ``required`` at :737-738 and the genson path
+            # strips it at :351) but dangerous: injecting ``0`` for a
+            # genuinely-absent numeric turns a false negative into a value
+            # mismatch (fd), inflating error counts for missing-data cases.
+            # Rely instead on all-fields-optional + ``_remove_none_values``.
 
             return coerced_data
 
@@ -1238,48 +1105,6 @@ class EvaluationService:
                 f"Error during type coercion: {str(e)}. Returning original data."
             )
             return data
-
-    def _get_default_for_type(self, field_annotation: Any, field_name: str = "") -> Any:
-        """
-        Get an appropriate default value for a required field based on its type.
-
-        This is used when a required field has a null/None value and we need
-        to provide a default to allow Pydantic validation to succeed.
-
-        Args:
-            field_annotation: The type annotation for the field
-            field_name: Name of the field (for logging)
-
-        Returns:
-            Appropriate default value for the type, or None if no default is suitable
-        """
-        origin = getattr(field_annotation, "__origin__", None)
-
-        # Handle list/array types
-        if origin is list:
-            return []
-
-        # Handle dict types
-        if origin is dict:
-            return {}
-
-        # Handle basic types
-        if field_annotation is str:
-            return ""
-        elif field_annotation is int:
-            return 0
-        elif field_annotation is float:
-            return 0.0
-        elif field_annotation is bool:
-            return False
-
-        # For complex types (e.g., nested Pydantic models), return None
-        # This will still cause validation to fail, but that's appropriate
-        # for complex required fields
-        logger.debug(
-            f"No default available for required field '{field_name}' with type {field_annotation}"
-        )
-        return None
 
     def _coerce_value_to_type(
         self, value: Any, expected_type: Any, field_name: str = ""
@@ -1385,12 +1210,207 @@ class EvaluationService:
             )
             return value
 
+    def _drop_field_at_path(
+        self, data: Dict[str, Any], path: Tuple[Any, ...]
+    ) -> Dict[str, Any]:
+        """
+        Return a deep copy of ``data`` with the value at ``path`` removed.
+
+        Pydantic error locations are tuples of dict keys and list indices, e.g.
+        ``("PersonalInformation", "ContactInformation", "WorkPhone")`` or
+        ``("Liabilities", 0, "UnpaidBalance")``. Navigates that path and deletes
+        the leaf. Missing/incompatible path segments are ignored (the leaf may
+        not exist on one side).
+
+        Args:
+            data: Source data (not mutated)
+            path: Pydantic error location tuple
+
+        Returns:
+            Deep copy of ``data`` with the offending leaf removed
+        """
+        import copy
+
+        result = copy.deepcopy(data)
+        cursor: Any = result
+        for segment in path[:-1]:
+            if isinstance(cursor, dict) and segment in cursor:
+                cursor = cursor[segment]
+            elif (
+                isinstance(cursor, list)
+                and isinstance(segment, int)
+                and 0 <= segment < len(cursor)
+            ):
+                cursor = cursor[segment]
+            else:
+                return result  # Path doesn't exist on this side - nothing to drop
+
+        leaf = path[-1]
+        if isinstance(cursor, dict):
+            cursor.pop(leaf, None)
+        elif (
+            isinstance(cursor, list)
+            and isinstance(leaf, int)
+            and 0 <= leaf < len(cursor)
+        ):
+            del cursor[leaf]
+        return result
+
+    def _build_instances_tolerant(
+        self,
+        model_class: Type["StructuredModel"],
+        coerced_expected: Dict[str, Any],
+        coerced_actual: Dict[str, Any],
+        confidence_scores: Optional[Dict[str, Any]],
+        max_drops: int = 50,
+    ) -> Tuple[Any, Any, List[Tuple[Any, ...]]]:
+        """
+        Instantiate expected/actual models, dropping individual fields that fail.
+
+        A single field that fails Pydantic validation would otherwise raise and
+        abort the entire section (zeroing every attribute). Instead, on a
+        ValidationError we extract the offending field path(s), drop them from
+        BOTH expected and actual (so the comparison stays symmetric and fair),
+        and retry. This bounds the blast radius to just the unparseable fields.
+
+        UPSTREAM: candidate for `awslabs/stickler` — good fit for a "lenient
+        ingest" mode on `StructuredModel.from_json` / `model_validate` that
+        drops a single failing field rather than failing the whole record.
+        Delete this method once upstream supports it. No open issue yet.
+
+        Args:
+            model_class: The Stickler StructuredModel subclass
+            coerced_expected: Cleaned/coerced baseline data
+            coerced_actual: Cleaned/coerced prediction data
+            confidence_scores: Optional confidence data for the rich-value path
+            max_drops: Safety cap on retry iterations
+
+        Returns:
+            Tuple of (expected_instance, actual_instance, skipped_field_paths)
+
+        Raises:
+            Exception: Re-raises if the error is not a per-field ValidationError
+                or if it cannot be resolved by dropping fields.
+        """
+        from pydantic import ValidationError
+
+        skipped: List[Tuple[Any, ...]] = []
+
+        def build():
+            expected_instance = model_class(**coerced_expected)
+            if confidence_scores:
+                actual_rich = self._convert_to_rich_values(
+                    coerced_actual, confidence_scores
+                )
+                actual_instance = model_class.from_json(
+                    actual_rich, process_rich_values=True
+                )
+            else:
+                actual_instance = model_class(**coerced_actual)
+            return expected_instance, actual_instance
+
+        for _ in range(max_drops):
+            try:
+                expected_instance, actual_instance = build()
+                return expected_instance, actual_instance, skipped
+            except ValidationError as ve:
+                # Collect the offending field paths from this validation pass
+                error_paths = {err["loc"] for err in ve.errors() if err.get("loc")}
+                if not error_paths:
+                    raise  # Nothing actionable to drop
+                progressed = False
+                for path in error_paths:
+                    if path in skipped:
+                        continue
+                    coerced_expected = self._drop_field_at_path(coerced_expected, path)
+                    coerced_actual = self._drop_field_at_path(coerced_actual, path)
+                    skipped.append(path)
+                    progressed = True
+                if not progressed:
+                    # Same fields failing again - avoid infinite loop
+                    raise
+
+        # Exceeded max_drops - one final attempt; let any error propagate
+        expected_instance, actual_instance = build()
+        return expected_instance, actual_instance, skipped
+
+    def _warn_on_multi_instance_shape_mismatch(
+        self,
+        class_name: Optional[str],
+        expected_results: Any,
+        actual_results: Any,
+        section_id: Any,
+    ) -> None:
+        """Say so loudly when a baseline's shape does not match the prediction's.
+
+        Turning on ``x-aws-idp-multi-instance`` (GitHub #715) changes a class's
+        ``inference_result`` from a flat record to ``{"instances": [ … ]}``.
+        Evaluation compares against a stored baseline **of the same shape**, so a
+        wrapped prediction against a flat baseline scores every field as
+        missing-on-one-side: the class reads ~0 accuracy and **nothing says why**.
+        That is the single biggest risk this feature introduces, and relying on the
+        operator to remember
+        ``scripts/migrate_multi_instance_baselines.py`` is not a control.
+
+        Both directions are checked, because the rollback (flag off, baselines
+        still wrapped) fails exactly as silently.
+
+        Advisory only — it never changes a score. The point is that a mismatch
+        stops being invisible.
+        """
+        from idp_common.schema.multi_instance import is_multi_instance, unwrap_instances
+
+        class_schema = None
+        for candidate in self.config.classes or []:
+            if not isinstance(candidate, dict):
+                continue
+            label = candidate.get("$id") or candidate.get("x-aws-idp-document-type")
+            if (
+                isinstance(label, str)
+                and isinstance(class_name, str)
+                and label.lower() == class_name.lower()
+            ):
+                class_schema = candidate
+                break
+        if class_schema is None:
+            return
+
+        flagged = is_multi_instance(class_schema)
+        expected_wrapped = unwrap_instances(expected_results) is not None
+        actual_wrapped = unwrap_instances(actual_results) is not None
+
+        if flagged and actual_wrapped and not expected_wrapped:
+            logger.warning(
+                "Section %s (class=%s): the extraction result is multi-instance "
+                "({'instances': [...]}) but the evaluation BASELINE is flat, so "
+                "every field will score as missing on one side and this class's "
+                "accuracy will read as ~0 for reasons that have nothing to do "
+                "with extraction quality. Migrate the baselines: "
+                "python3 scripts/migrate_multi_instance_baselines.py "
+                "--stack-name <stack> --apply",
+                section_id,
+                class_name,
+            )
+        elif not flagged and expected_wrapped and not actual_wrapped:
+            logger.warning(
+                "Section %s (class=%s): the evaluation BASELINE is multi-instance "
+                "({'instances': [...]}) but the extraction result is flat — "
+                "x-aws-idp-multi-instance was presumably turned back off without "
+                "migrating the baselines back. This class's accuracy will read as "
+                "~0. Roll the baselines back: "
+                "python3 scripts/migrate_multi_instance_baselines.py "
+                "--stack-name <stack> --direction unwrap --apply",
+                section_id,
+                class_name,
+            )
+
     def evaluate_section(
         self,
         section: Section,
         expected_results: Dict[str, Any],
         actual_results: Dict[str, Any],
         confidence_scores: Optional[Dict[str, Any]] = None,
+        document_context: str = "",
     ) -> SectionEvaluationResult:
         """
         Evaluate extraction results for a document section using Stickler.
@@ -1407,6 +1427,32 @@ class EvaluationService:
         class_name = section.classification
         logger.debug(
             f"Evaluating Section {section.section_id} - class: {class_name} using Stickler"
+        )
+
+        # No-op detection: a section whose class has no extractable fields
+        # (missing from config with no expected data OR configured with an
+        # empty attribute list) has nothing to score. Emit a skipped-result
+        # stub so the document-level aggregator can exclude it from the
+        # weighted mean instead of counting a spurious 0.0.
+        if self._has_no_extractable_schema(class_name, expected_results):
+            logger.info(
+                "Section %s (class=%s) has no extractable schema — excluding "
+                "from scoring.",
+                section.section_id,
+                class_name,
+            )
+            return self._build_excluded_section_result(
+                section=section,
+                document_class=class_name,
+                exclusion_reason="no_extractable_schema",
+                message=(
+                    f"Class '{class_name}' has no attributes defined in the "
+                    f"evaluation schema; section excluded from scoring."
+                ),
+            )
+
+        self._warn_on_multi_instance_shape_mismatch(
+            class_name, expected_results, actual_results, section.section_id
         )
 
         try:
@@ -1483,24 +1529,73 @@ class EvaluationService:
             coerced_expected = self._remove_none_values(coerced_expected)
             coerced_actual = self._remove_none_values(coerced_actual)
 
-            # Create model instances from coerced data
-            # Stickler handles validation and structure
-            expected_instance = ModelClass(**coerced_expected)
-            actual_instance = ModelClass(**coerced_actual)
+            # Create model instances using Rich Value Pattern for confidence integration.
+            # Tolerant build: if a single field still fails Pydantic validation (e.g. an
+            # unexpected type the coercion didn't catch), drop just that field from BOTH
+            # sides and retry, rather than failing the entire section. This limits the
+            # blast radius so the rest of the fields still score.
+            (
+                expected_instance,
+                actual_instance,
+                skipped_field_paths,
+            ) = self._build_instances_tolerant(
+                ModelClass, coerced_expected, coerced_actual, confidence_scores
+            )
 
-            # Compare using Stickler with field_comparisons enabled (sticker-eval v0.1.4+)
+            if skipped_field_paths:
+                logger.warning(
+                    f"Section {section.section_id}: {len(skipped_field_paths)} field(s) "
+                    f"could not be validated and were skipped (the rest were still "
+                    f"evaluated): "
+                    f"{', '.join('.'.join(p) for p in sorted(skipped_field_paths))}"
+                )
+
+            # Compare using Stickler. Flag set comes from the cross-Lambda
+            # contract module (change one place if the raw blob shape has to
+            # change, and bump STICKLER_RESULT_VERSION with it). Metric
+            # classes come via stickler_backend so this module doesn't need
+            # a direct ``import stickler`` (single-boundary rule).
+            from idp_common.evaluation.contract import compare_with_flags
+            from idp_common.evaluation.stickler_backend.confidence import (
+                AUROCMetric,
+                BrierScoreMetric,
+                ECEMetric,
+            )
+
             stickler_result = expected_instance.compare_with(
                 actual_instance,
-                document_field_comparisons=True,  # Enable detailed field-by-field comparison
+                **compare_with_flags(),
+                confidence_metrics=[  # Compute AUROC, ECE, and Brier for confidence calibration
+                    AUROCMetric(),
+                    ECEMetric(),
+                    BrierScoreMetric(),
+                ],
             )
 
             logger.debug(
                 f"Stickler comparison complete. Overall score: {stickler_result.get('overall_score', 'N/A'):.3f}"
             )
 
-            # Log field_comparisons count if available
+            # Log confidence extraction if available
+            if confidence_scores and "prediction_confidences" in stickler_result:
+                logger.debug(
+                    f"Stickler extracted {len(stickler_result['prediction_confidences'])} confidence scores for calibration metrics"
+                )
+
+            # Patch field_comparisons to add ``field_path`` where Stickler drops it.
+            # UPSTREAM: candidate for `awslabs/stickler` — the canonical
+            # `expected_key` is always present but `field_path` is inconsistently
+            # populated across Stickler versions, so the ConfidenceCalculator
+            # (which keys off `field_path`) sometimes can't join a comparison
+            # to its confidence value. Delete this shim once Stickler
+            # guarantees `field_path` on every field_comparisons row.
             field_comparisons = stickler_result.get("field_comparisons", [])
             if field_comparisons:
+                for fc in field_comparisons:
+                    # Use expected_key as field_path (the canonical field path)
+                    if "field_path" not in fc or fc["field_path"] is None:
+                        fc["field_path"] = fc.get("expected_key")
+
                 logger.debug(
                     f"Field comparisons enabled: {len(field_comparisons)} detailed comparisons available"
                 )
@@ -1512,7 +1607,31 @@ class EvaluationService:
                 actual_instance,
                 stickler_result,
                 confidence_scores or {},
+                document_context=document_context,
             )
+
+            # Surface any fields that were skipped due to per-field validation
+            # errors so reduced coverage is visible in the report (not silently
+            # dropped). These are informational and excluded from scoring.
+            for path in skipped_field_paths:
+                field_label = ".".join(str(p) for p in path)
+                section_result.attributes.append(
+                    AttributeEvaluationResult(
+                        name=f"__SKIPPED__{field_label}",
+                        expected=None,
+                        actual=None,
+                        matched=False,
+                        score=0.0,
+                        reason=(
+                            f"Field '{field_label}' could not be validated against "
+                            f"the schema and was excluded from scoring. The remaining "
+                            f"fields in this section were evaluated normally."
+                        ),
+                        evaluation_method="N/A",
+                    )
+                )
+            if skipped_field_paths:
+                section_result.metrics["skipped_field_count"] = len(skipped_field_paths)
 
             return section_result
 
@@ -1533,6 +1652,7 @@ class EvaluationService:
                 field_match = re.search(r"Error in field '([^']+)'", error_message)
                 field_name = field_match.group(1) if field_match else "unknown"
 
+                failure_type = "empty_nested_object"
                 failure_reason = (
                     f"Schema error for document class '{class_name}': "
                     f"Nested object '{field_name}' has no properties defined. "
@@ -1540,6 +1660,7 @@ class EvaluationService:
                     f"Either add properties to '{field_name}' in your schema or remove it entirely."
                 )
             elif "No schema configuration found" in error_message:
+                failure_type = "missing_schema_configuration"
                 failure_reason = (
                     f"No schema configuration found for document class: {class_name}. "
                     f"Cannot evaluate without configuration or baseline data. "
@@ -1547,6 +1668,7 @@ class EvaluationService:
                 )
             else:
                 # Generic schema/configuration error
+                failure_type = "schema_configuration_error"
                 failure_reason = f"Schema configuration error for document class '{class_name}': {error_message}"
 
             return SectionEvaluationResult(
@@ -1572,6 +1694,9 @@ class EvaluationService:
                     "false_discovery_rate": 0.0,
                     "weighted_overall_score": 0.0,
                     "evaluation_failed": True,
+                    # Names the cause so the report can explain *this* failure
+                    # rather than assuming a missing configuration.
+                    "failure_type": failure_type,
                 },
             )
 
@@ -1585,12 +1710,14 @@ class EvaluationService:
             # Check if it's a Pydantic validation error
             error_type = type(e).__name__
             if "ValidationError" in error_type:
+                failure_type = "baseline_data_validation_error"
                 failure_reason = (
                     f"Data validation error: The baseline data format doesn't match the schema for document class '{class_name}'. "
                     f"This typically means the baseline data has different types than expected. "
                     f"Details: {str(e)}"
                 )
             else:
+                failure_type = "unexpected_error"
                 failure_reason = f"Unexpected error during evaluation: {str(e)}"
 
             return SectionEvaluationResult(
@@ -1616,11 +1743,19 @@ class EvaluationService:
                     "false_discovery_rate": 0.0,
                     "weighted_overall_score": 0.0,
                     "evaluation_failed": True,  # Flag to identify failed evaluations
+                    "failure_type": failure_type,
                 },
             )
 
+    # _load_sections_for_doc_split moved to
+    # idp_common.evaluation.stickler_backend.doc_split.load_sections_for_doc_split
+    # (§6 reorg).
+
     def _process_section(
-        self, actual_section: Section, expected_section: Section
+        self,
+        actual_section: Section,
+        expected_section: Section,
+        document_context: str = "",
     ) -> Tuple[Optional[SectionEvaluationResult], Dict[str, int]]:
         """
         Process a single section for evaluation.
@@ -1652,26 +1787,42 @@ class EvaluationService:
             expected_results=expected_results,
             actual_results=actual_results,
             confidence_scores=confidence_scores,
+            document_context=document_context,
         )
 
-        # Extract metrics from section result
+        # Extract metrics from section result — R3: use Stickler counts stored
+        # on section_result.metrics by _transform_stickler_result. No more
+        # re-counting from attributes; the two paths used to disagree because
+        # attribute-level empty detection ran again with slightly different
+        # semantics from Stickler's NullHelper.
         metrics = {
             "tp": 0,
             "fp": 0,
             "fn": 0,
             "tn": 0,
-            "fp1": 0,
-            "fp2": 0,
+            "fp1": 0,  # -> Stickler `fa` (false alarm: predicted when absent)
+            "fp2": 0,  # -> Stickler `fd` (false discovery: predicted wrong value)
         }
+
+        # Skipped no-op sections contribute no confusion-matrix counts —
+        # Stickler was never invoked, so tp/fp/fn/tn all stay at zero and the
+        # document-level rollup treats the section as absent from scoring.
+        if section_result.metrics.get("evaluation_skipped", False):
+            return section_result, metrics
 
         # Check if evaluation failed for this section
         if section_result.metrics.get("evaluation_failed", False):
-            # For failed evaluations, count based on expected data
-            # If we have expected data, count as false negatives (expected but not evaluated)
-            # This represents complete failure to evaluate
+            # For failed evaluations, count each expected top-level KEY as
+            # a false negative. Kept at top-level (not leaf-normalized)
+            # because Athena / parquet historical baselines were built
+            # against the top-level count — switching to a leaf-normalized
+            # count would silently shift historical trends 10-30× on
+            # list-heavy schemas without operators knowing what changed.
+            # A failed section under-counts fn relative to a healthy
+            # section on the same schema; that's a KNOWN LIMITATION,
+            # documented, and preferable to a silent baseline break.
             if expected_results:
                 num_expected_fields = len(expected_results)
-                # Conservative approach: count each expected field as a false negative
                 metrics["fn"] = num_expected_fields if num_expected_fields > 0 else 1
             else:
                 # If no expected data, still count as at least 1 failure
@@ -1683,30 +1834,16 @@ class EvaluationService:
             )
             return section_result, metrics
 
-        # Normal processing: Count matches and mismatches in the attributes
-        for attr in section_result.attributes:
-            # Check if both are None/Empty
-            is_expected_empty = attr.expected is None or (
-                isinstance(attr.expected, str) and not str(attr.expected).strip()
-            )
-            is_actual_empty = attr.actual is None or (
-                isinstance(attr.actual, str) and not str(attr.actual).strip()
-            )
-
-            if is_expected_empty and is_actual_empty:
-                metrics["tn"] += 1
-            elif attr.matched:
-                metrics["tp"] += 1
-            else:
-                # Handle different error cases
-                if is_expected_empty:
-                    metrics["fp"] += 1
-                    metrics["fp1"] += 1
-                elif is_actual_empty:
-                    metrics["fn"] += 1
-                else:
-                    metrics["fp"] += 1
-                    metrics["fp2"] += 1
+        # Normal processing: pull Stickler's aggregate counts (already stored
+        # on section_result.metrics["_stickler_counts"] by
+        # _transform_stickler_result).
+        counts = section_result.metrics.get("_stickler_counts") or {}
+        metrics["tp"] = int(counts.get("tp", 0) or 0)
+        metrics["fp"] = int(counts.get("fp", 0) or 0)
+        metrics["fn"] = int(counts.get("fn", 0) or 0)
+        metrics["tn"] = int(counts.get("tn", 0) or 0)
+        metrics["fp1"] = int(counts.get("fa", 0) or 0)
+        metrics["fp2"] = int(counts.get("fd", 0) or 0)
 
         return section_result, metrics
 
@@ -1739,9 +1876,20 @@ class EvaluationService:
             try:
                 logger.info("Calculating document split classification metrics...")
                 doc_split_calculator = DocSplitClassificationMetrics()
+                # Adapter: upstream's load_sections accepts plain dicts. IDP's
+                # Document.sections carries Section objects whose data lives in
+                # S3 at ``extraction_result_uri``. Load and hand the upstream
+                # class dict shape it expects
+                # ({section_id, document_class, split_document.page_indices}).
+                gt_dicts = load_sections_for_doc_split(
+                    expected_document.sections, doc_split_calculator
+                )
+                pred_dicts = load_sections_for_doc_split(
+                    actual_document.sections, doc_split_calculator
+                )
                 doc_split_calculator.load_sections(
-                    ground_truth_sections=expected_document.sections,
-                    predicted_sections=actual_document.sections,
+                    ground_truth_sections=gt_dicts,
+                    predicted_sections=pred_dicts,
                 )
 
                 # Calculate all metrics
@@ -1752,6 +1900,17 @@ class EvaluationService:
                 split_no_order = doc_split_results["split_accuracy_without_order"]
                 split_with_order = doc_split_results["split_accuracy_with_order"]
 
+                # R14: graded packet metrics from stickler.doc_split. These
+                # (V-measure / Rand / ordering) score partial correctness the
+                # exact-match counters above ignore — a 9/10-page section
+                # scores near 1.0 here but 0/1 under
+                # ``split_accuracy_without_order`` (which requires set
+                # equality). Average cleanly across documents.
+                graded = compute_graded_packet_metrics(
+                    doc_split_calculator.sections_gt,
+                    doc_split_calculator.sections_pred,
+                )
+
                 doc_split_metrics_obj = DocSplitMetrics(
                     page_level_accuracy=page_level["accuracy"],
                     split_accuracy_without_order=split_no_order["accuracy"],
@@ -1761,11 +1920,25 @@ class EvaluationService:
                     correctly_classified_pages=page_level["correct_pages"],
                     correctly_split_without_order=split_no_order["correct_sections"],
                     correctly_split_with_order=split_with_order["correct_sections"],
-                    page_details=page_level["page_details"],
+                    # Annotated with the classifier's own confidence in each
+                    # page's class, so `correct` and `predicted_confidence`
+                    # sit side by side — that pairing is the calibration
+                    # measurement (GitHub #673). Absent/None for an unscored
+                    # page, which is the default.
+                    page_details=attach_page_confidence(
+                        page_level["page_details"], actual_document
+                    ),
                     section_details_without_order=split_no_order["section_details"],
                     section_details_with_order=split_with_order["section_details"],
                     predicted_sections=doc_split_calculator.sections_pred,  # Add predicted sections for unmatched display
                     errors=doc_split_results.get("errors", []),
+                    final_score=graded.get("final_score") if graded else None,
+                    clustering_score=graded.get("clustering_score") if graded else None,
+                    v_measure=graded.get("v_measure") if graded else None,
+                    rand_index=graded.get("rand_index") if graded else None,
+                    avg_ordering_score=(
+                        graded.get("avg_ordering_score") if graded else None
+                    ),
                 )
 
                 logger.info(
@@ -1784,9 +1957,35 @@ class EvaluationService:
             total_tp = total_fp = total_fn = total_tn = total_fp1 = total_fp2 = 0
 
             # Create a list of section pairs to evaluate
+            # Skip sections whose class is marked as excluded — those sections
+            # have no extraction / assessment output by design, so including
+            # them would make accuracy metrics meaningless. We track them
+            # separately so the markdown report can annotate which sections
+            # were intentionally skipped.
+            from idp_common.section_exclusion import is_section_excluded
+
             section_pairs = []
+            excluded_sections_info: List[Dict[str, Any]] = []
             for actual_section in actual_document.sections:
                 section_id = actual_section.section_id
+
+                if is_section_excluded(actual_section):
+                    logger.info(
+                        "Evaluation skipped for excluded section %s "
+                        "(class=%s, reason=%s)",
+                        section_id,
+                        actual_section.classification,
+                        actual_section.exclusion_reason or "excluded",
+                    )
+                    excluded_sections_info.append(
+                        {
+                            "section_id": section_id,
+                            "classification": actual_section.classification,
+                            "exclusion_reason": actual_section.exclusion_reason,
+                            "page_ids": list(actual_section.page_ids or []),
+                        }
+                    )
+                    continue
 
                 # Find corresponding section in expected document
                 expected_section = next(
@@ -1808,16 +2007,52 @@ class EvaluationService:
 
             section_results = []
 
-            # Track weighted scores for document-level aggregation
+            # Track weighted scores for document-level aggregation. R17: sum
+            # section scores weighted by section field-count (proxy for
+            # section size) rather than taking an unweighted mean over
+            # sections — a 20-field section should contribute more than a
+            # 2-field section, matching how the aggregation Lambda's Stickler
+            # bulk aggregator weights the run-level rollup. Falls back to an
+            # unweighted mean when no section reports a field count.
             total_weighted_score = 0.0
-            weighted_section_count = 0
+            total_field_weight = 0.0
+            unweighted_score_sum = 0.0
+            unweighted_score_count = 0
+            skipped_section_count = 0
 
+            # Map section_id → actual Section so the skipped-section branch
+            # can pull ``page_ids`` / ``classification`` for the excluded-
+            # sections table without re-scanning the document.
+            actual_sections_by_id = {s.section_id: s for s, _ in section_pairs}
+
+            # Pass the document identity through so any per-doc log warnings
+            # can be located to the source document (a section_id like
+            # ``"s1"`` recurs across documents; without doc-scoping the
+            # first doc's warning would silence every subsequent doc's —
+            # finding 1 from round-4 review). Prefer input_key over id when
+            # present (more human-locatable in CloudWatch).
+            # Fall back to a ``uuid4()`` rather than an empty string —
+            # multi-doc runs where every document has missing/empty
+            # ``input_key`` and ``id`` would otherwise share ``doc_ctx=""``
+            # and silence every subsequent doc's anonymous-root warning.
+            # A uuid (not ``id(actual_document)``) so the context is unique
+            # for the LIFE of the run even if a warm Lambda GC's an earlier
+            # doc and reuses its memory address (which ``id()`` would
+            # collide on — finding from #625 review).
+            doc_ctx = (
+                actual_document.input_key
+                or actual_document.id
+                or f"anonymous:{uuid.uuid4()}"
+            )
             # Process sections in parallel using ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 # Submit all section evaluations to the executor
                 future_to_section = {
                     executor.submit(
-                        self._process_section, actual_section, expected_section
+                        self._process_section,
+                        actual_section,
+                        expected_section,
+                        doc_ctx,
                     ): actual_section.section_id
                     for actual_section, expected_section in section_pairs
                 }
@@ -1836,6 +2071,37 @@ class EvaluationService:
                         # Add to section results
                         section_results.append(result)
 
+                        # No-op sections (no extractable schema for the class)
+                        # contribute nothing to the document score — Stickler
+                        # was never run and their weighted score is intentionally
+                        # None. Skip the aggregation branch so a spurious 0.0
+                        # doesn't leak in, and record the section in
+                        # ``excluded_sections_info`` so the markdown report's
+                        # "Excluded Sections (Not Evaluated)" table renders it
+                        # alongside the x-aws-idp-exclude-from-processing path.
+                        if result.metrics.get("evaluation_skipped"):
+                            skipped_section_count += 1
+                            skipped_section = actual_sections_by_id.get(section_id)
+                            excluded_sections_info.append(
+                                {
+                                    "section_id": section_id,
+                                    "classification": (
+                                        skipped_section.classification
+                                        if skipped_section
+                                        else result.document_class
+                                    ),
+                                    "exclusion_reason": result.metrics.get(
+                                        "exclusion_reason", "no_extractable_schema"
+                                    ),
+                                    "page_ids": (
+                                        list(skipped_section.page_ids or [])
+                                        if skipped_section
+                                        else []
+                                    ),
+                                }
+                            )
+                            continue
+
                         # Update overall metrics
                         total_tp += metrics["tp"]
                         total_fp += metrics["fp"]
@@ -1844,13 +2110,32 @@ class EvaluationService:
                         total_fp1 += metrics["fp1"]
                         total_fp2 += metrics["fp2"]
 
-                        # Track weighted score from section
+                        # Track weighted score from section — weight by
+                        # section field count (R17). Fall back to unweighted
+                        # mean if a section has no field counts recorded.
                         section_weighted_score = result.metrics.get(
                             "weighted_overall_score", 0.0
                         )
-                        if section_weighted_score > 0:
-                            total_weighted_score += section_weighted_score
-                            weighted_section_count += 1
+                        counts = result.metrics.get("_stickler_counts") or {}
+                        # Stickler's invariant: fp == fa + fd (every FA row is
+                        # {fa:1, fp:1}; every FD row is {fd:1, fp:1} — see
+                        # ``ConfusionMatrixCalculator``). Summing tp+fa+fd+fp+tn+fn
+                        # would double-count every FP and bias the rollup toward
+                        # low-scoring sections. Use tp+fp+tn+fn instead.
+                        section_field_count = float(
+                            counts.get("tp", 0)
+                            + counts.get("fp", 0)
+                            + counts.get("tn", 0)
+                            + counts.get("fn", 0)
+                        )
+                        if section_field_count > 0:
+                            total_weighted_score += (
+                                section_weighted_score * section_field_count
+                            )
+                            total_field_weight += section_field_count
+                        elif section_weighted_score > 0:
+                            unweighted_score_sum += section_weighted_score
+                            unweighted_score_count += 1
 
                     except Exception as e:
                         logger.error(
@@ -1873,22 +2158,57 @@ class EvaluationService:
 
             section_results.sort(key=natural_sort_key)
 
-            # Calculate overall metrics
-            overall_metrics = calculate_metrics(
+            # Document-level metrics: same formulas as Stickler's
+            # ``DerivedMetricsCalculator``, evaluated over the sums of
+            # per-section Stickler counts. Inlined here (R10) so the module
+            # boundary owns the roll-up shape; individual sections already
+            # source ``tp/fa/fd/fp/tn/fn`` directly from Stickler.
+            overall_metrics = _compute_derived_metrics(
                 tp=total_tp,
                 fp=total_fp,
                 fn=total_fn,
                 tn=total_tn,
-                fp1=total_fp1,
-                fp2=total_fp2,
+                fa=total_fp1,
+                fd=total_fp2,
             )
 
-            # Calculate document-level weighted overall score (average of section scores)
-            if weighted_section_count > 0:
-                document_weighted_score = total_weighted_score / weighted_section_count
+            # Calculate document-level weighted overall score. R17: prefer
+            # field-count-weighted mean; only fall back to unweighted mean when
+            # no section reported counts (e.g. sections that failed evaluation).
+            # Documents whose every section was excluded from scoring (no
+            # extractable schema) get ``None`` so downstream UI / rollups can
+            # render them as "N/A — Excluded" instead of a misleading 0.0.
+            # ``skipped_section_count`` was maintained in the executor loop; no
+            # second pass over section_results.
+            # Compare against the ORIGINAL pair count, not
+            # ``len(section_results)``. Sections that raised an exception
+            # (rather than emitting the ``evaluation_skipped`` metric flag)
+            # never make it into ``section_results``, so
+            # ``len(section_results)`` is already reduced by errored
+            # sections. Using it as the denominator would let a doc with
+            # (skipped=N, errored=M) match ``skipped_section_count == N ==
+            # len(section_results)=N`` and misclassify as "all excluded"
+            # even though M sections genuinely failed and should surface as
+            # such.
+            total_sections_attempted = len(section_pairs)
+            all_sections_skipped = (
+                skipped_section_count > 0
+                and skipped_section_count == total_sections_attempted
+            )
+            if total_field_weight > 0:
+                document_weighted_score = total_weighted_score / total_field_weight
+            elif unweighted_score_count > 0:
+                document_weighted_score = unweighted_score_sum / unweighted_score_count
+            elif all_sections_skipped:
+                document_weighted_score = None
             else:
                 document_weighted_score = 0.0
             overall_metrics["weighted_overall_score"] = document_weighted_score
+            if all_sections_skipped:
+                overall_metrics["evaluation_excluded"] = True
+                overall_metrics["exclusion_reason"] = "no_extractable_schema"
+            if skipped_section_count:
+                overall_metrics["skipped_section_count"] = skipped_section_count
 
             execution_time = time.time() - start_time
 
@@ -1900,23 +2220,31 @@ class EvaluationService:
             if not actual_document.input_key:
                 raise ValueError("Input key is required for storing results")
 
-            # Create evaluation result with doc split metrics
+            # Create evaluation result with doc split metrics and any
+            # excluded sections that were intentionally skipped.
             evaluation_result = DocumentEvaluationResult(
                 document_id=actual_document.id,
                 section_results=section_results,
                 overall_metrics=overall_metrics,
                 execution_time=execution_time,
                 doc_split_metrics=doc_split_metrics_obj,
+                excluded_sections=excluded_sections_info,
             )
 
             # Store results if requested
             if store_results:
-                # Generate output path
+                # Generate output path via the cross-Lambda contract module.
                 output_bucket = actual_document.output_bucket
-                output_key = f"{actual_document.input_key}/evaluation/results.json"
+                output_key = evaluation_results_key(actual_document.input_key)
 
-                # Store evaluation results in S3
+                # Store evaluation results in S3.
                 result_dict = evaluation_result.to_dict()
+                # Stamp the version at write time — the ONLY place we stamp,
+                # so round-tripping a historical payload through
+                # ``DocumentEvaluationResult`` doesn't silently upgrade it
+                # (which would defeat the drift-detection soft gate). Any new
+                # writer of ``results.json`` must call this line explicitly.
+                result_dict["stickler_result_version"] = STICKLER_RESULT_VERSION
                 # Convert numpy types to native Python types for JSON serialization
                 result_dict = _convert_numpy_types(result_dict)
                 s3.write_content(

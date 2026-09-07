@@ -1,0 +1,17 @@
+query ListDocumentVersions($objectKey: ID!) {
+  listDocumentVersions(objectKey: $objectKey) {
+    RunId
+    ObjectKey
+    CompletionTime
+    QueuedTime
+    WorkflowStartTime
+    WorkflowExecutionArn
+    ConfigVersion
+    ConfigRevision
+    PageCount
+    FileCount
+    ManifestUri
+    SummaryReportUri
+    EvaluationReportUri
+  }
+}

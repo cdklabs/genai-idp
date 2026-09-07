@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT-0
 
 /* eslint-disable react/no-array-index-key */
-/* eslint-disable no-use-before-define */
+
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Box,
@@ -15,23 +15,121 @@ import {
   Button,
   Header,
   Container,
+  ExpandableSection,
   Modal,
   Tabs,
+  Alert,
 } from '@cloudscape-design/components';
 import type { BoxProps } from '@cloudscape-design/components';
+import { useNavigate } from 'react-router-dom';
 import SchemaBuilder from '../json-schema-builder/SchemaBuilder';
+import PromptPreview from './PromptPreview';
+import useSyntheticDataGenerator from '../../hooks/use-synthetic-data-generator';
+import { TEST_STUDIO_PATH } from '../../routes/constants';
+
+// Turn a schema key into a concise, human-readable field label.
+// e.g. "assessment_integration" -> "Assessment Integration",
+//      "model_lambda_hook_arn"  -> "Model Lambda Hook Arn",
+//      "top_p" -> "Top P". Small acronyms are upper-cased.
+const _ACRONYMS = new Set(['ocr', 'llm', 'hitl', 'arn', 'bda', 'id', 'url', 'api', 'ui', 's3']);
+function humanizeKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2') // camelCase -> spaced
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => (_ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(' ');
+}
+
+// Numeric sort weight for a schema property's `order`.
+//
+// Fractional orders are used deliberately to slot a new section between two
+// existing ones without renumbering every sibling (e.g. `preprocessing: 2.5`
+// before OCR, `postprocessing: 9.5` between Evaluation and Discovery). Those
+// must NOT be truncated to an integer: parseInt('9.5') is 9, which ties with
+// Evaluation and leaves the resulting position down to sort tie-breaking rather
+// than the schema's stated intent. Non-numeric or absent values sort last.
+const ORDER_LAST = 999;
+function getOrderWeight(order: unknown): number {
+  if (order === undefined || order === null) return ORDER_LAST;
+  const parsed = parseFloat(String(order));
+  return Number.isFinite(parsed) ? parsed : ORDER_LAST;
+}
+
+// Concise field label: prefer an explicit schema `title`, else humanize the key.
+// The (potentially long) `description` is shown separately as help text.
+function getFieldLabel(key: string, property: { title?: unknown }): string {
+  const title = property?.title;
+  return typeof title === 'string' && title.trim() ? title : humanizeKey(key);
+}
+
+// Whether a model ID exposes a reasoning-effort control. Mirrors the backend
+// gate (idp_common/bedrock/client.py::is_claude_effort_model + is_grok_model +
+// the OpenAI Responses path): OpenAI GPT-5.x, xAI Grok, and Claude Sonnet 5 /
+// Sonnet 4.6 / Opus 4.5-4.8 / Fable 5 (NOT Sonnet 4.5 or Haiku 4.5). Handles
+// us./eu./global. prefixes, the :1m suffix, and dated/versioned foundation IDs
+// via substring.
+//
+// The effort picklist is a superset across families and each backend drops the
+// values its model rejects: Claude has no 'minimal', GPT-5.x has no
+// 'xhigh'/'max', and Grok accepts none/low/medium/high/xhigh but NOT 'max'.
+const _CLAUDE_EFFORT_TOKENS = [
+  'claude-sonnet-5',
+  'claude-sonnet-4-6',
+  'claude-opus-4-5',
+  'claude-opus-4-6',
+  'claude-opus-4-7',
+  'claude-opus-4-8',
+  'claude-opus-5',
+  'claude-fable-5',
+];
+function modelSupportsReasoningEffort(modelId: unknown): boolean {
+  if (typeof modelId !== 'string' || !modelId) {
+    return false;
+  }
+  const id = modelId.toLowerCase();
+  if (id.includes('openai.gpt-5') || id.includes('xai.grok')) {
+    return true;
+  }
+  return _CLAUDE_EFFORT_TOKENS.some((t) => id.includes(t));
+}
 
 // Type for schema property definitions used throughout the config builder
 interface SchemaProperty {
   type?: string;
+  title?: string;
   properties?: Record<string, SchemaProperty>;
   items?: SchemaProperty;
   enum?: string[];
   default?: unknown;
   order?: string | number;
   description?: string;
-  dependsOn?: { field: string; values?: unknown[]; value?: unknown };
+  dependsOn?: {
+    field: string;
+    values?: unknown[];
+    value?: unknown;
+    valuePrefix?: string;
+    // Show only when the dependency field holds a model ID that supports a
+    // reasoning-effort control (OpenAI GPT-5.x or effort-capable Claude). Used
+    // by the reasoning_effort selector, which applies to more than one model
+    // family and therefore can't be gated by a single valuePrefix.
+    reasoningCapable?: boolean;
+  };
   sectionLabel?: string;
+  // For nested sectionLabel objects: auto-expand the collapsible section when a
+  // sibling field matches (e.g. expand "Agentic Extraction" when enabled=true).
+  expandWhen?: { field: string; value?: unknown };
+  // Hide this field when an ABSOLUTE-path (form-root) field equals a value.
+  // Composes with dependsOn; resolves cross-section (e.g. hide unused confidence
+  // inference fields when extraction.confidence.mode === "integrated").
+  hideWhen?: { field: string; value?: unknown };
+  defaultExpanded?: boolean | string;
+  // Nested sectionLabel object rendering: `collapsible: false` renders an
+  // always-open group (bold header, no expand control) so its master toggle is
+  // never hidden. `ghostGroup: true` renders children at the PARENT config path
+  // (purely visual grouping — e.g. "Model parameters"/"Prompts" — no path change).
+  collapsible?: boolean | string;
+  ghostGroup?: boolean | string;
   nestLevel?: number;
   columns?: string | number;
   listLabel?: string;
@@ -44,7 +142,7 @@ interface SchemaProperty {
 
 // Extended Box props that allow style, className, event handlers, and relaxed spacing values.
 // Cloudscape Box doesn't type these but passes them through to the DOM element.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 type ExtendedBoxProps = Omit<BoxProps, 'padding' | 'margin' | 'display' | 'color'> & {
   [key: string]: unknown;
   style?: React.CSSProperties;
@@ -426,6 +524,7 @@ interface ConfigBuilderProps {
   ruleSchema?: Record<string, unknown> | unknown[] | null;
   onRuleSchemaChange?: ((schema: unknown, isDirty: boolean) => void) | null;
   onRuleSchemaValidate?: ((isValid: boolean, errors: unknown[]) => void) | null;
+  highlightClassName?: string | null;
   versionDescription?: string;
   onDescriptionChange?: ((description: string) => void) | null;
 }
@@ -448,11 +547,25 @@ const ConfigBuilder = ({
   ruleSchema = null,
   onRuleSchemaChange = null,
   onRuleSchemaValidate = null,
+  highlightClassName = null,
   versionDescription = '',
   onDescriptionChange = null,
 }: ConfigBuilderProps): React.JSX.Element => {
+  const navigate = useNavigate();
+  const { available: generatorAvailable } = useSyntheticDataGenerator();
+
+  // Deep-link to Test Studio with the generate modal pre-filled for this version.
+  const goGenerateTestSet = (): void => {
+    const params = new URLSearchParams({ tab: 'sets', generate: '1' });
+    if (currentVersionName) params.set('version', currentVersionName);
+    navigate(`${TEST_STUDIO_PATH}?${params.toString()}`);
+  };
+
   // Track expanded state for all list items across the form - default to collapsed
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+
+  // Track expanded state for collapsible top-level sections
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   // State for add item modals
   const [activeAddModal, setActiveAddModal] = useState<string | null>(null); // Path of the list currently showing add modal
@@ -460,6 +573,10 @@ const ConfigBuilder = ({
   const [nameError, setNameError] = useState('');
   // For handling dropdown selection in modal
   const [showNameAsDropdown, setShowNameAsDropdown] = useState(false);
+
+  // State for the "expand editor" modal used to edit large text (e.g. prompts) in a
+  // roomy full-height textarea instead of the cramped inline field.
+  const [expandEditor, setExpandEditor] = useState<{ path: string; label: string } | null>(null);
 
   // State for tab selection - use controlled props if provided, otherwise local state
   const [localActiveTabId, setLocalActiveTabId] = useState('configuration');
@@ -548,7 +665,7 @@ const ConfigBuilder = ({
 
       if (!Number.isNaN(parseInt(part, 10))) {
         // Skip array indices but continue traversing
-        // eslint-disable-next-line no-continue
+
         continue;
       }
 
@@ -572,12 +689,15 @@ const ConfigBuilder = ({
   const getValueAtPath = (obj: Record<string, unknown>, path: string): unknown => {
     const segments = path.split(/[.[\]]+/).filter(Boolean);
 
-    const result = segments.reduce((acc: Record<string, unknown> | undefined, segment: string) => {
-      if (acc === null || acc === undefined) {
-        return undefined;
-      }
-      return (acc as Record<string, unknown>)[segment] as Record<string, unknown> | undefined;
-    }, obj as Record<string, unknown> | undefined);
+    const result = segments.reduce(
+      (acc: Record<string, unknown> | undefined, segment: string) => {
+        if (acc === null || acc === undefined) {
+          return undefined;
+        }
+        return (acc as Record<string, unknown>)[segment] as Record<string, unknown> | undefined;
+      },
+      obj as Record<string, unknown> | undefined,
+    );
 
     return result;
   };
@@ -663,27 +783,38 @@ const ConfigBuilder = ({
     onChange?.(newValues);
   };
 
-  // Debug: Check if isCustomized function is properly passed
-  console.log('ConfigBuilder received isCustomized:', typeof isCustomized, !!isCustomized);
-
   // Define renderField first as a function declaration
   function renderField(key: string, property: SchemaProperty, path = ''): React.JSX.Element | null {
     const currentPath = path ? `${path}.${key}` : key;
     const value = getValueAtPath(formValues, currentPath);
 
-    // Add debugging for granular assessment
-    if (currentPath.includes('granular')) {
-      console.log(`DEBUG: Rendering granular field '${key}' at path '${currentPath}':`, {
-        // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
-        property,
-        value,
-        formValues: getValueAtPath(formValues, 'assessment'),
-      });
+    // For objects with properties, ensure the object exists in formValues.
+    // Exception: a `ghostGroup` object is a purely visual grouping whose own
+    // key never exists in the data (its children render at the parent path),
+    // so its value is always undefined — it must still render.
+    const isGhostGroupObject = property.ghostGroup === true || property.ghostGroup === 'true';
+    if (property.type === 'object' && property.properties && value === undefined && !isGhostGroupObject) {
+      return null;
     }
 
-    // For objects with properties, ensure the object exists in formValues
-    if (property.type === 'object' && property.properties && value === undefined) {
-      return null;
+    // Generic cross-section hide: hide this field when an ABSOLUTE-path field
+    // matches a value (composes with dependsOn — both must pass to render).
+    // Unlike dependsOn (sibling-first), hideWhen.field is always resolved from
+    // the form root, so a field in one top-level section can be hidden based on
+    // a setting in another (e.g. hide unused confidence inference fields when
+    // extraction.confidence.mode === "integrated").
+    if (property.hideWhen) {
+      const hideVal = getValueAtPath(formValues, property.hideWhen.field);
+      // Normalize string "true"/"false" to booleans on BOTH sides: schema values
+      // deserialize from DynamoDB as strings, while form state holds real booleans,
+      // so a boolean toggle (e.g. hitl.enabled) would never strict-equal 'false'.
+      const normalizeBool = (v: unknown): unknown => {
+        if (typeof v === 'string' && (v === 'true' || v === 'false')) return v === 'true';
+        return v;
+      };
+      if (normalizeBool(hideVal) === normalizeBool(property.hideWhen.value)) {
+        return null;
+      }
     }
 
     // Check dependencies FIRST, before any rendering - applies to all field types
@@ -731,21 +862,6 @@ const ConfigBuilder = ({
       // Get the current value of the dependency field
       const dependencyValue = getValueAtPath(formValues, dependencyPath);
 
-      // Enhanced debug logging for dependency checking
-      console.log(`DEBUG renderField dependency check for ${key}:`, {
-        // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
-        key,
-        currentPath,
-        dependencyField,
-        dependencyPath,
-        dependencyValue,
-        dependencyValueType: typeof dependencyValue,
-        dependencyValues,
-        dependencyValuesTypes: dependencyValues.map((v) => typeof v),
-        isNestedAttribute: currentPath.includes('groupAttributes[') || currentPath.includes('listItemTemplate.itemAttributes['),
-        shouldHide: dependencyValue === undefined || !dependencyValues.includes(dependencyValue),
-      });
-
       // Special handling for boolean dependencies
       let normalizedDependencyValue = dependencyValue;
       let normalizedDependencyValues = dependencyValues;
@@ -778,14 +894,22 @@ const ConfigBuilder = ({
         });
       }
 
-      // If dependency value doesn't match any required values, hide this field
-      if (normalizedDependencyValue === undefined || !normalizedDependencyValues.includes(normalizedDependencyValue)) {
-        console.log(`Hiding field ${key} due to dependency mismatch:`, {
-          // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Data from trusted internal source only
-          normalizedDependencyValue,
-          normalizedDependencyValues,
-          includes: normalizedDependencyValues.includes(normalizedDependencyValue),
-        });
+      // Capability-based dependency: show only when the dependency model ID
+      // supports a reasoning-effort control (OpenAI GPT-5.x or effort-capable
+      // Claude). Used for reasoning_effort, which spans multiple model families.
+      if (property.dependsOn.reasoningCapable) {
+        if (!modelSupportsReasoningEffort(dependencyValue)) {
+          return null; // Don't render this field
+        }
+      } else if (typeof property.dependsOn.valuePrefix === 'string') {
+        // Prefix-based dependency: show only when the dependency value starts
+        // with a given string.
+        const valuePrefix = property.dependsOn.valuePrefix;
+        if (typeof dependencyValue !== 'string' || !dependencyValue.startsWith(valuePrefix)) {
+          return null; // Don't render this field
+        }
+      } else if (normalizedDependencyValue === undefined || !normalizedDependencyValues.includes(normalizedDependencyValue)) {
+        // If dependency value doesn't match any required values, hide this field
         return null; // Don't render this field
       }
     }
@@ -822,7 +946,7 @@ const ConfigBuilder = ({
       const withOrder = entries.map(([propKey, propSchema]) => ({
         propKey,
         propSchema,
-        order: propSchema.order !== undefined ? parseInt(String(propSchema.order), 10) : 999,
+        order: getOrderWeight(propSchema.order),
       }));
       // Sort by order
       return withOrder.sort((a, b) => a.order - b.order);
@@ -842,6 +966,41 @@ const ConfigBuilder = ({
       return <SpaceBetween size="s">{renderedFields}</SpaceBetween>;
     }
 
+    // A `ghostGroup: true` object is a PURELY VISUAL grouping — its children render at
+    // the PARENT path (not nested under this key), so grouping labels like "Model
+    // parameters" / "Prompts" don't change any config path. childPath below picks the
+    // parent for ghost groups and the normal nested path otherwise.
+    const isGhostGroup = property.ghostGroup === true || property.ghostGroup === 'true';
+    const childPath = isGhostGroup ? path : fullPath;
+
+    // Always-open nested group: `collapsible: false` on a nested sectionLabel object
+    // renders a bold header with its fields always visible (no expand control). Used
+    // for feature groups whose master toggle should never be hidden behind a collapse
+    // (e.g. Confidence Assessment, Bounding-box Geometry, Missing vs Blank Fields).
+    if (property.sectionLabel && !isTopLevel && property.collapsible === false) {
+      const sectionTitle = property.sectionLabel as string;
+      const groupDescription = property.description as string | undefined;
+      return (
+        <ExtBox margin={{ top: '8px', bottom: '8px' }}>
+          <ExtBox borderBottom="divider-light" style={{ marginBottom: '6px' }}>
+            <ExtBox fontWeight="bold" fontSize="body-m" display="inline-block">
+              {sectionTitle}
+            </ExtBox>
+          </ExtBox>
+          {groupDescription && (
+            <ExtBox fontSize="body-s" color="text-body-secondary" style={{ marginBottom: '6px' }}>
+              {groupDescription}
+            </ExtBox>
+          )}
+          <SpaceBetween size="s">
+            {getSortedObjectProperties(property.properties).map(({ propKey, propSchema }) => {
+              return <ExtBox key={propKey}>{renderField(propKey, propSchema, childPath)}</ExtBox>;
+            })}
+          </SpaceBetween>
+        </ExtBox>
+      );
+    }
+
     // For nested objects with sectionLabel, use the same styling as list headers
     if (property.sectionLabel && !isTopLevel) {
       const sectionTitle = property.sectionLabel as string;
@@ -855,8 +1014,20 @@ const ConfigBuilder = ({
         }));
       };
 
-      // Check if expanded - default to collapsed
-      const isExpanded = expandedItems[objectKey] === true;
+      // Determine the default expanded state. `defaultExpanded: true` starts open;
+      // `expandWhen: {field, value}` opens the section when a sibling field matches
+      // (e.g. open "Agentic Extraction" when its `enabled` toggle is true) so the
+      // active configuration isn't hidden behind a collapsed header.
+      let defaultExpanded = property.defaultExpanded === true || property.defaultExpanded === 'true';
+      if (property.expandWhen) {
+        const siblingValue = getValueAtPath(formValues, `${fullPath}.${property.expandWhen.field}`);
+        if (areValuesEqual(siblingValue, property.expandWhen.value)) {
+          defaultExpanded = true;
+        }
+      }
+
+      // User's explicit toggle (if any) wins; otherwise fall back to the default.
+      const isExpanded = expandedItems[objectKey] !== undefined ? expandedItems[objectKey] === true : defaultExpanded;
 
       // Object header similar to list header
       const objectHeader = (
@@ -892,12 +1063,22 @@ const ConfigBuilder = ({
         </ExtBox>
       );
 
-      // Object content - only shown when expanded
+      // A nested section's own `description` renders as help text at the top of the
+      // expanded content (matches the always-open group path above).
+      const nestedDescription = property.description as string | undefined;
+
+      // Object content - only shown when expanded. Ghost groups render children at the
+      // parent path (childPath) so the grouping doesn't change any config path.
       const objectContent = isExpanded && (
         <ExtBox padding={{ left: `${nestLevel * 50 + 200}px`, top: '0' }} className="list-content-indented">
+          {nestedDescription && (
+            <ExtBox fontSize="body-s" color="text-body-secondary" style={{ marginBottom: '6px' }}>
+              {nestedDescription}
+            </ExtBox>
+          )}
           <SpaceBetween size="s">
             {getSortedObjectProperties(property.properties).map(({ propKey, propSchema }) => {
-              return <ExtBox key={propKey}>{renderField(propKey, propSchema, fullPath)}</ExtBox>;
+              return <ExtBox key={propKey}>{renderField(propKey, propSchema, childPath)}</ExtBox>;
             })}
           </SpaceBetween>
         </ExtBox>
@@ -931,7 +1112,6 @@ const ConfigBuilder = ({
     const values = (getValueAtPath(formValues, path) || []) as Record<string, unknown>[];
 
     // Add debug info
-    console.log(`Rendering list field: ${key}, type: ${property.type}, path: ${path}`, property, values); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
 
     // Get list item display settings from schema metadata
     const columnCount = property.columns ? parseInt(String(property.columns), 10) : 2;
@@ -1081,8 +1261,7 @@ const ConfigBuilder = ({
                           .map(([propKey, prop]) => ({
                             propKey,
                             prop,
-                            // Use the specific order if provided, otherwise default to 999
-                            order: prop.order !== undefined ? parseInt(String(prop.order), 10) : 999,
+                            order: getOrderWeight(prop.order),
                           }))
                           .sort((a, b) => a.order - b.order);
 
@@ -1139,16 +1318,6 @@ const ConfigBuilder = ({
                           }
                         });
 
-                        // Add debugging to see field distribution
-                        console.log(`Field distribution for ${key}:`, {
-                          // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
-                          totalProperties: propEntries.length,
-                          requestedColumns: columnCount,
-                          visibleRegularFields: regularProps.length,
-                          specialFields: specialProps.length,
-                          hiddenByDependencies: propEntries.length - regularProps.length - specialProps.length,
-                        });
-
                         // Enhanced column distribution algorithm - only for visible fields
                         const distributeFieldsToColumns = (
                           fields: { propKey: string; propSchema: SchemaProperty }[],
@@ -1195,16 +1364,6 @@ const ConfigBuilder = ({
 
                         // Calculate maximum rows needed
                         const maxRows = Math.max(...fieldColumns.map((col) => col.length));
-
-                        // Validation and debugging for field distribution
-                        console.log(`Distribution result for ${key}:`, {
-                          // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
-                          actualColumnCount,
-                          maxRows,
-                          columnLengths: fieldColumns.map((col) => col.length),
-                          totalFieldsDistributed: fieldColumns.reduce((sum, col) => sum + col.length, 0),
-                          hasDescription: !!descriptionField,
-                        });
 
                         // Render the regular fields using HTML table for guaranteed columns
                         const renderedRegularFields = (
@@ -1392,14 +1551,12 @@ const ConfigBuilder = ({
 
     // If this is an object type, it should be rendered as an object field, not an input field
     if (property.type === 'object') {
-      console.log(`Redirecting object type ${key} to renderObjectField`); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
       return renderObjectField(key, property, path.substring(0, path.lastIndexOf('.')) || '') ?? <></>;
     }
 
     let input;
 
     // Add debug info
-    console.log(`Rendering input field: ${key}, type: ${property.type}, path: ${path}`, { property, value }); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
 
     // Check if we're trying to render an array as an input field (which would be incorrect)
     if (Array.isArray(value) && (property.type === 'array' || property.type === 'list')) {
@@ -1429,8 +1586,14 @@ const ConfigBuilder = ({
       hasUnsavedChange = !areValuesEqual(formValue, savedValue);
     }
 
-    // Show "Restore to default" only if form value currently differs from default
-    const showRestoreDefault = isFormValueDifferentFromDefault && onResetToDefault;
+    // Show "Restore default" whenever this field currently differs from the stack
+    // default — either as a live form edit (isFormValueDifferentFromDefault) or a
+    // saved customization (isFieldCustomized, the same signal that paints the yellow
+    // "modified" highlight, so the button always accompanies it). We require only a
+    // known defaultConfig to revert to; handleRestoreDefault falls back to reverting
+    // the form value directly when onResetToDefault isn't wired (e.g. read-only or the
+    // 'default' version), so the control no longer silently disappears there.
+    const showRestoreDefault = (isFormValueDifferentFromDefault || isFieldCustomized) && !!defaultConfig;
 
     // Check if this is a 'name' field inside an array item by looking for array indices in path
     const isNameInArray =
@@ -1446,13 +1609,11 @@ const ConfigBuilder = ({
         const result = onResetToDefault(path) as unknown as { path: string; defaultValue: unknown } | void;
         if (result && (result as { defaultValue: unknown }).defaultValue !== undefined) {
           updateValue((result as { path: string }).path, (result as { defaultValue: unknown }).defaultValue);
-          console.log(`Restored default value for ${path} (unsaved - click Save to persist)`); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Data from trusted internal source only
         } else if (defaultConfig) {
           // Fallback: get default value directly
           const defaultValue = getValueAtPath(defaultConfig, path);
           if (defaultValue !== undefined) {
             updateValue(path, defaultValue);
-            console.log(`Restored default value for ${path} from defaultConfig`); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Data from trusted internal source only
           }
         }
       } else if (defaultConfig) {
@@ -1460,7 +1621,6 @@ const ConfigBuilder = ({
         const defaultValue = getValueAtPath(defaultConfig, path);
         if (defaultValue !== undefined) {
           updateValue(path, defaultValue);
-          console.log(`Restored default value for ${path} from defaultConfig`); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Data from trusted internal source only
         }
       }
     };
@@ -1491,17 +1651,70 @@ const ConfigBuilder = ({
           options={(property.enum as string[]).map((opt: string) => ({ value: opt, label: opt }))}
         />
       );
-    } else if (property.format === 'text-area' || path.toLowerCase().includes('prompt') || path.toLowerCase().includes('description')) {
+    } else if (
+      property.format !== 'single-line' &&
+      // A DECLARED scalar type beats the path-name heuristic below. That heuristic
+      // exists to give free-text fields a roomy editor, but it matched on the path,
+      // so a boolean whose name merely ENDS in "prompt" was rendered as a textarea:
+      // `extraction.forced_tool.fallback_to_prompt` and
+      // `extraction.agentic.restate_schema_in_system_prompt` both shipped as free
+      // text where every other true/false setting is a toggle. Typing anything into
+      // one stored a STRING, and the backend config model only accepts the
+      // spellings pydantic reads as a bool: `off` happened to work, while `disabled`
+      // — or an empty box, or `yes ` with a trailing space — is a ValidationError on
+      // the config rather than a setting.
+      !['boolean', 'number', 'integer'].includes(String(property.type)) &&
+      (property.format === 'textarea' ||
+        property.format === 'text-area' || // back-compat alias for 'textarea'
+        path.toLowerCase().includes('prompt') ||
+        path.toLowerCase().includes('description'))
+    ) {
+      // Prompt fields hold large, structured text (placeholders, <<CACHEPOINT>>),
+      // so give them more rows and an "Expand editor" affordance that opens a
+      // roomy full-height editor modal. Plain descriptions stay compact.
+      const isPromptField = path.toLowerCase().includes('prompt');
       input = (
-        <Textarea
-          value={displayValue !== undefined && displayValue !== null ? String(displayValue) : ''}
-          onChange={({ detail }) => updateValue(path, detail.value)}
-          rows={3}
-          className="expandable-textarea"
-        />
+        <SpaceBetween size="xxs">
+          <Textarea
+            value={displayValue !== undefined && displayValue !== null ? String(displayValue) : ''}
+            onChange={({ detail }) => updateValue(path, detail.value)}
+            rows={isPromptField ? 8 : 3}
+            className="expandable-textarea"
+          />
+          {isPromptField && (
+            <Box textAlign="right">
+              <Button
+                variant="inline-link"
+                iconName="expand"
+                onClick={() => setExpandEditor({ path, label: getFieldLabel(key, property) })}
+              >
+                Expand editor
+              </Button>
+            </Box>
+          )}
+        </SpaceBetween>
       );
     } else if (property.type === 'boolean') {
-      input = <Toggle checked={!!displayValue} onChange={({ detail }) => updateValue(path, detail.checked)} />;
+      // The use_bda toggle changes the entire pipeline shape (Textract-based
+      // OCR/Classification/Extraction vs. Bedrock Data Automation). Surface an
+      // inline warning (S4) when the pending value differs from what's saved, so
+      // the large section swap isn't a silent surprise.
+      const isUseBda = path === 'use_bda';
+      const savedUseBda = isUseBda && mergedConfig ? !!getValueAtPath(mergedConfig, 'use_bda') : undefined;
+      const useBdaChanged = isUseBda && savedUseBda !== undefined && savedUseBda !== !!displayValue;
+      const toggle = <Toggle checked={!!displayValue} onChange={({ detail }) => updateValue(path, detail.checked)} />;
+      input = useBdaChanged ? (
+        <SpaceBetween size="xs">
+          {toggle}
+          <Alert type="warning">
+            {displayValue
+              ? 'Switching to BDA mode replaces the Textract OCR / Classification / Extraction steps with Bedrock Data Automation. Those sections are hidden and BDA settings apply instead. Save to keep this change.'
+              : 'Switching off BDA mode restores the Textract-based OCR / Classification / Extraction pipeline and hides the BDA settings. Save to keep this change.'}
+          </Alert>
+        </SpaceBetween>
+      ) : (
+        toggle
+      );
     } else if (property.type === 'array' || property.type === 'list') {
       // This should not happen if renderField is working correctly
       console.error(`Incorrectly trying to render array as input field: ${path}`);
@@ -1524,13 +1737,15 @@ const ConfigBuilder = ({
       );
     }
 
-    // Use description as the label
-    const displayText = (property.description as string) || key;
+    // Concise label from title/humanized key; the full description renders as
+    // lighter help text under the field (Cloudscape FormField `description`).
+    const displayText = getFieldLabel(key, property);
+    const fieldDescription = (property.description as string) || undefined;
     const constraints = getConstraintText(property);
 
-    // Stable flex wrapper prevents input remount/focus loss
-    // Input is always inside <ExtBox flex="1"> — adding/removing sibling Button
-    // doesn't unmount the input, just changes siblings
+    // Input on the left; the "Restore default" action inline on the right (only
+    // when the current value differs from default). Kept in the control row so it
+    // renders reliably regardless of FormField description/constraint slots.
     const inputWithActions = (
       <ExtBox display="flex" alignItems="center">
         <ExtBox flex="1">{input}</ExtBox>
@@ -1561,7 +1776,13 @@ const ConfigBuilder = ({
     );
 
     return (
-      <FormField label={labelContent} constraintText={finalConstraints} stretch className={fieldClasses.join(' ')}>
+      <FormField
+        label={labelContent}
+        description={fieldDescription}
+        constraintText={finalConstraints}
+        stretch
+        className={fieldClasses.join(' ')}
+      >
         {inputWithActions}
       </FormField>
     );
@@ -1575,8 +1796,7 @@ const ConfigBuilder = ({
     const withOrder = entries.map(([key, prop]) => ({
       key,
       property: prop,
-      // Use the specific order if provided, otherwise default to 999
-      order: prop.order !== undefined ? parseInt(String(prop.order), 10) : 999,
+      order: getOrderWeight(prop.order),
     }));
 
     // Sort by order
@@ -1590,12 +1810,6 @@ const ConfigBuilder = ({
 
   // Render each top-level property
   const renderTopLevelProperty = ({ key, property }: { key: string; property: SchemaProperty }) => {
-    // Debug info for sections
-    console.log(
-      `Rendering top level property: ${key}, type: ${property.type}, sectionLabel: ${property.sectionLabel}`, // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
-      property,
-    );
-
     // Check top-level dependsOn before rendering (hides entire sections when dependency not met)
     if (property.dependsOn) {
       const depField = property.dependsOn.field;
@@ -1618,10 +1832,43 @@ const ConfigBuilder = ({
     // If property should have a section container, wrap it
     if (shouldUseContainer(key, property)) {
       const sectionTitle = property.sectionLabel as string;
-      console.log(`Creating section container for ${key} with title: ${sectionTitle}`); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
+      // A top-level section's own `description` renders as help text under the
+      // heading (schema-driven, so every section gets it uniformly). Cloudscape
+      // exposes native slots: ExpandableSection.headerDescription and
+      // Header.description.
+      const sectionDescription = property.description as string | undefined;
+
+      // Support collapsible top-level sections via schema property `collapsible: true`
+      // defaultExpanded controls whether section starts expanded (defaults to true for backward compat)
+      if (property.collapsible === true || property.collapsible === 'true') {
+        const defaultExpanded = property.defaultExpanded === true || property.defaultExpanded === 'true'; // default to collapsed
+        const isExpanded = expandedSections[key] !== undefined ? expandedSections[key] : defaultExpanded;
+
+        return (
+          <ExpandableSection
+            key={key}
+            variant="container"
+            headerText={sectionTitle}
+            headerDescription={sectionDescription}
+            expanded={isExpanded}
+            onChange={({ detail }) => {
+              setExpandedSections((prev) => ({ ...prev, [key]: detail.expanded }));
+            }}
+          >
+            <ExtBox padding="s">{renderField(key, property)}</ExtBox>
+          </ExpandableSection>
+        );
+      }
 
       return (
-        <Container key={key} header={<Header variant="h3">{sectionTitle}</Header>}>
+        <Container
+          key={key}
+          header={
+            <Header variant="h3" description={sectionDescription}>
+              {sectionTitle}
+            </Header>
+          }
+        >
           <ExtBox padding="s">{renderField(key, property)}</ExtBox>
         </Container>
       );
@@ -1651,14 +1898,14 @@ const ConfigBuilder = ({
                 <SpaceBetween size="l">
                   {/* Version Description Field */}
                   <FormField
-                    label="Version Description"
-                    description="Optional description for this configuration version (max 200 characters)"
+                    label="Profile Description"
+                    description="Optional description for this configuration profile (max 200 characters)"
                     errorText={versionDescription && versionDescription.length > 200 ? 'Description cannot exceed 200 characters' : ''}
                   >
                     <Input
                       value={versionDescription}
                       onChange={({ detail }) => onDescriptionChange?.(detail.value)}
-                      placeholder="Enter a description for this configuration version..."
+                      placeholder="Enter a description for this configuration profile..."
                       invalid={!!versionDescription && versionDescription.length > 200}
                     />
                   </FormField>
@@ -1672,22 +1919,31 @@ const ConfigBuilder = ({
             id: 'extraction-schema',
             label: 'Document Schema',
             content: (
-              <ExtBox style={{ height: 'calc(70vh - 60px)' }}>
-                <SchemaBuilder
-                  key={`schema-${currentVersionName || 'default'}`}
-                  initialSchema={extractionSchema as Record<string, unknown> | null}
-                  onChange={onSchemaChange}
-                  onValidate={onSchemaValidate}
-                />
-              </ExtBox>
+              <SpaceBetween size="s">
+                {generatorAvailable && (
+                  <Box float="right">
+                    <Button iconName="add-plus" onClick={goGenerateTestSet}>
+                      Generate test set
+                    </Button>
+                  </Box>
+                )}
+                <ExtBox style={{ height: 'calc(70vh - 60px)' }}>
+                  <SchemaBuilder
+                    key={`schema-${currentVersionName || 'default'}`}
+                    initialSchema={extractionSchema as Record<string, unknown> | null}
+                    onChange={onSchemaChange}
+                    onValidate={onSchemaValidate}
+                  />
+                </ExtBox>
+              </SpaceBetween>
             ),
           },
-          // Only show Rule Schema tab for Pattern2
+          // Only show Policy Schema tab for Pattern2
           ...(showRuleSchema
             ? [
                 {
                   id: 'rule-schema',
-                  label: 'Rule Schema',
+                  label: 'Policy Schema',
                   content: (
                     <ExtBox style={{ height: 'calc(70vh - 60px)' }}>
                       <SchemaBuilder
@@ -1695,12 +1951,22 @@ const ConfigBuilder = ({
                         onChange={onRuleSchemaChange}
                         onValidate={onRuleSchemaValidate}
                         isRuleSchema={true}
+                        highlightClassName={highlightClassName}
                       />
                     </ExtBox>
                   ),
                 },
               ]
             : []),
+          {
+            id: 'prompt-preview',
+            label: 'Prompt Preview',
+            content: (
+              <ExtBox style={{ height: 'calc(70vh - 60px)', overflow: 'auto' }} padding="s">
+                <PromptPreview formValues={formValues} />
+              </ExtBox>
+            ),
+          },
         ]}
       />
 
@@ -1760,6 +2026,33 @@ const ConfigBuilder = ({
               />
             )}
           </FormField>
+        )}
+      </Modal>
+
+      {/* Expand editor for large text fields (prompts): a roomy full-height editor
+          that writes straight back to the same form path as the inline textarea. */}
+      <Modal
+        visible={!!expandEditor}
+        onDismiss={() => setExpandEditor(null)}
+        size="max"
+        header={expandEditor ? `Edit ${expandEditor.label}` : 'Edit'}
+        footer={
+          <ExtBox float="right">
+            <Button variant="primary" onClick={() => setExpandEditor(null)}>
+              Done
+            </Button>
+          </ExtBox>
+        }
+      >
+        {expandEditor && (
+          <Textarea
+            value={((): string => {
+              const v = getValueAtPath(formValues, expandEditor.path);
+              return v !== undefined && v !== null ? String(v) : '';
+            })()}
+            onChange={({ detail }) => updateValue(expandEditor.path, detail.value)}
+            rows={28}
+          />
         )}
       </Modal>
     </ExtBox>

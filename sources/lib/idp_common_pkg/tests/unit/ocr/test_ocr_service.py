@@ -15,14 +15,32 @@ import sys
 from io import BytesIO
 from unittest.mock import ANY, MagicMock, patch
 
-# Mock pypdfium2 and textractor before importing any modules that might depend on them
-sys.modules["pypdfium2"] = MagicMock()
-sys.modules["textractor"] = MagicMock()
-sys.modules["textractor.parsers"] = MagicMock()
-sys.modules["textractor.parsers.response_parser"] = MagicMock()
+# Ensure pypdfium2 and textractor are importable before importing modules that
+# depend on them. When these (heavy/native) deps are actually installed we use
+# the REAL modules — injecting a MagicMock unconditionally would leak globally
+# via sys.modules and make the mock the "real" pypdfium2 for every later test
+# file, breaking tests that build genuine PDFs (e.g.
+# discovery/test_pdf_page_extraction.py). So only fall back to a MagicMock for
+# whichever of these is genuinely missing, and never overwrite an installed one.
+for _name in (
+    "pypdfium2",
+    "textractor",
+    "textractor.parsers",
+    "textractor.parsers.response_parser",
+):
+    if _name not in sys.modules:
+        try:
+            __import__(_name)
+        except ImportError:
+            sys.modules[_name] = MagicMock()
 
 from idp_common.models import Document, Status
-from idp_common.ocr.service import OcrService
+from idp_common.ocr.service import (
+    DEFAULT_DPI,
+    DEFAULT_TARGET_HEIGHT,
+    DEFAULT_TARGET_WIDTH,
+    OcrService,
+)
 
 
 @pytest.mark.unit
@@ -108,8 +126,8 @@ class TestOcrService:
             assert service.enhanced_features is False
             # Default image sizing
             assert service.resize_config == {
-                "target_width": 951,
-                "target_height": 1268,
+                "target_width": DEFAULT_TARGET_WIDTH,
+                "target_height": DEFAULT_TARGET_HEIGHT,
             }
             assert service.preprocessing_config is None
 
@@ -119,6 +137,34 @@ class TestOcrService:
             mock_client.assert_any_call(
                 "s3", config=ANY
             )  # Now includes config for connection pool
+
+    def test_default_render_resolution_is_high_enough_for_small_glyphs(self):
+        """Default dpi + ceiling must render A4/Letter at full DEFAULT_DPI.
+
+        Regression guard for issue #729: at 150 dpi Textract silently dropped a
+        page number from its response. The fix relies on TWO defaults together --
+        DEFAULT_DPI raises the render, and the default ceiling must be loose
+        enough not to claw it back. A ceiling that binds here would silently
+        re-break OCR of small glyphs, because images are never upscaled.
+        """
+        for page_w, page_h in ((595, 842), (612, 792)):  # A4, US Letter (points)
+            rendered_w = page_w * DEFAULT_DPI / 72
+            rendered_h = page_h * DEFAULT_DPI / 72
+
+            scale_factor = min(
+                DEFAULT_TARGET_WIDTH / rendered_w, DEFAULT_TARGET_HEIGHT / rendered_h
+            )
+
+            # >= 1.0 means the ceiling does not bind, so no downscale is applied
+            assert scale_factor >= 1.0, (
+                f"default ceiling {DEFAULT_TARGET_WIDTH}x{DEFAULT_TARGET_HEIGHT} "
+                f"downscales a {page_w}x{page_h}pt page rendered at "
+                f"{DEFAULT_DPI} dpi ({rendered_w:.0f}x{rendered_h:.0f})"
+            )
+
+        # Textract needs roughly 200+ dpi to hold onto small, faint or skewed
+        # characters; anything lower reintroduces issue #729.
+        assert DEFAULT_DPI >= 200
 
     def test_init_textract_with_enhanced_features(self):
         """Test initialization with enhanced Textract features."""
@@ -200,8 +246,8 @@ class TestOcrService:
 
             # Verify defaults are applied
             assert service.resize_config == {
-                "target_width": 951,
-                "target_height": 1268,
+                "target_width": DEFAULT_TARGET_WIDTH,
+                "target_height": DEFAULT_TARGET_HEIGHT,
             }
             assert service.dpi == 200
 
@@ -244,8 +290,8 @@ class TestOcrService:
 
             # Verify defaults are applied (empty strings treated same as None)
             assert service.resize_config == {
-                "target_width": 951,
-                "target_height": 1268,
+                "target_width": DEFAULT_TARGET_WIDTH,
+                "target_height": DEFAULT_TARGET_HEIGHT,
             }
             assert service.dpi == 150
 
@@ -288,8 +334,8 @@ class TestOcrService:
 
             # Verify fallback to defaults on invalid values
             assert service.resize_config == {
-                "target_width": 951,
-                "target_height": 1268,
+                "target_width": DEFAULT_TARGET_WIDTH,
+                "target_height": DEFAULT_TARGET_HEIGHT,
             }
             assert service.dpi == 150
 
@@ -301,6 +347,62 @@ class TestOcrService:
             service = OcrService(preprocessing_config=preprocessing_config)
 
             assert service.preprocessing_config == preprocessing_config
+
+    @patch("boto3.client")
+    @patch("idp_common.ocr.service.pdfium.PdfDocument")
+    def test_process_document_calls_init_forms_for_fillable_pdfs(
+        self, mock_pdfium_doc, mock_boto_client, mock_document, mock_pdf_content
+    ):
+        """Test that init_forms() is called on PDF documents to enable fillable form field rendering.
+
+        Fillable PDFs (AcroForm) have form fields like text inputs, checkboxes, and
+        radio buttons stored as separate overlay layers. Without calling init_forms(),
+        pypdfium2's render() will not include these form field values in the output
+        image even when may_draw_forms=True (the default). This test ensures we
+        always initialize the form rendering engine before rendering pages.
+
+        Regression test for: https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/240
+        """
+        # Mock S3 client
+        mock_s3_client = MagicMock()
+        mock_s3_client.get_object.return_value = {"Body": BytesIO(mock_pdf_content)}
+        mock_boto_client.return_value = mock_s3_client
+
+        # Mock PDF document
+        mock_pdf_doc = MagicMock()
+        mock_pdf_doc.__len__.return_value = 1
+        mock_pdf_doc.__iter__.return_value = iter(range(1))
+        mock_pdfium_doc.return_value = mock_pdf_doc
+
+        with (
+            patch(
+                "idp_common.ocr.service.OcrService._extract_page_image"
+            ) as mock_extract,
+            patch(
+                "idp_common.ocr.service.OcrService._process_page_with_image"
+            ) as mock_process,
+        ):
+            mock_extract.return_value = b"image_data"
+            mock_process.return_value = (
+                {
+                    "raw_text_uri": "s3://output/raw.json",
+                    "parsed_text_uri": "s3://output/parsed.json",
+                    "text_confidence_uri": "s3://output/confidence.json",
+                    "image_uri": "s3://output/image.jpg",
+                },
+                {"OCR/textract/detect_document_text": {"pages": 1}},
+            )
+
+            service = OcrService()
+            service.process_document(mock_document)
+
+            # Verify init_forms() was called to enable fillable PDF form rendering
+            mock_pdf_doc.init_forms.assert_called_once()
+
+            # Verify flatten() was called on the page to merge form fields
+            # into page content (needed for PDFs without appearance streams)
+            mock_page = mock_pdf_doc.__getitem__.return_value
+            mock_page.flatten.assert_called_once()
 
     @patch("boto3.client")
     @patch("idp_common.ocr.service.pdfium.PdfDocument")
@@ -440,6 +542,27 @@ class TestOcrService:
             combo = service._feature_combo()
             assert combo == "-Signatures"
 
+    def test_feature_combo_shipped_default_meters_as_tables_only(self):
+        """The shipped default (TABLES+LAYOUT+SIGNATURES) meters as Tables alone.
+
+        LAYOUT and SIGNATURES are free alongside TABLES, so neither may add a
+        priced component — this is what makes SIGNATURES-by-default cost-neutral.
+        """
+        with patch("boto3.client"):
+            service = OcrService(enhanced_features=["TABLES", "LAYOUT", "SIGNATURES"])
+            assert service._feature_combo() == "-Tables"
+
+    def test_feature_combo_signatures_free_with_forms_or_layout(self):
+        """SIGNATURES adds no priced component to any other feature either."""
+        with patch("boto3.client"):
+            for features, expected in (
+                (["FORMS", "SIGNATURES"], "-Forms"),
+                (["LAYOUT", "SIGNATURES"], "-Layout"),
+                (["TABLES", "FORMS", "SIGNATURES"], "-Tables+Forms"),
+            ):
+                service = OcrService(enhanced_features=features)
+                assert service._feature_combo() == expected, features
+
     @patch("boto3.client")
     @patch("idp_common.s3.write_content")
     def test_process_single_page_textract(
@@ -475,6 +598,7 @@ class TestOcrService:
         assert "raw_text_uri" in result
         assert "parsed_text_uri" in result
         assert "text_confidence_uri" in result
+        assert "ocr_page_data_uri" in result
         assert "image_uri" in result
         assert "OCR/textract/detect_document_text" in metering
 
@@ -482,7 +606,9 @@ class TestOcrService:
         mock_textract_client.detect_document_text.assert_called_once()
 
         # Verify S3 writes
-        assert mock_write_content.call_count == 4  # image, raw, confidence, parsed
+        assert (
+            mock_write_content.call_count == 5
+        )  # image, raw, confidence, parsed, pageData
 
     @patch("boto3.client")
     @patch("idp_common.s3.write_content")
@@ -529,6 +655,7 @@ class TestOcrService:
         assert "raw_text_uri" in result
         assert "parsed_text_uri" in result
         assert "text_confidence_uri" in result
+        assert "ocr_page_data_uri" in result
         assert "image_uri" in result
         assert metering == {"input_tokens": 100, "output_tokens": 50}
 
@@ -537,7 +664,71 @@ class TestOcrService:
         mock_extract_text.assert_called_once()
 
         # Verify S3 writes
-        assert mock_write_content.call_count == 4  # image, raw, confidence, parsed
+        assert (
+            mock_write_content.call_count == 5
+        )  # image, raw, confidence, parsed, pageData
+
+    def test_extract_bedrock_ocr_artifacts_text_only(self, mock_bedrock_config):
+        """A plain text LambdaHook/Bedrock response -> placeholder confidence."""
+        with patch("boto3.client"):
+            service = OcrService(backend="bedrock", bedrock_config=mock_bedrock_config)
+        response_payload = {
+            "output": {"message": {"content": [{"text": "Some OCR text"}]}}
+        }
+        raw, confidence = service._extract_bedrock_ocr_artifacts(response_payload)
+
+        # Raw response stored as-is
+        assert raw == response_payload
+        # Placeholder confidence table (no real scores)
+        assert "No confidence data available from LLM OCR" in confidence["text"]
+
+    def test_extract_bedrock_ocr_artifacts_structured(self, mock_bedrock_config):
+        """A LambdaHook returning textractBlocks -> real confidence table."""
+        with patch("boto3.client"):
+            service = OcrService(backend="bedrock", bedrock_config=mock_bedrock_config)
+        textract_blocks = {
+            "DocumentMetadata": {"Pages": 1},
+            "Blocks": [
+                {"BlockType": "PAGE", "Id": "p1"},
+                {
+                    "BlockType": "LINE",
+                    "Id": "l1",
+                    "Text": "Account: 12345",
+                    "Confidence": 97.5,
+                },
+                {
+                    "BlockType": "WORD",
+                    "Id": "w1",
+                    "Text": "Account",
+                    "Confidence": 99.0,
+                },
+            ],
+        }
+        response_payload = {
+            "output": {"message": {"content": [{"text": "Account: 12345"}]}},
+            "textractBlocks": textract_blocks,
+        }
+        raw, confidence = service._extract_bedrock_ocr_artifacts(response_payload)
+
+        # Textract blocks persisted as the raw OCR result (not the wrapper)
+        assert raw == textract_blocks
+        # Real confidence table generated from LINE blocks
+        assert "Account: 12345" in confidence["text"]
+        assert "97.5" in confidence["text"]
+        assert "No confidence data available" not in confidence["text"]
+
+    def test_extract_bedrock_ocr_artifacts_empty_blocks(self, mock_bedrock_config):
+        """textractBlocks present but empty -> fall back to placeholder."""
+        with patch("boto3.client"):
+            service = OcrService(backend="bedrock", bedrock_config=mock_bedrock_config)
+        response_payload = {
+            "output": {"message": {"content": [{"text": "text"}]}},
+            "textractBlocks": {"DocumentMetadata": {"Pages": 1}, "Blocks": []},
+        }
+        raw, confidence = service._extract_bedrock_ocr_artifacts(response_payload)
+
+        assert raw == response_payload
+        assert "No confidence data available from LLM OCR" in confidence["text"]
 
     @patch("boto3.client")
     @patch("idp_common.s3.write_content")
@@ -567,11 +758,14 @@ class TestOcrService:
         assert "raw_text_uri" in result
         assert "parsed_text_uri" in result
         assert "text_confidence_uri" in result
+        assert "ocr_page_data_uri" in result
         assert "image_uri" in result
         assert metering == {}  # No metering data for 'none' backend
 
         # Verify S3 writes (empty content)
-        assert mock_write_content.call_count == 4  # image, raw, confidence, parsed
+        assert (
+            mock_write_content.call_count == 5
+        )  # image, raw, confidence, parsed, pageData
 
     def test_extract_page_image_pdf(self):
         """Test page image extraction from PDF."""
@@ -1008,3 +1202,467 @@ class TestOcrService:
                     b"fake-docx", ocr_image_callback=service._ocr_image_bytes
                 )
                 assert result == [(b"page-img", "page-text")]
+
+
+@pytest.mark.unit
+class TestBuildPageData:
+    """Tests for the consolidated OCR pageData.json schema (_build_page_data)."""
+
+    @pytest.fixture
+    def service(self):
+        with patch("boto3.client"):
+            return OcrService(region="us-east-1")
+
+    def test_textract_line_and_word_geometry(self, service):
+        """Textract blocks -> per-LINE + per-WORD confidence and geometry."""
+        raw = {
+            "DocumentMetadata": {"Pages": 1},
+            "Blocks": [
+                {"BlockType": "PAGE", "Id": "p1"},
+                {
+                    "BlockType": "LINE",
+                    "Id": "line-1",
+                    "Text": "Account: 12345",
+                    "Confidence": 97.53,
+                    "TextType": "PRINTED",
+                    "Geometry": {
+                        "BoundingBox": {
+                            "Left": 0.1,
+                            "Top": 0.02,
+                            "Width": 0.4,
+                            "Height": 0.03,
+                        },
+                        "Polygon": [{"X": 0.1, "Y": 0.02}, {"X": 0.5, "Y": 0.02}],
+                    },
+                    "Relationships": [{"Type": "CHILD", "Ids": ["w1", "w2"]}],
+                },
+                {
+                    "BlockType": "WORD",
+                    "Id": "w1",
+                    "Text": "Account:",
+                    "Confidence": 99.0,
+                    "Geometry": {
+                        "BoundingBox": {
+                            "Left": 0.1,
+                            "Top": 0.02,
+                            "Width": 0.15,
+                            "Height": 0.03,
+                        }
+                    },
+                },
+                {
+                    "BlockType": "WORD",
+                    "Id": "w2",
+                    "Text": "12345",
+                    "Confidence": 92.0,
+                    "Geometry": {
+                        "BoundingBox": {
+                            "Left": 0.26,
+                            "Top": 0.02,
+                            "Width": 0.1,
+                            "Height": 0.03,
+                        }
+                    },
+                },
+            ],
+        }
+
+        page_data = service._build_page_data(raw, "Account: 12345", "textract")
+
+        assert page_data["schemaVersion"] == OcrService.PAGE_DATA_SCHEMA_VERSION
+        assert page_data["provider"] == "textract"
+        assert page_data["geometryAvailable"] is True
+        assert page_data["confidenceAvailable"] is True
+        assert page_data["wordsAvailable"] is True
+        assert len(page_data["lines"]) == 1
+
+        line = page_data["lines"][0]
+        assert line["text"] == "Account: 12345"
+        assert line["confidence"] == 97.5  # rounded to 1 decimal
+        assert line["geometrySource"] == "line"
+        assert line["geometry"]["boundingBox"] == {
+            "left": 0.1,
+            "top": 0.02,
+            "width": 0.4,
+            "height": 0.03,
+        }
+        assert line["geometry"]["polygon"][0] == {"x": 0.1, "y": 0.02}
+        assert len(line["words"]) == 2
+        assert line["words"][0]["text"] == "Account:"
+        assert line["words"][1]["confidence"] == 92.0
+
+    def test_mistral_hook_paragraph_shared_geometry(self, service):
+        """Mistral-style blocks: lines sharing a box -> geometrySource=paragraph."""
+        shared_box = {"Left": 0.1, "Top": 0.1, "Width": 0.5, "Height": 0.08}
+        raw = {
+            "DocumentMetadata": {"Pages": 1},
+            "Blocks": [
+                {
+                    "BlockType": "LINE",
+                    "Id": "l1",
+                    "Text": "First line of paragraph",
+                    "Confidence": 95.0,
+                    "Geometry": {"BoundingBox": dict(shared_box)},
+                },
+                {
+                    "BlockType": "LINE",
+                    "Id": "l2",
+                    "Text": "Second line of paragraph",
+                    "Confidence": 94.0,
+                    "Geometry": {"BoundingBox": dict(shared_box)},
+                },
+            ],
+        }
+
+        page_data = service._build_page_data(raw, "text", "bedrock")
+
+        # Structured blocks present -> LambdaHook provenance
+        assert page_data["provider"] == "bedrock-lambdahook"
+        assert page_data["geometryAvailable"] is True
+        assert page_data["confidenceAvailable"] is True
+        assert page_data["wordsAvailable"] is False
+        for line in page_data["lines"]:
+            assert line["geometrySource"] == "paragraph"
+            assert line["words"] is None
+
+    def test_plain_llm_text_only(self, service):
+        """Plain Bedrock LLM OCR (no blocks) -> synthesized text-only lines."""
+        raw = {"output": {"message": {"content": [{"text": "irrelevant"}]}}}
+        parsed = "# Heading\n\nFirst paragraph line\nSecond line"
+
+        page_data = service._build_page_data(raw, parsed, "bedrock")
+
+        assert page_data["provider"] == "bedrock-llm"
+        assert page_data["geometryAvailable"] is False
+        assert page_data["confidenceAvailable"] is False
+        assert page_data["wordsAvailable"] is False
+        # Blank lines skipped
+        texts = [ln["text"] for ln in page_data["lines"]]
+        assert texts == ["# Heading", "First paragraph line", "Second line"]
+        for line in page_data["lines"]:
+            assert line["confidence"] is None
+            assert line["geometry"] is None
+            assert line["geometrySource"] == "none"
+
+    def test_none_backend_empty(self, service):
+        """'none' backend -> no lines, all flags false."""
+        raw = {"DocumentMetadata": {"Pages": 1}, "Blocks": []}
+
+        page_data = service._build_page_data(raw, "", "none")
+
+        assert page_data["provider"] == "none"
+        assert page_data["lines"] == []
+        assert page_data["geometryAvailable"] is False
+        assert page_data["confidenceAvailable"] is False
+
+    def test_converted_placeholder_confidence(self, service):
+        """Converted non-PDF docs -> per-line placeholder confidence, no geometry."""
+        raw = {
+            "DocumentMetadata": {"Pages": 1},
+            "Blocks": [
+                {
+                    "BlockType": "LINE",
+                    "Text": "line one",
+                    "Confidence": 99.0,
+                    "TextType": "PRINTED",
+                },
+                {
+                    "BlockType": "LINE",
+                    "Text": "line two",
+                    "Confidence": 99.0,
+                    "TextType": "PRINTED",
+                },
+            ],
+        }
+
+        page_data = service._build_page_data(raw, "line one\nline two", "converted")
+
+        assert page_data["provider"] == "converted"
+        assert page_data["confidenceAvailable"] is True
+        assert page_data["geometryAvailable"] is False
+        assert len(page_data["lines"]) == 2
+        assert page_data["lines"][0]["confidence"] == 99.0
+        assert page_data["lines"][0]["geometry"] is None
+
+
+@pytest.mark.unit
+class TestSignatureDetections:
+    """Textract SIGNATURES output must survive into every downstream artifact.
+
+    A SIGNATURE block has confidence and geometry but no text, so every
+    LINE-oriented consumer dropped it: it was absent from pageData.json (no UI
+    box, no confidence shown) and from textConfidence.json (so the confidence
+    prompt never saw it), and in the page text it appeared only as a bare,
+    unpositioned "[SIGNATURE]" token that a real signature and a 10%-confidence
+    smudge share.
+    """
+
+    SIGNATURE_BLOCK = {
+        "BlockType": "SIGNATURE",
+        "Id": "sig-1",
+        "Confidence": 11.0227,
+        "Geometry": {
+            "BoundingBox": {
+                "Left": 0.5717,
+                "Top": 0.8781,
+                "Width": 0.0368,
+                "Height": 0.0218,
+            },
+            "Polygon": [{"X": 0.5717, "Y": 0.8781}],
+        },
+    }
+
+    LINE_BLOCK = {
+        "BlockType": "LINE",
+        "Id": "line-1",
+        "Text": "Signature of taxpayer",
+        "Confidence": 99.9,
+        "TextType": "PRINTED",
+        "Geometry": {
+            "BoundingBox": {"Left": 0.07, "Top": 0.87, "Width": 0.11, "Height": 0.01}
+        },
+    }
+
+    @pytest.fixture
+    def service(self):
+        with patch("boto3.client"):
+            return OcrService(region="us-east-1", enhanced_features=["SIGNATURES"])
+
+    def test_extract_signature_detections(self):
+        signatures = OcrService._extract_signature_detections(
+            [self.LINE_BLOCK, self.SIGNATURE_BLOCK]
+        )
+
+        assert len(signatures) == 1
+        assert signatures[0]["id"] == "sig-1"
+        assert signatures[0]["confidence"] == 11.0  # rounded to 1dp
+        assert signatures[0]["geometry"]["boundingBox"] == {
+            "left": 0.5717,
+            "top": 0.8781,
+            "width": 0.0368,
+            "height": 0.0218,
+        }
+
+    def test_extract_signature_detections_tolerates_sparse_blocks(self):
+        signatures = OcrService._extract_signature_detections(
+            [
+                "not-a-dict",
+                {"BlockType": "SIGNATURE"},  # no Id, Confidence or Geometry
+            ]
+        )
+
+        assert signatures == [{"id": "sig2", "confidence": None, "geometry": None}]
+
+    def test_summary_reports_confidence_and_position(self):
+        summary = OcrService._format_signature_summary(
+            OcrService._extract_signature_detections([self.SIGNATURE_BLOCK])
+        )
+
+        assert "confidence=11.0 (very low)" in summary
+        # Position is stated in the left/right, upper/lower terms field
+        # descriptions use — raw normalized coordinates were measurably unusable:
+        # both models read left=0.572 as "the first (left) signature box".
+        assert "right half, lower area" in summary
+        assert "x=59%" in summary
+        # An explicit total, so a consumer weighing two signature fields can tell
+        # that only one region was detected.
+        assert "flagged 1 region on this page" in summary
+        # The inline token's placement must be flagged as non-evidential.
+        assert "placed by reading order" in summary
+        # Must NOT be a markdown table: page text is scanned by the agentic
+        # table parser, which would otherwise treat this as a document table.
+        assert "|" not in summary
+
+    def test_summary_omits_surrounding_text(self):
+        """Naming the text around a detection measured WORSE — see the docstring.
+
+        An earlier version reported ``at: "Signature of taxpayer"`` alongside each
+        detection. Naming a signature label beside the mark biases the model toward
+        true: on the issue-#634 document the entry without it passed 9/9 and with it
+        2/5. This pins the decision so it is not silently reverted.
+        """
+        label = {
+            "BlockType": "LINE",
+            "Id": "label-right",
+            "Text": "Signature of taxpayer",
+            "Confidence": 99.9,
+            "Geometry": {
+                "BoundingBox": {
+                    "Left": 0.498,
+                    "Top": 0.872,
+                    "Width": 0.121,
+                    "Height": 0.011,
+                }
+            },
+        }
+
+        summary = OcrService._format_signature_summary(
+            OcrService._extract_signature_detections([label, self.SIGNATURE_BLOCK])
+        )
+
+        assert "nearest text" not in summary
+        assert "Signature of taxpayer" not in summary
+        # The position is what disambiguates the cell.
+        assert "right half, lower area" in summary
+
+    def test_summary_reports_position_for_a_lone_detection(self):
+        summary = OcrService._format_signature_summary(
+            OcrService._extract_signature_detections([self.SIGNATURE_BLOCK])
+        )
+
+        assert "right half, lower area" in summary
+
+    @pytest.mark.parametrize(
+        "left,top,expected",
+        [
+            (0.05, 0.05, "left half, upper area"),
+            (0.10, 0.50, "left half, middle area"),
+            (0.10, 0.90, "left half, lower area"),
+            (0.80, 0.90, "right half, lower area"),
+        ],
+    )
+    def test_position_wording(self, left, top, expected):
+        box = {"left": left, "top": top, "width": 0.02, "height": 0.02}
+
+        assert expected in OcrService._describe_signature_position(box)
+
+    @pytest.mark.parametrize(
+        "confidence,band",
+        [(11.0, "very low"), (40.0, "low"), (60.0, "moderate"), (99.0, "high")],
+    )
+    def test_confidence_bands(self, confidence, band):
+        block = {**self.SIGNATURE_BLOCK, "Confidence": confidence}
+
+        summary = OcrService._format_signature_summary(
+            OcrService._extract_signature_detections([block])
+        )
+
+        assert f"({band})" in summary
+
+    def test_summary_is_empty_without_detections(self):
+        assert OcrService._format_signature_summary([]) == ""
+
+    def test_page_data_carries_signatures(self, service):
+        raw = {"Blocks": [self.LINE_BLOCK, self.SIGNATURE_BLOCK]}
+
+        page_data = service._build_page_data(raw, "Signature of taxpayer", "textract")
+
+        assert page_data["signaturesAvailable"] is True
+        assert len(page_data["signatures"]) == 1
+        assert page_data["signatures"][0]["confidence"] == 11.0
+        # Signatures stay OUT of `lines` — they have no text, and the geometry
+        # grounder matches extracted values against line text.
+        assert [line["text"] for line in page_data["lines"]] == [
+            "Signature of taxpayer"
+        ]
+
+    def test_page_data_without_signatures(self, service):
+        page_data = service._build_page_data(
+            {"Blocks": [self.LINE_BLOCK]}, "Signature of taxpayer", "textract"
+        )
+
+        assert page_data["signaturesAvailable"] is False
+        assert page_data["signatures"] == []
+
+    def test_page_data_geometry_available_from_signature_alone(self, service):
+        """A page whose only geometry is a signature box still reports geometry."""
+        line_without_geometry = {
+            "BlockType": "LINE",
+            "Id": "line-2",
+            "Text": "text only",
+            "Confidence": 99.0,
+        }
+
+        page_data = service._build_page_data(
+            {"Blocks": [line_without_geometry, self.SIGNATURE_BLOCK]},
+            "text only",
+            "textract",
+        )
+
+        assert page_data["geometryAvailable"] is True
+
+    def test_text_confidence_data_includes_signatures(self, service):
+        result = service._generate_text_confidence_data(
+            {"Blocks": [self.LINE_BLOCK, self.SIGNATURE_BLOCK]}
+        )
+
+        text = result["text"]
+        # The LINE table is unchanged...
+        assert "| Signature of taxpayer | 99.9 |" in text
+        # ...and the signature detection is appended with its confidence.
+        assert "OCR signature detections" in text
+        assert "confidence=11.0" in text
+
+    def test_text_confidence_data_unchanged_without_signatures(self, service):
+        result = service._generate_text_confidence_data({"Blocks": [self.LINE_BLOCK]})
+
+        assert "signature detections" not in result["text"]
+        assert result["text"].endswith("| Signature of taxpayer | 99.9 |")
+
+    def test_parsed_page_text_appends_summary(self, service):
+        """The summary rides along with the parsed page text (extraction prompt)."""
+        # Patch the module attribute (not `...response_parser.parse`): the service
+        # does `from textractor.parsers import response_parser`, which resolves via
+        # getattr on `textractor.parsers`. When textractor isn't installed that
+        # parent is a MagicMock, so patching the deeper dotted path targets a
+        # different object and never takes effect.
+        with patch("textractor.parsers.response_parser") as mock_response_parser:
+            mock_response_parser.parse.return_value.to_markdown.return_value = (
+                "Signature of taxpayer\n[SIGNATURE]"
+            )
+            result = service._parse_textract_response(
+                {"Blocks": [self.LINE_BLOCK, self.SIGNATURE_BLOCK]}, page_id=2
+            )
+
+        text = result["text"]
+        assert text.startswith("Signature of taxpayer\n[SIGNATURE]")
+        assert "OCR signature detections" in text
+        assert "confidence=11.0 (very low)" in text
+        assert "right half, lower area" in text
+
+    def test_parsed_page_text_unchanged_without_signatures(self, service):
+        with patch("textractor.parsers.response_parser") as mock_response_parser:
+            mock_response_parser.parse.return_value.to_markdown.return_value = (
+                "Signature of taxpayer"
+            )
+            result = service._parse_textract_response(
+                {"Blocks": [self.LINE_BLOCK]}, page_id=2
+            )
+
+        assert result["text"] == "Signature of taxpayer"
+
+
+@pytest.mark.unit
+class TestShippedOcrFeatureDefaults:
+    """Guard the shipped ocr.features default.
+
+    SIGNATURES is in the default set because signature presence is a common
+    extraction target and the feature is free in this combination — per the Textract
+    pricing page, "Signatures feature is included free of cost with any combination
+    of Forms, Tables, Queries, and Layout" (AWS emits no usage type at all for a
+    feature that is free in combination). If TABLES/FORMS/LAYOUT were ever dropped
+    from the defaults while SIGNATURES stayed, SIGNATURES would start being billed
+    at ~$0.0035/page — hence the paired assertion.
+    """
+
+    def test_default_features_include_tables_layout_signatures(self):
+        from idp_common.config.merge_utils import load_system_defaults
+
+        defaults = load_system_defaults("pattern-2")
+        names = [f["name"] for f in defaults["ocr"]["features"]]
+
+        assert names == ["TABLES", "LAYOUT", "SIGNATURES"], names
+
+    def test_signatures_default_is_never_billed_alone(self):
+        """SIGNATURES in the defaults must be accompanied by a paying feature."""
+        from idp_common.config.merge_utils import load_system_defaults
+
+        names = {
+            f["name"] for f in load_system_defaults("pattern-2")["ocr"]["features"]
+        }
+
+        if "SIGNATURES" in names:
+            assert names & {"TABLES", "FORMS", "LAYOUT"}, (
+                "SIGNATURES is only free in combination; on its own it is billed "
+                "at ~$0.0035/page"
+            )

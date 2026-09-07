@@ -166,6 +166,8 @@ def discover_existing_ocr_pages(output_bucket, input_key):
                     raw_text_uri=files["rawText.json"],
                     parsed_text_uri=files["result.json"],
                     text_confidence_uri=files["textConfidence.json"],
+                    # pageData.json is optional — older pages predate it
+                    ocr_page_data_uri=files.get("pageData.json"),
                 )
 
     except Exception as e:
@@ -244,7 +246,8 @@ def handler(event, context):
     # Load configuration and initialize the OCR service using new simplified pattern
     # Use document's version if specified, otherwise use active version
     config_version = getattr(document, 'config_version', None)
-    config = get_config(as_model=True, version=config_version)
+    config_revision = getattr(document, 'config_revision', None)
+    config = get_config(as_model=True, version=config_version, revision=config_revision)
     backend = config.ocr.backend
     
     logger.info(f"Initializing OCR with backend: {backend}")

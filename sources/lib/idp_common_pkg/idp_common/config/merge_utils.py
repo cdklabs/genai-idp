@@ -12,21 +12,25 @@ This module provides utilities for:
 
 import logging
 import os
-import re
 import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import yaml
-from copy import deepcopy
+
+from idp_common.bedrock.model_utils import (
+    get_model_max_output_tokens,
+    resolve_model_id_from_arn,
+)
 
 # Use importlib.resources for Python 3.9+
 if sys.version_info >= (3, 9):
-    from importlib.resources import files as importlib_files
-    from importlib.resources import as_file
+    from importlib.resources import (
+        files as importlib_files,  # nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2
+    )
 else:
     from importlib_resources import files as importlib_files
-    from importlib_resources import as_file
 
 logger = logging.getLogger(__name__)
 
@@ -402,6 +406,7 @@ def merge_config_with_defaults(
     user_config: Dict[str, Any],
     pattern: str = "pattern-2",
     validate: bool = False,
+    migrate: bool = True,
 ) -> Dict[str, Any]:
     """
     Merge a user's config with system defaults.
@@ -413,6 +418,8 @@ def merge_config_with_defaults(
         user_config: User's configuration dictionary (may be partial)
         pattern: Pattern to use for defaults (pattern-1, pattern-2)
         validate: If True, validate the merged config with Pydantic
+        migrate: If True (default), migrate ``user_config`` to the current config
+            format (e.g. v0.5 -> v0.6) BEFORE merging onto the defaults.
 
     Returns:
         Complete configuration dictionary with defaults applied
@@ -424,7 +431,25 @@ def merge_config_with_defaults(
         }
         result = merge_config_with_defaults(user_config, "pattern-2")
         # Result has all fields populated from defaults, with user's model override
+
+    IMPORTANT -- migrate BEFORE merge:
+        The system defaults are already in the current (v0.6) shape. If a v0.5-shaped
+        ``user_config`` (e.g. a top-level ``assessment`` block, or
+        ``extraction.assessment_integration``) is merged onto the v0.6 defaults FIRST,
+        the merged dict carries BOTH the v0.6 default keys and the legacy keys. A later
+        migration then applies its "explicit v0.6 keys win over migrated legacy values"
+        rule and the v0.6 DEFAULTS silently beat the user's migrated legacy
+        customizations (a pinned assessment model / list_batch_size / geometry_mode
+        reverts to default). Migrating ``user_config`` first keeps the merge a clean
+        v0.6-over-v0.6 deep_update where user values win. The migration is idempotent,
+        so this is a no-op for already-v0.6 input.
     """
+    # Migrate the user config to the current format BEFORE merging (see docstring).
+    if migrate:
+        from idp_common.config.migrations import migrate_config
+
+        user_config = migrate_config(deepcopy(user_config))
+
     # Load system defaults
     defaults = load_system_defaults(pattern)
 
@@ -602,10 +627,650 @@ def validate_config(
             "No document classes defined - you must add at least one class"
         )
 
-    assessment = merged.get("assessment", {})
-    if assessment.get("granular", {}).get("enabled") and not assessment.get("enabled"):
-        result["warnings"].append(
-            "assessment.granular.enabled=true but assessment.enabled=false - granular assessment won't run"
-        )
+    # Enhanced validation checks
+    _validate_model_ids(merged, result)
+    _validate_max_tokens(merged, result)
+    _validate_task_prompt_placeholders(merged, result)
+    _validate_schema_fields(config.get("classes", []), result)
+    _validate_agentic_openai(merged, result)
+    _validate_discovery_openai(merged, result)
 
     return result
+
+
+def _load_valid_bedrock_models() -> set:
+    """
+    Load valid Bedrock model IDs from pricing.yaml.
+
+    Returns:
+        Set of valid model IDs, or empty set if pricing.yaml not found
+    """
+    try:
+        # Try to find pricing.yaml relative to this file
+        # merge_utils.py is at: lib/idp_common_pkg/idp_common/config/merge_utils.py
+        # Need to walk up 5 parents to reach repo root
+        pricing_paths = [
+            # Development: from lib/idp_common_pkg/idp_common/config/ (5 parents to repo root)
+            Path(__file__).parent.parent.parent.parent.parent
+            / "config_library"
+            / "pricing.yaml",
+            # Fallback: use IDP_PROJECT_ROOT or current working directory
+            Path(os.environ.get("IDP_PROJECT_ROOT", "."))
+            / "config_library"
+            / "pricing.yaml",
+        ]
+
+        pricing_file = None
+        for path in pricing_paths:
+            if path.exists():
+                pricing_file = path
+                break
+
+        if not pricing_file:
+            logger.warning(
+                "pricing.yaml not found - model ID validation disabled. "
+                "Ensure idp-cli is run from repository root or set IDP_PROJECT_ROOT environment variable."
+            )
+            return set()
+
+        with open(pricing_file) as f:
+            pricing_config = yaml.safe_load(f)
+
+        model_ids = set()
+        for entry in pricing_config.get("pricing", []):
+            name = entry.get("name", "")
+            if name.startswith("bedrock/"):
+                model_id = name.replace("bedrock/", "")
+                model_ids.add(model_id)
+
+        # Add special cases
+        model_ids.add("LambdaHook")
+
+        # Also add base model IDs (without region prefix) for GovCloud compatibility
+        # e.g., "us.amazon.nova-pro-v1:0" -> also allow "amazon.nova-pro-v1:0"
+        base_models = set()
+        for model_id in list(model_ids):
+            if "." in model_id:
+                # Extract base model (remove region prefix)
+                parts = model_id.split(".", 1)
+                if len(parts) == 2:
+                    base_model = parts[1]
+                    base_models.add(base_model)
+
+        model_ids.update(base_models)
+
+        logger.debug(
+            "Loaded %d valid Bedrock model IDs from pricing.yaml", len(model_ids)
+        )
+        return model_ids
+
+    except Exception as e:
+        logger.warning("Could not load pricing.yaml for model validation: %s", e)
+        return set()
+
+
+def _validate_model_ids(merged_config: Dict[str, Any], result: Dict[str, Any]) -> None:
+    """
+    Validate Bedrock model IDs against pricing.yaml.
+
+    Checks that model IDs in config are valid and recognized.
+
+    A model may be named by ARN rather than by bare model ID — GovCloud
+    requires an account-scoped inference-profile ARN, and provisioned-throughput
+    or application-inference-profile deployments are ARN-only everywhere. ARNs
+    are reduced to the model ID they name before the catalog lookup.
+
+    Three outcomes for a value that doesn't match the catalog:
+
+    - **Bare model ID → error.** That's a typo; nothing else it could be.
+    - **ARN whose resolved resource has model-ID *shape*** (contains a ``.``
+      and isn't a UUID) **→ error.** It looks like a model ID and still doesn't
+      match, so the likely cause is a typo in the ARN's resource-id, partition
+      or account. It is also, by construction, a model with no
+      ``config_library/pricing.yaml`` entry — so cost reporting would be broken
+      for it regardless. To use a model newer than this release, add it to
+      ``config_library/pricing.yaml`` (see ``.claude/skills/add-model.md``,
+      which requires that entry anyway).
+    - **ARN whose resolved resource is opaque** (an application-inference-profile
+      UUID, a provisioned-model name — no ``.``, or UUID-shaped) **→ warning.**
+      Its underlying model can't be determined without a Bedrock API call, so
+      it's unverifiable, not wrong.
+
+    Note this whole function is a no-op when ``config_library/pricing.yaml``
+    isn't on disk: ``_load_valid_bedrock_models`` returns an empty set and we
+    return early. So the strict paths above only fire from a repository
+    checkout — the CLI/SDK run from source, and CI — not from a
+    pip-installed ``idp_common`` in a Lambda.
+    """
+    valid_models = _load_valid_bedrock_models()
+    if not valid_models:
+        # Can't validate - skip silently
+        return
+
+    sections_with_models = {
+        "ocr": "model_id",
+        "classification": "model",
+        "extraction": "model",
+        "assessment": "model",
+        "summarization": "model",
+    }
+
+    for section, field_name in sections_with_models.items():
+        if section not in merged_config:
+            continue
+
+        model_id = merged_config[section].get(field_name)
+        if not model_id:
+            continue
+
+        resolved = resolve_model_id_from_arn(model_id)
+        if resolved in valid_models:
+            continue
+
+        if model_id.startswith("arn:"):
+            # Distinguish an unverifiable opaque resource (a legitimate
+            # application-inference-profile UUID / provisioned-throughput ARN
+            # whose underlying model can only be known via a Bedrock API call)
+            # from a probably-typo'd ARN whose resource DOES look like a
+            # model ID but doesn't match anything in valid_models. Round-7
+            # review fix; round-9 cleanup: dropped dead
+            # ``resolved.startswith("application-inference-profile/")`` and
+            # ``"provisioned-model/"`` guards — ``resolve_model_id_from_arn``
+            # strips those type prefixes, so ``resolved`` never carries
+            # them. UUIDs (which lack dots) fall through to the warning
+            # path naturally via the ``"." in resolved`` check.
+            _looks_like_model_id_shape = "." in resolved and not _looks_like_uuid(
+                resolved
+            )
+            if _looks_like_model_id_shape:
+                # The ARN resolved to a string that looks like a model ID
+                # (has family.name shape) but doesn't match — treat as a typo.
+                result["valid"] = False
+                result["errors"].append(
+                    f"{section}.{field_name} names a Bedrock ARN whose resolved "
+                    f"model ID ({resolved!r}) is not a known Bedrock model. This is "
+                    f"most likely a typo in the ARN's resource-id, partition, or "
+                    f"account. Full ARN: {model_id}"
+                )
+                continue
+            result["warnings"].append(
+                f"{section}.{field_name} names a Bedrock ARN whose underlying "
+                f"model can't be determined offline: {model_id}. Cost reporting "
+                f"needs a matching entry in config_library/pricing.yaml."
+            )
+            continue
+
+        result["valid"] = False
+        result["errors"].append(
+            f"{section}.{field_name} has invalid model ID: {model_id}. "
+            f"Verify the model name is correct and ensure it's enabled in the Bedrock console. "
+            f"Check config_library/pricing.yaml for valid model IDs."
+        )
+
+
+def _looks_like_uuid(value: str) -> bool:
+    """Heuristic — reject values that look like a UUID (opaque application
+    inference profile IDs) from being treated as typo'd model IDs."""
+    import re
+
+    return bool(
+        re.match(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            value,
+            re.I,
+        )
+    )
+
+
+def _validate_agentic_openai(
+    merged_config: Dict[str, Any], result: Dict[str, Any]
+) -> None:
+    """Error when an OpenAI GPT-5.x model is paired with agentic extraction.
+
+    OpenAI Responses models (openai.gpt-5.*) are served via the bedrock-mantle
+    endpoint and are incompatible with the Converse-based agentic (Strands)
+    extraction path. This is a hard validation error (rather than a silent
+    runtime fallback) so the misconfiguration surfaces at config time instead
+    of failing obscurely mid-processing.
+    """
+    from idp_common.bedrock.openai_responses import is_openai_responses_model
+    from idp_common.config.schema_constants import X_AWS_IDP_EXTRACTION_MODEL
+
+    extraction = merged_config.get("extraction", {})
+    if not isinstance(extraction, dict):
+        return
+
+    agentic_enabled = bool(extraction.get("agentic", {}).get("enabled"))
+    if not agentic_enabled:
+        return
+
+    # Global extraction model
+    global_model = extraction.get("model")
+    if global_model and is_openai_responses_model(global_model):
+        result["valid"] = False
+        result["errors"].append(
+            f"extraction.model '{global_model}' is an OpenAI Responses model, which "
+            "is NOT compatible with agentic extraction (extraction.agentic.enabled=true). "
+            "Set agentic.enabled=false or choose a non-OpenAI model."
+        )
+
+    # Per-class extraction model overrides
+    for cls in merged_config.get("classes", []) or []:
+        if not isinstance(cls, dict):
+            continue
+        override = cls.get(X_AWS_IDP_EXTRACTION_MODEL)
+        if override and is_openai_responses_model(override):
+            class_name = cls.get("x-aws-idp-document-type", "<unnamed>")
+            result["valid"] = False
+            result["errors"].append(
+                f"Class '{class_name}' overrides extraction with OpenAI Responses "
+                f"model '{override}', which is NOT compatible with agentic extraction "
+                "(extraction.agentic.enabled=true). Set agentic.enabled=false or "
+                "choose a non-OpenAI model for this class."
+            )
+
+
+def _validate_discovery_openai(
+    merged_config: Dict[str, Any], result: Dict[str, Any]
+) -> None:
+    """Error when a model that can't take ``document`` blocks is set for discovery.
+
+    Discovery ingests whole PDFs via Converse ``document`` content blocks. OpenAI
+    GPT-5.x (bedrock-mantle Responses API) and xAI Grok (rejects them outright)
+    both accept text + image only, so routing either here would silently drop the
+    document. Reject at config time. (Neither is offered in the discovery
+    picklists.)
+    """
+    from idp_common.bedrock.client import document_blocks_unsupported_reason
+
+    discovery = merged_config.get("discovery", {})
+    if not isinstance(discovery, dict):
+        return
+
+    # Sub-sections that carry a per-section model: model_id for the class/auto
+    # discovery sections, model for rules discovery.
+    checks = [
+        (
+            "discovery.without_ground_truth.model_id",
+            discovery.get("without_ground_truth", {}),
+            "model_id",
+        ),
+        (
+            "discovery.with_ground_truth.model_id",
+            discovery.get("with_ground_truth", {}),
+            "model_id",
+        ),
+        ("discovery.auto_split.model_id", discovery.get("auto_split", {}), "model_id"),
+        ("discovery.rules.model", discovery.get("rules", {}), "model"),
+    ]
+    for label, section, field in checks:
+        if not isinstance(section, dict):
+            continue
+        model_id = section.get(field)
+        reason = document_blocks_unsupported_reason(model_id) if model_id else None
+        if reason:
+            result["valid"] = False
+            result["errors"].append(
+                f"{label} is set to '{model_id}', which is NOT supported for "
+                f"discovery — {reason}, but discovery sends whole-PDF document "
+                "blocks. Choose an Anthropic or Nova model."
+            )
+
+
+def _validate_task_prompt_placeholders(
+    merged_config: Dict[str, Any], result: Dict[str, Any]
+) -> None:
+    """
+    Validate task_prompt placeholders for all pipeline sections.
+
+    Checks for missing required placeholders that would cause silent failures
+    when custom task_prompts are provided.
+
+    Required placeholders by section:
+    - ocr: {DOCUMENT_IMAGE}
+    - classification: {DOCUMENT_TEXT} or {DOCUMENT_IMAGE}
+    - extraction: {DOCUMENT_TEXT} or {DOCUMENT_IMAGE}
+    - assessment: {DOCUMENT_IMAGE}, {OCR_TEXT_CONFIDENCE}, {EXTRACTION_RESULTS}
+    - summarization: {DOCUMENT_TEXT}, {EXTRACTION_RESULTS}
+    """
+    # Validation rules: section -> (required_placeholders, require_all_flag)
+    # require_all_flag: True = ALL placeholders required, False = ANY one required
+    validation_rules = {
+        "ocr": (
+            ["{DOCUMENT_IMAGE}"],
+            True,  # Must have DOCUMENT_IMAGE
+            "ocr.task_prompt must include {DOCUMENT_IMAGE} placeholder. "
+            "Without this placeholder, the OCR model will not receive the document image, "
+            "resulting in OCR failures. "
+            "Either add the required placeholder or remove task_prompt to use system defaults.",
+        ),
+        "classification": (
+            ["{DOCUMENT_TEXT}", "{DOCUMENT_IMAGE}"],
+            False,  # Must have at least one
+            "classification.task_prompt must include {DOCUMENT_TEXT} or {DOCUMENT_IMAGE} placeholder. "
+            "Without these placeholders, the classification model will not receive document content, "
+            "resulting in classification failures. "
+            "Either add at least one required placeholder or remove task_prompt to use system defaults.",
+        ),
+        "extraction": (
+            ["{DOCUMENT_TEXT}", "{DOCUMENT_IMAGE}"],
+            False,  # Must have at least one
+            "extraction.task_prompt must include {DOCUMENT_TEXT} or {DOCUMENT_IMAGE} placeholder. "
+            "Without these placeholders, the LLM will not receive document content from OCR, "
+            "resulting in silent extraction failures. "
+            "Either add at least one required placeholder or remove task_prompt to use system defaults.",
+        ),
+        "assessment": (
+            ["{DOCUMENT_IMAGE}", "{OCR_TEXT_CONFIDENCE}", "{EXTRACTION_RESULTS}"],
+            True,  # Must have all three
+            "assessment.task_prompt must include {DOCUMENT_IMAGE}, {OCR_TEXT_CONFIDENCE}, and {EXTRACTION_RESULTS} placeholders. "
+            "Without these placeholders, the assessment model cannot evaluate extraction quality or provide bounding boxes. "
+            "Either add all required placeholders or remove task_prompt to use system defaults.",
+        ),
+        "summarization": (
+            ["{DOCUMENT_TEXT}", "{EXTRACTION_RESULTS}"],
+            True,  # Must have both
+            "summarization.task_prompt must include {DOCUMENT_TEXT} and {EXTRACTION_RESULTS} placeholders. "
+            "Without these placeholders, the summarization model cannot generate accurate summaries. "
+            "Either add all required placeholders or remove task_prompt to use system defaults.",
+        ),
+    }
+
+    # Check each section that has validation rules
+    for section_name, (
+        required_placeholders,
+        require_all,
+        error_message,
+    ) in validation_rules.items():
+        section = merged_config.get(section_name, {})
+        task_prompt = section.get("task_prompt", "")
+
+        # Special case: OCR task_prompt is only used when backend is 'bedrock'
+        if section_name == "ocr":
+            ocr_backend = section.get("backend", "textract")
+            if ocr_backend != "bedrock":
+                # Skip OCR validation for non-bedrock backends (Textract doesn't use prompts)
+                continue
+
+        # Skip validation for disabled sections (assessment, summarization)
+        if section_name in ["assessment", "summarization"]:
+            if not section.get("enabled", True):
+                # Section is explicitly disabled, skip validation
+                continue
+
+        if task_prompt:
+            # Check which placeholders are present
+            present_placeholders = [
+                placeholder
+                for placeholder in required_placeholders
+                if placeholder in task_prompt
+            ]
+
+            # Determine if validation passes
+            if require_all:
+                # ALL placeholders must be present
+                validation_passed = len(present_placeholders) == len(
+                    required_placeholders
+                )
+            else:
+                # At least ONE placeholder must be present
+                validation_passed = len(present_placeholders) > 0
+
+            if not validation_passed:
+                result["valid"] = False
+                result["errors"].append(error_message)
+
+
+def _validate_schema_fields(
+    classes: List[Dict[str, Any]], result: Dict[str, Any]
+) -> None:
+    """
+    Validate JSON Schema fields in document class definitions.
+
+    Checks for:
+    - Non-standard JSON Schema keywords that may be ignored
+    - Use of 'data_type' field (not in JSON Schema spec)
+    """
+    # Standard JSON Schema keywords (Draft 2020-12)
+    ALLOWED_KEYWORDS = {
+        # Core keywords
+        "$schema",
+        "$id",
+        "$ref",
+        "$defs",
+        "$anchor",
+        "$dynamicRef",
+        "$dynamicAnchor",
+        "$vocabulary",
+        "$comment",
+        # Type keywords
+        "type",
+        "enum",
+        "const",
+        # Structure keywords
+        "properties",
+        "patternProperties",
+        "additionalProperties",
+        "propertyNames",
+        "items",
+        "prefixItems",
+        "contains",
+        "additionalItems",
+        "unevaluatedProperties",
+        "unevaluatedItems",
+        # Validation keywords
+        "required",
+        "dependentRequired",
+        "dependentSchemas",
+        "if",
+        "then",
+        "else",
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "not",
+        # String validation
+        "minLength",
+        "maxLength",
+        "pattern",
+        "format",
+        # Numeric validation
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        # Array validation
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "minContains",
+        "maxContains",
+        # Object validation
+        "minProperties",
+        "maxProperties",
+        # Metadata
+        "title",
+        "description",
+        "default",
+        "examples",
+        "readOnly",
+        "writeOnly",
+        "deprecated",
+        # Content keywords
+        "contentMediaType",
+        "contentEncoding",
+        "contentSchema",
+    }
+
+    # AWS IDP-specific extensions (allowed)
+    IDP_EXTENSIONS = {
+        "x-aws-idp-confidence-threshold",
+        "x-aws-idp-evaluation-method",
+        "x-aws-idp-evaluation-threshold",
+        "x-aws-idp-evaluation-weight",
+        "x-aws-idp-document-type",
+        "x-aws-idp-list-item-description",
+        "x-aws-idp-page-types",
+        "x-aws-idp-source-page-types",
+        "x-aws-idp-instance-array",
+    }
+
+    non_standard_fields = {}
+
+    for class_idx, doc_class in enumerate(classes):
+        _check_schema_properties(
+            doc_class.get("properties", {}),
+            f"classes[{class_idx}]",
+            ALLOWED_KEYWORDS,
+            IDP_EXTENSIONS,
+            non_standard_fields,
+        )
+
+        # Also check $defs
+        for def_name, def_schema in doc_class.get("$defs", {}).items():
+            _check_schema_properties(
+                def_schema.get("properties", {}),
+                f"classes[{class_idx}].$defs.{def_name}",
+                ALLOWED_KEYWORDS,
+                IDP_EXTENSIONS,
+                non_standard_fields,
+            )
+
+    # Report non-standard fields as warnings (they're harmless but non-standard)
+    if non_standard_fields:
+        for field, locations in non_standard_fields.items():
+            result["warnings"].append(
+                f"Non-standard field '{field}' found in {len(locations)} properties. "
+                f"This field is not part of the JSON Schema specification and will be ignored. "
+                f"Locations: {', '.join(locations[:3])}"
+                + (f" (and {len(locations) - 3} more)" if len(locations) > 3 else "")
+            )
+
+
+def _check_schema_properties(
+    properties: Dict[str, Any],
+    path: str,
+    allowed_keywords: set,
+    idp_extensions: set,
+    non_standard_fields: Dict[str, List[str]],
+) -> None:
+    """
+    Recursively check schema properties for non-standard fields.
+
+    Args:
+        properties: Properties dictionary from JSON Schema
+        path: Current path in schema (for error reporting)
+        allowed_keywords: Set of allowed JSON Schema keywords
+        idp_extensions: Set of allowed AWS IDP extensions
+        non_standard_fields: Dictionary to collect non-standard fields and their locations
+    """
+    for prop_name, prop_def in properties.items():
+        if not isinstance(prop_def, dict):
+            continue
+
+        prop_path = f"{path}.{prop_name}"
+
+        for key in prop_def.keys():
+            # Skip allowed JSON Schema keywords
+            if key in allowed_keywords:
+                continue
+
+            # Skip known IDP extensions explicitly
+            if key in idp_extensions:
+                continue
+
+            # Skip any other x-* extensions (custom extensions allowed by JSON Schema spec)
+            # This catches x-* fields not in our explicit IDP_EXTENSIONS set
+            if key.startswith("x-"):
+                continue
+
+            # Found non-standard field
+            if key not in non_standard_fields:
+                non_standard_fields[key] = []
+            non_standard_fields[key].append(prop_path)
+
+        # Recurse into nested objects
+        if "properties" in prop_def:
+            _check_schema_properties(
+                prop_def["properties"],
+                prop_path,
+                allowed_keywords,
+                idp_extensions,
+                non_standard_fields,
+            )
+
+        # Recurse into array items if they have properties
+        if "items" in prop_def and isinstance(prop_def["items"], dict):
+            items_def = prop_def["items"]
+            if "properties" in items_def:
+                _check_schema_properties(
+                    items_def["properties"],
+                    f"{prop_path}[]",
+                    allowed_keywords,
+                    idp_extensions,
+                    non_standard_fields,
+                )
+
+
+def _validate_max_tokens(merged_config: Dict[str, Any], result: Dict[str, Any]) -> None:
+    """
+    Validate max_tokens against model-specific limits.
+
+    Checks that max_tokens in each service config does not exceed the
+    maximum output tokens supported by the configured model.
+
+    This prevents runtime failures when the Bedrock API rejects requests
+    with max_tokens values that exceed model limits.
+    """
+    # Services that still expose a max_tokens knob. extraction + confidence
+    # (assessment) no longer do — their output is always requested at the model
+    # maximum and clamped at request time — so they cannot be over-limit and are
+    # excluded here.
+    sections_with_tokens = {
+        "classification": {"model_field": "model", "max_tokens_field": "max_tokens"},
+        "summarization": {"model_field": "model", "max_tokens_field": "max_tokens"},
+    }
+
+    for section_name, config in sections_with_tokens.items():
+        section = merged_config.get(section_name, {})
+
+        # Skip disabled sections
+        if section_name in ["assessment", "summarization"]:
+            if not section.get("enabled", True):
+                continue
+
+        model_id = section.get(config["model_field"])
+        max_tokens_raw = section.get(config["max_tokens_field"])
+
+        # Skip if the model is missing. max_tokens is an OPTIONAL cap: empty
+        # string / None / a value that coerces to <= 0 all mean "unset" (use the
+        # model's max output), so there is nothing to validate.
+        if not model_id or max_tokens_raw in (None, ""):
+            continue
+
+        # Config stores numbers as strings (DynamoDB); coerce before comparing
+        # against the int model limit. A non-numeric value is treated as unset.
+        try:
+            max_tokens = int(max_tokens_raw)
+        except (TypeError, ValueError):
+            continue
+        if max_tokens <= 0:
+            continue
+
+        # Get model's max output tokens limit
+        try:
+            model_limit = get_model_max_output_tokens(model_id)
+
+            if max_tokens > model_limit:
+                result["valid"] = False
+                result["errors"].append(
+                    f"{section_name}.max_tokens ({max_tokens}) exceeds model limit ({model_limit:,}) "
+                    f"for {model_id}. "
+                    f"Reduce max_tokens to {model_limit:,} or less, or choose a different model. "
+                    f"Model limits: Claude 4.x=64,000, Nova=10,000, Claude 3.x=8,192"
+                )
+        except Exception as e:
+            logger.warning(
+                "Could not validate max_tokens for %s: %s", section_name, str(e)
+            )

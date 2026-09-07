@@ -18,25 +18,41 @@ import {
   FormField,
   Input,
   Select,
-  CollectionPreferences,
   ExpandableSection,
   RadioGroup,
+  Pagination,
+  Popover,
+  TextFilter,
+  CollectionPreferences,
 } from '@cloudscape-design/components';
-// eslint-disable-next-line import/no-extraneous-dependencies
+import { useCollection } from '@cloudscape-design/collection-hooks';
+
 import yaml from 'js-yaml';
-import { generateClient } from 'aws-amplify/api';
+import { generateClient } from '../../api/client-shim';
 import { getTestRun, startTestRun, getTestSets } from '../../graphql/generated';
 import useConfigurationVersions from '../../hooks/use-configuration-versions';
 import TestStudioHeader from './TestStudioHeader';
 import useAppContext from '../../contexts/app';
 import { formatConfigVersionLink } from './utils/configVersionUtils';
+import MetricInfo, { ACCURACY_METRIC_MAP, SPLIT_METRIC_MAP } from './utils/MetricInfo';
+import { accuracyIntervalForField, formatBounds, formatMargin, isLowEvidence } from './accuracyInterval';
+import ClassificationErrorsPanel from './ClassificationErrorsPanel';
+import { asFiniteNumber, formatCostUsd, formatUnitCostUsd } from './formatCost';
 import {
   parseCostBreakdown,
+  calculateAvgCostPerPage,
   parseAccuracyBreakdown,
   parseSplitClassificationMetrics,
-  parseWeightedOverallScores,
+  parseGradedPacketMetrics,
+  parseClassificationErrors,
+  parseFieldMetrics,
+  parseConfusionMatrix,
+  parseConfidenceMetrics,
+  parseWeightedOverallScoresFinite,
   parseTestRunConfig,
 } from '../../graphql/awsjson-parsers';
+import type { GradedPacketMetrics } from '../../graphql/awsjson-types';
+import type { TestRunInput } from '../../graphql/generated/schema-types';
 import type { SelectProps } from '@cloudscape-design/components';
 
 const client = generateClient();
@@ -57,39 +73,36 @@ interface ComprehensiveBreakdownProps {
   costBreakdown: Record<string, Record<string, Record<string, unknown>>> | null;
   accuracyBreakdown: Record<string, number> | null;
   splitClassificationMetrics: Record<string, unknown> | null;
+  gradedPacketMetrics: GradedPacketMetrics | null;
+  fieldMetrics: Record<string, unknown> | null;
   averageWeightedScore: number | null;
-  preferences: { wrapLines: boolean };
-  setPreferences: (prefs: { wrapLines: boolean }) => void;
+  confidenceMetrics: unknown;
 }
 
 const ComprehensiveBreakdown = ({
   costBreakdown,
   accuracyBreakdown,
   splitClassificationMetrics,
+  gradedPacketMetrics,
+  fieldMetrics,
   averageWeightedScore,
-  preferences,
-  setPreferences,
+  confidenceMetrics,
 }: ComprehensiveBreakdownProps): React.JSX.Element => {
-  if (!costBreakdown && !accuracyBreakdown && !splitClassificationMetrics) {
+  const hasGradedPacketMetrics = !!gradedPacketMetrics?.mean && Object.keys(gradedPacketMetrics.mean).length > 0;
+
+  if (!costBreakdown && !accuracyBreakdown && !splitClassificationMetrics && !hasGradedPacketMetrics && !fieldMetrics) {
     return <Box>No breakdown data available</Box>;
   }
 
   return (
     <SpaceBetween direction="vertical" size="l">
       {/* Combined Accuracy and Split Classification Metrics */}
-      {(accuracyBreakdown || splitClassificationMetrics) && (
-        <Container
-          header={<Header variant="h3">Average Accuracy and Split Metrics</Header>}
-          {...({
-            preferences: <TestResultsPreferences preferences={preferences} setPreferences={setPreferences} />,
-          } as Record<string, unknown>)}
-        >
+      {(accuracyBreakdown || splitClassificationMetrics || hasGradedPacketMetrics) && (
+        <Container header={<Header variant="h3">Average Accuracy and Split Metrics</Header>}>
           <SpaceBetween direction="vertical" size="m">
             {/* Main metrics */}
             <Table
               resizableColumns
-              wrapLines={preferences.wrapLines}
-              preferences={<TestResultsPreferences preferences={preferences} setPreferences={setPreferences} />}
               items={(() => {
                 const mainItems = [];
 
@@ -99,6 +112,7 @@ const ComprehensiveBreakdown = ({
                     metric: (
                       <>
                         <span style={{ color: '#687078' }}>Extraction:</span> Weighted Overall Score
+                        <MetricInfo metric="Avg Weighted Score" />
                       </>
                     ),
                     value: averageWeightedScore.toFixed(3),
@@ -112,6 +126,7 @@ const ComprehensiveBreakdown = ({
                       metric: (
                         <>
                           <span style={{ color: '#687078' }}>Classification:</span> Page Level Accuracy
+                          <MetricInfo metric="Page Level Accuracy" />
                         </>
                       ),
                       value:
@@ -126,6 +141,7 @@ const ComprehensiveBreakdown = ({
                       metric: (
                         <>
                           <span style={{ color: '#687078' }}>Classification:</span> Split Accuracy With Order
+                          <MetricInfo metric="Split Accuracy With Order" />
                         </>
                       ),
                       value:
@@ -139,7 +155,7 @@ const ComprehensiveBreakdown = ({
                 return mainItems;
               })()}
               columnDefinitions={[
-                { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 400 },
+                { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 410 },
                 { id: 'value', header: 'Value', cell: (item) => item.value, width: 200 },
               ]}
               variant="embedded"
@@ -150,43 +166,164 @@ const ComprehensiveBreakdown = ({
               <Container>
                 <Table
                   resizableColumns
-                  wrapLines={preferences.wrapLines}
-                  preferences={<div />}
                   items={[
                     // All accuracy breakdown metrics
                     ...(accuracyBreakdown
-                      ? Object.entries(accuracyBreakdown).map(([key, value]) => ({
+                      ? Object.entries(accuracyBreakdown).map(([key, value]) => {
+                          const displayName = key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+                          // Map backend keys to MetricInfo keys
+                          const extendedMetricMap: Record<
+                            string,
+                            | 'Accuracy'
+                            | 'Precision'
+                            | 'Recall'
+                            | 'F1'
+                            | 'False Alarm Rate'
+                            | 'False Discovery Rate'
+                            | 'Avg Accuracy'
+                            | 'Avg Confidence'
+                          > = {
+                            average_accuracy: 'Avg Accuracy',
+                            avg_confidence: 'Avg Confidence',
+                            f1_score: 'F1',
+                            false_alarm_rate: 'False Alarm Rate',
+                            false_discovery_rate: 'False Discovery Rate',
+                            ...ACCURACY_METRIC_MAP,
+                          };
+                          const metricKey = extendedMetricMap[key];
+
+                          return {
+                            metric: (
+                              <>
+                                <span style={{ color: '#687078' }}>Extraction:</span> {displayName}
+                                {metricKey && <MetricInfo metric={metricKey} />}
+                              </>
+                            ),
+                            value: value !== null && value !== undefined ? value.toFixed(3) : '0.000',
+                          };
+                        })
+                      : []),
+                    // Confidence calibration metrics (Stickler v0.4.0+)
+                    ...(() => {
+                      const confMetrics = parseConfidenceMetrics(confidenceMetrics);
+                      if (!confMetrics) return [];
+
+                      const items = [];
+                      const { overall, coverage } = confMetrics;
+
+                      if (overall) {
+                        if (overall.auroc?.value !== null && overall.auroc?.value !== undefined) {
+                          items.push({
+                            metric: (
+                              <>
+                                <span style={{ color: '#687078' }}>Confidence:</span> AUROC
+                                <MetricInfo metric="AUROC" />
+                              </>
+                            ),
+                            value: overall.auroc.value.toFixed(3),
+                          });
+                        }
+                        if (overall.ece?.value !== null && overall.ece?.value !== undefined) {
+                          items.push({
+                            metric: (
+                              <>
+                                <span style={{ color: '#687078' }}>Confidence:</span> ECE (Calibration Error)
+                                <MetricInfo metric="ECE" />
+                              </>
+                            ),
+                            value: overall.ece.value.toFixed(3),
+                          });
+                        }
+                        if (overall.brier?.value !== null && overall.brier?.value !== undefined) {
+                          items.push({
+                            metric: (
+                              <>
+                                <span style={{ color: '#687078' }}>Confidence:</span> Brier Score
+                                <MetricInfo metric="Brier" />
+                              </>
+                            ),
+                            value: overall.brier.value.toFixed(3),
+                          });
+                        }
+                        // ECARB@30
+                        const ecarbData = overall.error_capture_at_budget as {
+                          budgets?: Record<string, { pct_errors_caught?: number; gain?: number }>;
+                        };
+                        const ecarb30 = ecarbData?.budgets?.['0.30'];
+                        if (ecarb30?.pct_errors_caught !== null && ecarb30?.pct_errors_caught !== undefined) {
+                          items.push({
+                            metric: (
+                              <>
+                                <span style={{ color: '#687078' }}>Confidence:</span> ECARB@30
+                                <MetricInfo metric="ECARB@30" />
+                              </>
+                            ),
+                            value: `${(ecarb30.pct_errors_caught * 100).toFixed(0)}% (${ecarb30.gain?.toFixed(2)}x)`,
+                          });
+                        }
+                      }
+
+                      if (coverage) {
+                        items.push({
                           metric: (
                             <>
-                              <span style={{ color: '#687078' }}>Extraction:</span>{' '}
-                              {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                              <span style={{ color: '#687078' }}>Confidence:</span> Coverage Ratio
+                              <MetricInfo metric="Coverage Ratio" />
                             </>
                           ),
-                          value: value !== null && value !== undefined ? value.toFixed(3) : '0.000',
-                        }))
+                          value: `${(coverage.ratio * 100).toFixed(1)}% (${coverage.fields_with_confidence}/${coverage.fields_total})`,
+                        });
+                      }
+
+                      return items;
+                    })(),
+                    // Graded packet metrics (V-measure / Rand / ordering) —
+                    // R14 supplemental scores on top of the exact-match split
+                    // counters above. Mean across documents that reported
+                    // each key; skipped entirely when the panel has no data
+                    // (older test runs or classification runs with no page
+                    // overlap).
+                    ...(hasGradedPacketMetrics
+                      ? Object.entries(gradedPacketMetrics!.mean!).map(([key, value]) => {
+                          const displayName = key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+                          return {
+                            metric: (
+                              <>
+                                <span style={{ color: '#687078' }}>Classification (graded):</span> {displayName}
+                              </>
+                            ),
+                            value: typeof value === 'number' ? value.toFixed(3) : String(value ?? '0'),
+                          };
+                        })
                       : []),
                     // Remaining split classification metrics
                     ...(splitClassificationMetrics
                       ? Object.entries(splitClassificationMetrics)
                           .filter(([key]) => key !== 'page_level_accuracy' && key !== 'split_accuracy_with_order')
-                          .map(([key, value]) => ({
-                            metric: (
-                              <>
-                                <span style={{ color: '#687078' }}>Classification:</span>{' '}
-                                {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                              </>
-                            ),
-                            value:
-                              typeof value === 'number' && key.includes('accuracy')
-                                ? value.toFixed(3)
-                                : value !== null && value !== undefined
-                                ? value.toString()
-                                : '0',
-                          }))
+                          .map(([key, value]) => {
+                            const displayName = key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+                            // Map backend keys to MetricInfo keys
+                            const mappedMetric = SPLIT_METRIC_MAP[key];
+
+                            return {
+                              metric: (
+                                <>
+                                  <span style={{ color: '#687078' }}>Classification:</span> {displayName}
+                                  {mappedMetric && <MetricInfo metric={mappedMetric} />}
+                                </>
+                              ),
+                              value:
+                                typeof value === 'number' && key.includes('accuracy')
+                                  ? value.toFixed(3)
+                                  : value !== null && value !== undefined
+                                    ? value.toString()
+                                    : '0',
+                            };
+                          })
                       : []),
                   ]}
                   columnDefinitions={[
-                    { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 400 },
+                    { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 410 },
                     { id: 'value', header: 'Value', cell: (item) => item.value, width: 200 },
                   ]}
                   variant="embedded"
@@ -197,12 +334,471 @@ const ComprehensiveBreakdown = ({
         </Container>
       )}
 
+      {/* Field Metrics */}
+      {fieldMetrics &&
+        Object.keys(fieldMetrics).length > 0 &&
+        (() => {
+          // Initialize with all object fields expanded
+          const initialExpanded = new Set<string>();
+          Object.keys(fieldMetrics).forEach((fieldName) => {
+            // Check if this field has children
+            if (Object.keys(fieldMetrics).some((f) => f.startsWith(fieldName + '.'))) {
+              initialExpanded.add(fieldName);
+            }
+          });
+
+          const [expandedFields, setExpandedFields] = React.useState<Set<string>>(initialExpanded);
+          const [fieldMetricsPageSize, setFieldMetricsPageSize] = React.useState(10);
+          // Parse confidence metrics to enrich field-level data
+          // Backend now aggregates confidence metrics to match field_metrics structure
+          const parsedConfidenceMetrics = parseConfidenceMetrics(confidenceMetrics);
+          const hasConfidenceData = parsedConfidenceMetrics?.fields && Object.keys(parsedConfidenceMetrics.fields).length > 0;
+
+          const [fieldMetricsVisibleColumns, setFieldMetricsVisibleColumns] = React.useState([
+            'fieldName',
+            'accuracy',
+            // Directly after accuracy: a per-field accuracy measured on 3 observations
+            // and one measured on 300 read identically without them.
+            'observations',
+            'accuracyMargin',
+            'precision',
+            'recall',
+            ...(hasConfidenceData ? ['auroc', 'ecab30', 'ece', 'brier'] : []),
+            'tp',
+            'fp',
+            'tn',
+            'fn',
+          ]);
+
+          // Build hierarchical structure with confidence data
+          const allItems = Object.entries(fieldMetrics).map(([fieldName, metrics]) => {
+            const m = metrics as {
+              tp?: number;
+              fp?: number;
+              tn?: number;
+              fn?: number;
+              accuracy_observations?: number;
+              accuracy_margin?: number;
+              accuracy_low?: number;
+              accuracy_high?: number;
+            };
+            const tp = m.tp ?? 0;
+            const fp = m.fp ?? 0;
+            const tn = m.tn ?? 0;
+            const fn = m.fn ?? 0;
+            const total = tp + fp + tn + fn;
+            const interval = accuracyIntervalForField(m);
+
+            // Extract field-level confidence metrics (if available)
+            // Backend aggregates confidence to match field_metrics keys (pattern-based)
+            const fieldConfidence = parsedConfidenceMetrics?.fields?.[fieldName];
+            const auroc = fieldConfidence?.auroc?.value;
+            const ece = fieldConfidence?.ece?.value;
+            const brier = fieldConfidence?.brier?.value;
+
+            // Extract ECARB@30 (Error Capture at Review Budget 30%)
+            const ecab = (
+              fieldConfidence?.error_capture_at_budget as { budgets?: Record<string, { pct_errors_caught?: number; gain?: number }> }
+            )?.budgets?.['0.30'];
+            const ecabPct = ecab?.pct_errors_caught;
+            const ecabGain = ecab?.gain;
+            const ecabDisplay =
+              ecabPct !== null && ecabPct !== undefined && ecabGain !== null && ecabGain !== undefined
+                ? `${(ecabPct * 100).toFixed(0)}% (${ecabGain.toFixed(1)}x)`
+                : 'N/A';
+
+            return {
+              fieldName,
+              tp,
+              fp,
+              tn,
+              fn,
+              accuracy: total > 0 ? ((tp + tn) / total).toFixed(3) : 'N/A',
+              observations: interval ? interval.observations : 0,
+              accuracyMargin: formatMargin(interval),
+              // Sorting must key on the number: the displayed value is formatted, and
+              // "±10.2" sorts before "±5.9" as a string. The accuracy column gets away
+              // with a string because toFixed(3) is fixed-width; margins are not.
+              accuracyMarginValue: interval ? interval.margin : -1,
+              accuracyBounds: formatBounds(interval),
+              lowEvidence: isLowEvidence(interval),
+              precision: tp + fp > 0 ? (tp / (tp + fp)).toFixed(3) : 'N/A',
+              recall: tp + fn > 0 ? (tp / (tp + fn)).toFixed(3) : 'N/A',
+              auroc: auroc !== null && auroc !== undefined ? auroc.toFixed(3) : 'N/A',
+              ece: ece !== null && ece !== undefined ? ece.toFixed(3) : 'N/A',
+              brier: brier !== null && brier !== undefined ? brier.toFixed(3) : 'N/A',
+              ecab30: ecabDisplay,
+              depth: (fieldName.match(/\./g) || []).length,
+            };
+          });
+
+          // Check if a field has children
+          const hasChildren = (fieldName: string) =>
+            allItems.some((item) => item.fieldName.startsWith(fieldName + '.') && item.depth === (fieldName.match(/\./g) || []).length + 1);
+
+          // Get parent field name
+          const getParent = (fieldName: string) => {
+            const parts = fieldName.split('.');
+            return parts.length > 1 ? parts.slice(0, -1).join('.') : null;
+          };
+
+          // Check if field should be visible
+          const isVisible = (item: { fieldName: string }) => {
+            let parent = getParent(item.fieldName);
+            while (parent) {
+              if (!expandedFields.has(parent)) return false;
+              parent = getParent(parent);
+            }
+            return true;
+          };
+
+          // Build display items
+          const displayItems = allItems.filter(isVisible).map((item) => ({
+            ...item,
+            hasChildren: hasChildren(item.fieldName),
+            isExpanded: expandedFields.has(item.fieldName),
+          }));
+
+          const toggleExpand = (fieldName: string) => {
+            setExpandedFields((prev) => {
+              const next = new Set(prev);
+              if (next.has(fieldName)) {
+                next.delete(fieldName);
+              } else {
+                next.add(fieldName);
+              }
+              return next;
+            });
+          };
+
+          const expandAll = () => {
+            const allParents = new Set<string>();
+            allItems.forEach((item) => {
+              if (hasChildren(item.fieldName)) allParents.add(item.fieldName);
+            });
+            setExpandedFields(allParents);
+          };
+
+          const collapseAll = () => {
+            setExpandedFields(new Set<string>());
+          };
+
+          const allExpanded = allItems.filter((item) => hasChildren(item.fieldName)).every((item) => expandedFields.has(item.fieldName));
+
+          const { items, collectionProps, paginationProps, filterProps } = useCollection(displayItems, {
+            filtering: {
+              empty: 'No field metrics found',
+              noMatch: 'No fields match the filter',
+            },
+            pagination: { pageSize: fieldMetricsPageSize },
+            sorting: { defaultState: { sortingColumn: { sortingField: 'fieldName' }, isDescending: false } },
+          });
+
+          const allColumnDefinitions = [
+            {
+              id: 'fieldName',
+              header: 'Field Name',
+              cell: (item: (typeof displayItems)[0]) => {
+                const indent = item.depth * 20;
+                return (
+                  <span
+                    role={item.hasChildren ? 'button' : undefined}
+                    tabIndex={item.hasChildren ? 0 : undefined}
+                    style={{
+                      cursor: item.hasChildren ? 'pointer' : 'default',
+                      paddingLeft: `${indent}px`,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    }}
+                    onClick={() => item.hasChildren && toggleExpand(item.fieldName)}
+                    onKeyDown={(e) => {
+                      if (item.hasChildren && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        toggleExpand(item.fieldName);
+                      }
+                    }}
+                  >
+                    <span style={{ display: 'inline-block', width: '16px', flexShrink: 0 }}>
+                      {item.hasChildren ? (item.isExpanded ? '▼' : '▶') : ''}
+                    </span>
+                    {item.fieldName}
+                  </span>
+                );
+              },
+              sortingField: 'fieldName',
+              minWidth: 200,
+            },
+            {
+              id: 'accuracy',
+              header: (
+                <>
+                  Accuracy
+                  <MetricInfo metric="Accuracy" />
+                </>
+              ),
+              cell: (item: (typeof displayItems)[0]) => item.accuracy,
+              sortingField: 'accuracy',
+              minWidth: 150,
+            },
+            {
+              id: 'observations',
+              header: 'Observations',
+              cell: (item: (typeof displayItems)[0]) => (item.observations > 0 ? item.observations : '—'),
+              sortingField: 'observations',
+              minWidth: 120,
+            },
+            {
+              id: 'accuracyMargin',
+              header: '95% margin',
+              cell: (item: (typeof displayItems)[0]) =>
+                item.observations > 0 ? (
+                  <Popover
+                    dismissButton={false}
+                    position="top"
+                    size="small"
+                    triggerType="text"
+                    content={
+                      <SpaceBetween size="xxs">
+                        <Box variant="small">95% confidence interval: {item.accuracyBounds}</Box>
+                        <Box variant="small" color="text-body-secondary">
+                          Measured on {item.observations} observation(s). Sampling uncertainty only — it does not account for errors in the
+                          ground truth itself, or for observations that repeat within one document.
+                        </Box>
+                      </SpaceBetween>
+                    }
+                  >
+                    {/* Not colour alone: a subdued margin is a real statement about
+                        evidence, so it carries text too. */}
+                    <Box variant="span" color={item.lowEvidence ? 'text-status-inactive' : undefined}>
+                      {item.accuracyMargin}
+                      {item.lowEvidence ? ' (low n)' : ''}
+                    </Box>
+                  </Popover>
+                ) : (
+                  '—'
+                ),
+              sortingField: 'accuracyMarginValue',
+              minWidth: 130,
+            },
+            {
+              id: 'precision',
+              header: (
+                <>
+                  Precision
+                  <MetricInfo metric="Precision" />
+                </>
+              ),
+              cell: (item: (typeof displayItems)[0]) => item.precision,
+              sortingField: 'precision',
+              minWidth: 150,
+            },
+            {
+              id: 'recall',
+              header: (
+                <>
+                  Recall
+                  <MetricInfo metric="Recall" />
+                </>
+              ),
+              cell: (item: (typeof displayItems)[0]) => item.recall,
+              sortingField: 'recall',
+              minWidth: 140,
+            },
+            ...(hasConfidenceData
+              ? [
+                  {
+                    id: 'auroc',
+                    header: (
+                      <>
+                        AUROC
+                        <MetricInfo metric="AUROC" />
+                      </>
+                    ),
+                    cell: (item: (typeof displayItems)[0]) => item.auroc,
+                    sortingField: 'auroc',
+                    minWidth: 145,
+                  },
+                  {
+                    id: 'ece',
+                    header: (
+                      <>
+                        ECE
+                        <MetricInfo metric="ECE" />
+                      </>
+                    ),
+                    cell: (item: (typeof displayItems)[0]) => item.ece,
+                    sortingField: 'ece',
+                  },
+                  {
+                    id: 'brier',
+                    header: (
+                      <>
+                        Brier
+                        <MetricInfo metric="Brier" />
+                      </>
+                    ),
+                    cell: (item: (typeof displayItems)[0]) => item.brier,
+                    sortingField: 'brier',
+                  },
+                  {
+                    id: 'ecab30',
+                    header: (
+                      <>
+                        ECARB@30
+                        <MetricInfo metric="ECARB@30" />
+                      </>
+                    ),
+                    cell: (item: (typeof displayItems)[0]) => item.ecab30,
+                    sortingField: 'ecab30',
+                    minWidth: 160,
+                  },
+                ]
+              : []),
+            {
+              id: 'tp',
+              header: (
+                <>
+                  TP
+                  <MetricInfo metric="TP" />
+                </>
+              ),
+              cell: (item: (typeof displayItems)[0]) => item.tp,
+              sortingField: 'tp',
+            },
+            {
+              id: 'fp',
+              header: (
+                <>
+                  FP
+                  <MetricInfo metric="FP" />
+                </>
+              ),
+              cell: (item: (typeof displayItems)[0]) => item.fp,
+              sortingField: 'fp',
+            },
+            {
+              id: 'tn',
+              header: (
+                <>
+                  TN
+                  <MetricInfo metric="TN" />
+                </>
+              ),
+              cell: (item: (typeof displayItems)[0]) => item.tn,
+              sortingField: 'tn',
+            },
+            {
+              id: 'fn',
+              header: (
+                <>
+                  FN
+                  <MetricInfo metric="FN" />
+                </>
+              ),
+              cell: (item: (typeof displayItems)[0]) => item.fn,
+              sortingField: 'fn',
+            },
+          ];
+
+          return (
+            <Container header={<Header variant="h3">Field Level Metrics</Header>}>
+              <ExpandableSection headerText="View Details" defaultExpanded={false}>
+                <Table
+                  {...collectionProps}
+                  resizableColumns
+                  visibleColumns={fieldMetricsVisibleColumns}
+                  filter={
+                    <TextFilter
+                      filteringText={filterProps.filteringText}
+                      onChange={filterProps.onChange}
+                      filteringAriaLabel="Filter field metrics"
+                      filteringPlaceholder="Search fields..."
+                    />
+                  }
+                  items={items}
+                  columnDefinitions={allColumnDefinitions}
+                  pagination={
+                    <SpaceBetween direction="horizontal" size="xs">
+                      <Pagination
+                        currentPageIndex={paginationProps.currentPageIndex}
+                        pagesCount={paginationProps.pagesCount}
+                        onChange={paginationProps.onChange}
+                      />
+                    </SpaceBetween>
+                  }
+                  preferences={
+                    <SpaceBetween direction="horizontal" size="xs">
+                      <Button
+                        variant="icon"
+                        iconName={allExpanded ? 'treeview-collapse' : 'treeview-expand'}
+                        onClick={allExpanded ? collapseAll : expandAll}
+                        ariaLabel={allExpanded ? 'Collapse all' : 'Expand all'}
+                      />
+                      <CollectionPreferences
+                        title="Preferences"
+                        confirmLabel="Confirm"
+                        cancelLabel="Cancel"
+                        preferences={{
+                          pageSize: fieldMetricsPageSize,
+                          visibleContent: fieldMetricsVisibleColumns,
+                        }}
+                        onConfirm={({ detail }) => {
+                          if (detail.pageSize) setFieldMetricsPageSize(detail.pageSize);
+                          if (detail.visibleContent) setFieldMetricsVisibleColumns([...detail.visibleContent]);
+                        }}
+                        pageSizePreference={{
+                          title: 'Page size',
+                          options: [
+                            { value: 10, label: '10 fields' },
+                            { value: 25, label: '25 fields' },
+                            { value: 50, label: '50 fields' },
+                            { value: 100, label: '100 fields' },
+                          ],
+                        }}
+                        visibleContentPreference={{
+                          title: 'Visible columns',
+                          options: [
+                            {
+                              label: 'Field metrics columns',
+                              options: [
+                                { id: 'fieldName', label: 'Field Name', editable: false },
+                                { id: 'accuracy', label: 'Accuracy' },
+                                { id: 'observations', label: 'Observations' },
+                                { id: 'accuracyMargin', label: '95% margin' },
+                                { id: 'precision', label: 'Precision' },
+                                { id: 'recall', label: 'Recall' },
+                                ...(hasConfidenceData
+                                  ? [
+                                      { id: 'auroc', label: 'AUROC (Confidence)' },
+                                      { id: 'ecab30', label: 'ECARB@30 (Review Budget)' },
+                                      { id: 'ece', label: 'ECE (Calibration)' },
+                                      { id: 'brier', label: 'Brier Score' },
+                                    ]
+                                  : []),
+                                { id: 'tp', label: 'TP' },
+                                { id: 'fp', label: 'FP' },
+                                { id: 'tn', label: 'TN' },
+                                { id: 'fn', label: 'FN' },
+                              ],
+                            },
+                          ],
+                        }}
+                      />
+                    </SpaceBetween>
+                  }
+                  variant="embedded"
+                />
+              </ExpandableSection>
+            </Container>
+          );
+        })()}
+
       {/* Cost breakdown */}
       {costBreakdown && (
         <Container header={<Header variant="h3">Estimated Cost</Header>}>
           <Table
             resizableColumns
-            wrapLines={preferences.wrapLines}
+            wrapLines
             items={(() => {
               const costItems: CostItem[] = [];
               let totalCost = 0;
@@ -221,6 +817,12 @@ const ComprehensiveBreakdown = ({
                   const api = apiParts.join('/');
 
                   const cost = (details.estimated_cost as number) || 0;
+                  const unitCost = asFiniteNumber(details.unit_cost);
+                  // Rows like `totalTokens` and `requests` are counts, not charges:
+                  // nothing prices them and nothing is billed for them. Seen live
+                  // reading "$0" unit cost beside "N/A" estimated cost, which says
+                  // both "free" and "not priced" in the same row.
+                  const isUnpriced = cost === 0 && (unitCost === null || unitCost === 0);
                   contextSubtotal += cost;
 
                   costItems.push({
@@ -228,8 +830,8 @@ const ComprehensiveBreakdown = ({
                     serviceApi: `${service}/${api}`,
                     unit: (details.unit as string) || unit,
                     value: (details.value as string) || 'N/A',
-                    unitCost: details.unit_cost ? `$${details.unit_cost}` : 'None',
-                    estimatedCost: cost > 0 ? `$${cost.toFixed(4)}` : 'N/A',
+                    unitCost: isUnpriced ? '—' : unitCost === null ? 'Not priced' : formatUnitCostUsd(unitCost),
+                    estimatedCost: isUnpriced ? '—' : cost > 0 ? formatCostUsd(cost) : 'N/A',
                     sortOrder: 0, // Regular items
                   });
                 });
@@ -266,7 +868,7 @@ const ComprehensiveBreakdown = ({
                     unit: '',
                     value: '',
                     unitCost: '',
-                    estimatedCost: `$${contextTotals[item.context].toFixed(4)}`,
+                    estimatedCost: formatCostUsd(contextTotals[item.context]),
                     isSubtotal: true,
                     sortOrder: 1, // Subtotal items
                   });
@@ -281,7 +883,7 @@ const ComprehensiveBreakdown = ({
                   unit: '',
                   value: '',
                   unitCost: '',
-                  estimatedCost: `$${totalCost.toFixed(4)}`,
+                  estimatedCost: formatCostUsd(totalCost),
                   isTotal: true,
                   sortOrder: 2, // Total item
                 });
@@ -337,10 +939,9 @@ const ComprehensiveBreakdown = ({
                   if (item.isSubtotal || item.isTotal) {
                     return <span style={{ fontWeight: 'bold', color: item.isTotal ? '#0073bb' : 'inherit' }}>{item.estimatedCost}</span>;
                   }
-                  const cost = item.estimatedCost;
-                  if (cost === 'N/A' || !cost) return 'N/A';
-                  const numValue = parseFloat(cost.toString().replace('$', ''));
-                  return isNaN(numValue) ? cost : `$${numValue.toFixed(4)}`;
+                  // Already formatted when the row was built; re-running toFixed(4)
+                  // here is what turned a sub-cent row back into '$0.0000'.
+                  return item.estimatedCost || 'N/A';
                 },
               },
             ]}
@@ -351,25 +952,6 @@ const ComprehensiveBreakdown = ({
     </SpaceBetween>
   );
 };
-
-interface TestResultsPreferencesProps {
-  preferences: { wrapLines: boolean };
-  setPreferences: (prefs: { wrapLines: boolean }) => void;
-}
-
-const TestResultsPreferences = ({ preferences, setPreferences }: TestResultsPreferencesProps): React.JSX.Element => (
-  <CollectionPreferences
-    title="Preferences"
-    confirmLabel="Confirm"
-    cancelLabel="Cancel"
-    preferences={preferences}
-    onConfirm={({ detail }) => setPreferences(detail as { wrapLines: boolean })}
-    wrapLinesPreference={{
-      label: 'Wrap lines',
-      description: 'Check to see all the text and wrap the lines',
-    }}
-  />
-);
 
 interface TestResultsProps {
   testRunId: string;
@@ -392,7 +974,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
   const [results, setResults] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentAttempt, setCurrentAttempt] = useState(1);
   const [reRunLoading, setReRunLoading] = useState(false);
   const [showReRunModal, setShowReRunModal] = useState(false);
   const [reRunContext, setReRunContext] = useState('');
@@ -401,8 +982,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
   const [testSetStatus, setTestSetStatus] = useState<string | null>(null);
   const [testSetFilePattern, setTestSetFilePattern] = useState<string | null>(null);
   const [chartType, setChartType] = useState<SelectProps.Option>({ label: 'Bar Chart', value: 'bar' });
-  const [retryMessage, setRetryMessage] = useState('');
-  const [preferences, setPreferences] = useState({ wrapLines: false });
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [selectedRangeData, setSelectedRangeData] = useState<SelectedRange | null>(null);
   const [lowestScoreCount, setLowestScoreCount] = useState<SelectProps.Option>({ label: '5', value: '5' });
@@ -411,14 +990,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
   const [showConfigExportModal, setShowConfigExportModal] = useState(false);
   const [configExportFormat, setConfigExportFormat] = useState('json');
   const [configExportFileName, setConfigExportFileName] = useState('');
-
-  const getProgressMessage = (progressLevel: number): string => {
-    if (progressLevel <= 1) return 'Initializing test results...';
-    if (progressLevel <= 2) return 'Processing evaluation data...';
-    if (progressLevel <= 3) return 'Calculating accuracy metrics...';
-    if (progressLevel <= 4) return 'Generating cost analysis...';
-    return 'Finalizing results...';
-  };
 
   const checkTestSetStatus = async () => {
     if (!results?.testSetId) return;
@@ -449,128 +1020,26 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
 
   useEffect(() => {
     let isCancelled = false;
-    const timeouts: ReturnType<typeof setTimeout>[] = []; // Track all timeouts to clear them
 
     const fetchResults = async () => {
       if (isCancelled) return;
 
-      // Clear any existing timeouts
-      const clearAllTimeouts = () => {
-        timeouts.forEach(clearTimeout);
-        timeouts.length = 0;
-      };
-
       try {
-        let result;
-        let attempt = 1;
-        const maxRetries = 5;
+        const result = await client.graphql({
+          query: getTestRun,
+          variables: { testRunId },
+        });
 
-        while (attempt <= maxRetries && !isCancelled) {
-          try {
-            console.log(`getTestRun attempt ${attempt} starting...`);
-            if (attempt === 1) {
-              setCurrentAttempt(1);
-              setRetryMessage('Getting results from cache...');
+        if (isCancelled) return;
 
-              // Show cache miss progression after 1 second for first attempt
-              timeouts.push(
-                setTimeout(() => {
-                  if (!isCancelled) {
-                    setRetryMessage('No cache found, generating results...');
-                    setCurrentAttempt(2);
-                  }
-                }, 1000),
-              );
-
-              timeouts.push(
-                setTimeout(() => {
-                  if (!isCancelled) {
-                    setRetryMessage(getProgressMessage(2));
-                    setCurrentAttempt(3);
-                  }
-                }, 2000),
-              );
-
-              timeouts.push(
-                setTimeout(() => {
-                  if (!isCancelled) {
-                    setRetryMessage(getProgressMessage(3));
-                    setCurrentAttempt(4);
-                  }
-                }, 4000),
-              );
-            }
-
-            if (isCancelled) return;
-
-            result = await client.graphql({
-              query: getTestRun,
-              variables: { testRunId },
-            });
-
-            if (isCancelled) return;
-
-            console.log('getTestRun result:', result);
-            clearAllTimeouts(); // Clear timeouts on success
-            setCurrentAttempt(10); // Set to 100% before completing
-            await new Promise((resolve) => setTimeout(resolve, 500)); // Brief pause to show 100%
-            break;
-          } catch (retryError) {
-            if (isCancelled) return;
-            const typedRetryError = retryError as {
-              message?: string;
-              code?: string;
-              name?: string;
-              errors?: Array<{ errorType?: string; message?: string }>;
-            };
-
-            console.log('getTestRun error caught:', {
-              message: typedRetryError.message,
-              code: typedRetryError.code,
-              name: typedRetryError.name,
-              error: retryError,
-            });
-            const isTimeout =
-              typedRetryError.message?.toLowerCase().includes('timeout') ||
-              typedRetryError.code === 'TIMEOUT' ||
-              typedRetryError.message?.includes('Request failed with status code 504') ||
-              typedRetryError.name === 'TimeoutError' ||
-              typedRetryError.code === 'NetworkError' ||
-              typedRetryError.errors?.some(
-                (err: { errorType?: string; message?: string }) =>
-                  err.errorType === 'Lambda:ExecutionTimeoutException' || err.message?.toLowerCase().includes('timeout'),
-              );
-            if (isTimeout && attempt < maxRetries) {
-              console.log(`getTestRun attempt ${attempt} failed, retrying...`, typedRetryError.message);
-
-              clearAllTimeouts(); // Clear any running timeouts
-
-              // Always move progress forward, never backwards
-              setCurrentAttempt((currentProgress) => {
-                const targetProgress = Math.min(currentProgress + 1, 9); // Move forward by 1 step, cap at 90%
-                return Math.max(currentProgress, targetProgress);
-              });
-
-              attempt++;
-              const waitTime = Math.max(2000, 5000 - attempt * 1000); // 5s, 4s, 3s, 2s min
-
-              setRetryMessage(getProgressMessage(Math.min(attempt + 1, 5)));
-
-              await new Promise((resolve) => setTimeout(resolve, waitTime));
-              continue;
-            }
-            throw retryError;
-          }
-        }
-
-        if (!isCancelled && result) {
-          const testRun = result.data.getTestRun;
-          console.log('Test results:', testRun);
-          setResults(testRun as Record<string, unknown> | null);
-        }
+        const testRun = result.data.getTestRun;
+        console.log('Test results:', testRun);
+        setResults(testRun as Record<string, unknown> | null);
       } catch (err) {
         if (!isCancelled) {
-          setError((err as Error).message);
+          const typedErr = err as { errors?: Array<{ message: string }> };
+          const errorMsg = typedErr.errors?.[0]?.message || (err as Error).message || 'Unknown error';
+          setError(errorMsg);
         }
       } finally {
         if (!isCancelled) {
@@ -581,10 +1050,8 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
 
     fetchResults();
 
-    // Cleanup function
     return () => {
       isCancelled = true;
-      timeouts.forEach(clearTimeout);
     };
   }, [testRunId]);
 
@@ -594,8 +1061,31 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
     }
   }, [results]);
 
-  if (loading) return <ProgressBar status="in-progress" label={retryMessage || 'Loading test results...'} value={currentAttempt * 10} />;
-  if (error) return <Box>Error loading test results: {error}</Box>;
+  if (loading) return <ProgressBar status="in-progress" label="Loading test results..." />;
+
+  if (error) {
+    const handleBackClick = () => {
+      if (setSelectedTestRunId) {
+        setSelectedTestRunId(null);
+      } else {
+        window.location.replace('#/test-studio?tab=executions');
+      }
+    };
+
+    // Determine if this is a processing state or actual error
+    const isProcessing =
+      error.includes('evaluating results') || error.includes('not complete') || error.includes('QUEUED') || error.includes('RUNNING');
+
+    return (
+      <Container header={<Header variant="h1">Test Results: {testRunId}</Header>}>
+        <SpaceBetween size="m">
+          <Alert type={isProcessing ? 'info' : 'error'}>{error}</Alert>
+          <Button onClick={handleBackClick}>Back to Test Results</Button>
+        </SpaceBetween>
+      </Container>
+    );
+  }
+
   if (!results) {
     const handleBackClick = () => {
       if (setSelectedTestRunId) {
@@ -620,22 +1110,44 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
 
   const hasAccuracyData = results.overallAccuracy !== null && results.overallAccuracy !== undefined;
 
-  // Calculate average weighted overall score
+  // Calculate average weighted overall score. ``parseWeightedOverallScoresFinite``
+  // drops documents whose weighted score isn't a finite number — the
+  // aggregation Lambda already omits excluded (no-op) docs, but this also
+  // guards against any stray null/NaN in older cached payloads so the mean
+  // isn't pulled down by a synthetic 0.0.
   const averageWeightedScore = (() => {
     if (!results.weightedOverallScores) return null;
-    const scores = parseWeightedOverallScores(results.weightedOverallScores as string);
-    const values = Object.values(scores) as number[];
+    const values = Object.values(parseWeightedOverallScoresFinite(results.weightedOverallScores as string));
     return values.length > 0 ? values.reduce((sum, score) => sum + score, 0) / values.length : null;
   })();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const costBreakdown: any = results.costBreakdown ? parseCostBreakdown(results.costBreakdown as string) : null;
+
+  // Calculate avg cost per page from costBreakdown page counts
+  const avgCostPerPage = calculateAvgCostPerPage(results.totalCost as number, costBreakdown);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const accuracyBreakdown: any = results.accuracyBreakdown ? parseAccuracyBreakdown(results.accuracyBreakdown as string) : null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const splitClassificationMetrics: any = results.splitClassificationMetrics
     ? parseSplitClassificationMetrics(results.splitClassificationMetrics as string)
     : null;
+  // Graded packet metrics (R14). Parse yields ``{}`` for absent/empty
+  // payloads; treat that as null so the panel's presence check works with
+  // ``||`` like the sibling metrics.
+  const parsedGradedPacketMetrics = results.gradedPacketMetrics ? parseGradedPacketMetrics(results.gradedPacketMetrics as string) : null;
+  const gradedPacketMetrics =
+    parsedGradedPacketMetrics && parsedGradedPacketMetrics.mean && Object.keys(parsedGradedPacketMetrics.mean).length > 0
+      ? parsedGradedPacketMetrics
+      : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fieldMetrics: any = results.fieldMetrics ? parseFieldMetrics(results.fieldMetrics as string) : null;
+  // Per-section classification mismatches. Absent on runs aggregated before this
+  // shipped and on the Athena fallback path, both of which parse to {} — the
+  // panel renders nothing rather than an empty table in that case.
+  const classificationErrors = results.classificationErrors ? parseClassificationErrors(results.classificationErrors as string) : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const _confusionMatrix: any = results.confusionMatrix ? parseConfusionMatrix(results.confusionMatrix as string) : null;
 
   // Helper function to get merged config from results.config
   // The config may be stored as a JSON string (possibly double-stringified) with {Default: {...}, Custom: {...}} or already merged
@@ -765,7 +1277,11 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
     setReRunLoading(true);
 
     try {
-      const input: { testSetId: string; context?: string; numberOfFiles?: number; configVersion?: string } = {
+      // Use the generated input type rather than a hand-written structural copy:
+      // a locally-declared shape stops matching whenever the schema gains a
+      // field, and the mismatch surfaces as `startTestRun does not exist on
+      // type {}` at the call site rather than as an error here.
+      const input: TestRunInput = {
         testSetId: testSetId as string,
         ...(reRunContext && { context: reRunContext }),
         ...(reRunNumberOfFiles.trim() && { numberOfFiles: parseInt(reRunNumberOfFiles.trim(), 10) }),
@@ -873,9 +1389,23 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
           </Alert>
         )}
 
-        {!hasAccuracyData && results.status === 'COMPLETE' && (
+        {/* A draft-labeling run has no baseline by construction — producing the
+            labels is the point — so evaluation never runs and there are never
+            accuracy metrics. Warning that they "are not available" described an
+            expected outcome as a fault, on a screen already displaying "Context:
+            Draft labeling run" two lines above. The server owns the rule and
+            reports it as isDraftLabeling. */}
+        {!hasAccuracyData && results.status === 'COMPLETE' && results.isDraftLabeling && (
+          <Alert type="info" header="No accuracy metrics — this run produced labels rather than being scored">
+            A draft-labeling run creates the ground truth, so there is nothing to score it against. Review the drafts in the test set, then
+            run a test against the published version to get accuracy metrics.
+          </Alert>
+        )}
+
+        {!hasAccuracyData && results.status === 'COMPLETE' && !results.isDraftLabeling && (
           <Alert type="warning" header="No Accuracy Data">
-            Test run completed but accuracy metrics are not available
+            Test run completed but accuracy metrics are not available. This usually means the test set had no published ground truth to
+            score against.
           </Alert>
         )}
 
@@ -888,7 +1418,14 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
             </Box>
           </Box>
           <Box>
-            <Box variant="awsui-key-label">Avg Confidence</Box>
+            <Box variant="awsui-key-label">Avg Cost/Page</Box>
+            <Box fontSize="heading-l">{avgCostPerPage !== null ? `$${avgCostPerPage.toFixed(4)}` : 'N/A'}</Box>
+          </Box>
+          <Box>
+            <Box variant="awsui-key-label">
+              Avg Confidence
+              <MetricInfo metric="Avg Confidence" />
+            </Box>
             <Box fontSize="heading-l">
               {results.averageConfidence !== null && results.averageConfidence !== undefined
                 ? `${((results.averageConfidence as number) * 100).toFixed(1)}%`
@@ -896,7 +1433,10 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
             </Box>
           </Box>
           <Box>
-            <Box variant="awsui-key-label">Avg Accuracy</Box>
+            <Box variant="awsui-key-label">
+              Avg Accuracy
+              <MetricInfo metric="Avg Accuracy" />
+            </Box>
             <Box fontSize="heading-l">
               {results.overallAccuracy !== null && results.overallAccuracy !== undefined
                 ? (results.overallAccuracy as number).toFixed(3)
@@ -904,9 +1444,26 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
             </Box>
           </Box>
           <Box>
-            <Box variant="awsui-key-label">Avg Weighted Score</Box>
+            <Box variant="awsui-key-label">
+              Avg Weighted Score
+              <MetricInfo metric="Avg Weighted Score" />
+            </Box>
             <Box fontSize="heading-l">{averageWeightedScore !== null ? averageWeightedScore.toFixed(3) : 'N/A'}</Box>
           </Box>
+          {/* Excluded Docs KPI — surfaced only when a run has no-op documents
+              (class has no extractable schema). Hidden on the happy path so
+              the KPI row stays lean for the common case; visible with a
+              count + info icon whenever the excluded set is non-empty so the
+              drop from filesCount is explicit. */}
+          {Number(results.excludedDocumentCount ?? 0) > 0 && (
+            <Box>
+              <Box variant="awsui-key-label">
+                Excluded Docs
+                <MetricInfo metric="Excluded Docs" />
+              </Box>
+              <Box fontSize="heading-l">{Number(results.excludedDocumentCount)}</Box>
+            </Box>
+          )}
           <Box>
             <Box variant="awsui-key-label">Duration</Box>
             <Box fontSize="heading-l">
@@ -922,7 +1479,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
           </Box>
           {Boolean(results.configVersion) && (
             <Box>
-              <Box variant="awsui-key-label">Config Version</Box>
+              <Box variant="awsui-key-label">Config Profile</Box>
               <Box fontSize="heading-l">{formatConfigVersionLink(results.configVersion as string, versions)}</Box>
             </Box>
           )}
@@ -945,6 +1502,22 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
                     placeholder="Select chart type"
                   />
                 }
+                description={(() => {
+                  // Chart-header subtitle: "N documents · X scored · Y excluded".
+                  // Total-only ("N documents") when nothing is excluded, so the
+                  // subtitle still gives useful context on the happy path without
+                  // shouting about an exclusion condition that doesn't exist.
+                  const scored = results.weightedOverallScores
+                    ? Object.keys(parseWeightedOverallScoresFinite(results.weightedOverallScores as string)).length
+                    : 0;
+                  const excluded = Number(results.excludedDocumentCount ?? 0);
+                  const total = scored + excluded;
+                  if (total === 0) return undefined;
+                  if (excluded === 0) {
+                    return `${total} document${total === 1 ? '' : 's'}`;
+                  }
+                  return `${total} documents · ${scored} scored · ${excluded} excluded`;
+                })()}
               >
                 Weighted Overall Score Distribution ({String(results.testRunId)})
               </Header>
@@ -952,10 +1525,13 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
           >
             {(() => {
               const generateChartData = () => {
+                // ``parseWeightedOverallScoresFinite`` drops excluded / null / NaN
+                // entries — otherwise ``null < 0.1`` in JS silently lands them
+                // in the 0.0-0.1 bucket.
                 const scores =
                   typeof results.weightedOverallScores === 'string'
-                    ? parseWeightedOverallScores(results.weightedOverallScores)
-                    : results.weightedOverallScores;
+                    ? parseWeightedOverallScoresFinite(results.weightedOverallScores)
+                    : parseWeightedOverallScoresFinite(results.weightedOverallScores);
 
                 // Create score range buckets
                 const buckets: Record<string, { count: number; docs: RangeDoc[] }> = {
@@ -971,8 +1547,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
                   '0.9-1.0': { count: 0, docs: [] },
                 };
 
-                // Count documents and collect IDs in each bucket
-                Object.entries(scores as Record<string, number>).forEach(([docId, score]) => {
+                Object.entries(scores).forEach(([docId, score]) => {
                   let bucket;
                   if (score < 0.1) bucket = '0.0-0.1';
                   else if (score < 0.2) bucket = '0.1-0.2';
@@ -1108,8 +1683,10 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
           </Container>
         )}
 
-        {/* Lowest Scoring Documents Table */}
-        {results?.weightedOverallScores && (
+        {/* Lowest Scoring Documents Table. Suppressed for a draft-labeling run:
+            nothing was scored, so the table rendered its headers over an empty
+            body — directly under an alert explaining that there are no scores. */}
+        {results?.weightedOverallScores && !results.isDraftLabeling && (
           <Container
             header={
               <Header
@@ -1132,12 +1709,15 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
             }
           >
             {(() => {
+              // ``parseWeightedOverallScoresFinite`` drops excluded / null / NaN
+              // entries so a stray null can't sort to the front and render
+              // as "null.toFixed(3)".
               const scores =
                 typeof results.weightedOverallScores === 'string'
-                  ? parseWeightedOverallScores(results.weightedOverallScores)
-                  : results.weightedOverallScores;
+                  ? parseWeightedOverallScoresFinite(results.weightedOverallScores)
+                  : parseWeightedOverallScoresFinite(results.weightedOverallScores);
 
-              const sortedDocs = Object.entries(scores as Record<string, number>)
+              const sortedDocs = Object.entries(scores)
                 .map(([docId, score]) => ({ docId, score }))
                 .sort((a, b) => a.score - b.score)
                 .slice(0, Number(lowestScoreCount.value));
@@ -1145,7 +1725,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
               return (
                 <Table
                   resizableColumns
-                  wrapLines={preferences.wrapLines}
                   items={sortedDocs}
                   columnDefinitions={[
                     {
@@ -1177,15 +1756,24 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
           </Container>
         )}
 
-        {/* Breakdown Tables */}
-        {(costBreakdown || accuracyBreakdown || splitClassificationMetrics) && (
+        {/* Above the breakdown tables on purpose: a wrong class invalidates the
+            field numbers below it, so it should be read first. */}
+        <ClassificationErrorsPanel classificationErrors={classificationErrors} testSetId={results.testSetId as string | undefined} />
+
+        {/* Breakdown Tables. A draft-labeling run keeps its COST breakdown — it
+            spends real money and that is worth seeing — but not the accuracy
+            tables, which the backend fills with structural zeros. "Classification:
+            Page Level Accuracy 0.000" on a run that scored nothing asserts total
+            failure where the honest answer is "not applicable". */}
+        {(costBreakdown || accuracyBreakdown || splitClassificationMetrics || gradedPacketMetrics || fieldMetrics) && (
           <ComprehensiveBreakdown
             costBreakdown={costBreakdown}
-            accuracyBreakdown={accuracyBreakdown}
-            splitClassificationMetrics={splitClassificationMetrics}
-            averageWeightedScore={averageWeightedScore}
-            preferences={preferences}
-            setPreferences={setPreferences}
+            accuracyBreakdown={results.isDraftLabeling ? null : accuracyBreakdown}
+            splitClassificationMetrics={results.isDraftLabeling ? null : splitClassificationMetrics}
+            gradedPacketMetrics={results.isDraftLabeling ? null : gradedPacketMetrics}
+            fieldMetrics={results.isDraftLabeling ? null : fieldMetrics}
+            averageWeightedScore={results.isDraftLabeling ? null : averageWeightedScore}
+            confidenceMetrics={results.isDraftLabeling ? null : results.confidenceMetrics}
           />
         )}
       </SpaceBetween>
@@ -1227,7 +1815,16 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
             <strong>Files:</strong>{' '}
             {testSetStatus === 'NOT_FOUND' ? 'Test set deleted' : testSetFileCount !== null ? `${testSetFileCount} files` : 'Loading...'}
           </Box>
-          <FormField label="Number of Files" description={`Optional: Limit the number of files to process (max: ${testSetFileCount || 0})`}>
+          <FormField
+            label="Number of Files"
+            // Same reasoning as TestRunner: an unknown maximum must not render as
+            // a maximum of zero.
+            description={
+              testSetFileCount
+                ? `Optional: Limit the number of files to process (max: ${testSetFileCount})`
+                : 'Optional: Limit the number of files to process.'
+            }
+          >
             <Input
               value={reRunNumberOfFiles}
               onChange={({ detail }) => {
@@ -1277,7 +1874,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
           {selectedRangeData && selectedRangeData.docs?.length > 0 ? (
             <Table
               resizableColumns
-              wrapLines={preferences.wrapLines}
               items={selectedRangeData.docs}
               columnDefinitions={[
                 {

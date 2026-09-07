@@ -6,19 +6,167 @@
 # =============================================================================
 
 extraction:
+  # Extraction mode (user-facing): simple = single-pass; advanced = robust/sharded
+  # engine. agentic.enabled is derived from this by the config model.
+  mode: simple
+  # Agentic extraction with table parsing (the "advanced" engine).
   agentic:
     enabled: false
-    review_agent: false
+    # Sharding defaults: run agentic extraction on the Step Functions Distributed
+    # Map with token/page-budgeted shards so LARGE sections never hit the 900s
+    # single-agent Lambda timeout. The sharded path is idempotent (each shard
+    # persists to S3; an SFN retry re-runs only the failed shard), so advanced
+    # mode "always works" on big documents. Sharding engages only when a section
+    # actually exceeds one shard's budget; small sections still run single-pass.
+    runtime: step_functions
+    max_concurrent_batches: 10            # >1 enables sharding (upper bound on parallelism & shard count)
+    shard_token_budget: 0                 # 0 = auto-size from model context window (minus context_buffer)
+    max_pages_per_shard: 5                # page ceiling/shard (timeout-critical; fixed, not model-derived)
+    table_parsing:
+      enabled: true                         # Enable deterministic table parser tool
+      max_empty_line_gap: 3                 # Tolerate page breaks and OCR noise
+      auto_merge_adjacent_tables: true      # Auto-merge table fragments
+      min_confidence_threshold: "95.0"      # OCR confidence target (Textract)
+      min_parse_success_rate: "0.90"        # Parse quality threshold
+      use_confidence_data: true             # Use Textract confidence data
+      lazy_images: true                     # When pre-flight table parse succeeds, don't
+                                            # pre-load page images (table path is text-driven;
+                                            # view_image fetches on demand). Big cost saver on
+                                            # multi-page tables. false = always attach images.
+  # Send the class schema on the wire as a FORCED Converse tool instead of
+  # describing it in the prompt (WS-05). Listed here, alongside its siblings, so it
+  # is visible in Config#default rather than existing only as a Pydantic default.
+  forced_tool:
+    # OFF by default and gated on a measured win: forcing constrains the response
+    # SHAPE, not the values in it, so a model that would have returned a stray key
+    # may instead return a worse value that fits. Routes that cannot carry a
+    # toolConfig (a custom Lambda hook, GPT-5.x) fall back automatically, and the
+    # reason is recorded in the section's metadata.forced_tool.
+    enabled: false
+    # A model can accept the tool and still answer in prose — a normal outcome, not
+    # an error. Keep true in production; set false only to measure how often
+    # forcing is actually honored.
+    fallback_to_prompt: true
+  # Detect a section that holds SEVERAL documents of the same class when the
+  # model returned only one of them (GitHub #753 / #565). One extra integer is
+  # requested in the same inference and stripped from the result; when the answer
+  # exceeds the number of records extracted, an
+  # extraction_multi_instance_suspected warning is raised and the section's
+  # instance count reflects the model's answer.
+  multi_instance_detection:
+    # OFF by default — but not because it works badly. Measured on two real
+    # labeled corpora (80 paired Test Studio runs):
+    #
+    #   * It COUNTS accurately. On 40 bank-check images with committed ground
+    #     truth it found all 18 multi-check images, raised 0 false alarms on the
+    #     22 single-check images, and got the count exactly right on all 18 (2 to
+    #     8 checks). Precision and recall both 1.000.
+    #   * But a WARNING IS NOT EVIDENCE OF LOSS, and that same run is the
+    #     cautionary example. Counting the extracted rows afterwards: 0 checks
+    #     missing, in both arms. BANK_CHECK's schema is a single `checks` array,
+    #     so the class already modelled several checks per sheet and nothing was
+    #     collapsing. The warning fired because instance_extracted_count is 1 for
+    #     a class that declares no instance axis — true whether the records are
+    #     ABSENT or PRESENT INSIDE A DECLARED ARRAY. The predicate cannot tell
+    #     those apart, so when this fires, look at the extracted data before
+    #     concluding anything was dropped. (There it was a real configuration
+    #     finding: the fix was x-aws-idp-instance-array: checks.)
+    #   * Token cost is negligible: input +1.8%, output -0.5%.
+    #   * On a corpus with NO multi-record documents to find, it is pure cost:
+    #     RealKIE-FCC-Verified lost ~1.3 accuracy points (0.7678 -> 0.7552, worse
+    #     on 14 of 40 docs, better on 1, sign test p=0.001), spread diffusely
+    #     across four attributes rather than any one failure mode.
+    #
+    # A default has to be safe for the corpus that gets no benefit, so it ships
+    # off.
+    #
+    # TURN IT ON, per configuration profile, when one section can hold several
+    # documents of the same class AND THE CLASS SCHEMA DESCRIBES ONLY ONE. That
+    # conjunction is what loses records; either half alone does not. A class that
+    # already declares a record array (see x-aws-idp-instance-array) is not
+    # losing anything — it just is not reporting its count.
+    #
+    # Also worth running ONCE as a pure diagnostic on any new corpus, then
+    # turning off: that is how a missing instance axis was found in the shipped
+    # ocr-benchmark preset. Two distinct uses, and only the second is a setting
+    # you leave on:
+    #   * diagnostic  — run once, act on what it names, turn off.
+    #   * standing guard — a corpus that keeps producing merged same-class
+    #     sections, where you want a warning on every affected section.
+    #
+    # Detection NEVER changes the extracted data or a class's schema flags.
+    # Simple extraction only (prompt and forced-tool paths).
+    enabled: false
+    # The question put to the model, as the description of the auxiliary count
+    # property. {DOCUMENT_CLASS} is substituted with the section's class.
+    # Two clauses are load-bearing and should survive any edit:
+    #   * "do not count pages, sections or repeated headers" — without it a
+    #     document with an identical banner on each of four pages reads as four.
+    #   * "DIAGNOSTIC METADATA, not extracted document data" — so the field is
+    #     not mistaken for something to extract from the page.
+    question: >-
+      DIAGNOSTIC METADATA, not extracted document data. How many separate,
+      complete '{DOCUMENT_CLASS}' documents are present in the supplied pages?
+      Answer 1 for the normal case of one document. Answer more than 1 only when
+      the pages clearly contain several distinct documents of this same type — for
+      example statements covering different periods, or records for different
+      people — including when a document starts part-way down a page. Do not count
+      pages, sections or repeated headers: count complete documents. Extract all
+      other fields exactly as you otherwise would.
+  # Deterministic type/format repair applied BEFORE validation, so validation
+  # only reports what could not be fixed for free. No model call.
+  coercion:
+    # Set false to leave the model's output exactly as returned. On by default
+    # because the alternative is a wrongly-typed value reaching storage — but it
+    # does rewrite extracted values, always recorded under metadata.coercion.
+    enabled: true
+    # 'auto' REFUSES to guess on an ambiguous all-numeric date like 01/02/2024.
+    # Set MDY or DMY only for a corpus whose convention you know.
+    date_order: auto
+  # Full JSON-Schema validation of the extraction result (v0.7: moved up from
+  # extraction.agentic.validation — simple extraction runs this path too now).
+  validation:
+    # ON by default as of v0.7. Previously off, which meant the guard against
+    # silent schema violations was disabled on exactly the configurations that
+    # needed it. Paired with fail_action: warn it costs nothing: no extra
+    # inference, just a visible ProcessingIssue instead of a silent violation.
+    enabled: true
+    check_formats: true                     # Enforce 'format' keywords (date/email/uuid). ISO-8601 dates.
+    # warn | escalate | reject. 'warn' is the default because it is FREE.
+    # 'escalate' re-extracts the failing fields with escalation_model and so
+    # costs real money — opt into it deliberately.
+    fail_action: warn
+    # Stronger model for re-extraction when fail_action: escalate. Sonnet 5 with
+    # the 1M-context beta (:1m): top-tier quality, 128K output cap, and a 1M
+    # input window that helps re-extraction on large documents.
+    # (Empty = retry with the same extraction model.)
+    escalation_model: "us.anthropic.claude-sonnet-5:1m"
   image:
     target_width: ""
     target_height: ""
-  model: us.amazon.nova-2-lite-v1:0
+  # Claude Sonnet 5 for best extraction quality (was: Sonnet 4.6, Nova Lite)
+  model: us.anthropic.claude-sonnet-5
   temperature: "0.0"
   top_p: "0.0"
-  max_tokens: "65535"
+  # Reasoning effort for reasoning-capable models (Claude Sonnet 5 / Sonnet 4.6 /
+  # Opus 4.5-4.8 / Fable 5 via output_config.effort; GPT-5.x via reasoning.effort).
+  # Default "low" keeps output-token cost/latency down for extraction — a largely
+  # structured-transcription task — without a dramatic cost jump on the Sonnet 5
+  # upgrade. Raise (medium|high|xhigh|max) for hard reasoning documents. Ignored
+  # by models without an effort control (Nova, Sonnet 4.5, Haiku 4.5).
+  reasoning_effort: "low"
+  # max_tokens is not configurable: extraction always requests the model's
+  # maximum output (resolved from config_library/model_config_limits.yaml).
+  # Bedrock's default-when-omitted truncates, so it is set explicitly per call.
   top_k: "5"
   system_prompt: >-
     You are a document assistant. Respond only with JSON. Never make up data, only provide data found in the document being provided.
+  # {FEW_SHOT_EXAMPLES} is present in every shipped extraction prompt so that a
+  # class which defines x-aws-idp-examples has them used WITHOUT also having to
+  # edit the prompt (examples defined but never sent is a silent, hard-to-notice
+  # failure). It is a no-op for classes with no examples: the section renders
+  # empty and nothing is added to the request. Examples sit before <<CACHEPOINT>>
+  # because they are static per class and therefore cacheable.
   task_prompt: >-
     <background>
     You are an expert in document analysis and information extraction. 
@@ -41,7 +189,10 @@ extraction:
         document
         4. Do not use /n for new lines, use a space instead
         5. If a field is not found or if unsure, return null
-        6. All dates should be in MM/DD/YYYY format
+        6. Format each value as directed by that attribute's description/format in the
+        attributes section below. If an attribute specifies a date or number format,
+        follow it EXACTLY; only if no format is specified, preserve the value as it
+        appears in the document.
         7. Do not perform calculations or summations unless totals are explicitly given
         8. If an alias is not found in the document, return null
         9. Guidelines for checkboxes:
@@ -65,6 +216,10 @@ extraction:
     {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
     </attributes>
 
+    <few-shot-examples>
+    {FEW_SHOT_EXAMPLES}
+    </few-shot-examples>
+
     <<CACHEPOINT>>
 
     <document-text>
@@ -79,9 +234,202 @@ extraction:
     Extract key information from the document and return a JSON object with the following key steps:
     1. Carefully analyze the document text to identify the requested attributes
     2. Extract only information explicitly found in the document - never make up data
-    3. Format all dates as MM/DD/YYYY and replace newlines with spaces
+    3. Format each value as directed by its attribute description/format (follow any
+    specified date/number format EXACTLY; otherwise keep the document's rendering);
+    replace newlines with spaces
     4. For checkboxes, only include options with clear visual selection marks
     5. Use null for any fields not found in the document
     6. Ensure the output is properly formatted JSON with quoted keys and values
     7. Think step by step before finalizing your answer
     </final-instructions>
+
+  # =========================================================================
+  # PROMPT TEMPLATE VARIANTS (v0.6) — selected by settings at runtime:
+  #   confidence.mode == integrated + mode == advanced -> task_prompt_extraction_with_confidence
+  #   confidence.mode == integrated + mode == simple   -> task_prompt_extraction_with_confidence_topk (1S-TopK)
+  #   confidence.mode == separate                      -> task_prompt (above) + task_prompt_confidence
+  #   geometry.mode in {llm, llm_grounded} -> task_prompt_bbox appended to the
+  #     active confidence-bearing prompt (integrated or confidence-only).
+  # See idp_common.extraction.prompt_assembly.
+  # =========================================================================
+
+  # INTEGRATED: each value AND its confidence are produced together. Used when
+  # confidence.mode == integrated. Two runtime strategies share this prompt
+  # (extraction.agentic.integrated_confidence_strategy — a hidden experimental knob):
+  #   two_step (default): the agent extracts, then calls provide_field_assessment.
+  #   single_shot: the agent calls one combined extraction_with_confidence_tool.
+  # The prompt describes the intent so the agent uses whichever tool is registered;
+  # both record confidence into the same downstream path.
+  task_prompt_extraction_with_confidence: >-
+    <background>
+    You are an expert in document analysis and information extraction.
+    You extract key information from documents classified as type: {DOCUMENT_CLASS},
+    and you also report your confidence in each extracted value.
+    </background>
+
+    <task>
+    Convert the unstructured document into a well-organized JSON object using the
+    attribute names below as keys, extracting the relevant values. Then record your
+    confidence in each extracted value.
+    </task>
+
+    <extraction-guidelines>
+    1. Include double quotes around all keys and values
+    2. Do not make up data - only extract information explicitly found in the document
+    3. Use a space instead of newlines
+    4. If a field is not found or you are unsure, return null
+    5. Format each value as directed by that attribute's description/format below.
+       If an attribute specifies a date or number format, follow it EXACTLY; only if
+       no format is specified, preserve the value as it appears in the document.
+    6. Do not perform calculations unless totals are explicitly given
+    7. Carefully examine checkboxes/selection fields; only include options with clear
+       visual selection marks
+    8. Think step by step first, then answer
+    </extraction-guidelines>
+
+    <attributes>
+    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+    </attributes>
+
+    <few-shot-examples>
+    {FEW_SHOT_EXAMPLES}
+    </few-shot-examples>
+
+    <confidence-assessment>
+    Record your confidence in EVERY extracted value, mirroring the extraction
+    structure EXACTLY so there is one confidence entry per individual value.
+    OUTPUT RULE (keep responses compact): include "confidence_reason" for a leaf
+    ONLY when its confidence is below 0.9. For confidence >= 0.9, emit just
+    {"confidence": <score>} with NO confidence_reason. When you do include one, keep
+    it to at most 12 words and do not restate the extracted value.
+    - Scalar field: {"confidence": <0.0-1.0>} (add "confidence_reason" only if < 0.9).
+    - Group (nested object) field: an object with the SAME sub-keys as the value,
+      each mapping to its own {"confidence": ...} leaf (add "confidence_reason" if < 0.9).
+    - List field (e.g. a table): a LIST with ONE object per extracted row, in the
+      SAME ORDER as the rows. Each row object MUST mirror that row's structure —
+      i.e. the SAME column keys as the extracted row, and EACH column maps to its
+      own {"confidence": ...} leaf (add "confidence_reason" only if < 0.9). Do NOT
+      emit a single confidence for a whole row; score each cell. Nested lists follow
+      the same rule recursively. Provide an entry for EVERY row and EVERY column —
+      do not summarize or skip.
+      Example — extracted row {"date": "...", "amount": "..."} ->
+        {"date": {"confidence": 0.98},
+         "amount": {"confidence": 0.72, "confidence_reason": "figure partly illegible"}}
+    confidence = your calibrated certainty the value matches the source document
+    (1.0 = certain, lower = ambiguous/illegible/inferred).
+    HOW TO REPORT IT:
+    - If an extraction_with_confidence or provide_field_assessment TOOL is available
+      to you, use it: pass the extracted values and this field_assessment together in
+      that ONE tool call. If you extracted in multiple steps (e.g. adding rows via
+      patches), call it once at the very end so every row is assessed.
+    - Otherwise (no such tool), return ONE JSON object with EXACTLY two top-level
+      keys: "extraction" (the extracted values object described above) and
+      "confidence" (the parallel confidence structure). Do NOT wrap it in any other
+      key and do NOT add a "field_assessment" key. Shape:
+        {"extraction": { ...extracted values... },
+         "confidence":  { ...one confidence leaf per value, mirroring structure... }}
+    Do NOT include bounding boxes unless explicitly instructed below — field
+    locations are derived automatically from OCR.
+    </confidence-assessment>
+
+    <<CACHEPOINT>>
+
+    <document-text>
+    {DOCUMENT_TEXT}
+    </document-text>
+
+    <document_image>
+    {DOCUMENT_IMAGE}
+    </document_image>
+
+  # 1S-TopK INTEGRATED prompt: used when confidence.mode == integrated AND
+  # extraction.mode == simple (non-agentic). Asks the model to emit its top-K
+  # guesses with probabilities per field (default K=4). topk_resolver.py takes
+  # G1 as the value and P1 as the confidence. Requesting ranked alternatives
+  # yields better-calibrated, less-overconfident scores (Tian et al., "Just Ask
+  # for Calibration", EMNLP 2023). K is flexible — a custom prompt may request
+  # fewer; only G1/P1 are consumed (G2..GK/P2..PK are preserved for audit).
+  task_prompt_extraction_with_confidence_topk: >-
+    <background> You are an expert in document analysis and information
+    extraction. You can understand and extract key information from documents
+    classified as type:
+    {DOCUMENT_CLASS}. </background>
+    <task> Provide your 4 best guesses and the probability that each is correct
+    (0.0 to 1.0) for each attribute listed below.
+    Give ONLY the guesses and probabilities, no other words or explanation.</task>
+    <extraction-guidelines> Guidelines:
+     1. Only consider values that are present in the provided document. Do not invent attribute values.
+     2. Extract each entity candidate exactly how it is presented in the document. E.g. do not change "M" to "Monday"
+     or change the date from "01/04" to "1/04".
+     3. Format each value as directed by that attribute's description/format below.
+       If an attribute specifies a date or number format, follow it EXACTLY; only if
+       no format is specified, preserve the value as it appears in the document.
+     4. For each extracted attribute key, the value MUST be a nested object formatted
+     exactly like this:
+            {
+              "G1": "<1st most likely guess, copied EXACTLY as it appears in the document>",
+              "P1": <probability between 0.0 and 1.0>,
+              "G2": "<2nd most likely guess>",
+              "P2": <probability between 0.0 and 1.0>,
+              "G3": "<3rd most likely guess>",
+              "P3": <probability between 0.0 and 1.0>,
+              "G4": "<4th most likely guess>",
+              "P4": <probability between 0.0 and 1.0>
+            }
+    </extraction-guidelines>
+    If the attributes section below contains a list of attribute names and
+    descriptions, then output only those attributes, using the provided
+    descriptions as guidance for finding the correct values.
+    <attributes> {ATTRIBUTE_NAMES_AND_DESCRIPTIONS} </attributes>
+    <few-shot-examples> {FEW_SHOT_EXAMPLES} </few-shot-examples>
+    <<CACHEPOINT>>
+    <document_image> {DOCUMENT_IMAGE} </document_image>
+    <document-text> {DOCUMENT_TEXT} </document-text>
+    <output-format>
+    Give ONLY the JSON object containing the guesses and probabilities.
+    Do not think step-by-step, do not show your work, and do not provide
+    any reasoning, justifications, or extra commentary whatsoever.
+
+    For SIMPLE attributes:
+    {
+      "simple_attribute_name": {
+        "G1": "<1st most likely guess, copied EXACTLY as it appears in the document>",
+        "P1": <probability between 0.0 and 1.0>,
+        "G2": "<2nd most likely guess>",
+        "P2": <probability between 0.0 and 1.0>,
+        "G3": "<3rd most likely guess>",
+        "P3": <probability between 0.0 and 1.0>,
+        "G4": "<4th most likely guess>",
+        "P4": <probability between 0.0 and 1.0>
+      }
+    }
+
+    For LIST attributes, give G1/P1 ONLY (a single guess per cell) and include
+    EVERY row that appears in the document. Completeness of the list matters more
+    than alternative guesses, and extra guesses per cell multiply the output
+    length by the number of rows:
+    {
+      "list_attribute_name": [
+        {
+          "item_attribute_1": { "G1": "<guess, copied EXACTLY as it appears in the document>", "P1": <probability between 0.0 and 1.0> },
+          "item_attribute_2": { "G1": "<guess, copied EXACTLY as it appears in the document>", "P1": <probability between 0.0 and 1.0> }
+        }
+      ]
+    }
+    For GROUP attributes (a nested object), give one candidate object per
+    sub-attribute:
+    {
+      "group_attribute_name": {
+        "sub_attribute_1": {
+          "G1": "<1st most likely guess, copied EXACTLY as it appears in the document>",
+          "P1": <probability between 0.0 and 1.0>,
+          "G2": "<2nd most likely guess>",
+          "P2": <probability between 0.0 and 1.0>
+        },
+        "sub_attribute_2": {
+          "G1": "<1st most likely guess, copied EXACTLY as it appears in the document>",
+          "P1": <probability between 0.0 and 1.0>
+        }
+      }
+    }
+    </output-format>

@@ -9,6 +9,7 @@ import '@aws-amplify/ui-react/styles.css';
 import { AppContext, type AppActiveTestRun } from './contexts/app';
 import { AnalyticsProvider } from './contexts/analytics';
 import { AgentChatProvider } from './contexts/agentChat';
+import { GuidedTourProvider } from './contexts/guidedTour';
 import useAwsConfig from './hooks/use-aws-config';
 import useCurrentSessionCreds from './hooks/use-current-session-creds';
 
@@ -21,8 +22,9 @@ const logger = new ConsoleLogger('App', import.meta.env.DEV ? 'DEBUG' : 'WARN');
 const AppContent = (): React.JSX.Element => {
   const awsConfig = useAwsConfig();
   const { authStatus: authState, user } = useAuthenticator((context) => [context.authStatus, context.user]);
-  const { currentSession, currentCredentials } = useCurrentSessionCreds({});
+  const { currentSession, currentCredentials, credentialsStatus, retryCredentials } = useCurrentSessionCreds({});
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [successMessage, setSuccessMessage] = useState<string | undefined>();
   const [navigationOpen, setNavigationOpen] = useState<boolean>(true);
   const [activeTestRuns, setActiveTestRuns] = useState<AppActiveTestRun[]>([]);
 
@@ -34,14 +36,17 @@ const AppContent = (): React.JSX.Element => {
     setActiveTestRuns((prev) => prev.filter((run) => run.testRunId !== testRunId));
   };
 
-  // eslint-disable-next-line react/jsx-no-constructed-context-values
   const appContextValue = {
     authState,
     awsConfig,
     errorMessage,
+    successMessage,
     currentCredentials,
     currentSession,
+    credentialsStatus,
+    retryCredentials,
     setErrorMessage,
+    setSuccessMessage,
     user,
     navigationOpen,
     setNavigationOpen,
@@ -57,7 +62,9 @@ const AppContent = (): React.JSX.Element => {
         <AnalyticsProvider>
           <AgentChatProvider>
             <HashRouter>
-              <Routes />
+              <GuidedTourProvider>
+                <Routes />
+              </GuidedTourProvider>
             </HashRouter>
           </AgentChatProvider>
         </AnalyticsProvider>
