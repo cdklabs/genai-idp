@@ -1,0 +1,579 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+"""Retry backoff must fit inside its own Lambda invocation.
+
+`invoke_agent_with_retry` was decorated with ``max_delay=1800`` — thirty minutes of
+backoff — inside a function Lambda kills at 900 seconds, so one transient
+``Read timed out`` could spend the whole invocation asleep and achieve nothing.
+
+Three bounds behave differently when they bite, and all three behaviours are tested
+here. A tight **deadline** shortens a sleep and keeps trying: near the wall the
+attempts are what consume the clock, and a cheap attempt may still succeed. A spent
+**cumulative allowance** ends the ladder and re-raises, because past it every attempt
+would be sent with no backoff at all — measured, 43-45 of 50 were. An attempt whose
+**measured cost** no longer fits in what remains also ends the ladder, because there
+"it may still succeed" is not true — it cannot even return, and being killed on the
+wall clock is the one failure the state machine does not retry (#1310).
+
+The state machine is what makes the second preferable, and its policy is the part to
+check if this looks arbitrary: a transient error raised from here is wrapped as
+``TransientError`` by the handlers, which ``ExtractionStep`` and
+``ShardExtractionStep`` retry eight times, while ``Sandbox.Timedout`` is down to one
+attempt since #917.
+
+Every test patches its sleep function. Without that, a regression of the clamp
+makes these tests HANG (50 x 1800s) and burn the CI job timeout instead of failing.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import inspect
+import time
+from unittest.mock import AsyncMock, patch
+
+import botocore.exceptions
+import pytest
+
+from idp_common.timeout_budget import (
+    AGENT_MAX_BACKOFF_SECONDS,
+    AGENT_MAX_TOTAL_BACKOFF_SECONDS,
+)
+from idp_common.utils.bedrock_utils import (
+    async_exponential_backoff_retry,
+    clamp_sleep_to_budgets,
+    exponential_backoff_retry,
+    get_lambda_deadline_epoch,
+    set_lambda_deadline_epoch,
+)
+
+
+@pytest.fixture(autouse=True)
+def _clear_deadline():
+    """The deadline is a ContextVar; leaking it would couple these tests."""
+    set_lambda_deadline_epoch(None)
+    yield
+    set_lambda_deadline_epoch(None)
+
+
+def _throttle() -> botocore.exceptions.ClientError:
+    return botocore.exceptions.ClientError(
+        {"Error": {"Code": "ThrottlingException", "Message": "slow down"}}, "Converse"
+    )
+
+
+# ---------------------------------------------------------------------------
+# clamp_sleep_to_budgets
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_no_deadline_and_no_budget_leaves_the_sleep_alone():
+    """Outside Lambda the deadline is unknown and behaviour must be unchanged."""
+    assert get_lambda_deadline_epoch() is None
+    assert clamp_sleep_to_budgets(1800) == 1800
+
+
+@pytest.mark.unit
+def test_sleep_that_fits_is_not_shortened():
+    set_lambda_deadline_epoch(time.time() + 600)
+    assert clamp_sleep_to_budgets(60) == pytest.approx(60, abs=1)
+
+
+@pytest.mark.unit
+def test_sleep_longer_than_the_invocation_is_shortened_not_refused():
+    """The headline case: 1800s of backoff with 100s left becomes a short sleep,
+    NOT an exception. Returning a positive number keeps the retry loop alive."""
+    set_lambda_deadline_epoch(time.time() + 100)
+    allowed = clamp_sleep_to_budgets(1800)
+    assert 0 < allowed <= 70
+    assert allowed == pytest.approx(70, abs=1)  # 100 - 30 reserve
+
+
+@pytest.mark.unit
+def test_no_time_left_yields_zero_not_a_negative_sleep():
+    """0.0 means "try again immediately". A negative would crash asyncio.sleep."""
+    set_lambda_deadline_epoch(time.time() + 5)
+    assert clamp_sleep_to_budgets(60) == 0.0
+    set_lambda_deadline_epoch(time.time() - 100)  # already past
+    assert clamp_sleep_to_budgets(60) == 0.0
+
+
+@pytest.mark.unit
+def test_cumulative_budget_shortens_the_last_sleep_rather_than_dropping_it():
+    """With 10s of a 300s budget left, a 60s backoff becomes 10s — the remaining
+    budget is spent, not discarded."""
+    assert clamp_sleep_to_budgets(60, total_slept=290, max_total_delay=300) == 10
+    assert clamp_sleep_to_budgets(60, total_slept=300, max_total_delay=300) == 0.0
+
+
+@pytest.mark.unit
+def test_the_tighter_of_the_two_bounds_wins():
+    set_lambda_deadline_epoch(time.time() + 1000)
+    assert clamp_sleep_to_budgets(60, total_slept=280, max_total_delay=300) == 20
+    set_lambda_deadline_epoch(time.time() + 45)
+    assert clamp_sleep_to_budgets(60, total_slept=0, max_total_delay=300) == (
+        pytest.approx(15, abs=1)
+    )
+
+
+@pytest.mark.unit
+def test_reserve_is_configurable_and_actually_applied():
+    """Guards against the reserve being frozen as a default argument, which would
+    make a monkeypatched module constant silently do nothing."""
+    set_lambda_deadline_epoch(time.time() + 100)
+    assert clamp_sleep_to_budgets(1800, reserve=0.0) == pytest.approx(100, abs=1)
+    assert clamp_sleep_to_budgets(1800, reserve=90.0) == pytest.approx(10, abs=1)
+
+
+# ---------------------------------------------------------------------------
+# What each bound does when it bites: the deadline shortens, the allowance stops
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_sync_retry_shortens_the_sleep_and_keeps_retrying():
+    """A tight deadline shortens the sleeps and keeps trying.
+
+    This is the bound that does NOT stop the ladder: the attempts themselves are
+    what consume the remaining clock, so they still have a chance of succeeding,
+    and giving them up buys only a marginally earlier raise. The cumulative
+    allowance is the bound that stops — see the tests below it.
+    """
+    calls = {"n": 0}
+
+    @exponential_backoff_retry(
+        max_retries=4, initial_delay=1800, max_delay=1800, jitter=0.0
+    )
+    def always_throttled():
+        calls["n"] += 1
+        raise _throttle()
+
+    set_lambda_deadline_epoch(time.time() + 100)
+    with patch("time.sleep") as slept:
+        with pytest.raises(botocore.exceptions.ClientError):
+            always_throttled()
+    assert calls["n"] == 4, "must use its full attempt budget, not bail out early"
+    assert slept.call_count == 3
+    for call in slept.call_args_list:
+        assert 0 <= call.args[0] <= 100, f"slept {call.args[0]}s, longer than remained"
+
+
+@pytest.mark.unit
+def test_sync_retry_respects_the_cumulative_budget():
+    calls = {"n": 0}
+
+    @exponential_backoff_retry(
+        max_retries=6,
+        initial_delay=10,
+        max_delay=10,
+        jitter=0.0,
+        max_total_delay=25,
+    )
+    def always_throttled():
+        calls["n"] += 1
+        raise _throttle()
+
+    with patch("time.sleep") as slept:
+        with pytest.raises(botocore.exceptions.ClientError):
+            always_throttled()
+    total = sum(c.args[0] for c in slept.call_args_list)
+    assert total == pytest.approx(25), f"slept {total}s against a 25s budget"
+    # 10 + 10 + 5 spends the allowance, and the attempt after that is the one the
+    # ladder declines to make: past this point it has no delay left to apply, and
+    # an unbacked-off retry of a refused request is what the caller's own ladder is
+    # for. The attempt budget (6) is deliberately not reached.
+    assert calls["n"] == 4, (
+        f"made {calls['n']} attempts; once the cumulative allowance is spent the "
+        "ladder must stop rather than keep firing with no delay"
+    )
+
+
+@pytest.mark.unit
+def test_a_spent_cumulative_allowance_stops_the_ladder_instead_of_spinning():
+    """The measured shape of the defect this asserts against.
+
+    On the agentic ladder's own numbers — ``max_retries=50`` against a 90s
+    allowance — the old behaviour clamped every sleep after the allowance to 0.0 and
+    kept going, so 42 of 50 requests went out back to back at a service that was
+    refusing them. It bought almost no extra time either: a refused call returns in
+    well under a second.
+    """
+    calls = {"n": 0}
+
+    @async_exponential_backoff_retry(
+        max_retries=50,
+        initial_delay=5,
+        max_delay=60,
+        jitter=0.0,
+        max_total_delay=90,
+    )
+    async def always_throttled():
+        calls["n"] += 1
+        raise _throttle()
+
+    async def run():
+        set_lambda_deadline_epoch(time.time() + 900)
+        with patch("asyncio.sleep", new_callable=AsyncMock) as slept:
+            with pytest.raises(botocore.exceptions.ClientError):
+                await always_throttled()
+        return slept
+
+    slept = asyncio.run(run())
+    delays = [c.args[0] for c in slept.await_args_list]
+
+    assert sum(delays) == pytest.approx(90), (
+        f"slept {sum(delays)}s against a 90s allowance — the allowance itself must "
+        "still be spent in full before the ladder gives up"
+    )
+    assert 0.0 not in delays, (
+        f"delays were {delays}; a 0.0 means an attempt was fired with no backoff, "
+        "which is the burst this test exists to prevent"
+    )
+    assert calls["n"] == len(delays) + 1, (
+        f"made {calls['n']} attempts for {len(delays)} sleeps; the ladder must stop "
+        "on the attempt after its last real backoff"
+    )
+    assert calls["n"] < 50, (
+        f"made {calls['n']} attempts — the attempt budget was reached, so the "
+        "allowance is not bounding the ladder at all"
+    )
+
+
+@pytest.mark.unit
+def test_the_deadline_still_only_shortens_and_does_not_stop():
+    """The two bounds are not symmetric, and this is the half that did not change.
+
+    With no cumulative allowance, a tight deadline clamps sleeps towards zero and
+    the ladder keeps trying: there is no burst to suppress that close to the wall,
+    and an attempt may still succeed. Turning this into a stop as well would
+    surrender attempts that cost nothing.
+    """
+    calls = {"n": 0}
+
+    # max_total_delay is SET, as production always sets it, and deliberately large
+    # enough to stay unspent: with it None the stop can never fire whatever the
+    # deadline does, so the test would pass against a deadline-based stop too.
+    @async_exponential_backoff_retry(
+        max_retries=4,
+        initial_delay=1800,
+        max_delay=1800,
+        jitter=0.0,
+        max_total_delay=300,
+    )
+    async def always_throttled():
+        calls["n"] += 1
+        raise _throttle()
+
+    async def run():
+        set_lambda_deadline_epoch(time.time() + 10)
+        with patch("asyncio.sleep", new_callable=AsyncMock) as slept:
+            with pytest.raises(botocore.exceptions.ClientError):
+                await always_throttled()
+        return slept
+
+    slept = asyncio.run(run())
+    assert calls["n"] == 4, (
+        f"made {calls['n']} of 4 attempts; a deadline must shorten the sleeps, not "
+        "end the ladder"
+    )
+    assert [c.args[0] for c in slept.await_args_list] == [0.0, 0.0, 0.0]
+
+
+@pytest.mark.unit
+def test_an_attempt_that_cannot_finish_ends_the_ladder_rather_than_starting_it():
+    """The third bound: cost, not proximity. Added for #1310.
+
+    The distinguishing case, and the reason the gate reads the attempt's own duration
+    rather than the elapsed fraction of the invocation: the deadline here is close in
+    absolute terms but each attempt is EXPENSIVE, so the next one provably cannot
+    complete. ``test_the_deadline_still_only_shortens_and_does_not_stop`` is the same
+    deadline with cheap attempts and must keep retrying, which is what makes these two
+    tests a pair — a gate keyed on "the deadline is close" passes one and breaks the
+    other.
+    """
+    clock = [5_000_000.0]
+    calls = {"n": 0}
+
+    @async_exponential_backoff_retry(
+        max_retries=10, initial_delay=1, max_delay=1, jitter=0.0, max_total_delay=300
+    )
+    async def stalls_expensively():
+        calls["n"] += 1
+        clock[0] += 400.0
+        raise _throttle()
+
+    async def _fake_sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(time, "time", lambda: clock[0])
+        patched.setattr(asyncio, "sleep", _fake_sleep)
+
+        async def run():
+            # 900s of invocation: attempt 1 spends 400, attempt 2 spends 400, and a
+            # third cannot fit in the ~100 that remain.
+            set_lambda_deadline_epoch(clock[0] + 900.0)
+            with pytest.raises(botocore.exceptions.ClientError):
+                await stalls_expensively()
+
+        asyncio.run(run())
+
+    assert calls["n"] == 2, (
+        f"made {calls['n']} attempt(s) of an allowed 10. Two fit inside the "
+        "invocation and a third cannot: the ladder must raise then, so the caller "
+        "retries a real error instead of the Lambda being killed."
+    )
+
+
+@pytest.mark.unit
+def test_the_cost_gate_is_inert_without_a_deadline():
+    """No deadline means no basis for the judgement, so nothing is surrendered.
+
+    Only the shard and extraction handlers publish a deadline; every other caller of
+    these decorators (classification, summarization, the CLI, tests) runs with the
+    ContextVar unset, and there the ladder must behave exactly as it did before.
+    """
+    calls = {"n": 0}
+
+    @exponential_backoff_retry(
+        max_retries=4, initial_delay=1, max_delay=1, jitter=0.0, max_total_delay=300
+    )
+    def stalls_expensively():
+        calls["n"] += 1
+        raise _throttle()
+
+    with patch("time.sleep"):
+        with pytest.raises(botocore.exceptions.ClientError):
+            stalls_expensively()
+
+    assert get_lambda_deadline_epoch() is None
+    assert calls["n"] == 4, (
+        f"made {calls['n']} of 4 attempts with no deadline set; the cost gate has no "
+        "deadline to measure against and must not shorten the ladder"
+    )
+
+
+@pytest.mark.unit
+def test_sync_retry_unchanged_with_no_deadline_and_no_budget():
+    """Guards against over-correction."""
+    calls = {"n": 0}
+
+    @exponential_backoff_retry(max_retries=3, initial_delay=5, max_delay=5, jitter=0.0)
+    def fails_twice():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise _throttle()
+        return "ok"
+
+    with patch("time.sleep") as slept:
+        assert fails_twice() == "ok"
+    assert calls["n"] == 3
+    assert [c.args[0] for c in slept.call_args_list] == [5, 5]
+
+
+@pytest.mark.unit
+def test_async_retry_shortens_the_sleep_and_keeps_retrying():
+    calls = {"n": 0}
+
+    @async_exponential_backoff_retry(
+        max_retries=4, initial_delay=1800, max_delay=1800, jitter=0.0
+    )
+    async def read_timeout():
+        calls["n"] += 1
+        raise Exception("Read timed out. (read timeout=120)")
+
+    async def run():
+        set_lambda_deadline_epoch(time.time() + 100)
+        with patch("asyncio.sleep", new_callable=AsyncMock) as slept:
+            with pytest.raises(Exception, match="Read timed out"):
+                await read_timeout()
+        return slept
+
+    slept = asyncio.run(run())
+    assert calls["n"] == 4
+    assert slept.await_count == 3
+    for call in slept.await_args_list:
+        assert 0 <= call.args[0] <= 100
+
+
+@pytest.mark.unit
+def test_async_retry_unchanged_when_the_deadline_is_roomy():
+    calls = {"n": 0}
+
+    @async_exponential_backoff_retry(
+        max_retries=5, initial_delay=5, max_delay=5, jitter=0.0
+    )
+    async def fails_twice():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise Exception("Read timed out")
+        return "ok"
+
+    async def run():
+        set_lambda_deadline_epoch(time.time() + 900)
+        with patch("asyncio.sleep", new_callable=AsyncMock) as slept:
+            assert await fails_twice() == "ok"
+        return slept
+
+    slept = asyncio.run(run())
+    assert calls["n"] == 3
+    assert [c.args[0] for c in slept.await_args_list] == [5, 5]
+
+
+# ---------------------------------------------------------------------------
+# Re-entrancy: concurrent shards must not share a budget
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_concurrent_calls_do_not_share_the_cumulative_budget():
+    """The agentic runtime fans shards out concurrently over the SAME decorated
+    coroutine. If ``total_slept``/``delay`` were decorator-scoped rather than
+    per-call, one shard's sleeping would eat the others' retry budget.
+
+    Asserted on total sleep TIME, not attempt count: a shared accumulator clamps
+    later sleeps to 0 without reducing the number of attempts, so counting attempts
+    cannot detect it (verified by mutation).
+    """
+    shards, budget = 4, 25.0
+
+    @async_exponential_backoff_retry(
+        max_retries=5,
+        initial_delay=10,
+        max_delay=10,
+        jitter=0.0,
+        max_total_delay=budget,
+    )
+    async def always_fails(shard: int):
+        raise Exception("Read timed out")
+
+    async def run():
+        with patch("asyncio.sleep", new_callable=AsyncMock) as slept:
+            await asyncio.gather(
+                *(always_fails(i) for i in range(shards)), return_exceptions=True
+            )
+        return sum(c.args[0] for c in slept.await_args_list)
+
+    total = asyncio.run(run())
+    # Each shard independently spends its own 25s budget -> 100s overall. A shared
+    # accumulator would total ~25s no matter how many shards ran.
+    assert total == pytest.approx(shards * budget), (
+        f"expected {shards} independent {budget}s budgets ({shards * budget}s), "
+        f"slept {total}s in total — the budget looks shared across calls"
+    )
+
+
+# ---------------------------------------------------------------------------
+# ContextVar propagation, which is what makes the ContextVar approach viable
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_deadline_propagates_through_asyncio_primitives():
+    """The agentic fan-out uses gather/create_task and asyncio.to_thread, so the
+    deadline must survive all three. A raw ThreadPoolExecutor does not carry the
+    ContextVar either, and is covered separately below."""
+    deadline = time.time() + 500
+
+    async def run():
+        set_lambda_deadline_epoch(deadline)
+        direct = get_lambda_deadline_epoch()
+
+        async def child():
+            return get_lambda_deadline_epoch()
+
+        gathered = await asyncio.gather(child(), child())
+        task = await asyncio.create_task(child())
+        threaded = await asyncio.to_thread(get_lambda_deadline_epoch)
+        return direct, gathered, task, threaded
+
+    direct, gathered, task, threaded = asyncio.run(run())
+    assert direct == deadline
+    assert gathered == [deadline, deadline]
+    assert task == deadline
+    assert threaded == deadline
+
+
+@pytest.mark.unit
+def test_a_thread_pool_worker_can_read_the_deadline():
+    """The ContextVar still does not cross; the accessor answers anyway, and must.
+
+    This library reaches Bedrock from a raw ``ThreadPoolExecutor`` on the two paths
+    the budget gate matters most on — ``assessment.batching`` fans concurrent
+    confidence batches out with ``pool.map``, and
+    ``bedrock.client.generate_embeddings_batch`` with ``executor.submit`` — so a
+    deadline readable only inside the calling context leaves the gate inert exactly
+    where a 300-second request is retried. Both halves are asserted: the ContextVar
+    is genuinely empty in the worker, which is why the accessor cannot be a bare
+    ``ContextVar.get``, and ``copy_context`` is no longer load-bearing for this.
+    """
+    import contextvars
+    from concurrent.futures import ThreadPoolExecutor
+
+    from idp_common.lambda_deadline import _LAMBDA_DEADLINE_EPOCH
+
+    deadline = time.time() + 500
+    set_lambda_deadline_epoch(deadline)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        assert pool.submit(_LAMBDA_DEADLINE_EPOCH.get).result() is None
+        assert pool.submit(get_lambda_deadline_epoch).result() == deadline
+
+    ctx = contextvars.copy_context()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        assert pool.submit(ctx.run, get_lambda_deadline_epoch).result() == deadline
+
+    # And clearing it clears both, so a test or a local run is not left bounded.
+    set_lambda_deadline_epoch(None)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        assert pool.submit(get_lambda_deadline_epoch).result() is None
+
+
+# ---------------------------------------------------------------------------
+# The agent decorator's own constants
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_agent_backoff_constants_fit_inside_one_lambda_invocation():
+    """Pins the reported bug. ``max_delay`` was 1800 — twice the whole invocation.
+    The bounds are asserted tightly, so a regression to a merely-less-absurd value
+    (say 200s inside a 900s function) still fails.
+
+    The two constants live in ``utils.bedrock_utils``, next to the Bedrock client's
+    read timeout and the shard function's Lambda ceiling, because all three are only
+    correct *relative to each other* and ``extraction.runtime`` needs them without
+    the strands-backed agentic stack (#1014). ``test_shard_timeout_budget.py``
+    asserts the inequality between the three; this test asserts the absolute bounds
+    on the backoff pair, which is the part #917's fix established.
+
+    It reads the values back out of the decorator's closure rather than only
+    asserting on the module constants. Module constants alone leave the decorator
+    unconstrained — ``invoke_agent_with_retry`` could be given a literal, or a
+    different constant, and every assertion here would still pass while the running
+    ladder used the wrong number. The closure is what actually executes.
+    """
+    assert AGENT_MAX_BACKOFF_SECONDS <= 60
+    assert AGENT_MAX_TOTAL_BACKOFF_SECONDS <= 300
+
+    pytest.importorskip("strands", reason="agentic extras not installed")
+    from idp_common.extraction.agentic_idp import invoke_agent_with_retry
+
+    bound = inspect.getclosurevars(invoke_agent_with_retry).nonlocals
+    assert bound["max_delay"] == AGENT_MAX_BACKOFF_SECONDS, (
+        f"invoke_agent_with_retry runs with max_delay={bound['max_delay']}, not the "
+        f"{AGENT_MAX_BACKOFF_SECONDS}s constant the bounds above are asserted on"
+    )
+    assert bound["max_total_delay"] == AGENT_MAX_TOTAL_BACKOFF_SECONDS, (
+        f"invoke_agent_with_retry runs with "
+        f"max_total_delay={bound['max_total_delay']}, not the "
+        f"{AGENT_MAX_TOTAL_BACKOFF_SECONDS}s constant the bounds above are "
+        "asserted on"
+    )
+    assert bound["max_delay"] <= 60
+    assert bound["max_total_delay"] <= 300
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

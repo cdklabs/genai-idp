@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { Box, Tabs, SpaceBetween, Alert, Container, Header } from '@cloudscape-design/components';
 import Editor from '@monaco-editor/react';
 import { X_AWS_IDP_DOCUMENT_TYPE } from '../../constants/schemaConstants';
+import SchemaDiagram from './SchemaDiagram';
+import { resolveAttributeType } from './utils/schemaHelpers';
 
 interface SchemaClass {
   id: string;
@@ -54,9 +56,17 @@ interface SchemaPreviewTabsProps {
   classes: SchemaClass[];
   selectedClassId?: string | null;
   exportedSchemas?: ExportedSchema | ExportedSchema[] | null;
+  onSelectClass?: ((classId: string) => void) | null;
 }
 
-const getSchemaStats = (schema: SchemaClass | undefined): SchemaStats => {
+/**
+ * `allClasses` is threaded in only so a property declared as a bare
+ * `{"$ref": "#/$defs/Address"}` — which carries no `type` of its own — is counted
+ * in the Type Distribution instead of falling through every branch and appearing
+ * in no bucket at all, leaving the buckets short of `totalAttributes`
+ * (GitHub #906).
+ */
+const getSchemaStats = (schema: SchemaClass | undefined, allClasses: SchemaClass[] = []): SchemaStats => {
   if (!schema) return {} as SchemaStats;
 
   const props = schema.attributes?.properties || {};
@@ -74,15 +84,16 @@ const getSchemaStats = (schema: SchemaClass | undefined): SchemaStats => {
   };
 
   Object.values(props).forEach((attr) => {
-    if (attr.type === 'string') {
+    const attrType = resolveAttributeType(attr, allClasses);
+    if (attrType === 'string') {
       stats.stringAttributes += 1;
-    } else if (attr.type === 'number' || attr.type === 'integer') {
+    } else if (attrType === 'number' || attrType === 'integer') {
       stats.numberAttributes += 1;
-    } else if (attr.type === 'boolean') {
+    } else if (attrType === 'boolean') {
       stats.booleanAttributes += 1;
-    } else if (attr.type === 'object') {
+    } else if (attrType === 'object') {
       stats.objectAttributes += 1;
-    } else if (attr.type === 'array') {
+    } else if (attrType === 'array') {
       stats.arrayAttributes += 1;
     }
 
@@ -160,8 +171,13 @@ const SchemaStatsContent = ({ stats }: SchemaStatsContentProps): React.JSX.Eleme
   </Box>
 );
 
-const SchemaPreviewTabs = ({ classes, selectedClassId = null, exportedSchemas = null }: SchemaPreviewTabsProps): React.JSX.Element => {
-  const [activeTabId, setActiveTabId] = useState('schema-0');
+const SchemaPreviewTabs = ({
+  classes,
+  selectedClassId = null,
+  exportedSchemas = null,
+  onSelectClass = null,
+}: SchemaPreviewTabsProps): React.JSX.Element => {
+  const [activeTabId, setActiveTabId] = useState('diagram');
 
   // Memoize selected class with shallow comparison
   const selectedClass = useMemo(() => {
@@ -212,16 +228,17 @@ const SchemaPreviewTabs = ({ classes, selectedClassId = null, exportedSchemas = 
     }));
   }, [schemas]);
 
-  if (schemas.length === 0) {
-    return (
-      <Box textAlign="center" padding="xxl">
-        <Alert type="info">Configure document types and classes to preview schemas</Alert>
-      </Box>
-    );
-  }
+  // The diagram is always available (it renders from `classes`); the JSON Schema
+  // tabs only appear once there are exportable document-type schemas.
+  const diagramTab = {
+    id: 'diagram',
+    label: 'Diagram',
+    content: <SchemaDiagram classes={classes} selectedClassId={selectedClassId} onSelectClass={onSelectClass} />,
+  };
 
-  // Combine all tabs
+  // Combine all tabs: Diagram first, then per-document-type JSON Schema, then Statistics.
   const allTabs = [
+    diagramTab,
     ...schemaTabs,
     ...(selectedClass
       ? [
@@ -231,7 +248,7 @@ const SchemaPreviewTabs = ({ classes, selectedClassId = null, exportedSchemas = 
             content: (
               <SpaceBetween size="m">
                 <Alert type="info">Schema complexity and feature usage statistics (selected class: {selectedClass.name})</Alert>
-                <SchemaStatsContent stats={getSchemaStats(selectedClass)} />
+                <SchemaStatsContent stats={getSchemaStats(selectedClass, classes)} />
               </SpaceBetween>
             ),
           },

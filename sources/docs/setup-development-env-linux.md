@@ -185,31 +185,32 @@ Host genai-idp-dev-ubuntu
 
 https://docs.aws.amazon.com/cli/latest/userguide/getting-started-quickstart.html
 
-# Step 6: Install Python Dependencies for publish.py
+# Step 6: Install the IDP CLI
 
-## Install Required Python Packages
+## Install the CLI and Dependencies
 
 ```bash
-pip install boto3 rich PyYAML botocore setuptools docker
+make setup-venv
+source .venv/bin/activate
 ```
 
-> **Note**: The `docker` Python package is required for container-based Lambda deployments.
+> **Note**: This installs the `idp-cli` command along with all required Python dependencies.
 
-# Step 7: Run Publish Script 
+# Step 7: Test the Build
 
-## Using publish.py (Recommended)
+## Using `idp-cli publish`
 
-### Test publish script help
+### Test CLI help
 
 ```bash
-python3 publish.py --help
+idp-cli publish --help
 ```
 
-### Test build using publish.py
+### Test build
 
-Standard ZIP-based deployment:
+Standard build and publish:
 ```bash
-python3 publish.py bucket_name build-test us-east-1
+idp-cli publish --source-dir . --region us-east-1
 ```
 
 Pattern-2 container images are built automatically when Pattern-2 changes are detected. Ensure Docker is running and you have ECR permissions.
@@ -219,7 +220,7 @@ Pattern-2 container images are built automatically when Pattern-2 changes are de
 If the build fails, use the `--verbose` flag to see detailed error messages:
 
 ```bash
-python3 publish.py bucket_name build-test us-east-1 --verbose
+idp-cli publish --source-dir . --region us-east-1 --verbose
 ```
 
 The verbose flag will show:
@@ -229,19 +230,7 @@ The verbose flag will show:
 - Python version compatibility issues
 - Missing dependencies or configuration problems
 
-## Using publish.sh (Legacy)
-
-### Test publish script help
-
-```bash
-./publish.sh --help
-```
-
-### Test build using publish.sh
-
-```bash
-./publish.sh bucket_name build-test us-east-1
-```
+> **Note**: The legacy `publish.py` script is deprecated. Use `idp-cli publish` for all new builds.
 
 # Step 7: Cline & Q Developer installation
 

@@ -1,0 +1,1510 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: MIT-0
+
+/**
+ * TestSetDetail — list a test set's documents (route: /test-studio/sets/:testSetId).
+ *
+ * Mirrors the Document List -> Document Details structure of the main app:
+ * each row links to the TestSetDocumentDetail page, with per-row quick
+ * actions ("View Source" / "Ground Truth") that deep-link straight to the
+ * corresponding view on that page.
+ */
+
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Alert,
+  AppLayout,
+  Badge,
+  Box,
+  BreadcrumbGroup,
+  Button,
+  ButtonDropdown,
+  ContentLayout,
+  ExpandableSection,
+  FormField,
+  Header,
+  Icon,
+  Input,
+  Link,
+  Modal,
+  Pagination,
+  Popover,
+  SpaceBetween,
+  StatusIndicator,
+  Table,
+  type TableProps,
+  TextFilter,
+} from '@cloudscape-design/components';
+import { ConsoleLogger } from 'aws-amplify/utils';
+import { generateClient } from '../../api/client-shim';
+import {
+  getTestSetDocuments,
+  getTestSetVersions,
+  generateDraftLabels,
+  getDraftLabelJob,
+  clearDraftLabels,
+  publishTestSetVersion,
+  resetTestSetLabels,
+  removeDocumentsFromTestSet,
+} from '../../graphql/generated';
+import useAppContext from '../../contexts/app';
+import { getErrorMessage } from '../../utils/errorUtils';
+import useSettingsContext from '../../contexts/settings';
+import useUserRole from '../../hooks/use-user-role';
+import useSyntheticDataGenerator from '../../hooks/use-synthetic-data-generator';
+import Navigation from '../genaiidp-layout/navigation';
+import { appLayoutLabels } from '../common/labels';
+import { TEST_STUDIO_PATH, testSetDocumentHref, testSetAnnotateHref } from '../../routes/constants';
+import TestDocThumbnail from './TestDocThumbnail';
+import ReviewEffortModal from './ReviewEffortModal';
+import GenerateDraftLabelsModal from './GenerateDraftLabelsModal';
+import GenerateSyntheticDataModal from './GenerateSyntheticDataModal';
+import AddDocumentsModals, { type AddDocumentsMode } from './AddDocumentsModals';
+import PublishVersionModal, { type PublishVersionInput } from './PublishVersionModal';
+import RemoveDocumentsModal from './RemoveDocumentsModal';
+import type { TestSetDocumentSectionRef } from './GroundTruthVisualEditor';
+import { createLatestResponseGuard } from './latestResponseOnly';
+
+const client = generateClient();
+const logger = new ConsoleLogger('TestSetDetail');
+
+const PAGE_SIZE = 50;
+
+/**
+ * How long the search box waits before asking the server. The search covers the
+ * whole set rather than the page on screen, so it is a LIST over the set's keys —
+ * cheap, but not cheap enough to run once per keystroke.
+ */
+const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * After a bucket or zip add, how often the set's size is re-read and for how long.
+ * The copier and extractor report only through the set's status, which this page
+ * does not hold, so the size is the signal that documents have landed.
+ */
+const ARRIVAL_POLL_MS = 5000;
+const ARRIVAL_WATCH_MS = 2 * 60 * 1000;
+/** Generation runs for minutes and reports through its job, so that is polled instead. */
+const GENERATION_POLL_MS = 5000;
+
+export interface TestSetDocumentItem {
+  objectKey: string;
+  inputKey: string;
+  size?: number | null;
+  lastModified?: string | null;
+  sections: TestSetDocumentSectionRef[];
+  labelSource?: string | null;
+  minConfidence?: number | null;
+  confidenceThreshold?: number | null;
+  alertCount?: number | null;
+  fieldCount?: number | null;
+}
+
+/**
+ * Shared label-provenance vocabulary. Machine-drafted labels must never render
+ * like human-verified ones, so every surface that shows labels uses this map.
+ */
+export const LABEL_SOURCE_BADGES: Record<string, { color: 'blue' | 'green' | 'grey' | 'severity-neutral'; text: string }> = {
+  'draft-machine': { color: 'blue', text: 'Draft (machine)' },
+  'reviewed-human': { color: 'green', text: 'Reviewed (human)' },
+  synthetic: { color: 'grey', text: 'Synthetic' },
+  uploaded: { color: 'grey', text: 'Uploaded' },
+};
+
+export const renderLabelSource = (labelSource?: string | null): React.JSX.Element => {
+  if (!labelSource) return <Badge color="severity-neutral">Unlabeled</Badge>;
+  const badge = LABEL_SOURCE_BADGES[labelSource];
+  return badge ? <Badge color={badge.color}>{badge.text}</Badge> : <Badge color="grey">{labelSource}</Badge>;
+};
+
+/**
+ * Provenance for a baseline whose bytes are already loaded.
+ *
+ * `renderLabelSource(undefined)` renders "Unlabeled", which is correct for a
+ * document row where the baseline may not exist at all. It is wrong once the file
+ * has been read: the pipeline writes `labelSource` and a hand-uploaded ground-truth
+ * file does not, so absence in a loaded baseline means authored ground truth.
+ *
+ * The server already codifies this — `_attach_label_metadata` falls back to
+ * `uploaded` for exactly this reason — and the editor did not, so the same document
+ * read "Uploaded" in the review queue and "Unlabeled" in the editor header, two
+ * lines below an alert saying "Already ground truth".
+ */
+export const renderLoadedLabelSource = (labelSource?: string | null): React.JSX.Element => renderLabelSource(labelSource || 'uploaded');
+
+/**
+ * Confidence as a percentage, colored against the configured alert threshold: red
+ * below it, amber within 10 points above it, otherwise plain. Fixed bands would
+ * contradict the assessment config, where whether 0.85 passes depends on the
+ * threshold. The 80% default applies only when the result carries no threshold.
+ */
+const DEFAULT_CONFIDENCE_THRESHOLD_PCT = 80;
+const NEAR_THRESHOLD_MARGIN_PCT = 10;
+
+export const renderConfidence = (value?: number | null, threshold?: number | null): React.JSX.Element | string => {
+  if (value === null || value === undefined) return '-';
+  const pct = value <= 1 ? value * 100 : value;
+  const rawThreshold = threshold ?? null;
+  const thresholdPct = rawThreshold === null ? DEFAULT_CONFIDENCE_THRESHOLD_PCT : rawThreshold <= 1 ? rawThreshold * 100 : rawThreshold;
+  const below = pct < thresholdPct;
+  const near = !below && pct < thresholdPct + NEAR_THRESHOLD_MARGIN_PCT;
+  const color = below ? 'text-status-error' : near ? 'text-status-warning' : 'text-status-success';
+  return (
+    <Box color={color} fontWeight={below ? 'bold' : 'normal'}>
+      {pct.toFixed(1)}%
+    </Box>
+  );
+};
+
+/**
+ * A test set's label quality, led by the estimated accuracy. The number is the
+ * primary signal and the tier is shorthand for it: a bare "Gold" badge reads as a
+ * certification claim, so the percentage is always shown alongside.
+ *
+ * No tier uses bare `grey`, which renders near-black in Cloudscape and makes the
+ * weakest tier look like the emphatic one.
+ */
+export const QUALITY_TIER_COLORS: Record<string, 'green' | 'blue' | 'severity-neutral' | 'red'> = {
+  gold: 'green',
+  silver: 'blue',
+  bronze: 'severity-neutral',
+  // NOT red. "Unrated" is the absence of a defensible claim, not a fault — and
+  // reviewing a document can legitimately move a set INTO it: once there is
+  // enough evidence to test whether confidence ranks correctness, the estimator
+  // may find it does not, and withdraw the number it had been inferring from a
+  // cross-set prior. Red made that read as "your review broke this set", when in
+  // fact the preceding Bronze figure was the less honest of the two states.
+  unrated: 'severity-neutral',
+};
+
+/**
+ * What the four tiers mean, all of them at once.
+ *
+ * The per-row popover explains only the tier that row happens to have, so a set
+ * badged "Bronze" told you Bronze was bad without telling you what better looked
+ * like or how to get there. Mirrors TIER_EXPLANATIONS in
+ * `idp_common/evaluation/confidence_curve.py` — if the thresholds move there,
+ * they move here.
+ */
+export const LabelAccuracyLegend = (): React.JSX.Element => (
+  <Popover
+    dismissButton={false}
+    position="bottom"
+    size="large"
+    triggerType="custom"
+    header="Estimated label accuracy"
+    content={
+      <SpaceBetween size="xs">
+        <Box variant="span" fontSize="body-s">
+          An estimate of how often these labels are right, inferred from the confidence scores of the run that produced them. It is not a
+          measurement against a known answer — a tier is earned from evidence on this set, never asserted.
+        </Box>
+        <Box variant="span" fontSize="body-s">
+          <Badge color="green">Gold</Badge> — at least 99%, measured on this set rather than extrapolated.
+        </Box>
+        <Box variant="span" fontSize="body-s">
+          <Badge color="blue">Silver</Badge> — at least 95%, with the confidence curve at least partly measured here.
+        </Box>
+        <Box variant="span" fontSize="body-s">
+          <Badge color="severity-neutral">Bronze</Badge> — below 95%, or still estimated from a cross-set prior. Review or score the set to
+          earn a higher tier.
+        </Box>
+        <Box variant="span" fontSize="body-s">
+          <Badge color="severity-neutral">Unrated</Badge> — confidence does not rank errors on this set, so no accuracy claim is defensible.
+          Reviewing only a subset would not be meaningful.
+        </Box>
+        <Box variant="span" fontSize="body-s" color="text-body-secondary">
+          A set whose labels you uploaded or authored by hand is the reference other runs are scored against, so a low figure here is a
+          statement about the confidence data behind the estimate, not about those labels. Where no estimate exists at all, the column says
+          so rather than implying one.
+        </Box>
+      </SpaceBetween>
+    }
+  >
+    <Box variant="span" fontSize="body-s" color="text-status-info">
+      Est. label accuracy <Icon name="status-info" size="small" />
+    </Box>
+  </Popover>
+);
+
+/**
+ * The accuracy cell, including the cases where there is no estimate to show.
+ *
+ * Separate from `renderQualityTier` because the honest answer depends on WHY the
+ * estimate is missing, and only the caller knows: a machine-drafted set with no
+ * curve yet is genuinely unassessed, whereas a set of human ground truth has
+ * nothing to assess. Rendering both as "-" inverted the trust signal — the
+ * authored set, which is the reference, looked worse than the draft that was
+ * being measured against it.
+ */
+export const renderLabelAccuracy = (
+  entry?: { tier?: string | null; reason?: string | null; accuracy?: number | null } | null,
+  labelState?: string | null,
+  isEstimating?: boolean,
+): React.JSX.Element => {
+  if (entry?.tier) return renderQualityTier(entry.tier, entry.reason, entry.accuracy);
+
+  // Estimates arrive one request per set, after the table has already rendered.
+  // Without this the column asserted a verdict for the second or two the calls
+  // were in flight, then replaced it with a percentage — caught on a live stack,
+  // where a 2000-document set flashed "Ground truth" before settling on
+  // "76.1% est. Bronze".
+  if (isEstimating) return <StatusIndicator type="loading">Estimating</StatusIndicator>;
+
+  if (labelState === 'labeled') {
+    return (
+      <Popover
+        dismissButton={false}
+        position="top"
+        size="medium"
+        triggerType="custom"
+        content={
+          <Box variant="span" fontSize="body-s">
+            No accuracy estimate was returned for this set. Its labels are the reference other runs are scored against, so the absence is
+            not a low rating — there is simply no confidence data here to infer a figure from.
+          </Box>
+        }
+      >
+        <Badge color="green">Ground truth</Badge>
+      </Popover>
+    );
+  }
+
+  return <Box color="text-status-inactive">Not assessed yet</Box>;
+};
+
+export const renderQualityTier = (
+  tier?: string | null,
+  reason?: string | null,
+  accuracy?: number | null,
+  /* Callers that know the estimate is unmeasured pass 0, so the tier's number does
+     not contradict a headline rounded for the same reason. Defaults to the existing
+     precision, leaving every current caller unchanged. */
+  decimals = 1,
+): React.JSX.Element => {
+  if (!tier) return <Box color="text-status-inactive">-</Box>;
+  const label = tier.charAt(0).toUpperCase() + tier.slice(1);
+  const detail = (
+    <SpaceBetween size="xxs">
+      <Box variant="span" fontWeight="bold">
+        {label}
+      </Box>
+      <Box variant="span">{reason || ''}</Box>
+    </SpaceBetween>
+  );
+  // Unrated: one compact, clickable verdict. The reason is the whole content of
+  // that verdict and used to be printed inline beside a redundant "Unrated" badge,
+  // which made a status cell four lines tall on every unrated row of the Test Sets
+  // table. The dotted text trigger says there is more; one click shows it.
+  if (tier === 'unrated') {
+    return (
+      <Popover dismissButton={false} position="top" size="medium" triggerType="text" content={detail}>
+        <Box variant="span" color="text-body-secondary">
+          Not rated
+        </Box>
+      </Popover>
+    );
+  }
+  return (
+    <Popover dismissButton={false} position="top" size="medium" triggerType="custom" content={detail}>
+      <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+        {accuracy !== null && accuracy !== undefined ? (
+          <Box variant="span">{(accuracy * 100).toFixed(decimals)}% est.</Box>
+        ) : (
+          <Box variant="span" color="text-body-secondary">
+            Not rated
+          </Box>
+        )}
+        <Badge color={QUALITY_TIER_COLORS[tier] ?? 'severity-neutral'}>{label}</Badge>
+      </SpaceBetween>
+    </Popover>
+  );
+};
+
+/**
+ * How many fields need a human, as a count rather than a score — the same signal
+ * human review uses in the Document List, and a direct measure of the work. The
+ * lowest score stays in the popover because the calibration curve is built on it.
+ */
+export const renderAlertCount = (
+  alertCount?: number | null,
+  fieldCount?: number | null,
+  minConfidence?: number | null,
+  threshold?: number | null,
+): React.JSX.Element | string => {
+  if (alertCount === null || alertCount === undefined) return '-';
+  const detail = (
+    <SpaceBetween size="xxs">
+      <Box variant="span">
+        Lowest field confidence: {minConfidence === null || minConfidence === undefined ? '-' : renderConfidence(minConfidence, threshold)}
+      </Box>
+      <Box variant="span" fontSize="body-s" color="text-body-secondary">
+        {threshold === null || threshold === undefined
+          ? 'Alerts count fields below the default 80% threshold.'
+          : `Alerts count fields below their configured threshold (${((threshold <= 1 ? threshold * 100 : threshold) as number).toFixed(0)}%).`}
+      </Box>
+    </SpaceBetween>
+  );
+  return (
+    <Popover dismissButton={false} position="top" size="medium" triggerType="custom" content={detail}>
+      <Box color={alertCount > 0 ? 'text-status-error' : 'text-status-success'} fontWeight={alertCount > 0 ? 'bold' : 'normal'}>
+        {alertCount === 0 ? `None of ${fieldCount ?? 0} fields flagged` : `${alertCount} of ${fieldCount ?? 0} fields flagged`}
+      </Box>
+    </Popover>
+  );
+};
+
+/**
+ * Where this document stands in the review loop, as distinct from the model's
+ * confidence, which review never changes.
+ */
+export const renderReviewState = (labelSource?: string | null): React.JSX.Element => {
+  if (labelSource === 'reviewed-human') {
+    return <StatusIndicator type="success">Reviewed</StatusIndicator>;
+  }
+  if (labelSource === 'draft-machine') {
+    return <StatusIndicator type="pending">Awaiting review</StatusIndicator>;
+  }
+  if (!labelSource) {
+    return <StatusIndicator type="info">Unlabeled</StatusIndicator>;
+  }
+  // Uploaded or generated ground truth: authored, so there is nothing to review.
+  return <StatusIndicator type="success">Ground truth</StatusIndicator>;
+};
+
+export const formatSize = (size?: number | null): string => {
+  if (size === null || size === undefined) return '-';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+/**
+ * Comparators for the sortable document columns.
+ *
+ * Module-level on purpose: Cloudscape decides which header carries the sorted
+ * chevron by comparing the comparator (or the sorting field) it was handed back
+ * with the ones on the current column definitions. The definitions here are
+ * written inline in the table, so an inline comparator is a new function on
+ * every render — the rows would stay sorted while the chevron fell back to
+ * "sortable", i.e. the same complaint this fixes, one click later.
+ *
+ * Comparators rather than `sortingField` for the same identity reason in
+ * reverse: "Extraction labels" and "Review state" are two renderings of
+ * `labelSource`, so a shared `sortingField` marks both headers as sorted at
+ * once, and neither can order by what its own column shows.
+ */
+export const compareByObjectKey = (a: TestSetDocumentItem, b: TestSetDocumentItem): number => a.objectKey.localeCompare(b.objectKey);
+
+export const compareByLabelSource = (a: TestSetDocumentItem, b: TestSetDocumentItem): number =>
+  (a.labelSource ?? '').localeCompare(b.labelSource ?? '');
+
+/** Documents carrying no alert count sort below zero alerts, not alongside them. */
+export const compareByAlertCount = (a: TestSetDocumentItem, b: TestSetDocumentItem): number => (a.alertCount ?? -1) - (b.alertCount ?? -1);
+
+/**
+ * Review progress, so ascending puts the documents needing work first. Ordered
+ * by the states `renderReviewState` renders, not alphabetically by the raw
+ * `labelSource` — "Awaiting review" after "Ground truth" is noise in the one
+ * column a reviewer sorts to find their queue.
+ */
+const REVIEW_STATE_RANK: Record<string, number> = {
+  '': 0,
+  'draft-machine': 1,
+  'reviewed-human': 2,
+};
+const reviewStateRank = (labelSource?: string | null): number => REVIEW_STATE_RANK[labelSource ?? ''] ?? 3;
+
+export const compareByReviewState = (a: TestSetDocumentItem, b: TestSetDocumentItem): number =>
+  reviewStateRank(a.labelSource) - reviewStateRank(b.labelSource);
+
+const TestSetDetail = (): React.JSX.Element => {
+  const { testSetId } = useParams<{ testSetId: string }>();
+  const navigate = useNavigate();
+  const { navigationOpen, setNavigationOpen } = useAppContext();
+  const { settings } = useSettingsContext();
+  const testSetBucket = (settings as Record<string, unknown>).TestSetBucket as string | undefined;
+
+  const [documents, setDocuments] = useState<TestSetDocumentItem[]>([]);
+  // Server pagination: pageTokens[i] is the nextToken that fetches page i+1.
+  const [pageTokens, setPageTokens] = useState<(string | null)[]>([null]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  // The set's size, from the server. The page length is not the total.
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  /** The set's own status, carried on the documents page. `null` until it is read. */
+  const [setStatus, setSetStatus] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  /** What is in the search box. */
+  const [filterText, setFilterText] = useState('');
+  /**
+   * The search the server is answering, which lags `filterText` by the debounce.
+   * Held separately so the table's copy can distinguish "no search" from "a
+   * search that matched nothing" without reacting to a half-typed word.
+   */
+  const [searchText, setSearchText] = useState('');
+  /** Documents in the whole set matching `searchText`; `null` when none is active. */
+  const [matchCount, setMatchCount] = useState<number | null>(null);
+  /** The search stopped before the end of the set, so `matchCount` is a lower bound. */
+  const [searchTruncated, setSearchTruncated] = useState(false);
+  const [labelJob, setLabelJob] = useState<{
+    jobId: string;
+    status: string;
+    total: number;
+    labeled: number;
+    skippedAlreadyLabeled?: number | null;
+  } | null>(null);
+  const [isStartingLabels, setIsStartingLabels] = useState(false);
+  const [showEffortModal, setShowEffortModal] = useState(false);
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  // `canWrite` is Admin-or-Author, the two groups `publishTestSetVersion` is
+  // declared for in scripts/api_rbac_expectations.yaml. The server is the
+  // authority; this only stops offering a control that would come back 403.
+  const { isAdmin, canWrite } = useUserRole();
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  /**
+   * A publish failure, shown inside the dialog rather than on the page. The dialog stays
+   * open so a retry keeps the user's inputs, and an error behind a modal reaches nobody.
+   */
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishedMessage, setPublishedMessage] = useState<string | null>(null);
+  /**
+   * Highest version this set has published, for the publish dialog. Read when the
+   * dialog opens rather than on page load, and `null` until then.
+   */
+  const [latestVersion, setLatestVersion] = useState<number | null>(null);
+  const [showClearDraftsModal, setShowClearDraftsModal] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [isClearingDrafts, setIsClearingDrafts] = useState(false);
+  const [clearedMessage, setClearedMessage] = useState<string | null>(null);
+  const [worstFirst, setWorstFirst] = useState(true);
+  /**
+   * The column the user sorted by, or `null` for the default order. Held here
+   * rather than taken from `useCollection` because the "worst-first" button is a
+   * second ordering of the same rows: the two have to be able to clear each
+   * other, and a collection's sorting state cannot be cleared once set.
+   */
+  const [sorting, setSorting] = useState<{ column: TableProps.SortingColumn<TestSetDocumentItem>; isDescending: boolean } | null>(null);
+  const [selectedItems, setSelectedItems] = useState<TestSetDocumentItem[]>([]);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [removedMessage, setRemovedMessage] = useState<string | null>(null);
+  const [addDocsMode, setAddDocsMode] = useState<AddDocumentsMode | null>(null);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  /** Progress of an add in flight, from any of the three sources. */
+  const [arrivalNotice, setArrivalNotice] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+  const arrivalTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  /**
+   * Lets only the newest document fetch render its reply. The search box issues a
+   * request per settled keystroke and the replies do not arrive in order; the
+   * reasoning and the measurements are in `latestResponseOnly.ts`.
+   *
+   * `useMemo` rather than `useRef(createLatestResponseGuard())`: the latter calls
+   * the factory on every render and throws away every result but the first, which
+   * reads as if a fresh guard were wanted each time. One guard per mounted table is
+   * what is meant — two tables must not cancel each other's requests.
+   */
+  const responseGuard = useMemo(createLatestResponseGuard, []);
+  const { available: generatorAvailable, getJobStatus } = useSyntheticDataGenerator();
+
+  const fetchPage = useCallback(
+    async (pageIndex: number, tokens: (string | null)[]) => {
+      if (!testSetId) return;
+      // Claim this fetch as the current one. Anything that comes back after a
+      // later fetch has started is discarded below rather than rendered.
+      const isCurrentFetch = responseGuard.claim();
+      setIsLoading(true);
+      setError(null);
+      // Rows may be gone or renumbered after any refetch, so a selection made
+      // against the old page must not survive it.
+      setSelectedItems([]);
+      try {
+        const response = await client.graphql({
+          query: getTestSetDocuments,
+          variables: {
+            testSetId,
+            limit: PAGE_SIZE,
+            nextToken: tokens[pageIndex - 1] ?? undefined,
+            // Searching is the server's job because the set is paginated there:
+            // filtering the 50 rows held here would answer about the page while
+            // looking like it answered about the set.
+            search: searchText || undefined,
+          },
+        });
+        // A superseded reply is thrown away. Without this the rows are whichever
+        // reply lands last, and the ordering is actively against us: the search
+        // box issues one request per settled keystroke, and a broad search is
+        // SLOWER than a narrow one, because every document it returns is hydrated
+        // with a read per section. So "0" (500 matches, 50 rows to hydrate)
+        // routinely lands after "0063" (1 match) and replaces the one match with
+        // page 1 of almost the whole set — the search looking like it reset
+        // itself a moment after working.
+        if (!isCurrentFetch()) return;
+        const page = response.data?.getTestSetDocuments;
+        setDocuments((page?.documents ?? []) as TestSetDocumentItem[]);
+        setHasMore(Boolean(page?.nextToken));
+        setTotalCount(page?.totalCount ?? null);
+        setSetStatus(page?.status ?? null);
+        setMatchCount(page?.matchCount ?? null);
+        setSearchTruncated(Boolean(page?.searchTruncated));
+        setPageTokens((prev) => {
+          const next = [...prev];
+          next[pageIndex] = page?.nextToken ?? null;
+          return next;
+        });
+        // Resume polling a job this session did not start: harvesting happens on
+        // read, so an unpolled job stays RUNNING forever.
+        if (page?.activeLabelJobId) {
+          setLabelJob((current) =>
+            current?.jobId === page.activeLabelJobId
+              ? current
+              : { jobId: page.activeLabelJobId as string, status: 'RUNNING', total: 0, labeled: 0 },
+          );
+        }
+      } catch (err) {
+        logger.error('Error loading test set documents:', err);
+        // Same reasoning as the success path: a superseded request's failure must
+        // not put an error banner over a later request that worked.
+        if (isCurrentFetch()) {
+          setError('Failed to load test set documents. Please try again.');
+        }
+      } finally {
+        // Only the current request owns the spinner. An earlier one clearing it
+        // would report "loaded" while the request whose rows will actually be
+        // shown is still in flight.
+        if (isCurrentFetch()) setIsLoading(false);
+      }
+    },
+    [testSetId, searchText],
+  );
+
+  /**
+   * The latest `fetchPage`, for the two arrival/generation polls below.
+   *
+   * Those create a `setInterval` once and their callback would otherwise keep
+   * calling the `fetchPage` that existed when the interval started — which closes
+   * over the search in force at *that* moment. A search typed while an add or a
+   * generation is in flight was therefore thrown away by the next poll, which
+   * refetched unfiltered: the same symptom as a lost search, reached by a
+   * different route. Click handlers are rebuilt every render and so are fine.
+   */
+  const fetchPageRef = useRef(fetchPage);
+  useEffect(() => {
+    fetchPageRef.current = fetchPage;
+  }, [fetchPage]);
+
+  /**
+   * Let the search box settle before asking the server, so a typed word is one
+   * scan of the set rather than one per keystroke.
+   */
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchText(filterText.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [filterText]);
+
+  /**
+   * Loads page 1, and reloads it whenever the search changes — `fetchPage` closes
+   * over `searchText`, so a new search gives this effect a new identity. Page 1 is
+   * the only page a new search can land on: the tokens held are offsets into the
+   * previous search's matches, which say nothing about this one's.
+   *
+   * The match count and the truncation flag are dropped here rather than left to
+   * be replaced when the reply lands. They describe the *previous* needle, and the
+   * reply is a debounce plus a round trip away — so leaving them would caption the
+   * table "(50 of 73 matching)" while the search that produced 73 is no longer the
+   * one in the box. That is the same statement-about-stale-data this page is being
+   * fixed for, one layer up.
+   */
+  useEffect(() => {
+    setPageTokens([null]);
+    setCurrentPageIndex(1);
+    setMatchCount(null);
+    setSearchTruncated(false);
+    fetchPage(1, [null]);
+  }, [testSetId, fetchPage]);
+
+  const handlePageChange = (pageIndex: number) => {
+    setCurrentPageIndex(pageIndex);
+    fetchPage(pageIndex, pageTokens);
+  };
+
+  const stopArrivalWatch = () => {
+    if (arrivalTimer.current) {
+      clearInterval(arrivalTimer.current);
+      arrivalTimer.current = null;
+    }
+  };
+  useEffect(() => stopArrivalWatch, []);
+
+  /** After a bucket or zip add: re-read the set's size until it moves, then refetch. */
+  const watchForArrival = (message: string) => {
+    stopArrivalWatch();
+    setRemovedMessage(null);
+    const sizeBefore = totalCount;
+    const startedAt = Date.now();
+    setArrivalNotice({ type: 'info', text: message });
+    arrivalTimer.current = setInterval(async () => {
+      if (Date.now() - startedAt > ARRIVAL_WATCH_MS) {
+        stopArrivalWatch();
+        setArrivalNotice({ type: 'info', text: 'Still adding documents. Refresh in a moment to see them.' });
+        return;
+      }
+      try {
+        const response = await client.graphql({
+          query: getTestSetDocuments,
+          variables: { testSetId: testSetId ?? '', limit: 1 },
+        });
+        const size = response.data?.getTestSetDocuments?.totalCount ?? null;
+        if (size !== null && size !== sizeBefore) {
+          stopArrivalWatch();
+          setArrivalNotice({ type: 'success', text: `Documents are arriving — this set now has ${size} document(s).` });
+          setCurrentPageIndex(1);
+          fetchPageRef.current(1, [null]);
+        }
+      } catch (err) {
+        logger.debug('Arrival poll failed; will retry:', err);
+      }
+    }, ARRIVAL_POLL_MS);
+  };
+
+  /** After starting generation into this set: follow the job, then refetch. */
+  const watchGeneration = (jobId: string) => {
+    stopArrivalWatch();
+    setRemovedMessage(null);
+    setArrivalNotice({ type: 'info', text: 'Generating documents into this set. They appear here when the job completes.' });
+    arrivalTimer.current = setInterval(async () => {
+      const job = await getJobStatus(jobId);
+      if (!job) return;
+      if (job.status === 'COMPLETED') {
+        stopArrivalWatch();
+        setArrivalNotice({ type: 'success', text: 'Generation complete — the new documents are in this set.' });
+        setCurrentPageIndex(1);
+        fetchPageRef.current(1, [null]);
+      } else if (job.status === 'FAILED') {
+        stopArrivalWatch();
+        setArrivalNotice({ type: 'error', text: `Generation failed: ${job.errorMessage || 'unknown error'}` });
+      } else if (job.statusMessage) {
+        setArrivalNotice({ type: 'info', text: `Generating documents into this set: ${job.statusMessage}` });
+      }
+    }, GENERATION_POLL_MS);
+  };
+
+  const handleRemoveDocuments = async () => {
+    if (!testSetId || selectedItems.length === 0) return;
+    setIsRemoving(true);
+    setError(null);
+    // An arrival notice from an earlier add would otherwise sit beside the
+    // removal message, still announcing the documents that were just removed.
+    stopArrivalWatch();
+    setArrivalNotice(null);
+    try {
+      const response = await client.graphql({
+        query: removeDocumentsFromTestSet,
+        // objectKey is the name relative to input/, which is what the mutation
+        // deletes under; inputKey is the full object key.
+        variables: { testSetId, fileNames: selectedItems.map((d) => d.objectKey) },
+      });
+      setShowRemoveModal(false);
+      setRemovedMessage(response.data?.removeDocumentsFromTestSet?.lastAddResult ?? `Removed ${selectedItems.length} document(s).`);
+      setCurrentPageIndex(1);
+      fetchPage(1, [null]);
+    } catch (err) {
+      logger.error('Error removing documents:', err);
+      setShowRemoveModal(false);
+      setError(`Could not remove the documents: ${getErrorMessage(err)}`);
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
+  /**
+   * Open the publish dialog, and read the set's existing versions so it can name the
+   * number it is about to create.
+   *
+   * Read here rather than on page load because `getTestSetVersions` is Admin-or-Author
+   * while this page is also reachable by an Annotator, and because nobody who never
+   * opens the dialog needs it. A failure is logged and leaves the number unknown with
+   * the dialog still usable — the server assigns the real number either way.
+   */
+  const openPublishDialog = async () => {
+    setError(null);
+    setPublishedMessage(null);
+    setLatestVersion(null);
+    setShowPublishModal(true);
+    try {
+      const response = await client.graphql({
+        query: getTestSetVersions,
+        variables: { testSetId: testSetId ?? '' },
+      });
+      const numbers = (response.data?.getTestSetVersions ?? []).map((v) => v?.version ?? 0);
+      setLatestVersion(numbers.length > 0 ? Math.max(...numbers) : 0);
+    } catch (err) {
+      logger.error('Error loading test set versions:', err);
+    }
+  };
+
+  /**
+   * Identifies one publish *attempt*, across however many tries it takes.
+   *
+   * Publishing copies the set's labels, and the dispatcher gives up at 20s while the
+   * resolver runs on — so an error here does not mean nothing happened. Retrying under the
+   * same token replays the version the first try created, or is told that try is still
+   * running, instead of making a second version and a second full copy. Retired on success
+   * and on dismissal, so a deliberate second publish is a new attempt.
+   */
+  const publishAttemptToken = useRef<string | null>(null);
+
+  const dismissPublishDialog = () => {
+    // Closing the dialog abandons the attempt, so the token goes with it. Keeping it would
+    // make the next, deliberate publish replay this one's version instead of creating a new
+    // version.
+    publishAttemptToken.current = null;
+    setPublishError(null);
+    setShowPublishModal(false);
+  };
+
+  const handlePublishVersion = async (input: PublishVersionInput) => {
+    if (!testSetId) return;
+    if (!publishAttemptToken.current) {
+      publishAttemptToken.current = globalThis.crypto?.randomUUID?.() ?? `publish-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+    setIsPublishing(true);
+    setPublishError(null);
+    setError(null);
+    try {
+      const response = await client.graphql({
+        query: publishTestSetVersion,
+        variables: { input: { testSetId, ...input, clientToken: publishAttemptToken.current } },
+      });
+      const published = response.data?.publishTestSetVersion;
+      publishAttemptToken.current = null;
+      setShowPublishModal(false);
+      // Read from the response, not from `input`: a retry replays whatever the first try
+      // published, which may have made a different choice about the active reference — and
+      // the dialog's own inputs reset to their defaults each time it opens. Reporting the
+      // request would announce a pointer move that never happened.
+      const movedReference = published?.version != null && published.activeReference === published.version;
+      setPublishedMessage(
+        movedReference
+          ? `Published version ${published?.version ?? ''} and made it this set's active reference.`
+          : `Published version ${published?.version ?? ''}. The set's active reference is unchanged.`,
+      );
+    } catch (err) {
+      logger.error('Error publishing test set version:', err);
+      // The dialog stays open, holding the label, notes and active-reference choice the user
+      // entered, so a retry sends the same token *and* the same input. Closing it would
+      // reset those to their defaults, and the retry would publish something the user never
+      // chose if the first try had genuinely failed.
+      setPublishError(getErrorMessage(err));
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleResetLabels = async () => {
+    setIsResetting(true);
+    setError(null);
+    try {
+      const response = await client.graphql({
+        query: resetTestSetLabels,
+        variables: { testSetId: testSetId ?? '' },
+      });
+      setShowClearDraftsModal(false);
+      setResetConfirmText('');
+      setLabelJob(null);
+      setClearedMessage(response.data?.resetTestSetLabels?.lastAddResult ?? 'All labels reset.');
+      fetchPage(1, [null]);
+      setCurrentPageIndex(1);
+    } catch (err) {
+      logger.error('Error resetting labels:', err);
+      setError('Failed to reset labels. Please try again.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleClearDraftLabels = async () => {
+    setIsClearingDrafts(true);
+    setError(null);
+    try {
+      const response = await client.graphql({
+        query: clearDraftLabels,
+        variables: { testSetId: testSetId ?? '' },
+      });
+      setShowClearDraftsModal(false);
+      // The job pointer is gone server-side, so drop the local banner with it.
+      setLabelJob(null);
+      setClearedMessage(response.data?.clearDraftLabels?.lastAddResult ?? 'Draft labels cleared.');
+      fetchPage(1, [null]);
+      setCurrentPageIndex(1);
+    } catch (err) {
+      logger.error('Error clearing draft labels:', err);
+      setError('Failed to clear draft labels. Please try again.');
+    } finally {
+      setIsClearingDrafts(false);
+    }
+  };
+
+  const handleGenerateDraftLabels = async (configVersion?: string, objectKeys?: string[], configRevision?: number) => {
+    if (!testSetId) return;
+    setIsStartingLabels(true);
+    setError(null);
+    try {
+      const response = await client.graphql({
+        query: generateDraftLabels,
+        variables: { input: { testSetId, configVersion, objectKeys, configRevision } },
+      });
+      const job = response.data?.generateDraftLabels;
+      if (job) {
+        setLabelJob({
+          jobId: job.jobId,
+          status: job.status,
+          total: job.total ?? 0,
+          labeled: job.labeled ?? 0,
+          skippedAlreadyLabeled: job.skippedAlreadyLabeled ?? 0,
+        });
+        setShowLabelModal(false);
+      }
+    } catch (err) {
+      logger.error('Error starting draft labeling:', err);
+      // Surface the server's message: several are deliberate and actionable.
+      const message = (err as { errors?: { message?: string }[] })?.errors?.[0]?.message;
+      setError(message || 'Failed to start draft labeling. Please try again.');
+    } finally {
+      setIsStartingLabels(false);
+    }
+  };
+
+  /**
+   * Poll the labeling job while it runs; the resolver harvests finished documents
+   * on read, so polling is what advances the job.
+   *
+   * Keyed on an explicit tick and never on fetchPage/pageTokens: a tick mutates
+   * pageTokens, so depending on it would tear the effect down mid-flight and each
+   * tick would cancel its own successor.
+   */
+  const [labelPollTick, setLabelPollTick] = useState(0);
+  const [documentsStale, setDocumentsStale] = useState(false);
+  const jobId = labelJob?.jobId;
+  const jobRunning = labelJob?.status === 'RUNNING';
+
+  useEffect(() => {
+    if (!testSetId || !jobId || !jobRunning) return undefined;
+    const timer = setTimeout(async () => {
+      try {
+        const response = await client.graphql({
+          query: getDraftLabelJob,
+          variables: { testSetId, jobId },
+        });
+        const job = response.data?.getDraftLabelJob;
+        if (job) {
+          setLabelJob({
+            jobId: job.jobId,
+            status: job.status,
+            total: job.total ?? 0,
+            labeled: job.labeled ?? 0,
+            skippedAlreadyLabeled: job.skippedAlreadyLabeled ?? 0,
+          });
+          setDocumentsStale(true);
+          if (job.status === 'FAILED') {
+            setError(job.error ? `Draft labeling failed: ${job.error}` : 'Draft labeling failed.');
+          }
+        }
+      } catch (err) {
+        logger.error('Error polling draft label job:', err);
+      } finally {
+        setLabelPollTick((n) => n + 1);
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [testSetId, jobId, jobRunning, labelPollTick]);
+
+  // Table refresh lives in its own effect to keep fetchPage out of the poll
+  // loop's dependencies.
+  useEffect(() => {
+    if (!documentsStale) return;
+    setDocumentsStale(false);
+    fetchPage(currentPageIndex, pageTokens);
+  }, [documentsStale, currentPageIndex, pageTokens, fetchPage]);
+
+  /**
+   * The rows to show, already narrowed by the search. There is no filtering left to
+   * do here: the server searched the whole set and `documents` is a page of the
+   * matches, so filtering it again would be filtering a filter — and when this page
+   * *was* the filter, a document two pages along read as "no results".
+   */
+  const filteredDocs = documents;
+
+  /**
+   * Why a version cannot be published right now, or `null` when it can. Passed to the
+   * button as `disabledReason`, so every condition that dims the control also says
+   * why — including the transient one, since a control that is dim for a reason it
+   * does not give is the outcome this is meant to avoid.
+   *
+   * A version copies the labels as they stand, so the conditions are about whether the
+   * set has settled: a copy taken while something is still writing freezes a half-written
+   * set, permanently and under a version number. Permission is a separate check on the
+   * control itself.
+   *
+   * The status branch comes before the empty check because a set still being copied
+   * into has no documents *yet*, and "still copying" is the more useful of the two
+   * true statements. `totalCount` is also `null` when the document read failed, which
+   * is not the same as an empty set: checking it alone would leave the control live on
+   * a page showing a load error and no documents.
+   *
+   * ⚠️ `null` status does not block. It has to be permitted — the field is unknown
+   * until the first documents read returns — so this guard fails open by
+   * construction, and the resolver returning `status` is what makes it bite. That is
+   * asserted in `test_test_set_resolver.py`, not here.
+   */
+  const publishBlockedReason = isLoading
+    ? 'Loading this test set'
+    : labelJob?.status === 'RUNNING'
+      ? 'Wait for draft labeling to finish, so the version records a settled set of labels'
+      : setStatus === 'FAILED'
+        ? 'This test set failed to build, so there is nothing settled to record'
+        : setStatus && setStatus !== 'COMPLETED'
+          ? `This test set is ${setStatus.toLowerCase()}. Wait for it to finish before recording a version.`
+          : totalCount === 0 || (totalCount === null && documents.length === 0)
+            ? 'This test set has no documents to publish'
+            : null;
+
+  const hasConfidence = documents.some((d) => d.minConfidence !== null && d.minConfidence !== undefined);
+  // Sorts the current page only: pagination is server-side and opaque, so a
+  // set-wide ranking is not available here. The header says so whenever the page
+  // is not the whole set, since a page-scoped order looks set-wide.
+  const visibleDocs = (() => {
+    if (sorting) {
+      const comparator = sorting.column.sortingComparator;
+      if (!comparator) return filteredDocs;
+      const direction = sorting.isDescending ? -1 : 1;
+      return [...filteredDocs].sort((a, b) => comparator(a, b) * direction);
+    }
+    if (worstFirst && hasConfidence) {
+      return [...filteredDocs].sort((a, b) => {
+        const av = a.minConfidence ?? Number.POSITIVE_INFINITY;
+        const bv = b.minConfidence ?? Number.POSITIVE_INFINITY;
+        return av - bv;
+      });
+    }
+    return filteredDocs;
+  })();
+
+  const tableDescription =
+    [
+      hasConfidence
+        ? 'Confidence alerts are the fields below their configured threshold — review the documents with the most first.'
+        : null,
+      // Sorting only, and only when the rows on screen are not all there is to
+      // order. Search is no longer page-scoped, so the sentence no longer says it
+      // is — and under a search what sorting falls short of is the matches, not
+      // the set.
+      searchText
+        ? (matchCount ?? 0) > filteredDocs.length
+          ? 'Sorting orders this page of matches, not all of them.'
+          : null
+        : totalCount !== null && totalCount > filteredDocs.length
+          ? 'Sorting orders this page, not the whole set.'
+          : null,
+      searchTruncated
+        ? `This set is too large to search in full, so there may be matches beyond the ${matchCount} found. Narrow the search.`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' ') || undefined;
+
+  /**
+   * The table's count.
+   *
+   * Under a search this counts the matches in the **whole set**, because a page
+   * count next to a search box reads as "this is everything that matches". The
+   * server supplies it; it is not derivable from the rows on screen, which are one
+   * page of the matches.
+   *
+   * No count at all while the first page is loading: '(0)' reads as "this set is
+   * empty", which is a statement we cannot make yet and the one that most misleads.
+   */
+  const tableCounter = (() => {
+    if (isLoading && filteredDocs.length === 0) return undefined;
+    if (searchText) {
+      // No count while this search's own count is still in flight. The counts are
+      // cleared when the needle changes, so `null` here means "not answered yet",
+      // and counting the rows instead would caption the previous search's page.
+      if (matchCount === null && isLoading) return undefined;
+      // A search whose count the server did not return — only possible against an
+      // older resolver — falls back to counting the page rather than claiming a total.
+      if (matchCount === null) return `(${filteredDocs.length})`;
+      // '+' because a truncated search scanned part of the set, so its count is a
+      // floor. Dropping it would report a lower bound as a total.
+      const matches = `${matchCount}${searchTruncated ? '+' : ''}`;
+      return matchCount > filteredDocs.length ? `(${filteredDocs.length} of ${matches} matching)` : `(${matches} matching)`;
+    }
+    return totalCount !== null && totalCount > filteredDocs.length
+      ? `(${filteredDocs.length} of ${totalCount})`
+      : `(${filteredDocs.length})`;
+  })();
+
+  return (
+    <AppLayout
+      headerSelector="#top-navigation"
+      ariaLabels={appLayoutLabels}
+      navigation={<Navigation />}
+      navigationOpen={navigationOpen}
+      onNavigationChange={({ detail }) => setNavigationOpen(detail.open)}
+      toolsHide
+      content={
+        <ContentLayout
+          header={
+            <SpaceBetween size="xs">
+              <BreadcrumbGroup
+                items={[
+                  { text: 'Test Studio', href: `#${TEST_STUDIO_PATH}?tab=sets` },
+                  { text: testSetId ?? '', href: '' },
+                ]}
+              />
+              <Header
+                variant="h1"
+                description="Browse this test set's documents and view or edit their ground truth"
+                actions={
+                  // Set-level, so it belongs on the page header rather than in the
+                  // Documents table's action row, which acts on rows. It sits here
+                  // rather than on the table page because publishing completes the
+                  // pass that Generate draft labels and Annotate below begin.
+                  canWrite ? (
+                    // `disabledReason` rather than a wrapper's `title`: Cloudscape
+                    // wires it as the button's own accessible description, and a
+                    // disabled button is not focusable, so an ancestor tooltip reaches
+                    // nobody using a keyboard or a screen reader.
+                    <Button
+                      onClick={openPublishDialog}
+                      disabled={publishBlockedReason !== null}
+                      disabledReason={publishBlockedReason ?? undefined}
+                      loading={isPublishing}
+                    >
+                      Publish version
+                    </Button>
+                  ) : undefined
+                }
+              >
+                Test Set: {testSetId}
+              </Header>
+            </SpaceBetween>
+          }
+        >
+          <SpaceBetween size="l">
+            {error && <Alert type="error">{error}</Alert>}
+
+            {labelJob && labelJob.status === 'RUNNING' && (
+              <Alert type="info">
+                <StatusIndicator type="in-progress">
+                  Draft labeling in progress — {labelJob.labeled} of {labelJob.total} document(s) labeled. Labels appear here as they
+                  complete.
+                  {labelJob.skippedAlreadyLabeled
+                    ? ` Skipping ${labelJob.skippedAlreadyLabeled} document(s) that already have ground truth.`
+                    : ''}
+                </StatusIndicator>
+              </Alert>
+            )}
+
+            {clearedMessage && (
+              <Alert type="success" dismissible onDismiss={() => setClearedMessage(null)}>
+                {clearedMessage} Generate draft labels again to re-label with a different configuration.
+              </Alert>
+            )}
+
+            {removedMessage && (
+              <Alert type="success" dismissible onDismiss={() => setRemovedMessage(null)}>
+                {removedMessage}
+              </Alert>
+            )}
+
+            {publishedMessage && (
+              <Alert type="success" dismissible onDismiss={() => setPublishedMessage(null)}>
+                {publishedMessage}
+              </Alert>
+            )}
+
+            {arrivalNotice && (
+              <Alert
+                type={arrivalNotice.type}
+                dismissible
+                onDismiss={() => {
+                  stopArrivalWatch();
+                  setArrivalNotice(null);
+                }}
+              >
+                {arrivalNotice.text}
+              </Alert>
+            )}
+
+            {labelJob && labelJob.status === 'COMPLETED' && (
+              <Alert type="success" dismissible onDismiss={() => setLabelJob(null)}>
+                Draft labeling complete — {labelJob.labeled} document(s) labeled
+                {labelJob.skippedAlreadyLabeled ? `, ${labelJob.skippedAlreadyLabeled} skipped (already had ground truth)` : ''}. Review the
+                documents with the most confidence alerts first, then publish a version to freeze them as ground truth.
+              </Alert>
+            )}
+
+            <Table
+              header={
+                <Header
+                  counter={tableCounter}
+                  description={tableDescription}
+                  actions={
+                    <SpaceBetween direction="horizontal" size="xs">
+                      {hasConfidence && (
+                        <Button
+                          onClick={() => {
+                            // A column sort overrides worst-first, so while one is
+                            // active this button re-applies worst-first rather than
+                            // toggling away an order that is not on screen.
+                            setWorstFirst((prev) => (sorting ? true : !prev));
+                            setSorting(null);
+                          }}
+                        >
+                          {worstFirst && !sorting ? 'Sort by name' : 'Sort worst-first'}
+                        </Button>
+                      )}
+                      <ButtonDropdown
+                        items={[
+                          { id: 'add-processed', text: 'From processed documents' },
+                          { id: 'add-pattern', text: 'From files in a bucket', disabled: !isAdmin, disabledReason: 'Administrators only' },
+                          { id: 'add-upload', text: 'From a zip upload' },
+                          {
+                            id: 'add-generate',
+                            text: 'Generate synthetic documents',
+                            disabled: !generatorAvailable,
+                            disabledReason: 'Install the Test Set Generator extension to generate documents.',
+                          },
+                        ]}
+                        onItemClick={({ detail }) => {
+                          if (detail.id === 'add-processed') setAddDocsMode('documents');
+                          else if (detail.id === 'add-pattern') setAddDocsMode('pattern');
+                          else if (detail.id === 'add-upload') setAddDocsMode('upload');
+                          else if (detail.id === 'add-generate') setShowGenerateModal(true);
+                        }}
+                        disabled={isLoading}
+                        expandToViewport
+                      >
+                        Add documents
+                      </ButtonDropdown>
+                      <Button
+                        iconName="gen-ai"
+                        onClick={() => setShowLabelModal(true)}
+                        loading={isStartingLabels}
+                        disabled={isLoading || labelJob?.status === 'RUNNING' || totalCount === 0}
+                      >
+                        Generate draft labels
+                      </Button>
+                      {/* Routed through the effort estimate rather than straight to
+                          the queue, so "how much to review" is decided before
+                          committing a team. */}
+                      <Button onClick={() => setShowEffortModal(true)} iconName="user-profile">
+                        Annotate
+                      </Button>
+                      {/* Needed because the harvest only replaces a draft when the
+                          new run produces a section for it: a run that splits
+                          differently leaves orphan sections behind. */}
+                      {/* The only action here that destroys work. It sat in the
+                          same row as Refresh and Annotate with identical styling,
+                          so nothing but the label distinguished it. */}
+                      <Button
+                        iconName="remove"
+                        onClick={() => setShowClearDraftsModal(true)}
+                        disabled={isLoading || labelJob?.status === 'RUNNING'}
+                      >
+                        Clear draft labels
+                      </Button>
+                      <span
+                        title={
+                          selectedItems.length === 0
+                            ? 'Select documents to remove'
+                            : labelJob?.status === 'RUNNING'
+                              ? 'Wait for draft labeling to finish'
+                              : undefined
+                        }
+                      >
+                        <Button
+                          iconName="remove"
+                          onClick={() => setShowRemoveModal(true)}
+                          disabled={selectedItems.length === 0 || isLoading || labelJob?.status === 'RUNNING'}
+                        >
+                          Remove
+                        </Button>
+                      </span>
+                      <Button iconName="refresh" onClick={() => fetchPage(currentPageIndex, pageTokens)} disabled={isLoading}>
+                        Refresh
+                      </Button>
+                    </SpaceBetween>
+                  }
+                >
+                  Documents
+                </Header>
+              }
+              columnDefinitions={[
+                {
+                  id: 'thumbnail',
+                  header: 'Preview',
+                  cell: (item: TestSetDocumentItem) =>
+                    testSetBucket ? <TestDocThumbnail bucket={testSetBucket} inputKey={item.inputKey} /> : null,
+                  width: 130,
+                },
+                {
+                  id: 'objectKey',
+                  header: 'Document',
+                  cell: (item: TestSetDocumentItem) => (
+                    <Link href={testSetDocumentHref(testSetId ?? '', item.objectKey)}>{item.objectKey}</Link>
+                  ),
+                  sortingComparator: compareByObjectKey,
+                },
+                {
+                  id: 'labelSource',
+                  // Provenance of the extracted field values only — not of class or
+                  // split labels, which are separate things.
+                  header: 'Extraction labels',
+                  cell: (item: TestSetDocumentItem) => renderLabelSource(item.labelSource),
+                  sortingComparator: compareByLabelSource,
+                },
+                {
+                  id: 'alertCount',
+                  header: 'Confidence alerts',
+                  cell: (item: TestSetDocumentItem) =>
+                    renderAlertCount(item.alertCount, item.fieldCount, item.minConfidence, item.confidenceThreshold),
+                  sortingComparator: compareByAlertCount,
+                },
+                {
+                  id: 'reviewState',
+                  // The only column that moves as annotation progresses; confidence
+                  // alerts are the model's own assessment and review never changes
+                  // them.
+                  header: 'Review state',
+                  cell: (item: TestSetDocumentItem) => renderReviewState(item.labelSource),
+                  sortingComparator: compareByReviewState,
+                },
+                {
+                  id: 'size',
+                  header: 'Size',
+                  cell: (item: TestSetDocumentItem) => formatSize(item.size),
+                },
+                {
+                  id: 'lastModified',
+                  header: 'Last modified',
+                  cell: (item: TestSetDocumentItem) => (item.lastModified ? new Date(item.lastModified).toLocaleString() : '-'),
+                },
+                {
+                  id: 'sections',
+                  header: 'GT sections',
+                  cell: (item: TestSetDocumentItem) => item.sections.length,
+                },
+                {
+                  id: 'rowActions',
+                  header: '',
+                  // Explicit width: as the last column with an empty header this
+                  // collapses and the label wraps one character per line.
+                  width: 120,
+                  cell: (item: TestSetDocumentItem) => (
+                    <Box variant="span" fontSize="body-s">
+                      <Link href={testSetAnnotateHref(testSetId ?? '', item.objectKey)}>Annotate</Link>
+                    </Box>
+                  ),
+                },
+              ]}
+              items={visibleDocs}
+              // The chevrons are rendered by any column that declares a sorting
+              // basis, but the state is the caller's: without these three the
+              // headers invited a click that could do nothing.
+              sortingColumn={sorting?.column}
+              sortingDescending={sorting?.isDescending}
+              onSortingChange={({ detail }) => setSorting({ column: detail.sortingColumn, isDescending: Boolean(detail.isDescending) })}
+              selectionType="multi"
+              selectedItems={selectedItems}
+              onSelectionChange={({ detail }) => setSelectedItems(detail.selectedItems)}
+              ariaLabels={{
+                selectionGroupLabel: 'Document selection',
+                allItemsSelectionLabel: () => 'Select all documents on this page',
+                itemSelectionLabel: (_data, item) => `Select ${item.objectKey}`,
+              }}
+              loading={isLoading}
+              loadingText="Loading documents"
+              trackBy="inputKey"
+              filter={
+                <TextFilter
+                  filteringText={filterText}
+                  filteringPlaceholder="Find documents in this set"
+                  filteringAriaLabel="Find documents in this set"
+                  onChange={({ detail }) => setFilterText(detail.filteringText)}
+                />
+              }
+              pagination={
+                <Pagination
+                  currentPageIndex={currentPageIndex}
+                  pagesCount={hasMore ? currentPageIndex + 1 : currentPageIndex}
+                  openEnd={hasMore}
+                  onChange={({ detail }) => handlePageChange(detail.currentPageIndex)}
+                />
+              }
+              empty={
+                <Box textAlign="center" color="inherit">
+                  <b>No documents</b>
+                  <Box variant="p" color="inherit">
+                    {/* "in this test set", not "on this page": the search ran over the
+                        whole set, so this is now a statement about the set.
+
+                        Keyed on `searchText`, NOT on `filterText`. `filterText` is
+                        what is in the box, which runs ahead of the rows by the
+                        debounce plus a round trip — so clearing the box after a
+                        search that matched nothing would, for that window, tell the
+                        user "this test set has no documents" about a set full of
+                        them, and while typing it would quote a needle the server has
+                        not answered about yet. `searchText` is '' exactly when the
+                        server was last asked without a search, which is the
+                        condition this sentence is about. */}
+                    {searchText
+                      ? `No document in this test set matches "${searchText}".`
+                      : 'This test set has no documents. Use Add documents to bring some in: processed documents, files in a bucket, a zip upload, or generated documents.'}
+                  </Box>
+                </Box>
+              }
+            />
+
+            <GenerateDraftLabelsModal
+              setTotalCount={totalCount}
+              visible={showLabelModal}
+              testSetId={testSetId ?? ''}
+              submitting={isStartingLabels}
+              onDismiss={() => setShowLabelModal(false)}
+              onSubmit={handleGenerateDraftLabels}
+            />
+
+            <PublishVersionModal
+              visible={showPublishModal}
+              testSetId={testSetId ?? ''}
+              documentCount={totalCount}
+              latestVersion={latestVersion}
+              submitting={isPublishing}
+              error={publishError}
+              onDismiss={dismissPublishDialog}
+              onConfirm={handlePublishVersion}
+            />
+
+            <RemoveDocumentsModal
+              visible={showRemoveModal}
+              documents={selectedItems}
+              remaining={Math.max(0, (totalCount ?? filteredDocs.length) - selectedItems.length)}
+              submitting={isRemoving}
+              onDismiss={() => setShowRemoveModal(false)}
+              onConfirm={handleRemoveDocuments}
+            />
+
+            <AddDocumentsModals
+              testSet={testSetId ? { id: testSetId, name: testSetId } : null}
+              mode={addDocsMode}
+              onDismiss={() => setAddDocsMode(null)}
+              onSubmitted={({ message }) => {
+                setAddDocsMode(null);
+                watchForArrival(`${message} This list refreshes when they arrive.`);
+              }}
+            />
+
+            {generatorAvailable && testSetId && (
+              <GenerateSyntheticDataModal
+                visible={showGenerateModal}
+                initialDestination={{ testSetId, label: testSetId }}
+                onDismiss={() => setShowGenerateModal(false)}
+                onStarted={(startedJobId) => {
+                  setShowGenerateModal(false);
+                  watchGeneration(startedJobId);
+                }}
+              />
+            )}
+
+            <ReviewEffortModal
+              visible={showEffortModal}
+              testSetId={testSetId ?? ''}
+              onDismiss={() => setShowEffortModal(false)}
+              onContinue={() => {
+                setShowEffortModal(false);
+                navigate(testSetAnnotateHref(testSetId ?? '').replace(/^#/, ''));
+              }}
+            />
+
+            <Modal
+              visible={showClearDraftsModal}
+              onDismiss={() => setShowClearDraftsModal(false)}
+              header="Clear draft labels"
+              footer={
+                <Box float="right">
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <Button variant="link" onClick={() => setShowClearDraftsModal(false)}>
+                      Cancel
+                    </Button>
+                    {/* Names what will be deleted, so the confirm button is not
+                        interchangeable with every other primary in the app. */}
+                    <Button variant="primary" iconName="remove" onClick={handleClearDraftLabels} loading={isClearingDrafts}>
+                      Delete draft labels
+                    </Button>
+                  </SpaceBetween>
+                </Box>
+              }
+            >
+              <SpaceBetween size="s">
+                <Box>
+                  Deletes every machine-generated draft label in this test set, leaving the documents in place so you can re-label them with
+                  a different configuration.
+                </Box>
+                {/* Only draft-machine labels are removed; reviewed, uploaded and
+                    generated ground truth survives a re-label. */}
+                <Alert type="info">
+                  Reviewed labels, and any ground truth you uploaded or generated, are kept. Only labels tagged <b>Draft (machine)</b> are
+                  removed.
+                </Alert>
+
+                {/* Collapsed by default and Admin-only: a full reset discards the
+                    team's confirmed annotations, so it is deliberately harder to
+                    reach than the safe action above and requires the set id typed
+                    to confirm. */}
+                {isAdmin && (
+                  <ExpandableSection headerText="Advanced" variant="footer">
+                    <SpaceBetween size="s">
+                      <Alert type="warning" header="Reset all labels, including reviewed ones">
+                        This deletes <b>every</b> label in this test set — reviewed and confirmed annotations, uploaded ground truth, the
+                        review history, and the calibration measurements collected from past reviews. The documents themselves are kept. The
+                        test set returns to <b>Unlabeled</b>, as if it had just been created.
+                        <Box variant="p" padding={{ top: 'xs' }}>
+                          There is no undo. Annotation work discarded here cannot be recovered.
+                        </Box>
+                      </Alert>
+                      <FormField
+                        label={
+                          <>
+                            To confirm, type <b>{testSetId}</b>
+                          </>
+                        }
+                      >
+                        <Input
+                          value={resetConfirmText}
+                          onChange={({ detail }) => setResetConfirmText(detail.value)}
+                          placeholder={testSetId}
+                          disabled={isResetting}
+                        />
+                      </FormField>
+                      <Button onClick={handleResetLabels} loading={isResetting} disabled={resetConfirmText !== testSetId}>
+                        Reset all labels
+                      </Button>
+                    </SpaceBetween>
+                  </ExpandableSection>
+                )}
+              </SpaceBetween>
+            </Modal>
+          </SpaceBetween>
+        </ContentLayout>
+      }
+    />
+  );
+};
+
+export default TestSetDetail;

@@ -1,0 +1,835 @@
+#!/usr/bin/env python3
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+"""
+Pricing-lookup tests for ``SaveReportingData._get_unit_cost`` (GitHub issue #926).
+
+Three things are pinned here, and they exist because none of them was covered
+before:
+
+1. **No substring fallback.** The lookup used to accept a pricing key that was
+   merely a substring of the requested ``service_api`` (or the reverse), and a
+   unit name that was merely a substring of the requested unit. Since
+   ``inputTokens`` is the first unit in every pricing row, ``cacheReadInputTokens``
+   bound to it and cache reads were priced at the FRESH INPUT rate.
+
+2. **Cache reads are priced at the cache-read rate.** Every expected number below
+   is written out by hand from ``config_library/pricing.yaml`` and multiplied by
+   hand, never by calling the code under test. The old
+   ``test_cost_calculation.py`` asserted only ``> 0``, which is exactly why a
+   10x error survived in it.
+
+3. **Forward coverage.** Every Bedrock model the repository can actually select
+   must have an exact pricing entry. That is what stops the next added model from
+   silently re-entering the substring era.
+"""
+
+import re
+from pathlib import Path
+
+import pytest
+import yaml
+
+from idp_common.config.models import IDPConfig
+from idp_common.metering_units import EXPECTED_CACHE_UNIT_OMISSIONS
+from idp_common.reporting.save_reporting_data import SaveReportingData
+
+# repo root: lib/idp_common_pkg/tests/unit/reporting/<this file> -> up 5 parents.
+_REPO_ROOT = Path(__file__).resolve().parents[5]
+_PRICING_PATH = _REPO_ROOT / "config_library" / "pricing.yaml"
+
+TOKEN_UNITS = (
+    "inputTokens",
+    "outputTokens",
+    "cacheReadInputTokens",
+    "cacheWriteInputTokens",
+)
+
+
+@pytest.fixture(scope="module")
+def shipped_pricing_raw():
+    """The shipped pricing table, as parsed YAML."""
+    return yaml.safe_load(_PRICING_PATH.read_text())
+
+
+@pytest.fixture(scope="module")
+def shipped_reporter(shipped_pricing_raw):
+    """A reporter loaded with the real shipped pricing table."""
+    return SaveReportingData(
+        "test-bucket", config=IDPConfig.model_validate(shipped_pricing_raw)
+    )
+
+
+# --------------------------------------------------------------------------- #
+# 1. The substring fallback is gone                                           #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def toy_reporter():
+    """Two models whose IDs are in a prefix relationship, plus a 3-unit entry.
+
+    ``bedrock/toy-model`` is a strict substring of ``bedrock/toy-model-xl``, which
+    is the shape that let the old lookup bind one model to another.
+    """
+    return SaveReportingData(
+        "test-bucket",
+        config=IDPConfig.model_validate(
+            {
+                "pricing": [
+                    {
+                        "name": "bedrock/toy-model",
+                        "units": [
+                            {"name": "inputTokens", "price": "1.0E-6"},
+                            {"name": "outputTokens", "price": "5.0E-6"},
+                            {"name": "cacheReadInputTokens", "price": "1.0E-7"},
+                        ],
+                    },
+                    {
+                        "name": "textract/detect_document_text",
+                        "units": [{"name": "pages", "price": "0.0015"}],
+                    },
+                ]
+            }
+        ),
+    )
+
+
+@pytest.mark.unit
+def test_longer_model_id_does_not_bind_to_shorter_pricing_key(toy_reporter):
+    """'bedrock/toy-model-xl' must NOT be priced off 'bedrock/toy-model'.
+
+    The old rule accepted it because the pricing key is a substring of the model
+    ID. That is how eu.amazon.nova-2-lite-v1:0:flex — a real template-selectable
+    ID with no pricing row — was silently priced off the base-tier row.
+    """
+    assert toy_reporter._get_unit_cost("bedrock/toy-model-xl", "inputTokens") is None
+    assert (
+        toy_reporter._get_unit_cost("bedrock/toy-model-xl", "cacheReadInputTokens")
+        is None
+    )
+
+
+@pytest.mark.unit
+def test_shorter_model_id_does_not_bind_to_longer_pricing_key(toy_reporter):
+    """The reverse direction: model ID a substring of the pricing key."""
+    assert toy_reporter._get_unit_cost("bedrock/toy", "inputTokens") is None
+
+
+@pytest.mark.unit
+def test_cache_read_never_falls_back_to_the_input_rate(toy_reporter):
+    """A unit absent from an existing entry must not inherit a sibling unit's price.
+
+    ``bedrock/toy-model`` lists no ``cacheWriteInputTokens``. The old unit-level
+    substring rule matched 'inputtokens' inside 'cachewriteinputtokens' and
+    returned 1.0E-6, the fresh-input rate (#926).
+
+    The answer is ``None`` — reported as an unpriced NULL cost — rather than
+    $0.00, and the distinction is the subject of #1206: a cache unit is only free
+    when ``metering_units.EXPECTED_CACHE_UNIT_OMISSIONS`` records, for that exact
+    pricing key, that AWS publishes no chargeable rate for the dimension. A toy
+    key nothing has read a price list for is exactly the case that must not come
+    back as free, since the two are indistinguishable in a cost report and the
+    zero is always in the cheap direction.
+    """
+    assert (
+        toy_reporter._get_unit_cost("bedrock/toy-model", "cacheWriteInputTokens")
+        is None
+    )
+    # ...and the cache-read unit that IS listed still resolves to its own rate,
+    # a tenth of the input rate, not to the input rate.
+    assert (
+        toy_reporter._get_unit_cost("bedrock/toy-model", "cacheReadInputTokens")
+        == 1.0e-7
+    )
+
+
+@pytest.mark.unit
+def test_unpriced_service_returns_none_not_zero(toy_reporter):
+    """An absent service is None ("unpriced"), which the caller records as NULL.
+
+    A silent 0.0 is indistinguishable from something genuinely free and quietly
+    understates spend, so a miss has to be a different value, not a cheap one.
+    """
+    assert (
+        toy_reporter._get_unit_cost("bedrock/not.in.the.table", "inputTokens") is None
+    )
+    assert toy_reporter._get_unit_cost("sagemaker/endpoint", "seconds") is None
+
+
+@pytest.mark.unit
+def test_unit_not_chargeable_for_an_existing_service_is_zero(toy_reporter):
+    """Every Bedrock call meters 'totalTokens' and 'requests'; neither is charged.
+
+    These are the routine case that rules out raising on a miss: they occur on
+    every single Bedrock invocation, so an exception would abort metering for the
+    whole document. The entry exists, so this is not a pricing gap -> $0.00.
+    """
+    assert toy_reporter._get_unit_cost("bedrock/toy-model", "totalTokens") == 0.0
+    assert toy_reporter._get_unit_cost("bedrock/toy-model", "requests") == 0.0
+
+
+@pytest.mark.unit
+def test_leading_context_components_are_stripped_longest_suffix_first(toy_reporter):
+    """Same longest-suffix rule as benchmarks/harness/lib.py::price_metering."""
+    assert (
+        toy_reporter._get_unit_cost("OCR/textract/detect_document_text", "pages")
+        == 0.0015
+    )
+    assert (
+        toy_reporter._get_unit_cost("textract/detect_document_text", "pages") == 0.0015
+    )
+
+
+# --------------------------------------------------------------------------- #
+# 2. Cache-read rates, by hand, against the shipped table                     #
+# --------------------------------------------------------------------------- #
+
+# (model id, inputTokens, cacheReadInputTokens, cacheWriteInputTokens) — read off
+# config_library/pricing.yaml by hand. The read/write columns are NOT computed
+# from the input column: they are transcribed, so a bad multiplier in the YAML
+# fails here rather than being reproduced by the test.
+CACHE_RATE_CASES = [
+    # Claude: cache read 0.1x input, cache write 1.25x input.
+    ("us.anthropic.claude-sonnet-4-5-20250929-v1:0", 3.3e-6, 3.3e-7, 4.125e-6),
+    ("us.anthropic.claude-sonnet-4-6", 3.3e-6, 3.3e-7, 4.125e-6),
+    ("us.anthropic.claude-sonnet-5", 3.3e-6, 3.3e-7, 4.125e-6),
+    # ":1m" selects the 1M-token context window, which carries no price premium
+    # on a 4.6-or-later model, so this row is deliberately identical to the
+    # base us.anthropic.claude-sonnet-4-6 row above. It used to transcribe a
+    # flat 2x input / 1.5x output premium that applied only to the earlier
+    # Sonnet 4 / 4.5 1M beta; see issue #899.
+    ("us.anthropic.claude-sonnet-4-6:1m", 3.3e-6, 3.3e-7, 4.125e-6),
+    ("us.anthropic.claude-3-5-sonnet-20240620-v1:0", 3.0e-6, 3.0e-7, 3.75e-6),
+    ("us.anthropic.claude-3-5-sonnet-20241022-v2:0", 3.0e-6, 3.0e-7, 3.75e-6),
+    ("us.anthropic.claude-3-7-sonnet-20250219-v1:0", 3.0e-6, 3.0e-7, 3.75e-6),
+    ("us.anthropic.claude-sonnet-4-20250514-v1:0", 3.0e-6, 3.0e-7, 3.75e-6),
+    ("us.anthropic.claude-haiku-4-5-20251001-v1:0", 1.1e-6, 1.1e-7, 1.4e-6),
+    ("eu.anthropic.claude-sonnet-4-5-20250929-v1:0", 3.3e-6, 3.3e-7, 4.125e-6),
+    ("global.anthropic.claude-sonnet-4-5-20250929-v1:0", 3.0e-6, 3.0e-7, 3.75e-6),
+    # Nova: cache read 0.25x input, cache write $0.00 — NOT a multiple of input.
+    # Nova charges for the cache read and not for the write that populates the
+    # cache, so these rows are the one family here whose write column is zero
+    # rather than 1.25x. That is AWS's published rate in every region and tier,
+    # and it is only correct because the units are disjoint; both halves are
+    # owned by test_nova_cache_write_pricing.py, which derives the whole Nova
+    # class from the shipped file rather than transcribing it. These rows carried
+    # the full input rate until issue #1405 — transcribed here too, which is part
+    # of why it survived.
+    ("us.amazon.nova-lite-v1:0", 6.0e-8, 1.5e-8, 0.0),
+    ("us.amazon.nova-pro-v1:0", 8.0e-7, 2.0e-7, 0.0),
+    ("us.amazon.nova-2-lite-v1:0", 3.0e-7, 7.5e-8, 0.0),
+    ("us.amazon.nova-2-lite-v1:0:flex", 1.5e-7, 3.75e-8, 0.0),
+    ("us.amazon.nova-2-lite-v1:0:priority", 5.25e-7, 1.31e-7, 0.0),
+    ("eu.amazon.nova-2-lite-v1:0", 3.9e-7, 9.75e-8, 0.0),
+    # Added by #926; the two IDs the substring rule was mis-binding.
+    ("eu.amazon.nova-2-lite-v1:0:flex", 1.95e-7, 4.88e-8, 0.0),
+    ("eu.amazon.nova-2-lite-v1:0:priority", 6.83e-7, 1.71e-7, 0.0),
+    ("global.amazon.nova-2-lite-v1:0:flex", 1.5e-7, 3.75e-8, 0.0),
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "model_id,input_rate,cache_read_rate,cache_write_rate", CACHE_RATE_CASES
+)
+def test_cache_read_priced_at_the_cache_read_rate(
+    shipped_reporter, model_id, input_rate, cache_read_rate, cache_write_rate
+):
+    """Each cache unit resolves to its OWN rate, and each is cheaper/dearer than input.
+
+    ``cache_read_rate != input_rate`` is asserted explicitly: it is the single
+    assertion that would have caught issue #926, because the bug's whole signature
+    was cache reads coming back equal to the input rate.
+    """
+    service_api = f"bedrock/{model_id}"
+    assert shipped_reporter._get_unit_cost(service_api, "inputTokens") == input_rate
+    assert (
+        shipped_reporter._get_unit_cost(service_api, "cacheReadInputTokens")
+        == cache_read_rate
+    )
+    assert (
+        shipped_reporter._get_unit_cost(service_api, "cacheWriteInputTokens")
+        == cache_write_rate
+    )
+    assert cache_read_rate != input_rate, (
+        "test data error: a cache-read rate equal to the input rate cannot "
+        "detect the substring mis-binding"
+    )
+
+
+@pytest.mark.unit
+def test_cache_heavy_document_cost_computed_by_hand(shipped_reporter):
+    """A cache-heavy Sonnet 4.5 metering map, costed by hand.
+
+    Numbers below are arithmetic done here, not by the code under test:
+
+        inputTokens            2,000 x 3.3E-6  = 0.0066
+        cacheReadInputTokens 100,000 x 3.3E-7  = 0.033
+        cacheWriteInputTokens  8,000 x 4.125E-6 = 0.033
+        outputTokens           1,500 x 1.65E-5 = 0.02475
+                                                --------
+                                                 0.09735
+
+    Under the substring fallback the 100,000 cache reads were priced at the
+    3.3E-6 input rate, i.e. 0.33 instead of 0.033 — a $0.297 overcharge on this
+    one document, and a reported total of 0.39435 instead of 0.09735 (+305%).
+    """
+    api = "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    counts = {
+        "inputTokens": 2_000,
+        "cacheReadInputTokens": 100_000,
+        "cacheWriteInputTokens": 8_000,
+        "outputTokens": 1_500,
+    }
+    total = sum(n * shipped_reporter._get_unit_cost(api, u) for u, n in counts.items())
+    assert total == pytest.approx(0.09735, rel=1e-12)
+
+    # The specific mis-binding, pinned: cache reads are a tenth of input, and the
+    # overcharge the old rule produced is exactly 10x on this unit.
+    cache_read = shipped_reporter._get_unit_cost(api, "cacheReadInputTokens")
+    input_rate = shipped_reporter._get_unit_cost(api, "inputTokens")
+    assert cache_read == 3.3e-7
+    assert input_rate == 3.3e-6
+    assert input_rate / cache_read == pytest.approx(10.0)
+
+
+@pytest.mark.unit
+def test_govcloud_claude_resolves_the_govcloud_band_through_the_lookup(
+    shipped_reporter,
+):
+    """The GovCloud row costed by hand, and the same 10x mis-binding pinned on it.
+
+    ``bedrock/us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0`` is the GovCloud
+    cross-region inference profile for the model the test above prices
+    commercially, and AWS charges more for it in GovCloud: $3.60 input, $18.00
+    output, $0.36 cache read, $4.50 five-minute cache write per MTok.
+    ``test_govcloud_pricing_rates.py`` is what ties those four figures to AWS's
+    published offer file; this test is about the lookup resolving them.
+
+        inputTokens            2,000 x 3.6E-6 = 0.0072
+        cacheReadInputTokens 100,000 x 3.6E-7 = 0.036
+        cacheWriteInputTokens  8,000 x 4.5E-6 = 0.036
+        outputTokens           1,500 x 1.8E-5 = 0.027
+                                                -------
+                                                 0.1062
+
+    Two things are worth pinning beyond the total. The #926 substring rule
+    returned this row's ``inputTokens`` price for ``cacheReadInputTokens`` — the
+    fresh-input rate, 10x the cache-read one — and that ratio is exactly 10 in
+    GovCloud as well, so the same arithmetic detects the same regression here.
+
+    And the GovCloud band is a uniform 12/11 of the commercial band on **every**
+    one of the four units, which is why a GovCloud cost report built from the
+    commercial rates was 8.3% low whatever the token mix (#1404). Asserting the
+    ratio rather than the four differences is what makes a single mistyped rate on
+    either row visible.
+    """
+    api = "bedrock/us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    commercial = "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    counts = {
+        "inputTokens": 2_000,
+        "cacheReadInputTokens": 100_000,
+        "cacheWriteInputTokens": 8_000,
+        "outputTokens": 1_500,
+    }
+    total = sum(n * shipped_reporter._get_unit_cost(api, u) for u, n in counts.items())
+    assert total == pytest.approx(0.1062, rel=1e-12)
+
+    cache_read = shipped_reporter._get_unit_cost(api, "cacheReadInputTokens")
+    input_rate = shipped_reporter._get_unit_cost(api, "inputTokens")
+    assert cache_read == 3.6e-7
+    assert input_rate == 3.6e-6
+    assert input_rate / cache_read == pytest.approx(10.0)
+
+    for unit in counts:
+        assert shipped_reporter._get_unit_cost(
+            api, unit
+        ) / shipped_reporter._get_unit_cost(commercial, unit) == pytest.approx(
+            12 / 11
+        ), (
+            f"the GovCloud and commercial Sonnet 4.5 rows no longer stand in the "
+            f"published 12/11 ratio on {unit}"
+        )
+
+
+@pytest.mark.unit
+def test_unpriced_service_records_null_cost_in_the_metering_row():
+    """An unpriced service must reach the reporting table as NULL, not $0.00."""
+    from datetime import datetime, timezone
+    from unittest.mock import patch
+
+    from idp_common.models import Document
+
+    reporter = SaveReportingData(
+        "test-bucket",
+        config=IDPConfig.model_validate(
+            {
+                "pricing": [
+                    {
+                        "name": "bedrock/priced-model",
+                        "units": [{"name": "inputTokens", "price": "1.0E-6"}],
+                    }
+                ]
+            }
+        ),
+    )
+    document = Document(
+        id="doc-unpriced",
+        input_key="doc.pdf",
+        num_pages=1,
+        initial_event_time=datetime.now(timezone.utc).isoformat(),
+        metering={
+            "Extraction/bedrock/priced-model": {"inputTokens": 1_000, "requests": 1},
+            "Extraction/bedrock/unpriced-model": {"inputTokens": 1_000},
+        },
+    )
+
+    with patch.object(reporter, "_save_records_as_parquet") as mock_save:
+        reporter.save_metering_data(document)
+
+    records = {(r["service_api"], r["unit"]): r for r in mock_save.call_args.args[0]}
+
+    priced = records[("bedrock/priced-model", "inputTokens")]
+    assert priced["unit_cost"] == 1.0e-6
+    assert priced["estimated_cost"] == pytest.approx(0.001)
+
+    # 'requests' on a priced Bedrock entry: not chargeable, so a real $0.00.
+    not_chargeable = records[("bedrock/priced-model", "requests")]
+    assert not_chargeable["unit_cost"] == 0.0
+    assert not_chargeable["estimated_cost"] == 0.0
+
+    # No pricing entry at all: NULL, so `WHERE unit_cost IS NULL` finds the gap
+    # and nobody reads the row as "this was free".
+    unpriced = records[("bedrock/unpriced-model", "inputTokens")]
+    assert unpriced["unit_cost"] is None
+    assert unpriced["estimated_cost"] is None
+    # The token count is still recorded — the metering data is not lost.
+    assert unpriced["value"] == 1_000.0
+
+
+# --------------------------------------------------------------------------- #
+# 3. Forward coverage: every selectable model has an exact pricing entry       #
+# --------------------------------------------------------------------------- #
+
+_TEMPLATES = (
+    _REPO_ROOT / "template.yaml",
+    _REPO_ROOT / "patterns" / "unified" / "template.yaml",
+    # Read so the three embedding models in _COVERAGE_EXEMPT are actually
+    # ENCOUNTERED and then exempted. While this template went unread the
+    # exemption filtered nothing and its staleness guard could not mean anything
+    # (see test_coverage_exempt_has_no_stale_entries).
+    _REPO_ROOT / "nested" / "bedrockkb" / "template.yaml",
+)
+
+# A Bedrock model ID: an optional cross-region/geo prefix, a provider, then the
+# model name (which may carry ':0', ':1m', ':flex', ':priority' suffixes).
+_MODEL_ID_RE = re.compile(
+    r"^(?:(?:us|eu|ca|us-gov|global)\.)?"
+    r"(?:anthropic|amazon|openai|xai|meta|qwen|google|nvidia|deepseek|mistral"
+    r"|cohere|ai21|writer|twelvelabs)"
+    r"\.[A-Za-z0-9][A-Za-z0-9.:+_-]*$"
+)
+
+# Model IDs excluded from the coverage requirement, each with the reason. This is
+# deliberately an ALLOWLIST rather than a loosened rule: adding a model without a
+# price has to be a visible, justified edit here.
+_COVERAGE_EXEMPT = {
+    # Embedding models (nested/bedrockkb/template.yaml). BedrockClient's
+    # generate_embedding() returns a bare vector and emits no metering entry, and
+    # Knowledge Base ingestion is billed by the KB service outside this pipeline,
+    # so no 'bedrock/<embedding-model>' metering key is ever produced and there is
+    # nothing for a pricing row to price. That template IS read by the
+    # enumeration below (it was not until PR #952, which made this exemption a
+    # no-op), so these three are genuinely encountered and genuinely exempted —
+    # test_coverage_exempt_has_no_stale_entries asserts exactly that.
+    "amazon.titan-embed-text-v2:0": "embedding model — never metered",
+    "cohere.embed-english-v3": "embedding model — never metered",
+    "cohere.embed-multilingual-v3": "embedding model — never metered",
+}
+
+# Model IDs whose pricing entry legitimately carries only inputTokens and
+# outputTokens. Derived, not written here: the basis for each omission lives in
+# ``idp_common.metering_units.EXPECTED_CACHE_UNIT_OMISSIONS``, one record per
+# pricing key AND per unit, each naming the AWS price-list model it was read
+# against and what that reading showed.
+#
+# This used to be a dict of model id to reason maintained in this module, and the
+# move is not a tidy-up. Its universe was ``_selectable_model_ids()`` — the
+# template enums plus the shipped presets — and ``config_library/pricing.yaml``
+# holds three entries that omit cache units and that no enum or preset names
+# (``us.amazon.nova-premier-v1:0`` and the two ``claude-3-haiku-20240307``
+# profiles). Those are still configurable, because pricing.yaml doubles as the set
+# of model ids configuration validation accepts
+# (``config.merge_utils._load_valid_bedrock_models``), so they were reachable and
+# covered by nothing. The register's universe is pricing.yaml itself, which closes
+# that; ``test_cache_unit_omission_basis.py`` owns it and asserts both the
+# CACHEPOINT_SUPPORTED_MODELS and implicit-cacher conditions this module used to,
+# over all eleven entries rather than eight. See issue #1206.
+_CACHE_OMISSION_REGISTERED = frozenset(
+    entry.pricing_key.removeprefix("bedrock/")
+    for entry in EXPECTED_CACHE_UNIT_OMISSIONS
+)
+
+
+# Both keys that enumerate a closed set of choices in these templates. CFN
+# parameter dropdowns use ``AllowedValues:``; the configuration-schema dropdowns
+# the UI renders live under ``Metadata`` and are JSON Schema, so they use
+# ``enum:``. Reading only the first is why this guard used to see ZERO model IDs
+# from patterns/unified/template.yaml, hiding 56 selectable IDs including
+# global.amazon.nova-pro-v1:0, which was wholly unpriced.
+_ENUM_KEYS = ("AllowedValues", "enum")
+
+
+def _enumerated_values(path: Path) -> set:
+    """Every value listed under an ``AllowedValues:`` or ``enum:`` key.
+
+    Parsed as text on purpose rather than with yaml.safe_load: these templates
+    carry CFN intrinsics (``!If``, ``!Ref``, ``!Sub``) that safe_load rejects
+    outright, and the ``enum:`` blocks in patterns/unified/template.yaml embed
+    them mid-list.
+
+    Both YAML sequence forms appear in these files and both are handled:
+    the block form (``enum:`` then ``- "value"`` lines) and the inline flow form
+    (``enum: ["a", "b"]``). Values that are CFN intrinsics rather than literals
+    are returned as-is; callers filter by _MODEL_ID_RE, which no intrinsic
+    matches.
+    """
+    keys = "|".join(_ENUM_KEYS)
+    header_re = re.compile(rf"^(\s*)(?:{keys}):\s*(.*?)\s*$")
+    values = set()
+    lines = path.read_text().splitlines()
+    i = 0
+    while i < len(lines):
+        header = header_re.match(lines[i])
+        if not header:
+            i += 1
+            continue
+        indent, inline = len(header.group(1)), header.group(2)
+        i += 1
+        if inline:
+            # Inline flow form: enum: ["none", "minimal", ...]
+            for item in inline.strip("[]").split(","):
+                item = item.strip().strip("'\"")
+                if item:
+                    values.add(item)
+            continue
+        while i < len(lines):
+            item = re.match(r"^(\s*)-\s*(.+?)\s*$", lines[i])
+            if not item or len(item.group(1)) <= indent:
+                break
+            values.add(item.group(2).strip().strip("'\""))
+            i += 1
+    return values
+
+
+def _all_model_ids() -> set:
+    """Every Bedrock model ID the repository can select, exemptions included.
+
+    Two sources, because either one alone misses real models: the template
+    enumerations (what the deploy-time and configuration-schema dropdowns offer)
+    and the ``model:`` keys in ``config_library/`` (what the shipped presets pin,
+    which is how us.anthropic.claude-3-5-sonnet-20240620-v1:0 reached production
+    unpriced).
+
+    Kept separate from ``_selectable_model_ids`` so the _COVERAGE_EXEMPT
+    staleness test can ask whether an exempt ID is still enumerated at all.
+    """
+    ids = set()
+    for template in _TEMPLATES:
+        ids |= {v for v in _enumerated_values(template) if _MODEL_ID_RE.match(v)}
+
+    for path in sorted((_REPO_ROOT / "config_library").rglob("*.y*ml")):
+        for line in path.read_text(errors="replace").splitlines():
+            match = re.match(r"^\s*model\s*:\s*[\"']?([^\"'#\s]+)", line)
+            # Inference-profile and custom-model-deployment ARNs are skipped: they
+            # are account-specific, so a shared pricing table cannot name them.
+            if match and _MODEL_ID_RE.match(match.group(1)):
+                ids.add(match.group(1))
+
+    return ids
+
+
+def _selectable_model_ids() -> set:
+    """``_all_model_ids()`` minus the documented exemptions."""
+    return _all_model_ids() - set(_COVERAGE_EXEMPT)
+
+
+@pytest.mark.unit
+def test_selectable_model_enumeration_is_not_vacuous():
+    """Guard the guard: a regex or path drift that finds nothing must fail loudly."""
+    ids = _selectable_model_ids()
+    # A floor against collapse, not a claim about the exact count — which falls
+    # legitimately whenever a retired model is removed from the enums. It dropped
+    # from 85 to 78 when seven end-of-life ids went (Claude 3 Haiku, 3.5 Sonnet
+    # 20241022, 3.7 Sonnet and Opus 4, in their us. and eu. spellings). 70 still
+    # fails loudly on a regex or path drift that finds nothing.
+    assert len(ids) >= 70, f"only found {len(ids)} selectable model IDs: {sorted(ids)}"
+    # Spot-check one ID from each source so a broken source is not masked by the
+    # others still working. The three are deliberately distinct SHAPES of source:
+    # a CFN parameter AllowedValues list, a configuration-schema ``enum:`` block
+    # under Metadata (which this guard read none of until PR #952), and a preset.
+    assert "us.anthropic.claude-sonnet-4-5-20250929-v1:0" in ids  # AllowedValues
+    assert "global.amazon.nova-pro-v1:0" in ids  # Metadata schema enum:
+    # A preset-sourced id: it appears in config_library/unified/
+    # lending-package-sample-govcloud/config.yaml and in no template enum, so it
+    # can only be here if the config_library walk works. The previous example,
+    # us.anthropic.claude-3-5-sonnet-20240620-v1:0, stopped being preset-sourced
+    # when that model reached end of life and was removed from the five
+    # ocr-benchmark presets.
+    assert "us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0" in ids  # config_library
+
+
+@pytest.mark.unit
+def test_coverage_exempt_has_no_stale_entries():
+    """Every exemption must still exempt something.
+
+    _COVERAGE_EXEMPT was a no-op: it named three embedding models from
+    nested/bedrockkb/template.yaml, which _TEMPLATES did not read, so subtracting
+    it removed nothing and an ID could sit here forever without meaning anything.
+    Requiring each entry to appear in the raw enumeration makes a stale exemption
+    fail instead of lingering — and makes a real one demonstrably load-bearing.
+    """
+    enumerated = _all_model_ids()
+    stale = sorted(set(_COVERAGE_EXEMPT) - enumerated)
+    assert not stale, (
+        "_COVERAGE_EXEMPT entries that no longer match any enumerated model ID "
+        f"(so they exempt nothing): {stale}. Remove them, or fix _TEMPLATES / "
+        "_MODEL_ID_RE if the ID should still be found."
+    )
+
+
+@pytest.mark.unit
+def test_every_selectable_model_has_an_exact_pricing_entry(shipped_pricing_raw):
+    """No selectable model may rely on a fuzzy match to get a price.
+
+    This is the forward-coverage gate. Before issue #926 a model added without a
+    pricing row still reported a (wrong) cost, because the substring fallback
+    borrowed a related model's row; now it reports NULL. Either way nobody
+    noticed, so the check has to be here rather than in the reviewer's head.
+    """
+    priced = {entry["name"] for entry in shipped_pricing_raw["pricing"]}
+    missing = sorted(
+        model_id
+        for model_id in _selectable_model_ids()
+        if f"bedrock/{model_id}" not in priced
+    )
+    assert not missing, (
+        "selectable Bedrock models with no exact entry in "
+        f"config_library/pricing.yaml: {missing}. Add a pricing entry (do NOT "
+        "rely on a fuzzy match — there isn't one any more), or add the ID to "
+        "_COVERAGE_EXEMPT with a reason."
+    )
+
+
+@pytest.mark.unit
+def test_every_selectable_model_prices_all_four_token_units(shipped_pricing_raw):
+    """All four token units, or a registered omission for each cache unit absent.
+
+    A missing cache unit is no longer a 10x overcharge, but it was still a $0.00
+    under-report if the model really does cache — so the omission has to be a
+    stated decision, not an oversight. The basis per entry and per unit lives in
+    ``metering_units.EXPECTED_CACHE_UNIT_OMISSIONS`` and is checked by
+    ``test_cache_unit_omission_basis.py`` against AWS's published price list and
+    against the two constants that decide whether the unit is reachable at all.
+    """
+    units_by_name = {
+        entry["name"]: {u["name"] for u in entry.get("units") or []}
+        for entry in shipped_pricing_raw["pricing"]
+    }
+
+    incomplete = {}
+    for model_id in sorted(_selectable_model_ids()):
+        units = units_by_name.get(f"bedrock/{model_id}")
+        if units is None:
+            continue  # reported by the exact-entry test above
+        absent = [u for u in TOKEN_UNITS if u not in units]
+        if not absent:
+            continue
+        if model_id in _CACHE_OMISSION_REGISTERED:
+            # Registered omission — but only the cache units may be absent,
+            # and every absent one must be registered individually.
+            assert set(absent) <= {"cacheReadInputTokens", "cacheWriteInputTokens"}, (
+                f"{model_id} is missing non-cache units {absent}, which "
+                f"EXPECTED_CACHE_UNIT_OMISSIONS does not excuse"
+            )
+            continue
+        incomplete[model_id] = absent
+
+    assert not incomplete, (
+        f"selectable Bedrock models missing token units: {incomplete}. Add the "
+        "rates to config_library/pricing.yaml, or register the omission in "
+        "idp_common.metering_units.EXPECTED_CACHE_UNIT_OMISSIONS with the AWS "
+        "price-list reading and the reason the rate is unreachable."
+    )
+
+
+# The two tests that used to sit here — a staleness check on the model-to-reason
+# dict, and the CACHEPOINT_SUPPORTED_MODELS / implicit-cacher assertion over its
+# members — moved to ``test_cache_unit_omission_basis.py`` with the register
+# itself, where they run over every ``bedrock/`` entry in
+# ``config_library/pricing.yaml`` rather than over the subset a template enum or a
+# shipped preset names. The staleness direction is stronger there too, because the
+# register is keyed per unit: a row that gains a cache-read rate while still
+# omitting cache-write leaves one member live and retires the other.
+
+
+# --------------------------------------------------------------------------- #
+# 4. Non-Bedrock key shapes: Lambda hooks, the BDA skip counter, Lambda cost   #
+# --------------------------------------------------------------------------- #
+#
+# These are the pricing keys that are NOT `bedrock/<model-id>`, and every one of
+# them was broken or unpriced before PR #952. Nothing covered them, which is why
+# removing the substring fallback silently turned two shipped per-page prices into
+# NULL. All of the assertions below run against the REAL config_library/pricing.yaml
+# (the ``shipped_reporter`` fixture), not a fixture table, because the failure being
+# guarded against is a mismatch between the shipped data and the shipped code.
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("hook_reference", "expected"),
+    [
+        # The form every example in docs/lambda-hook-inference.md uses.
+        (
+            "arn:aws:lambda:us-east-1:123456789012:function:GENAIIDP-mistral-ocr-hook",
+            0.004,
+        ),
+        (
+            "arn:aws:lambda:us-west-2:210987654321:function:GENAIIDP-cohere-parse-hook",
+            0.0015,
+        ),
+        # An alias/version-qualified ARN: the suffix must not become part of the
+        # pricing key, or the row stops matching the moment someone pins a stage.
+        (
+            "arn:aws:lambda:us-east-1:123456789012:function:"
+            "GENAIIDP-mistral-ocr-hook:PROD",
+            0.004,
+        ),
+        # A GovCloud ARN — a different partition must not change the key.
+        (
+            "arn:aws-us-gov:lambda:us-gov-west-1:123456789012:function:"
+            "GENAIIDP-cohere-parse-hook",
+            0.0015,
+        ),
+        # A bare function name, which the config also accepts.
+        ("GENAIIDP-mistral-ocr-hook", 0.004),
+        ("GENAIIDP-cohere-parse-hook", 0.0015),
+        # A bare 'name:alias' partial reference — also a valid Lambda invocation
+        # target, and the one form that still leaked a ':' into the key and so
+        # still resolved to NULL after the ARN cases were fixed.
+        ("GENAIIDP-mistral-ocr-hook:PROD", 0.004),
+        ("GENAIIDP-cohere-parse-hook:7", 0.0015),
+    ],
+)
+def test_shipped_lambda_hook_rows_resolve_to_their_per_page_price(
+    shipped_reporter, hook_reference, expected
+):
+    """Both shipped Lambda-hook rows must price, from every configurable ARN form.
+
+    This is the regression PR #952 introduced and this test locks shut. The hook
+    metering key is built by ``bedrock.client`` as
+    ``{context}/lambda_hook/{name}``, and both shipped pricing rows used to be
+    keyed on a bare ``GENAIIDP-<name>`` with no '/' at all — the only two such keys
+    in the whole table. Exact match could therefore never succeed and the old
+    substring fallback was the sole reason they priced. Removing the fallback took
+    Mistral OCR from $0.004/page to NULL and Cohere Parse from $0.0015/page to
+    NULL, unnoticed because nothing tested this key shape.
+
+    The full path is exercised deliberately — ARN normalisation, key construction,
+    the context split SaveReportingData performs, then the lookup — rather than
+    asserting on a hand-written key, because the bug lived in the JOIN between
+    those steps and each one in isolation looked correct.
+    """
+    from idp_common.bedrock.client import lambda_hook_metering_name
+
+    metering_key = (
+        f"classification/lambda_hook/{lambda_hook_metering_name(hook_reference)}"
+    )
+    # SaveReportingData splits the context off the metering key on the FIRST '/'.
+    _context, service_api = metering_key.split("/", 1)
+    assert service_api.startswith("lambda_hook/")
+
+    assert shipped_reporter._get_unit_cost(service_api, "pages") == expected
+
+    # The hook also meters a 'requests' count, which these rows deliberately do
+    # not price. That must read as 0.0 (metered, not chargeable) and not as NULL,
+    # which would mean "we have no idea what this costs".
+    assert shipped_reporter._get_unit_cost(service_api, "requests") == 0.0
+
+
+@pytest.mark.unit
+def test_no_shipped_pricing_key_lacks_a_slash(shipped_pricing_raw):
+    """Every shipped key must be fully qualified, i.e. carry a '/'.
+
+    A key with no '/' cannot be reached by the suffix walk from any metering key
+    that has a context prefix, because the walk only ever strips leading
+    '/'-delimited components — it can never strip a ':' or invent a delimiter. The
+    two Lambda-hook rows were exactly this shape and were dead on exact-match
+    alone. Asserting the invariant here means the next such row fails at review
+    time rather than becoming a silent NULL in the cost table.
+    """
+    unqualified = sorted(
+        entry["name"]
+        for entry in shipped_pricing_raw["pricing"]
+        if "/" not in entry["name"]
+    )
+    assert not unqualified, (
+        f"pricing keys with no '/' cannot be resolved from a metering key: "
+        f"{unqualified}. Key them as '<service>/<name>' — see "
+        "reporting.save_reporting_data._get_unit_cost."
+    )
+
+
+@pytest.mark.unit
+def test_bda_skip_counter_is_priced_at_zero(shipped_reporter):
+    """The BDA skip counter must price as $0.00, not as NULL.
+
+    ``patterns/unified/src/bda_processresults_function/index.py`` emits
+    ``BDAProject/bda/documents-skip`` = 1 when it skips BDA processing. Nothing is
+    invoked, so $0 is the truthful price — but a MISSING row now records NULL and
+    trips the 'reported spend is incomplete' warning on every skipped document.
+    Stating the zero in pricing.yaml keeps the intent in the data instead of
+    special-casing counters in the warning code.
+    """
+    assert shipped_reporter._get_unit_cost("bda/documents-skip", "documents") == 0.0
+
+
+@pytest.mark.unit
+def test_lambda_metering_unit_name_matches_the_shipped_pricing_unit(shipped_reporter):
+    """The unit ``lambda_metering`` emits must be the unit ``pricing.yaml`` prices.
+
+    ``utils.lambda_metering`` emitted ``invocations`` while the ``lambda/requests``
+    row prices ``requests``: the KEY matched, so no 'unpriced' warning ever fired,
+    but the UNIT did not, so every Lambda invocation costed $0.00. Asserting the
+    emitted name against the shipped price closes the naming gap rather than
+    restoring a log line about it.
+    """
+    import time
+    from types import SimpleNamespace
+
+    from idp_common.utils.lambda_metering import calculate_lambda_metering
+
+    metering = calculate_lambda_metering(
+        "OCR",
+        SimpleNamespace(memory_limit_in_mb=1024),
+        start_time=time.time() - 2.0,
+    )
+    # calculate_lambda_metering swallows exceptions and returns {} — which would
+    # make the loop below iterate zero times and pass vacuously.
+    assert set(metering) == {"OCR/lambda/requests", "OCR/lambda/duration"}, metering
+
+    for metering_key, units in metering.items():
+        _context, service_api = metering_key.split("/", 1)
+        for unit_name in units:
+            cost = shipped_reporter._get_unit_cost(service_api, unit_name)
+            assert cost is not None, (
+                f"lambda_metering emits {metering_key!r} unit {unit_name!r}, which "
+                "has no pricing entry at all — it will record NULL"
+            )
+            assert cost > 0, (
+                f"lambda_metering emits {metering_key!r} unit {unit_name!r}, but "
+                f"config_library/pricing.yaml prices that unit at {cost}. The unit "
+                "name almost certainly does not match the shipped one, so every "
+                "Lambda invocation costs $0.00."
+            )

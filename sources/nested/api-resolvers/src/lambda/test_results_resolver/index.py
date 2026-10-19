@@ -1,0 +1,2821 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+import gzip
+import json
+import logging
+import math
+import os
+import re
+import time
+from concurrent.futures import (
+    ALL_COMPLETED,
+    ThreadPoolExecutor,
+    wait as futures_wait,
+)
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+import boto3
+from botocore.config import Config as BotoConfig
+from botocore.exceptions import ClientError
+
+sqs = boto3.client("sqs")
+s3 = boto3.client("s3")
+athena = boto3.client("athena")
+
+# A short-timeout S3 client for the compareTestRuns fanout only. The default
+# botocore read/connect timeouts are 60s each; four parallel probes under the
+# 20s dispatcher budget can therefore chain into a 60s+ tail on a slow S3
+# request and 504 the entire compare response. This client is used only by
+# ``_load_sample_attribute_methods`` (a UI-nicety panel that must never fault
+# the parent request) — bounded to 3s connect and 4s read so worst-case 4-way
+# fanout still fits well under the 20s dispatcher ceiling. Non-compare S3
+# usage in this file (``get_test_results``, etc.) keeps the module-level
+# ``s3`` client with defaults.
+s3_bounded = boto3.client(
+    "s3",
+    config=BotoConfig(connect_timeout=3, read_timeout=4, retries={"max_attempts": 1}),
+)
+
+# Two bounded DynamoDB clients for the ``compareTestRuns`` /
+# ``getTestRuns`` critical paths. Both cap the DDB half of the request at
+# 3s connect / 5s read / 2 retries — the module-level ``dynamodb``
+# resource's default 60s timeouts could burn the whole 20s dispatcher
+# budget from the DDB side alone. Non-compare paths that don't share
+# that budget (``get_test_results``, cache-update writes, etc.) keep the
+# default-timeout module-level ``dynamodb`` resource.
+#
+# ``ddb_bounded`` is a DIRECT low-level client: no request marshalling,
+# no response unmarshalling. Callers must build typed AttributeValue
+# dicts (``{"PK": {"S": "..."}}``) and read typed responses. Used by
+# ``_iter_completed_doc_keys`` which is written for the typed shape.
+#
+# ``ddb_bounded_marshalling`` is a RESOURCE-attached client: identical
+# class, but the resource installs serializer/deserializer event
+# handlers on it so untyped Python-native values are marshalled on the
+# way out and typed responses are unmarshalled on the way in. Used by
+# ``_batch_get_test_run_items`` whose caller in
+# ``_query_test_runs_from_gsi`` passes untyped keys straight from
+# ``table.query()`` and whose downstream (``_build_test_run_list``)
+# reads unmarshalled fields (``item["TestRunId"]`` as a bare string).
+#
+# The two clients are NOT interchangeable: passing untyped keys to
+# ``ddb_bounded`` raises ``botocore.ParamValidationError``, and reading
+# ``.get("S")`` on ``ddb_bounded_marshalling``'s response returns
+# ``None`` because the field is already a bare string. That misuse is
+# how getTestRuns started returning empty in an earlier round.
+ddb_bounded = boto3.client(
+    "dynamodb",
+    config=BotoConfig(connect_timeout=3, read_timeout=5, retries={"max_attempts": 2}),
+)
+ddb_bounded_marshalling = boto3.resource(
+    "dynamodb",
+    config=BotoConfig(connect_timeout=3, read_timeout=5, retries={"max_attempts": 2}),
+).meta.client
+
+
+lambda_client = boto3.client("lambda")
+
+
+def _invoke_mlflow_logger(test_run_id, metrics, config=None):
+    """Asynchronously invoke the MLflow logger function if configured."""
+    mlflow_logger_arn = os.environ.get("MLFLOW_LOGGER_FUNCTION_ARN")
+    if not mlflow_logger_arn:
+        return
+
+    try:
+        payload = {
+            "experiment_name": test_run_id,
+            "metrics": metrics,
+            "params": {
+                "test_run_id": test_run_id,
+            },
+            "tags": {
+                "source": "test_results_resolver",
+            },
+        }
+
+        if config:
+            payload["config"] = config
+
+        lambda_client.invoke(
+            FunctionName=mlflow_logger_arn,
+            InvocationType="Event",  # async, fire-and-forget
+            Payload=json.dumps(payload, cls=DecimalEncoder),
+        )
+        logger.info(f"Invoked MLflow logger for test run: {test_run_id}")
+    except Exception as e:
+        logger.warning(f"Failed to invoke MLflow logger for {test_run_id}: {e}")
+
+
+# Custom JSON encoder to handle Decimal objects from DynamoDB
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super(DecimalEncoder, self).default(obj)
+
+
+logger = logging.getLogger()
+
+
+def _as_int(value):
+    """DynamoDB returns numbers as Decimal; the GraphQL Int field needs an int."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+
+# SQL-injection defense for Athena queries
+# -----------------------------------------
+# The Athena f-string queries in this file (marked `# nosec B608`) interpolate
+# values that Athena does NOT support as bind parameters. Two distinct contexts
+# exist and they need different defenses — conflating them was the bug behind
+# issue #619:
+#
+# 1. IDENTIFIER context (the database name in `FROM "{database}"."table"`).
+#    Defended by a strict allow-list, `_validate_sql_input()`:
+#      - Pattern: ^[a-zA-Z0-9_\-./]+$  (identifiers, UUID fragments, S3 paths)
+#      - No quotes (' "), no whitespace, no semicolons, no parentheses, no `*`
+#        — nothing that can close the surrounding double-quoted identifier or
+#        terminate the statement. (Hyphens and dots ARE allowed, since real
+#        database names need them: `idp1-reporting-db`. That admits the `--`
+#        digraph, which is harmless here because the value only ever appears
+#        inside double quotes, where it is identifier text rather than the start
+#        of a comment.)
+#    Identifiers in this solution are infrastructure-controlled (a CloudFormation
+#    -supplied env var), so rejecting anything outside the grammar costs nothing.
+#
+# 2. STRING-LITERAL context (test_run_id in `WHERE document_id LIKE '...'`).
+#    test_run_id is derived from a *user-chosen test set name*, so it legally
+#    contains spaces, parentheses, apostrophes and the like. Applying the
+#    identifier allow-list here rejected perfectly valid runs (e.g.
+#    "ConfBench (light noise)-20260813-132501") and broke their metrics
+#    aggregation outright. The correct defense for a literal is escaping, not
+#    an allow-list: `_sql_literal()` doubles every single quote, which is the
+#    complete escape for a Trino/Presto single-quoted literal (backslash is
+#    NOT an escape character there, so doubling `'` cannot be bypassed).
+#    `_sql_like_prefix()` additionally neutralises the LIKE wildcards `%` and
+#    `_` so a name containing them matches literally rather than broadening
+#    the prefix match; its queries must pair it with `ESCAPE '\'`.
+#
+# Bandit's B608 flags string-built SQL generally; it cannot see that every
+# interpolated value goes through one of these two helpers. Each `# nosec B608`
+# annotation in this file is justified by the preceding `_validate_sql_input()`
+# / `_sql_literal()` / `_sql_like_prefix()` calls.
+_SAFE_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_\-./]+$")
+
+# Escape character paired with every LIKE built by `_sql_like_prefix()`.
+_LIKE_ESCAPE = "\\"
+
+
+def _validate_sql_input(value, name):
+    """Validate that a value is safe for use in Athena SQL *identifier* context.
+
+    See the module-level comment above for the rationale and threat model. Use
+    `_sql_literal()` instead for values interpolated into a quoted string
+    literal — those may legitimately contain characters rejected here.
+    """
+    if not value or not _SAFE_ID_PATTERN.match(value):
+        raise ValueError(f"{name} contains invalid characters: {value}")
+    return value
+
+
+def _sql_literal(value, name):
+    """Escape a value for interpolation inside an Athena single-quoted literal.
+
+    Doubling `'` is the complete escape for a Trino/Presto string literal —
+    backslash is not an escape character there, so there is no way to smuggle a
+    quote past this. NUL is rejected outright since it cannot appear in a
+    literal at all.
+    """
+    if not value:
+        raise ValueError(f"{name} must not be empty")
+    if "\x00" in value:
+        raise ValueError(f"{name} contains invalid characters: {value!r}")
+    return value.replace("'", "''")
+
+
+def _sql_like_prefix(value, name):
+    """Escape a value for use as a literal prefix in a `LIKE ... ESCAPE '\\'`.
+
+    Neutralises the LIKE wildcards (`%`, `_`) as well as the escape character
+    itself, so a test set name containing them matches literally instead of
+    silently widening the prefix. The caller MUST append `ESCAPE '\\'` to the
+    LIKE, otherwise the emitted backslashes are matched as data.
+    """
+    escaped = (
+        value.replace(_LIKE_ESCAPE, _LIKE_ESCAPE * 2)
+        .replace("%", f"{_LIKE_ESCAPE}%")
+        .replace("_", f"{_LIKE_ESCAPE}_")
+    )
+    return _sql_literal(escaped, name)
+
+
+dynamodb = boto3.resource("dynamodb")
+
+
+def _caller_groups(event):
+    """Extract the caller's Cognito groups from the (normalized) identity."""
+    identity = event.get("identity") or {}
+    claims = identity.get("claims") or {}
+    groups = claims.get("cognito:groups") or []
+    if isinstance(groups, str):
+        groups = [groups]
+    return list(groups)
+
+
+def handler(event, context):
+    """Handle both GraphQL resolver and SQS events"""
+
+    # Check if this is an SQS event
+    if "Records" in event:
+        return handle_cache_update_request(event, context)
+
+    # Otherwise handle as GraphQL resolver
+    field_name = event["info"]["fieldName"]
+
+    # Defense-in-depth RBAC: all Test Studio read ops are Admin/Author only in
+    # the AppSync schema (@aws_cognito_user_pools(cognito_groups:["Admin",
+    # "Author"])). The REST dispatcher's Cognito authorizer only authenticates,
+    # so re-enforce the group check here (dispatcher maps PermissionError->403).
+    # Direct Lambda invocations (no 'identity' — SDK/CLI/CI automation) are
+    # gated by IAM (lambda:InvokeFunction on this ARN), not Cognito groups —
+    # same carve-out as abort_test_runs.
+    is_api_invoke = event.get("identity") is not None
+    groups = _caller_groups(event)
+    if is_api_invoke and not ({"Admin", "Author"}.intersection(groups)):
+        logger.warning(
+            "Forbidden: caller (groups=%s) attempted %s (requires Admin/Author)",
+            groups,
+            field_name,
+        )
+        raise PermissionError(
+            f"Unauthorized: {field_name} requires Admin or Author group"
+        )
+
+    if field_name == "getTestRuns":
+        args = event.get("arguments", {})
+        start_date_time = args.get("startDateTime")
+        end_date_time = args.get("endDateTime")
+        time_period_hours = args.get("timePeriodHours", 2)
+        # Caller-supplied max — clamped to [1, _GET_TEST_RUNS_ABSOLUTE_MAX]
+        # in ``get_test_runs``. Default matches _GET_TEST_RUNS_ABSOLUTE_MAX
+        # so pre-existing callers (that don't pass maxItems) keep the
+        # historical shape of "up to 100 recent runs in the range".
+        max_items = args.get("maxItems")
+
+        if start_date_time and end_date_time:
+            start_iso, end_iso = start_date_time, end_date_time
+        else:
+            end_iso = datetime.utcnow().isoformat() + "Z"
+            start_iso = (
+                datetime.utcnow() - timedelta(hours=time_period_hours)
+            ).isoformat() + "Z"
+
+        logger.info(
+            f"Processing getTestRuns request: {start_iso} → {end_iso} "
+            f"(maxItems={max_items})"
+        )
+        return get_test_runs(start_iso, end_iso, max_items=max_items)
+    elif field_name == "getTestRun":
+        test_run_id = event["arguments"]["testRunId"]
+        logger.info(f"Processing getTestRun request for test run: {test_run_id}")
+        return get_test_results(test_run_id)
+    elif field_name == "getTestRunStatus":
+        test_run_id = event["arguments"]["testRunId"]
+        logger.info(f"Processing getTestRunStatus request for test run: {test_run_id}")
+        return get_test_run_status(test_run_id)
+    elif field_name == "compareTestRuns":
+        test_run_ids = event["arguments"]["testRunIds"]
+        logger.info(f"Processing compareTestRuns request for test runs: {test_run_ids}")
+        return compare_test_runs(test_run_ids)
+
+    raise ValueError(f"Unknown field: {field_name}")
+
+
+# Statuses that mean "processing is over" AND that aggregate metrics are
+# expected for. ABORTED is terminal too but is deliberately absent: an aborted
+# run is not eligible for aggregation, so it must keep reporting ABORTED rather
+# than being masked as EVALUATING.
+_METRICS_ELIGIBLE_STATUSES = ("COMPLETE", "PARTIAL_COMPLETE")
+
+
+# A document's ``EvaluationStatus``, partitioned into the three answers the run
+# status needs. Every value ANY writer can put in that attribute must appear in
+# exactly one of these, because a value in none of them is counted as in-flight
+# (see the branch that logs it) and a run holding one such document never
+# reaches a terminal status. That is the whole of #1330 — ``DISABLED`` was not
+# written at all, and ``TIMED_OUT`` was written but named nowhere here, so
+# either one pinned a run at EVALUATING with every document showing Completed.
+#
+# ⚠️ The attribute has THREE writers, not one, and the two beyond the pipeline
+# are easy to miss because they describe a different activity: promoting a
+# document to an evaluation baseline writes ``BASELINE_COPYING`` /
+# ``BASELINE_AVAILABLE`` / ``BASELINE_ERROR`` over whatever evaluation left
+# there (``copy_to_baseline_resolver``, and ``idp_sdk``'s evaluation processor
+# for the programmatic route). A test-run document promoted from the document
+# list therefore reaches this loop carrying one of those, which is why they are
+# classified here rather than left to the catch-all.
+# ``test_results_resolver.py::test_every_evaluation_status_any_writer_can_set_is_classified``
+# derives the universe from the three writers known today and fails on a value
+# missing here; what it does not detect is a fourth writer, which is written out
+# as a residual where that universe is built.
+#
+# Terminal and not a failure: the document is as finished as it will ever be.
+# ``NO_BASELINE`` and ``DISABLED`` produce no metrics by construction (no ground
+# truth to score against; no evaluation asked for), which is a legitimate
+# outcome rather than an error.
+#
+# ⚠️ **All three ``BASELINE_*`` values are settled, and the honest reason is that
+# the run can no longer be told anything by them — not that they are good news.**
+# A promotion *overwrites* this attribute, so whatever evaluation recorded is
+# gone, and two things follow that are worth knowing before reading a run's
+# figures. **A promoted document whose evaluation had FAILED stops counting as a
+# failed file**, so a run can move from PARTIAL_COMPLETE to COMPLETE with
+# ``failedFiles`` 0 while its cached metrics still cover only the documents that
+# were scored; the information needed to prevent that was destroyed by the
+# overwrite, and separating the two would take a second attribute. And
+# ``BASELINE_COPYING`` is settled **despite naming work in progress**, because
+# the copy is invoked as an async Lambda whose terminal write is best-effort —
+# an invocation that never lands, or fails that write, leaves the attribute
+# there with nothing to reconcile it. Waiting on it is therefore unbounded, and
+# it would be a wait for an action taken on the document *after* the run
+# finished, which tells the run nothing. Holding a completed run at EVALUATING
+# for that is the #1330 symptom on a new route.
+#
+# A third consequence, older than any of this and listed because it is in the
+# same family: the aggregation selects documents by ``EvaluationStatus ==
+# "COMPLETED"``, so a promoted document drops out of a run's metrics on any
+# *re*-aggregation even when its evaluation had succeeded — and a release that
+# adds a metrics key re-aggregates every historical run once. The cause is the
+# overwrite rather than anything here.
+_EVAL_STATUS_SETTLED = frozenset(
+    {
+        "COMPLETED",
+        "NO_BASELINE",
+        "DISABLED",
+        "BASELINE_AVAILABLE",
+        "BASELINE_ERROR",
+        "BASELINE_COPYING",
+    }
+)
+# Terminal and a failure. ``TIMED_OUT`` is the status the single-attempt timeout
+# policy stamps (#917); it means the same thing to a run as ``FAILED``.
+_EVAL_STATUS_UNSUCCESSFUL = frozenset({"FAILED", "TIMED_OUT"})
+# Genuinely still working, and able to leave that state on its own.
+_EVAL_STATUS_IN_FLIGHT = frozenset({"RUNNING"})
+
+
+def _normalized_eval_status(doc_item):
+    """A document's ``EvaluationStatus``, upper-cased, or None if not recorded.
+
+    Casing is normalized because writers have historically been inconsistent
+    about it (the same reason the two document probes in this file upper-case the
+    field), and here an unexpected spelling is not a cosmetic problem: it lands
+    in the unrecognised branch and holds the run short of a terminal status. A
+    blank string is treated as "not recorded", which is what it means.
+    """
+    raw = doc_item.get("EvaluationStatus")
+    if raw is None:
+        return None
+    normalized = str(raw).strip().upper()
+    return normalized or None
+
+
+def _ran_with_evaluation_disabled(item):
+    """Did this run process its documents with evaluation switched off?
+
+    Answered from the configuration the run captured, because that is the input
+    that decided it. Documents processed since #1330 also say so themselves
+    (``EvaluationStatus=DISABLED``), and that is the preferred signal where it
+    exists — this covers the two cases where it does not: a run that predates
+    the stamp, and one whose stamp could not be written (the evaluation function
+    records it best-effort, since nothing has actually failed in this case).
+
+    Decompresses the captured config, so call it only when the cheap signals are
+    exhausted — and deliberately **not** from ``_awaiting_metrics``, whose
+    answer has to be the same for three callers and so must come off the run
+    record; see the warning there.
+
+    The reading must agree with the pipeline's, and the pipeline's goes through
+    pydantic's ``EvaluationConfig.enabled: bool``, which accepts the string
+    spellings below as well as real booleans — a stored ``"false"`` genuinely
+    disables evaluation. Anything else, including a value pydantic would reject,
+    reads as enabled: this function only answers True when evaluation demonstrably
+    did not run, since the cost of a wrong True is a run reported complete while
+    results are still coming.
+    """
+    config = _captured_config_of(item)
+    if not isinstance(config, dict):
+        return False
+    evaluation = config.get("evaluation")
+    if not isinstance(evaluation, dict) or "enabled" not in evaluation:
+        # The default is enabled, so an absent section is not a disabled run.
+        return False
+    enabled = evaluation["enabled"]
+    if isinstance(enabled, bool):
+        return not enabled
+    if isinstance(enabled, str):
+        # Not stripped, deliberately: pydantic does not strip either, so `" false"`
+        # is a configuration it REJECTS — every pipeline step fails to load it —
+        # and reading that as "evaluation was disabled" would be this function
+        # claiming a run finished on the strength of a configuration that never
+        # ran. Matching pydantic's exact token set is what keeps the two readings
+        # the same one.
+        return enabled.lower() in {"0", "off", "f", "false", "n", "no"}
+    if isinstance(enabled, (int, float, Decimal)):
+        # ``float`` is unreachable through either storage shape today — the
+        # compressed path parses with ``parse_float=Decimal`` and DynamoDB hands
+        # back ``Decimal`` on the inline one — and is listed because pydantic
+        # reads 0.0 as false, so omitting it would be a disagreement waiting for
+        # a third storage shape.
+        return enabled == 0
+    return False
+
+
+def _awaiting_metrics(item, status):
+    """Is this run finished but still missing its cached aggregate metrics?
+
+    The single definition of the condition behind the ``EVALUATING`` badge. Two
+    resolvers surface that badge — ``_build_test_run_list`` (the Executions
+    list) and ``get_test_run_status`` (the per-row poll), which are also this
+    rule's only callers. ``get_test_results`` reports the stored status and
+    decides its own enqueue from the cache's own shape. All three previously
+    spelled a version of this out inline.
+    Issue #619 was diagnosed through the resulting confusion: the badge said
+    EVALUATING while the file counts said every document was processed and none
+    was evaluating, because "terminal but no metrics" and "actually evaluating"
+    render identically. Keep the rule here so the three sites cannot drift.
+
+    ⚠️ **Everything this answer depends on must be readable from the run record
+    alone**, because the callers do not see the same things: only
+    ``get_test_run_status`` reads the run's documents. An exclusion one of them
+    can evaluate and the others cannot splits the badge in two — a run reporting
+    COMPLETE on the per-row poll and EVALUATING in the Executions list at the
+    same time — and because the two disagree about whether an aggregation is
+    outstanding, neither enqueues one, so the split never resolves. That was
+    measured on a run with no published ground truth, and it is the shape of
+    #619 reintroduced. The draft-labeling exclusion is safe for precisely this
+    reason: ``Purpose`` is on the record.
+
+    A run that will never have metrics is therefore NOT excluded here. It does
+    not need to be: the aggregation is enqueued, ``handle_cache_update_request``
+    writes every key of ``metrics_to_cache`` whatever the aggregation found, and
+    the badge clears on that one pass (see the convergence note in
+    ``get_test_results``) — with the run's cost, which is in the cached result
+    and nowhere else. One EVALUATING interval while that happens is what every
+    other terminal run shows.
+    """
+    if _is_draft_labeling_run(item):
+        return False
+    return status in _METRICS_ELIGIBLE_STATUSES and not item.get("testRunResult")
+
+
+def _is_draft_labeling_run(item):
+    """True for a run that CREATES a baseline rather than being scored against one.
+
+    Such a run has no baseline by construction — that is what it is producing — so
+    the copier skips baseline staging and evaluation never runs. It therefore has
+    no aggregate metrics to wait for, ever.
+
+    Treating one as "awaiting metrics" cost twice: it displayed EVALUATING
+    indefinitely (observed on a dev stack: a run COMPLETE with 100/100 documents
+    processed and CompletedAt set, still badged EVALUATING three days later), and
+    every view of it enqueued a full aggregation — re-reading every document's
+    results.json from S3 — to compute extraction metrics that are structurally
+    empty.
+
+    Prefers the persisted ``Purpose``. Falls back to the Context string only for
+    runs created before Purpose was written, which is why the fallback is exact
+    rather than a substring match.
+    """
+    purpose = item.get("Purpose")
+    if purpose:
+        return purpose == "draft-labeling"
+    return item.get("Context") == "Draft labeling run"
+
+
+def _display_status(item, status):
+    """Map a true run status to the status reported to the UI.
+
+    A finished run with no cached metrics reports ``EVALUATING``, because the
+    aggregation genuinely is still outstanding — but note the caller is
+    responsible for making sure something will actually *do* that aggregation.
+    ``get_test_run_status`` and ``get_test_results`` pair this with
+    ``_queue_cache_update``; ``_build_test_run_list`` deliberately does not (see
+    its own comment), since it renders many runs at once.
+    """
+    return "EVALUATING" if _awaiting_metrics(item, status) else status
+
+
+# How long one enqueued cache update suppresses further enqueues for the same
+# run. Aggregation re-reads every document's results.json from S3, so it can take
+# minutes on a large run; this window keeps concurrent readers (and repeat visits
+# to the results page) from stacking up redundant duplicate work, while still
+# letting a run whose aggregation genuinely failed retry on a later view.
+_CACHE_UPDATE_THROTTLE_SECONDS = 300
+
+
+def _cache_update_recently_queued(
+    item, throttle_seconds=_CACHE_UPDATE_THROTTLE_SECONDS
+):
+    """Cheap in-memory read of the throttle window from an already-fetched item.
+
+    ``_claim_cache_update_slot`` remains the authoritative guard — only its
+    conditional write is atomic against concurrent invocations. This is purely an
+    optimisation for the common case: ``get_test_run_status`` is polled every 5
+    seconds per in-progress run by the UI, and for a run that is stuck awaiting
+    metrics every one of those polls would otherwise issue a conditional
+    ``update_item`` that is almost always rejected — and a rejected conditional
+    write still consumes write capacity. Callers that already hold the metadata
+    item can skip that write entirely.
+
+    Returns False whenever the answer is not clearly "yes" (no timestamp,
+    unparseable timestamp), so an unreadable value degrades to attempting the
+    authoritative claim rather than silently suppressing recovery.
+    """
+    queued_at = item.get("CacheUpdateQueuedAt")
+    if not queued_at or not throttle_seconds:
+        return False
+    try:
+        parsed = datetime.fromisoformat(queued_at)
+    except (TypeError, ValueError):
+        logger.warning(
+            f"Unparseable CacheUpdateQueuedAt {queued_at!r}; "
+            "falling through to the conditional claim"
+        )
+        return False
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - parsed).total_seconds()
+    return 0 <= age < throttle_seconds
+
+
+def _claim_cache_update_slot(test_run_id, throttle_seconds):
+    """Atomically claim the right to enqueue a cache update for this run.
+
+    Returns True if the caller won the claim, False if another invocation
+    already enqueued one inside the throttle window. Implemented as a
+    conditional write on ``CacheUpdateQueuedAt`` so that concurrent Lambda
+    invocations — three of them raced during the issue #619 incident, each
+    firing its own redundant aggregation — collapse to a single enqueue.
+
+    Fails *open* (returns True) on any unexpected DynamoDB error: a broken
+    throttle must never be able to block a legitimate recompute.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(seconds=throttle_seconds)).isoformat()
+    try:
+        table = dynamodb.Table(os.environ["TRACKING_TABLE"])  # type: ignore[attr-defined]
+        table.update_item(
+            Key={"PK": f"testrun#{test_run_id}", "SK": "metadata"},
+            UpdateExpression="SET CacheUpdateQueuedAt = :now",
+            ConditionExpression=(
+                "attribute_not_exists(CacheUpdateQueuedAt) "
+                "OR CacheUpdateQueuedAt < :cutoff"
+            ),
+            ExpressionAttributeValues={":now": now.isoformat(), ":cutoff": cutoff},
+        )
+        return True
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        logger.warning(
+            f"Cache-update throttle check failed for {test_run_id}, "
+            f"enqueueing anyway: {e}"
+        )
+        return True
+    except Exception as e:
+        logger.warning(
+            f"Cache-update throttle check failed for {test_run_id}, "
+            f"enqueueing anyway: {e}"
+        )
+        return True
+
+
+def _queue_cache_update(test_run_id, throttle_seconds=_CACHE_UPDATE_THROTTLE_SECONDS):
+    """Enqueue an async metrics (re-)aggregation for a test run.
+
+    Best-effort: a failure to enqueue must never fail the read that triggered
+    it — the caller still serves whatever cached metrics it has, and the next
+    view retries. Consumed by handle_cache_update_request in this same Lambda.
+
+    Enqueues are throttled per run (see ``_claim_cache_update_slot``); pass
+    ``throttle_seconds=0`` to force one through.
+    """
+    try:
+        queue_url = os.environ.get("TEST_RESULT_CACHE_UPDATE_QUEUE_URL")
+        if not queue_url:
+            logger.warning(
+                f"TEST_RESULT_CACHE_UPDATE_QUEUE_URL not set; cannot queue "
+                f"cache update for {test_run_id}"
+            )
+            return False
+        if throttle_seconds and not _claim_cache_update_slot(
+            test_run_id, throttle_seconds
+        ):
+            logger.info(
+                f"Cache update for test run {test_run_id} already enqueued within "
+                f"the last {throttle_seconds}s; skipping duplicate"
+            )
+            return False
+        sqs.send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps({"testRunId": test_run_id}),
+        )
+        logger.info(f"Queued cache update for test run: {test_run_id}")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to queue cache update for {test_run_id}: {e}")
+        return False
+
+
+def handle_cache_update_request(event, context):
+    """Process SQS messages to calculate and cache test result metrics"""
+
+    for record in event["Records"]:
+        try:
+            message = json.loads(record["body"])
+            test_run_id = message["testRunId"]
+
+            logger.info(f"Processing cache update for test run: {test_run_id}")
+
+            # Calculate metrics
+            aggregated_metrics = _aggregate_test_run_metrics(test_run_id)
+
+            # Cache the metrics (including new confidence_metrics from Stickler v0.4.0+)
+            metrics_to_cache = {
+                "overallAccuracy": aggregated_metrics.get("overall_accuracy"),
+                "weightedOverallScores": aggregated_metrics.get(
+                    "weighted_overall_scores", {}
+                ),
+                # Falls back to computing the mean locally so the field is populated
+                # on the Athena aggregation path too, which has no aggregation
+                # Lambda to supply it.
+                "avgWeightedOverallScore": _resolve_avg_weighted_overall_score(
+                    aggregated_metrics.get("avg_weighted_overall_score"),
+                    aggregated_metrics.get("weighted_overall_scores"),
+                ),
+                "averageConfidence": aggregated_metrics.get("average_confidence"),
+                "confidenceMetrics": aggregated_metrics.get("confidence_metrics"),
+                "accuracyBreakdown": aggregated_metrics.get("accuracy_breakdown", {}),
+                "confusionMatrix": aggregated_metrics.get("confusion_matrix", {}),
+                "fieldMetrics": aggregated_metrics.get("field_metrics", {}),
+                "splitClassificationMetrics": aggregated_metrics.get(
+                    "split_classification_metrics", {}
+                ),
+                "gradedPacketMetrics": aggregated_metrics.get(
+                    "graded_packet_metrics", {}
+                ),
+                # Per-section classification mismatches. Only the aggregation
+                # Lambda computes them, and the Athena fallback keeps them when it
+                # does, so they are absent only when it is not configured, fails or
+                # predates the field — hence the default rather than a KeyError.
+                "classificationErrors": aggregated_metrics.get(
+                    "classification_errors", {}
+                ),
+                # Documents whose sections all had no extractable schema were
+                # dropped from ``weighted_overall_scores`` upstream; expose the
+                # count so the UI can render "N excluded" next to the
+                # histogram instead of leaving the drop from filesCount
+                # unexplained.
+                "excludedDocumentCount": aggregated_metrics.get(
+                    "excluded_document_count", 0
+                ),
+                "totalCost": aggregated_metrics.get("total_cost", 0),
+                "costBreakdown": aggregated_metrics.get("cost_breakdown", {}),
+            }
+
+            table = dynamodb.Table(os.environ["TRACKING_TABLE"])  # type: ignore[attr-defined]
+            table.update_item(
+                Key={"PK": f"testrun#{test_run_id}", "SK": "metadata"},
+                UpdateExpression="SET testRunResult = :metrics",
+                ExpressionAttributeValues={
+                    ":metrics": float_to_decimal(metrics_to_cache)
+                },
+            )
+
+            logger.info(f"Successfully cached metrics for test run: {test_run_id}")
+
+        except Exception as e:
+            logger.error(
+                f"Failed to process cache update for {record.get('body', 'unknown')}: {e}"
+            )
+            # Don't raise - let other messages in batch continue processing
+
+
+def _average_weighted_overall_score(doc_weighted_scores):
+    """Mean of the per-document weighted overall scores, or None if there are none.
+
+    Mirrors ``average_weighted_overall_score`` in the test execution aggregation Lambda.
+    Kept here as a fallback for the two cases where that Lambda's value isn't
+    available: the Athena aggregation path, and test runs whose metrics were
+    cached before ``avgWeightedOverallScore`` existed. Coerces via ``float`` because
+    cached scores come back from DynamoDB as ``Decimal``.
+
+    Only finite numbers count, matching both the aggregation Lambda's copy and the
+    UI's ``parseWeightedOverallScoresFinite``, so all three arrive at the same
+    number for the same map.
+    """
+    if not doc_weighted_scores:
+        return None
+    scores = [
+        float(score)
+        for score in doc_weighted_scores.values()
+        if isinstance(score, (int, float, Decimal)) and math.isfinite(score)
+    ]
+    if not scores:
+        return None
+    return sum(scores) / len(scores)
+
+
+def _resolve_avg_weighted_overall_score(supplied, doc_weighted_scores):
+    """Prefer the run-level average already computed upstream; recompute if absent.
+
+    Tested against ``is None`` rather than for truthiness on purpose: a run where
+    every document scored 0.0 has a legitimate average of 0.0, and a falsy check
+    would discard it and recompute — which yields ``None`` whenever the
+    per-document map is itself missing from the cache, turning a real "0" into
+    "unknown". ``float`` normalises the DynamoDB ``Decimal`` so the field has one
+    type across both response paths.
+    """
+    if supplied is not None:
+        return float(supplied)
+    return _average_weighted_overall_score(doc_weighted_scores)
+
+
+def float_to_decimal(obj):
+    """Convert float values to Decimal for DynamoDB storage"""
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: float_to_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [float_to_decimal(v) for v in obj]
+    return obj
+
+
+def _iter_completed_doc_keys(test_run_id, limit=5):
+    """Yield up to ``limit`` completed ``ObjectKey`` values for a test run.
+
+    Reads the testrun's ``Files`` list from ``testrun#{id}`` metadata and
+    probes each candidate document with ``BatchGetItem`` on the
+    ``doc#{test_run_id}/{file_name}`` PK. The doc row's ``ObjectKey`` is
+    ``{test_run_id}/{file_name}``, matching the naming used everywhere else
+    in this file (see ``_count_completed_documents``), so the panel's S3
+    key template (``{ObjectKey}/evaluation/results.json``) resolves.
+
+    Previously this ran an unbounded paginated ``Scan`` with client-side
+    ``begins_with(PK, "doc#{run_id}")`` filter, then discarded all but
+    ``limit`` results. On a mature tracking table (tens of thousands of
+    doc rows) each Scan exceeded the 29s API Gateway dispatcher timeout
+    and returned 504 for the whole Compare Test Runs page. The docstring
+    that ruled out ``Files`` claimed it "built ``{file_name}/evaluation/
+    results.json`` paths that 404" — that was a missing ``{test_run_id}/``
+    prefix in the first attempt, not a property of ``Files`` itself.
+    Sorting the ``Files`` list also gives the determinism the Scan
+    pagination was added to guarantee.
+    """
+    # Use the ``ddb_bounded`` client (3s connect / 5s read) rather than
+    # ``dynamodb.meta.client``'s default 60s timeouts — this probe is on
+    # the same ``compare_test_runs`` fanout as the S3 read below (which
+    # uses ``s3_bounded``), and default DDB timeouts would let a slow
+    # tracking-table query burn the whole 20s dispatcher budget from the
+    # DDB side even after S3 was bounded. Clients are documented thread-
+    # safe so the module-level shared instance is reused across the up-to-4
+    # ThreadPoolExecutor workers.
+    try:
+        ddb_client = ddb_bounded
+        table_name = os.environ["TRACKING_TABLE"]
+    except Exception as e:
+        logger.warning(
+            f"Could not open tracking table for {test_run_id}: {e}. "
+            f"Comparator diff will be empty for this run."
+        )
+        return
+
+    try:
+        meta_response = ddb_client.get_item(
+            TableName=table_name,
+            Key={
+                "PK": {"S": f"testrun#{test_run_id}"},
+                "SK": {"S": "metadata"},
+            },
+        )
+    except Exception as e:
+        logger.warning(
+            f"Could not read testrun#{test_run_id} metadata: {e}. "
+            f"Comparator diff will be empty for this run."
+        )
+        return
+
+    # Accept both L (list of strings — the shape the test_runner writes via
+    # the boto3 resource client) and SS (string set — the shape some legacy
+    # runs and manual DDB imports use). An L-only read silently returned
+    # an empty file list for those runs, blanking the Comparator Changes
+    # panel with no visible cause. Both shapes convert to a Python list.
+    files_attr = meta_response.get("Item", {}).get("Files", {})
+    if "L" in files_attr:
+        files = [
+            entry.get("S") for entry in files_attr.get("L", []) if entry.get("S")
+        ]
+    elif "SS" in files_attr:
+        files = [s for s in files_attr.get("SS", []) if s]
+    else:
+        files = []
+    if not files:
+        return
+
+    # Dedupe before building BatchGetItem keys — DynamoDB rejects a request
+    # that contains duplicate keys with ``ValidationException``, so a Files
+    # list with any duplicate entry (from a re-upload without cleanup, or
+    # a manual DDB edit) would fail the whole request and reduce the
+    # Comparator Changes panel to empty for the run. ``dict.fromkeys``
+    # dedupes while preserving order, and we then sort — the sort is what
+    # gives two runs of the same test set the same representative doc.
+    unique_files = list(dict.fromkeys(files))
+
+    # Sorted iteration gives deterministic candidate ordering — two runs of
+    # the same test set otherwise probe documents in different orders and
+    # the Comparator Changes panel could pick different-shape samples.
+    # Cap the search at ``_ITER_SAMPLE_MAX_PROBE`` files so a large test
+    # set with sparse completion doesn't blow the compare dispatcher
+    # budget: a 5,000-file run with the first 4,900 files still processing
+    # would otherwise page through 50 BatchGetItem calls at ~1-8s each
+    # (throttling + retry backoff) just to find ``limit=5`` completed
+    # docs. 500 keys is 5 batches, well inside the fanout deadline; if
+    # that isn't enough completed docs, the panel gets fewer samples
+    # (or none) but the compare response still returns on time.
+    _ITER_SAMPLE_MAX_PROBE = 500
+    doc_keys = [
+        f"{test_run_id}/{file_name}" for file_name in sorted(unique_files)
+    ][:_ITER_SAMPLE_MAX_PROBE]
+
+    # BatchGetItem in 100-key chunks. Small runs (~5-10 docs) resolve in a
+    # single call. UnprocessedKeys are re-issued with capped exponential
+    # backoff — under throttling the pre-retry code silently omitted
+    # completed docs, which meant two identical compare_test_runs calls
+    # could pick different-shape sample docs and report false schema
+    # drift on the panel.
+    yielded = 0
+    for i in range(0, len(doc_keys), 100):
+        if yielded >= limit:
+            return
+        batch = doc_keys[i : i + 100]
+        collected_items = []
+        pending = {
+            "Keys": [{"PK": {"S": f"doc#{dk}"}, "SK": {"S": "none"}} for dk in batch]
+        }
+        # ``break`` on failure rather than ``return``: an exception on
+        # retry N > 0 must still let the outer loop process items that
+        # attempt 0 collected — the ``return`` variant discarded them,
+        # so a transient throttle mid-batch could silently blank
+        # previously-collected completed docs from the sample.
+        for attempt in range(6):
+            try:
+                response = ddb_client.batch_get_item(RequestItems={table_name: pending})
+            except Exception as e:
+                logger.warning(
+                    f"BatchGetItem for doc#{test_run_id}/* failed: {e}. "
+                    f"Comparator diff may be short for this run."
+                )
+                break
+            collected_items.extend(response.get("Responses", {}).get(table_name, []))
+            pending = response.get("UnprocessedKeys", {}).get(table_name)
+            if not pending or not pending.get("Keys"):
+                break
+            # Skip the trailing sleep on the final attempt — the ``range``
+            # exhausts and we exit via the ``for/else``, so sleeping there
+            # burns latency for nothing.
+            if attempt < 5:
+                time.sleep(min(0.05 * (2**attempt), 0.5))
+        else:
+            logger.warning(
+                f"BatchGetItem for doc#{test_run_id}/* still had "
+                f"{len(pending.get('Keys', []))} unprocessed keys after 6 "
+                f"attempts; sample may be incomplete."
+            )
+        # Preserve the sorted batch order — batch_get_item does not
+        # guarantee response order. Normalize EvaluationStatus casing —
+        # the sibling ``_count_completed_documents`` reads the same field
+        # with ``.upper()`` (writers have historically been inconsistent
+        # about casing on ABORTED-then-recovered runs), so this probe
+        # must apply the same normalization or same-source rows are
+        # classified differently by the two callers.
+        completed_object_keys: set[str] = set()
+        for item in collected_items:
+            eval_status = item.get("EvaluationStatus", {}).get("S", "").upper()
+            if eval_status != "COMPLETED":
+                continue
+            doc_key = item.get("ObjectKey", {}).get("S")
+            if isinstance(doc_key, str) and doc_key:
+                completed_object_keys.add(doc_key)
+        for doc_key in batch:
+            if yielded >= limit:
+                return
+            if doc_key in completed_object_keys:
+                yield doc_key
+                yielded += 1
+
+
+def _load_sample_attribute_methods(test_run_id):
+    """Read one representative document's ``results.json`` for a test run
+    and flatten to ``{section.attribute -> {method, threshold, source}}``.
+
+    Backs the Comparator Changes panel on the Compare Test Runs page:
+    surfaces per-attribute Stickler comparator choice AND its provenance
+    (``configured`` / ``auto-inferred``) so the UI can highlight the
+    subset of attributes whose comparator or source differs between two
+    runs. Reads the FIRST completed doc's ``results.json`` — the
+    provenance is a property of the config + Stickler version, not of
+    the individual document, so one doc is representative for the whole
+    run's schema. Continues probing candidates if the first doc's file
+    parses but yields zero attributes (a Stickler shape drift or a
+    section-exclusion edge case).
+
+    Returns ``{}`` on any read/parse failure — the panel then renders
+    empty rather than blocking the whole compare_test_runs response,
+    which serves many other pieces of information.
+    """
+    output_bucket = os.environ.get("OUTPUT_BUCKET")
+    if not output_bucket:
+        logger.info(
+            "OUTPUT_BUCKET env var not set — skipping sample-attribute methods load"
+        )
+        return {}
+
+    # Mirrors idp_common.evaluation.contract.EVALUATION_RESULTS_KEY_TEMPLATE
+    # (kept literal here to avoid pulling the whole evaluation package into
+    # this resolver's Lambda dependency graph — the resolver is not on the
+    # evaluation critical path). If the template shape ever changes, this
+    # string and the constant in ``contract.py`` must move together.
+    for doc_key in _iter_completed_doc_keys(test_run_id, limit=5):
+        results_s3_key = f"{doc_key}/evaluation/results.json"
+        try:
+            # Explicitly close the StreamingBody after reading so the
+            # underlying urllib3 connection is released promptly under the
+            # 4-way parallel fanout that ``compare_test_runs`` uses.
+            # CPython would GC-close on assignment eventually, but under
+            # concurrent load or on non-CPython runtimes a leaked
+            # connection compounds — the try/finally makes the release
+            # deterministic without changing behaviour on the happy path.
+            response = s3_bounded.get_object(
+                Bucket=output_bucket, Key=results_s3_key
+            )
+            try:
+                body = response["Body"].read()
+            finally:
+                response["Body"].close()
+            eval_data = json.loads(body)
+        except Exception as e:  # noqa: BLE001
+            # Broad ``except`` matches the "returns {} on any read/parse
+            # failure" contract in the docstring. Narrowing to (ClientError,
+            # ValueError, KeyError) missed ``ReadTimeoutError`` — a subclass
+            # of ``BotoCoreError``, NOT ``ClientError`` — which would fault
+            # the entire compare_test_runs response on a transient S3 hiccup.
+            # The panel is a UI nicety, it must never break the parent request.
+            logger.warning(
+                f"results.json not readable at "
+                f"s3://{output_bucket}/{results_s3_key}: {e}"
+            )
+            continue
+
+        methods = {}
+        for section in eval_data.get("section_results") or []:
+            # Diff key is ``{document_class}.{attribute_name}`` — NOT
+            # ``{section_id}.{attribute_name}`` and NOT the bare
+            # attribute name. Two reasons:
+            #
+            #  * section_id is a run-instance detail (position in the
+            #    document) and shifts across differently-sectioned
+            #    samples, so keying by it produces one-sided drift on
+            #    every same-test-set compare that happens to pick
+            #    differently-shaped docs.
+            #  * The bare attribute name COLLIDES across classes in a
+            #    multi-class packet — an ``Amount`` field on an
+            #    ``Invoice`` section and an ``Amount`` field on a
+            #    ``Receipt`` section have DIFFERENT schemas / comparators,
+            #    but a name-only key would flatten them into the same
+            #    entry and the last-written value would silently win,
+            #    hiding real cross-class differences.
+            #
+            # ``{document_class}.{attribute_name}`` is the right level:
+            # same-class sections carry the same schema (so collapsing
+            # them is correct), different-class sections stay distinct.
+            document_class = section.get("document_class") or ""
+            for attr in section.get("attributes") or []:
+                name = attr.get("name")
+                if not name:
+                    continue
+                attr_key = f"{document_class}.{name}" if document_class else name
+                # ``comparator_type`` is Stickler's class name (e.g.
+                # ``FuzzyComparator``); ``evaluation_method`` is the display
+                # string. Prefer the class name for the diff key so two runs
+                # that differ only in the threshold-suffix format still compare
+                # equal on comparator identity.
+                methods[attr_key] = {
+                    "comparator": attr.get("comparator_type")
+                    or attr.get("evaluation_method"),
+                    "threshold": attr.get("evaluation_threshold"),
+                    "source": attr.get("inference_source"),
+                    "why": attr.get("inference_why"),
+                }
+        if methods:
+            return methods
+        # Zero attributes on a parseable file — likely a section-excluded doc
+        # or a shape drift. Try the next candidate rather than returning empty.
+        logger.info(
+            f"results.json at s3://{output_bucket}/{results_s3_key} parsed but "
+            f"had no attributes; trying next candidate"
+        )
+
+    return {}
+
+
+def _build_comparator_diff(runs_methods):
+    """Diff per-attribute {comparator, threshold, source} across runs.
+
+    Emits one row per attribute whose triple differs between at least two
+    runs. Attributes present in only some runs are still emitted so the
+    UI can flag schema-shape drift alongside comparator drift.
+
+    Input: ``{test_run_id: {attribute_path: {comparator, threshold, source, why}}}``.
+    Output: ``[{attribute, entries: {test_run_id: {...}}}]``, sorted by
+    attribute path so the panel is stable across compares.
+    """
+    if not runs_methods or len(runs_methods) < 2:
+        return []
+
+    all_attrs = set()
+    for methods in runs_methods.values():
+        all_attrs.update(methods.keys())
+
+    diff_rows = []
+    for attr in sorted(all_attrs):
+        entries = {
+            run_id: methods.get(attr) for run_id, methods in runs_methods.items()
+        }
+        # Compare on the (comparator, threshold, source) signature that drives
+        # the panel. ``why`` is informational (rendered in a tooltip) and can
+        # vary in phrasing without implying a real difference — omit from the
+        # diff decision.
+        #
+        # ``source`` is included ONLY when every entry has one. Pre-Stickler-
+        # 1.0 ``results.json`` writes (STICKLER_RESULT_VERSION < 3.0) had no
+        # ``inference_source`` field, so comparing an old run against a new
+        # run would otherwise flag every attribute as changed on the source
+        # axis alone — hiding real comparator drift and drowning the panel
+        # in false rows during upgrade windows. Missing on one side, ignore
+        # the axis; missing on all sides, ditto.
+        sources = [(entry or {}).get("source") for entry in entries.values()]
+        include_source = all(s is not None for s in sources)
+        signatures = {
+            run_id: (
+                (entry or {}).get("comparator"),
+                (entry or {}).get("threshold"),
+                (entry or {}).get("source") if include_source else None,
+            )
+            for run_id, entry in entries.items()
+        }
+        if len(set(signatures.values())) > 1:
+            diff_rows.append({"attribute": attr, "entries": entries})
+
+    return diff_rows
+
+
+def compare_test_runs(test_run_ids):
+    """Compare multiple test runs"""
+    logger.info(f"Comparing test runs: {test_run_ids}")
+
+    if not test_run_ids or len(test_run_ids) < 2:
+        logger.warning(
+            f"Insufficient test runs for comparison: {len(test_run_ids) if test_run_ids else 0}"
+        )
+        return {"metrics": [], "configs": []}
+
+    # Get results for each test run
+    results = []
+    configs = []
+    runs_methods: dict = {}
+
+    # Fan out the sample-attribute-methods reads across runs in parallel.
+    # Each call scans the tracking table and reads S3 — serial fanout would
+    # add (N-1) x (scan+get_object) latency to every compare_test_runs
+    # invocation. Bounded to the number of runs (typically 2-4). Isolated
+    # from the sequential critical path so a slow probe on run A doesn't
+    # block starting run B's probe.
+    #
+    # NOTE — deliberately NOT using ``with ThreadPoolExecutor(...) as pool``:
+    # its ``__exit__`` calls ``shutdown(wait=True)``, which blocks the
+    # caller on RUNNING futures. Per-future ``fut.result(timeout=)`` alone
+    # cannot bound total elapsed time (``fut.cancel()`` is a no-op on
+    # RUNNING futures), so a single hung probe could keep the whole
+    # response past the 20s dispatcher ceiling. Explicit
+    # ``shutdown(wait=False, cancel_futures=True)`` in ``finally`` releases
+    # PENDING futures immediately; RUNNING futures keep executing on their
+    # daemon-ish worker threads until Lambda reclaims them, but they no
+    # longer block ``compare_test_runs`` from returning.
+    #
+    # Total wall-clock budget for the whole ``compare_test_runs`` call is
+    # ~17s (leaves ~3s for the 20s dispatcher's response marshalling).
+    # The budget is deadline-based, not per-step: the sequential
+    # ``get_test_results`` + ``_get_test_run_config`` loop below can eat
+    # several seconds of it on a mature stack, and the futures — which
+    # are ALREADY RUNNING while that loop executes — need whatever
+    # remains. ``fanout_deadline_seconds = remaining`` at the
+    # ``futures_wait`` call keeps the total bounded even when prep is slow.
+    _OVERALL_BUDGET_SECONDS = 17.0
+    fanout_start = time.monotonic()
+    pool = ThreadPoolExecutor(max_workers=max(1, min(4, len(test_run_ids))))
+    try:
+        methods_futures = {
+            trid: pool.submit(_load_sample_attribute_methods, trid)
+            for trid in test_run_ids
+        }
+
+        for test_run_id in test_run_ids:
+            logger.info(f"Getting results for test run: {test_run_id}")
+            test_result = get_test_results(test_run_id)
+            if test_result:
+                logger.info(f"Found results for {test_run_id}: {test_result.keys()}")
+                results.append(test_result)
+                config = _get_test_run_config(test_run_id)
+                configs.append({"testRunId": test_run_id, "config": config})
+            else:
+                logger.warning(f"No results found for test run: {test_run_id}")
+
+        # Remaining budget after the sequential prep loop. Anything not
+        # done by the deadline is treated as an empty methods dict for
+        # that run. The underlying ``s3_bounded`` (3s/4s) and
+        # ``ddb_bounded`` (3s/5s) clients cap each probe at ~9s of
+        # network time, so any budget >= 10s here comfortably covers a
+        # well-behaved probe; the deadline exists to bound the
+        # pathological hung case, not the healthy one.
+        elapsed = time.monotonic() - fanout_start
+        fanout_deadline_seconds = max(0.0, _OVERALL_BUDGET_SECONDS - elapsed)
+        logger.info(
+            "compare_test_runs fanout: %.2fs elapsed in prep, %.2fs remaining budget",
+            elapsed,
+            fanout_deadline_seconds,
+        )
+        done_futures, not_done = futures_wait(
+            list(methods_futures.values()),
+            timeout=fanout_deadline_seconds,
+            return_when=ALL_COMPLETED,
+        )
+        for trid, fut in methods_futures.items():
+            if fut in not_done:
+                logger.warning(
+                    f"Sample-attribute-methods read for {trid} exceeded "
+                    f"the {fanout_deadline_seconds:.2f}s fanout deadline "
+                    f"(overall {_OVERALL_BUDGET_SECONDS}s budget minus prep); "
+                    f"Comparator diff will be empty for this run."
+                )
+                runs_methods[trid] = {}
+                continue
+            try:
+                # timeout=0 — future is in ``done_futures`` so this returns
+                # immediately with the result or a stored exception.
+                runs_methods[trid] = fut.result(timeout=0)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    f"Sample-attribute-methods read failed for {trid}: {e}. "
+                    f"Comparator diff will be empty for this run."
+                )
+                runs_methods[trid] = {}
+    finally:
+        # ``cancel_futures=True`` cancels PENDING futures. RUNNING ones
+        # keep running until they complete on their own, but ``wait=False``
+        # means we don't block on them — they don't hold up the response.
+        pool.shutdown(wait=False, cancel_futures=True)
+
+    logger.info(f"Total results found: {len(results)}")
+
+    if len(results) < 2:
+        logger.warning(f"Insufficient results for comparison: {len(results)}")
+        return {"metrics": [], "configs": []}
+
+    metrics_comparison = {result["testRunId"]: result for result in results}
+    # Plant the comparator diff inside the metrics AWSJSON payload under a
+    # ``_``-prefixed key so it rides on the response without a new GraphQL
+    # field. Every UI consumer of ``metrics`` MUST filter ``_``-prefixed
+    # keys before iterating — see ``src/ui/src/components/test-studio/
+    # TestComparison.tsx`` for the shared helper. The convention is
+    # UUIDs-only-in-values, so the guard below catches a future regression
+    # (a run-id that starts with ``_`` would silently shadow the sentinel)
+    # rather than letting it corrupt the compare view.
+    #
+    # Use an explicit runtime check, NOT ``assert`` — ``assert`` is stripped
+    # under ``python -O`` / ``PYTHONOPTIMIZE=1``, so the invariant would
+    # silently disappear on Lambda runtimes that use optimized bytecode.
+    # If the collision hits, drop the sentinel rather than crash the whole
+    # response: the panel simply won't render for that compare, but the
+    # rest of ``metrics`` still reaches the UI.
+    colliding_keys = [k for k in metrics_comparison if k.startswith("_")]
+    if colliding_keys:
+        logger.error(
+            "compareTestRuns: test-run-id key(s) start with '_', which "
+            "collides with the ``_comparator_diff`` sentinel — dropping the "
+            "sentinel to avoid corrupting the response. Colliding: %s",
+            colliding_keys,
+        )
+    else:
+        metrics_comparison["_comparator_diff"] = _build_comparator_diff(runs_methods)
+    configs_comparison = _build_config_comparison(configs)
+
+    logger.info(f"Configs data: {configs}")
+    logger.info(f"Config comparison result: {configs_comparison}")
+
+    comparison_result = {"metrics": metrics_comparison, "configs": configs_comparison}
+
+    logger.info(f"Final comparison result: {comparison_result}")
+
+    return comparison_result
+
+
+def _format_datetime(dt_str):
+    """Format datetime string for GraphQL AWSDateTime type"""
+    if not dt_str:
+        return None
+    # Add Z suffix if not present
+    return dt_str + "Z" if not dt_str.endswith("Z") else dt_str
+
+
+def _count_completed_documents(table, test_run_id, files):
+    """
+    Count how many documents reached a settled, non-failed evaluation state.
+
+    Uses batch_get_item for efficiency instead of sequential get_item calls.
+
+    Counts the same ``_EVAL_STATUS_SETTLED`` set ``get_test_run_status`` counts
+    as completed, so the "N of M completed" an aborted run reports agrees with
+    the figure every other run reports. Matching only ``COMPLETED`` made this
+    answer 0 for a run with no ground truth or with evaluation switched off,
+    both of which that function counts as completed.
+
+    Not an exact mirror of that function: it also requires ``ObjectStatus`` to be
+    COMPLETED, and this reads the evaluation attribute alone (it always has). A
+    document stamped ABORTED over an earlier settled evaluation status is
+    therefore counted here and not there — which is the pre-existing behaviour,
+    confined to the "N of M" figure an aborted run reports. It also has no
+    captured-configuration fallback for a document carrying no status at all, so
+    an aborted run that predates the ``DISABLED`` stamp and ran with evaluation
+    off still reports 0 of N here, where the status loop reports N.
+
+    Args:
+        table: DynamoDB table resource
+        test_run_id: Test run identifier
+        files: List of file names in the test run
+
+    Returns:
+        int: Number of documents whose evaluation settled without failing
+    """
+    if not files:
+        return 0
+
+    completed_count = 0
+    table_name = table.table_name
+    dynamodb_client = boto3.client("dynamodb")
+
+    # Build object keys
+    object_keys = [f"{test_run_id}/{file_name}" for file_name in files]
+
+    # DynamoDB batch_get_item supports up to 100 keys per batch
+    batch_size = 100
+    for i in range(0, len(object_keys), batch_size):
+        batch = object_keys[i : i + batch_size]
+        keys = [{"PK": {"S": f"doc#{key}"}, "SK": {"S": "none"}} for key in batch]
+
+        try:
+            response = dynamodb_client.batch_get_item(
+                RequestItems={table_name: {"Keys": keys}}
+            )
+
+            # Count completed evaluations
+            for item in response.get("Responses", {}).get(table_name, []):
+                eval_status = item.get("EvaluationStatus", {}).get("S", "").upper()
+                if eval_status in _EVAL_STATUS_SETTLED:
+                    completed_count += 1
+
+            # Handle unprocessed keys (throttling, etc.)
+            unprocessed = response.get("UnprocessedKeys", {}).get(table_name, {})
+            if unprocessed:
+                logger.warning(
+                    f"Batch get had {len(unprocessed.get('Keys', []))} unprocessed keys"
+                )
+
+        except Exception as e:
+            logger.error(f"Batch get failed for batch starting at index {i}: {str(e)}")
+
+    return completed_count
+
+
+def get_test_results(test_run_id):
+    """Get detailed test results for a specific test run"""
+    table = dynamodb.Table(os.environ["TRACKING_TABLE"])  # type: ignore[attr-defined]  # type: ignore[attr-defined]
+
+    # Get test run metadata
+    response = table.get_item(Key={"PK": f"testrun#{test_run_id}", "SK": "metadata"})
+
+    if "Item" not in response:
+        raise ValueError(f"Test run {test_run_id} not found")
+
+    metadata = response["Item"]
+    current_status = metadata.get("Status")
+
+    # Update status if not completed
+    if current_status not in ["COMPLETE", "PARTIAL_COMPLETE", "ABORTED"]:
+        status_result = get_test_run_status(test_run_id)
+        if status_result:
+            current_status = status_result["status"]
+            # Refresh metadata after status update
+            response = table.get_item(
+                Key={"PK": f"testrun#{test_run_id}", "SK": "metadata"}
+            )
+            if "Item" in response:
+                metadata = response["Item"]
+
+    # Raise error if status is still not complete
+    if current_status not in ["COMPLETE", "PARTIAL_COMPLETE", "ABORTED"]:
+        raise ValueError(
+            f"Test run {test_run_id} is not complete. Current status: {current_status}"
+        )
+
+    # Check if cached results exist and are complete
+    cached_metrics = metadata.get("testRunResult")
+    if cached_metrics is not None:
+        logger.info(f"Retrieved cached metrics for test run: {test_run_id}")
+
+        # Check if cached data is missing keys added by a later release (or was
+        # written in a superseded shape) and needs re-aggregation.
+        #
+        # This is a presence check, so any key added here is by definition
+        # absent from every cache written before that key existed — i.e. every
+        # historical test run goes stale exactly once when a new key lands.
+        # Re-aggregation therefore has to be *additive*: enqueue the recompute
+        # and still serve the cached values we do have. Returning nothing
+        # instead would resolve getTestRun to null (UI: "No test results
+        # found") and silently drop the run from compareTestRuns, permanently
+        # — nothing else re-enqueues a cache update for a run whose
+        # testRunResult is present but stale.
+        #
+        # Convergence: handle_cache_update_request always writes every key in
+        # metrics_to_cache (defaulting to {}), so one pass through the queue
+        # satisfies this guard for good — no re-enqueue loop, even for runs
+        # whose aggregation legitimately yields no graded metrics.
+        cached_scores = cached_metrics.get("weightedOverallScores")
+        if (
+            "splitClassificationMetrics" not in cached_metrics
+            or "confusionMatrix" not in cached_metrics
+            or "fieldMetrics" not in cached_metrics
+            or "gradedPacketMetrics" not in cached_metrics
+            or "excludedDocumentCount" not in cached_metrics
+            or "classificationErrors" not in cached_metrics
+            or isinstance(cached_scores, list)
+        ):
+            logger.info(
+                f"Cached metrics incomplete or outdated, queueing re-aggregation "
+                f"for test run: {test_run_id} (serving cached values meanwhile)"
+            )
+            # Recompute off the request path. Aggregation re-reads every
+            # document's results.json from S3 and can take minutes on a large
+            # run — far longer than the API's read timeout — so doing it
+            # inline here would turn a stale cache into a timed-out query.
+            # Skip when one is already in flight, using the metadata in hand so
+            # revisiting the page doesn't cost a rejected conditional write.
+            if not _cache_update_recently_queued(metadata):
+                _queue_cache_update(test_run_id)
+
+        # For ABORTED status, count completed files on first call and persist to DB
+        completed_files_count = metadata.get("CompletedFiles", 0)
+        completed_files_counted = metadata.get("CompletedFilesCounted", False)
+
+        # Only re-count if we haven't counted before (tracked by CompletedFilesCounted flag)
+        if current_status == "ABORTED" and not completed_files_counted:
+            files = metadata.get("Files", [])
+            if files:
+                completed_files_count = _count_completed_documents(
+                    table, test_run_id, files
+                )
+                logger.info(
+                    f"Counted {completed_files_count} completed documents for aborted test run {test_run_id}"
+                )
+
+                # Persist the count and flag to database
+                try:
+                    table.update_item(
+                        Key={"PK": f"testrun#{test_run_id}", "SK": "metadata"},
+                        UpdateExpression="SET CompletedFiles = :completed_files, CompletedFilesCounted = :counted",
+                        ExpressionAttributeValues={
+                            ":completed_files": completed_files_count,
+                            ":counted": True,
+                        },
+                    )
+                    logger.info(
+                        f"Updated CompletedFiles to {completed_files_count} and set CompletedFilesCounted=True for test run {test_run_id}"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to update CompletedFiles for {test_run_id}: {str(e)}"
+                    )
+
+        # Use cached metrics but get dynamic fields from current metadata.
+        # Keys absent from an older cache default to {} / 0, which every
+        # consumer already treats as "no data for this panel".
+        return {
+            "testRunId": test_run_id,
+            "testSetId": metadata.get("TestSetId"),
+            "testSetName": metadata.get("TestSetName"),
+            "status": current_status,
+            "filesCount": metadata.get("FilesCount", 0),
+            "completedFiles": completed_files_count,
+            "failedFiles": metadata.get("FailedFiles", 0),
+            "overallAccuracy": cached_metrics.get("overallAccuracy"),
+            "weightedOverallScores": cached_metrics.get("weightedOverallScores", {}),
+            # Recomputed when absent, so runs cached before this field existed
+            # return a value rather than null.
+            "avgWeightedOverallScore": _resolve_avg_weighted_overall_score(
+                cached_metrics.get("avgWeightedOverallScore"),
+                cached_metrics.get("weightedOverallScores"),
+            ),
+            "averageConfidence": cached_metrics.get("averageConfidence"),
+            "confidenceMetrics": cached_metrics.get("confidenceMetrics"),
+            "accuracyBreakdown": cached_metrics.get("accuracyBreakdown", {}),
+            "confusionMatrix": cached_metrics.get("confusionMatrix", {}),
+            "fieldMetrics": cached_metrics.get("fieldMetrics", {}),
+            "splitClassificationMetrics": cached_metrics.get(
+                "splitClassificationMetrics", {}
+            ),
+            "gradedPacketMetrics": cached_metrics.get("gradedPacketMetrics", {}),
+            "classificationErrors": cached_metrics.get("classificationErrors", {}),
+            "excludedDocumentCount": cached_metrics.get("excludedDocumentCount", 0),
+            "totalCost": cached_metrics.get("totalCost", 0),
+            "costBreakdown": cached_metrics.get("costBreakdown", {}),
+            "createdAt": _format_datetime(metadata.get("CreatedAt")),
+            "completedAt": _format_datetime(metadata.get("CompletedAt")),
+            "context": metadata.get("Context"),
+            "isDraftLabeling": _is_draft_labeling_run(metadata),
+            "evaluationDisabled": _ran_with_evaluation_disabled(metadata),
+            "configVersion": metadata.get("ConfigVersion"),
+            "configRevision": _as_int(metadata.get("ConfigRevision")),
+            "testSetVersion": metadata.get("TestSetVersion"),
+            "testSetDraftVersion": _as_int(metadata.get("TestSetDraftVersion")),
+            "config": _get_test_run_config(test_run_id),
+        }
+    else:
+        # No aggregate metrics have been cached yet. This happens when all
+        # files finished processing but the evaluation aggregation step hasn't
+        # written testRunResult (still running, or it timed out / failed on a
+        # large run). Don't raise — that surfaces as an opaque error and the UI
+        # spins on "Loading..." forever. Return a structured partial TestRun so
+        # the UI can render the in-progress status instead.
+        if current_status == "ABORTED":
+            logger.info(
+                f"Test run {test_run_id} aborted; aggregate metrics not yet available"
+            )
+        else:
+            logger.info(
+                f"Test run {test_run_id} processing complete; "
+                "aggregate metrics not yet available (evaluation in progress)"
+            )
+            # Self-heal: re-enqueue the aggregation. Nothing else will — the
+            # enqueue in get_test_run_status only fires on a status *transition*,
+            # and the stale-cache re-enqueue above only fires when testRunResult
+            # already exists. So a run that reached COMPLETE while its one
+            # aggregation attempt failed used to stay metric-less forever, which
+            # the UI renders as a permanent EVALUATING badge alongside a fully
+            # processed file count (issue #619). Throttled, so repeat visits to
+            # the results page don't stack up duplicate aggregations — checked
+            # against the metadata already in hand to avoid a write per visit.
+            if not _cache_update_recently_queued(metadata):
+                _queue_cache_update(test_run_id)
+
+        return {
+            "testRunId": test_run_id,
+            "testSetId": metadata.get("TestSetId"),
+            "testSetName": metadata.get("TestSetName"),
+            "status": current_status,
+            "filesCount": metadata.get("FilesCount", 0),
+            "completedFiles": metadata.get("CompletedFiles", 0),
+            "failedFiles": metadata.get("FailedFiles", 0),
+            "createdAt": _format_datetime(metadata.get("CreatedAt")),
+            "completedAt": _format_datetime(metadata.get("CompletedAt")),
+            "context": metadata.get("Context"),
+            "isDraftLabeling": _is_draft_labeling_run(metadata),
+            "evaluationDisabled": _ran_with_evaluation_disabled(metadata),
+            "configVersion": metadata.get("ConfigVersion"),
+            "configRevision": _as_int(metadata.get("ConfigRevision")),
+            "testSetVersion": metadata.get("TestSetVersion"),
+            "testSetDraftVersion": _as_int(metadata.get("TestSetDraftVersion")),
+        }
+
+
+def _batch_get_test_run_items(keys, table_name):
+    """BatchGetItem for testrun metadata rows, with UnprocessedKeys retry.
+
+    Sits behind ``_query_test_runs_from_gsi`` on the ``getTestRuns`` path.
+    ``max_items`` (100) matches DynamoDB's per-call
+    BatchGetItem cap, so this always fits in a single round trip — no
+    parallelism needed. ``UnprocessedKeys`` are re-issued with capped
+    exponential backoff rather than dropped; the pre-cap code returned
+    partial results silently under throttling, making the list appear
+    shorter than it actually was.
+    """
+    if not keys:
+        return []
+    if len(keys) > 100:
+        # BatchGetItem hard limit — shouldn't happen with the caller cap,
+        # but guard so a future caller change is a loud AssertionError
+        # rather than a partial silent read.
+        raise AssertionError(
+            f"_batch_get_test_run_items called with {len(keys)} keys; "
+            f"DynamoDB BatchGetItem caps at 100 per call."
+        )
+
+    # ``ddb_bounded_marshalling`` (bounded 3s/5s) — the MARSHALLING
+    # variant, NOT the direct ``ddb_bounded``. Caller in
+    # ``_query_test_runs_from_gsi`` passes untyped keys straight from
+    # ``table.query()``, and ``_build_test_run_list`` downstream reads
+    # unmarshalled fields (``item["TestRunId"]`` as a bare string).
+    # The direct low-level client would raise ``ParamValidationError``
+    # on the untyped keys and (if that were bypassed) return typed
+    # AttributeValue responses that break every field access below.
+    # See the client construction comment for the two-clients story.
+    ddb_client = ddb_bounded_marshalling
+    collected = []
+    pending = {"Keys": keys}
+    for attempt in range(6):
+        try:
+            response = ddb_client.batch_get_item(RequestItems={table_name: pending})
+        except Exception as exc:  # noqa: BLE001
+            # Broadened from ``ClientError`` — ``ReadTimeoutError`` is a
+            # ``BotoCoreError`` subclass and NOT a ``ClientError``, so a
+            # transient network hiccup would otherwise 500 the entire
+            # getTestRuns response instead of returning the partial list.
+            # The list render must never fault on a subset failure —
+            # matches the "swallow anything transient" contract in
+            # ``_load_sample_attribute_methods``.
+            logger.warning(
+                f"BatchGetItem for {len(pending.get('Keys', []))} testrun "
+                f"keys failed: {exc}. Returning partial results."
+            )
+            return collected
+        collected.extend(response.get("Responses", {}).get(table_name, []))
+        pending = response.get("UnprocessedKeys", {}).get(table_name)
+        if not pending or not pending.get("Keys"):
+            return collected
+        # Skip the trailing sleep on the final attempt — the loop is about
+        # to exit via range exhaustion anyway, so sleeping there just
+        # burns latency on the compareTestRuns critical path.
+        if attempt < 5:
+            time.sleep(min(0.05 * (2**attempt), 0.5))
+    logger.warning(
+        f"BatchGetItem still has {len(pending.get('Keys', []))} unprocessed "
+        f"testrun keys after 6 attempts; dropping them from this list render"
+    )
+    return collected
+
+
+# Absolute ceiling on the number of testruns ``getTestRuns`` will return in
+# a single call. The REST dispatcher enforces a 20s read timeout against
+# every resolver (http_api_dispatcher/index.py:63); hydrating every testrun
+# in the range via BatchGetItem grows linearly with the count and started
+# missing that ceiling on mature stacks (~500 rows -> ~20s+). The GSI is
+# sorted newest first, so returning the N most recent covers the common
+# "what happened recently" UI need. Users who want an older run narrow
+# the date range; the underlying pagination substrate (LastEvaluatedKey
+# on the GSI Query) is still there for the follow-up TestRunConnection
+# API. Callers may pass a smaller ``maxItems`` to fetch fewer rows and
+# render faster — the value is clamped to ``[1, this ceiling]`` in
+# ``get_test_runs``.
+#
+# 100 matches DynamoDB's BatchGetItem max per call, so the hydrate step
+# is guaranteed to fit in a single round trip regardless of table load.
+# Raising this without redesigning the hydrate step (single-batch today)
+# reintroduces the throttle-amplification problem we just removed.
+_GET_TEST_RUNS_ABSOLUTE_MAX = 100
+
+
+def _query_test_runs_from_gsi(table, start_iso, end_iso, max_items):
+    """Query test runs from TypeDateIndex GSI instead of scanning the full table.
+
+    Uses GSI to find testrun keys efficiently, then BatchGetItem for full records
+    (GSI projection doesn't include all fields like Context, ConfigVersion, etc.).
+    Falls back to scan if GSI query returns no results (backfill may not be complete).
+
+    Capped at ``max_items`` — see the module-level comment for
+    why. The GSI's ``ScanIndexForward=False`` guarantees the cap keeps the
+    NEWEST N runs in the range, which is what the UI list view wants by
+    default.
+    """
+    from boto3.dynamodb.conditions import Key
+
+    gsi_items = []
+    query_kwargs = {
+        "IndexName": "TypeDateIndex",
+        "KeyConditionExpression": Key("ItemType").eq("testrun")
+        & Key("InitialEventTime").between(start_iso, end_iso),
+        "ScanIndexForward": False,  # Newest first
+        "ProjectionExpression": "PK, SK",
+        "Limit": max_items,
+    }
+
+    try:
+        # The Limit caps DDB's own page size, so on a busy index DDB may
+        # return a short first page with a LastEvaluatedKey — we still
+        # need to paginate until we have max_items items
+        # or run out of range. Never fetch past the cap.
+        while len(gsi_items) < max_items:
+            response = table.query(**query_kwargs)
+            gsi_items.extend(response.get("Items", []))
+            if "LastEvaluatedKey" not in response:
+                break
+            query_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+            query_kwargs["Limit"] = max_items - len(gsi_items)
+
+        # Never yield more than the cap; sorted newest-first by the GSI.
+        gsi_items = gsi_items[:max_items]
+        logger.info(
+            f"GSI query returned {len(gsi_items)} test run keys (capped at {max_items})"
+        )
+
+        # If GSI returned results, fetch full records via BatchGetItem.
+        # With the cap, this is guaranteed to fit in a single BatchGetItem
+        # call (100 keys max per call). ``table.query`` returned untyped
+        # Python values; ``_batch_get_test_run_items`` uses
+        # ``ddb_bounded_marshalling`` which auto-marshals on the way out
+        # and auto-unmarshals on the way in, so untyped keys are the
+        # right shape here — see the client construction comment.
+        if gsi_items:
+            keys = [{"PK": item["PK"], "SK": item["SK"]} for item in gsi_items]
+            table_name = table.table_name
+            items = _batch_get_test_run_items(keys, table_name)
+            logger.info(f"BatchGetItem returned {len(items)} full test run records")
+            return items
+
+        # Fallback: GSI may not have ItemType yet (backfill pending).
+        # Try scan with CreatedAt filter as fallback.
+        logger.info(
+            "GSI returned 0 results, falling back to scan (backfill may be pending)"
+        )
+    except Exception as e:
+        logger.warning(f"GSI query failed, falling back to scan: {e}")
+
+    # Fallback scan — same cap applies. DDB Scan with FilterExpression pays
+    # RCU for every row read (not just the filtered survivors), so an
+    # uncapped fallback on a large tracking table is even more expensive
+    # than the GSI path we are protecting.
+    items = []
+    scan_kwargs = {
+        "FilterExpression": "begins_with(PK, :pk) AND SK = :sk AND CreatedAt >= :start AND CreatedAt <= :end",
+        "ExpressionAttributeValues": {
+            ":pk": "testrun#",
+            ":sk": "metadata",
+            ":start": start_iso,
+            ":end": end_iso,
+        },
+        "Limit": max_items,
+    }
+
+    while len(items) < max_items:
+        response = table.scan(**scan_kwargs)
+        items.extend(response.get("Items", []))
+        if "LastEvaluatedKey" not in response:
+            break
+        scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+        # Shrink Limit on each iteration so a heavily-filtered Scan on
+        # subsequent pages does not burn ~max_items worth of RCU when
+        # we only need (max_items - already_collected) more rows. Matches
+        # the GSI path above.
+        scan_kwargs["Limit"] = max_items - len(items)
+
+    items = items[:max_items]
+    logger.info(
+        f"Fallback scan returned {len(items)} test runs (capped at {max_items})"
+    )
+    return items
+
+
+def _build_test_run_list(items):
+    """Build sorted test run list from raw DynamoDB items."""
+    test_runs = []
+
+    for item in items:
+        # Show EVALUATING for completed tests without metrics, but keep ABORTED
+        # as-is. Display only: unlike the two single-run resolvers, this does NOT
+        # enqueue the missing aggregation, because one list render covers an
+        # arbitrary number of runs and fanning out an enqueue per stuck row would
+        # turn a page load into a burst of multi-minute Lambda invocations. The
+        # per-row poll (getTestRunStatus) drives recovery instead, and the UI
+        # renders TestRunnerStatus for every row — so a run visible here is
+        # already being healed by the resolver that can afford to do it.
+        display_status = _display_status(item, item.get("Status"))
+
+        test_runs.append(
+            {
+                "testRunId": item["TestRunId"],
+                "testSetId": item.get("TestSetId"),
+                "testSetName": item.get("TestSetName"),
+                "status": display_status,
+                "filesCount": item.get("FilesCount", 0),
+                "completedFiles": item.get("CompletedFiles", 0),
+                "failedFiles": item.get("FailedFiles", 0),
+                "createdAt": _format_datetime(item.get("CreatedAt")),
+                "completedAt": _format_datetime(item.get("CompletedAt")),
+                "context": item.get("Context"),
+                "isDraftLabeling": _is_draft_labeling_run(item),
+                "configVersion": item.get("ConfigVersion"),
+                "configRevision": _as_int(item.get("ConfigRevision")),
+                "testSetVersion": item.get("TestSetVersion"),
+                "testSetDraftVersion": _as_int(item.get("TestSetDraftVersion")),
+            }
+        )
+
+    test_runs.sort(
+        key=lambda r: r.get("createdAt") or "1970-01-01T00:00:00Z", reverse=True
+    )
+    return test_runs
+
+
+def get_test_runs(start_iso, end_iso, max_items=None):
+    """Get list of test runs within a date range.
+
+    ``max_items`` is a caller-driven cap; clamped to
+    ``[1, _GET_TEST_RUNS_ABSOLUTE_MAX]``. ``None`` (or omitted) uses the
+    server default (also ``_GET_TEST_RUNS_ABSOLUTE_MAX``) so untouched
+    callers keep the historical shape.
+    """
+    table = dynamodb.Table(os.environ["TRACKING_TABLE"])  # type: ignore[attr-defined]
+
+    if max_items is None:
+        effective_max = _GET_TEST_RUNS_ABSOLUTE_MAX
+    else:
+        try:
+            requested = int(max_items)
+        except (TypeError, ValueError):
+            requested = _GET_TEST_RUNS_ABSOLUTE_MAX
+        # Clamp — never below 1, never above the server's own hard ceiling
+        # (which is bounded by BatchGetItem's per-call limit).
+        effective_max = max(1, min(_GET_TEST_RUNS_ABSOLUTE_MAX, requested))
+
+    logger.info(
+        f"Fetching test runs between: {start_iso} and {end_iso} "
+        f"(effective_max={effective_max})"
+    )
+    items = _query_test_runs_from_gsi(table, start_iso, end_iso, effective_max)
+    logger.info(f"Test runs found: {len(items)}")
+
+    return _build_test_run_list(items)
+
+
+def _calculate_completed_at(test_run_id, files, table):
+    """Calculate completedAt timestamp from document CompletionTime"""
+    latest_completion_time = None
+
+    for file_key in files:
+        doc_response = table.get_item(
+            Key={"PK": f"doc#{test_run_id}/{file_key}", "SK": "none"}
+        )
+        if "Item" in doc_response:
+            doc_item = doc_response["Item"]
+            completion_time = doc_item.get("CompletionTime")
+            if completion_time:
+                completion_time = completion_time.replace("+00:00", "Z")
+                if (
+                    not latest_completion_time
+                    or completion_time > latest_completion_time
+                ):
+                    latest_completion_time = completion_time
+
+    return latest_completion_time
+
+
+def get_test_run_status(test_run_id):
+    """Get lightweight status for specific test run - checks both document and evaluation status"""
+    table = dynamodb.Table(os.environ["TRACKING_TABLE"])  # type: ignore[attr-defined]
+
+    try:
+        logger.info(f"Getting test run status for: {test_run_id}")
+
+        # Get test run metadata
+        response = table.get_item(
+            Key={"PK": f"testrun#{test_run_id}", "SK": "metadata"}
+        )
+
+        if "Item" not in response:
+            logger.warning(f"Test run metadata not found for: {test_run_id}")
+            return None
+
+        item = response["Item"]
+        files = item.get("Files", [])
+        files_count = item.get("FilesCount", 0)
+        logger.info(f"Test run {test_run_id}: Found {files_count} files")
+
+        # If test run was manually aborted, return ABORTED status without recalculation
+        stored_status = item.get("Status", "RUNNING")
+        if stored_status == "ABORTED":
+            logger.info(f"Test run {test_run_id} is ABORTED, returning stored status")
+            return {
+                "testRunId": test_run_id,
+                "status": "ABORTED",
+                "progress": 100,
+                "completedFiles": item.get("CompletedFiles", 0),
+                "filesCount": files_count,
+                "evaluatingFiles": 0,
+                "failedFiles": item.get("FailedFiles", 0),
+            }
+
+        # Always check actual document status from tracking table
+        completed_files = 0
+        processing_failed_files = 0  # Only count processing failures found during scan
+        evaluating_files = 0
+        queued_files = 0
+        # Resolved at most once per invocation, and only if some document turns
+        # out to carry no evaluation status at all — it decompresses the run's
+        # captured configuration, which is not worth doing on a poll where
+        # every document already says what happened to it.
+        evaluation_off = None
+
+        for file_key in files:
+            logger.info(f"Checking file: {file_key} for test run: {test_run_id}")
+            doc_response = table.get_item(
+                Key={"PK": f"doc#{test_run_id}/{file_key}", "SK": "none"}
+            )
+            if "Item" in doc_response:
+                doc_status = doc_response["Item"].get("ObjectStatus", "QUEUED")
+                eval_status = _normalized_eval_status(doc_response["Item"])
+                logger.info(
+                    f"File {file_key}: ObjectStatus={doc_status}, EvaluationStatus={eval_status}"
+                )
+
+                if doc_status == "COMPLETED":
+                    # Check if evaluation is also complete
+                    if eval_status in _EVAL_STATUS_SETTLED:
+                        completed_files += 1
+                        logger.info(
+                            f"File {file_key}: counted as completed ({eval_status})"
+                        )
+                    elif eval_status in _EVAL_STATUS_UNSUCCESSFUL:
+                        processing_failed_files += 1
+                        logger.info(
+                            f"File {file_key}: counted as failed (eval {eval_status})"
+                        )
+                    elif eval_status in _EVAL_STATUS_IN_FLIGHT:
+                        evaluating_files += 1
+                        logger.info(f"File {file_key}: counted as evaluating")
+                    elif eval_status is None:
+                        # Nothing recorded. Either evaluation has not reached
+                        # this document yet, or it never will because the run's
+                        # configuration switched evaluation off — and before
+                        # #1330 those were read as the first case
+                        # unconditionally, which is why such a run sat at
+                        # EVALUATING forever. Documents processed since carry
+                        # DISABLED and are settled above; this consults the
+                        # captured configuration, which is what answers for a
+                        # run that predates the stamp or whose stamp could not
+                        # be written.
+                        if evaluation_off is None:
+                            evaluation_off = _ran_with_evaluation_disabled(item)
+                        if evaluation_off:
+                            completed_files += 1
+                            logger.info(
+                                f"File {file_key}: counted as completed "
+                                "(evaluation disabled for this run)"
+                            )
+                        else:
+                            evaluating_files += 1
+                            logger.info(
+                                f"File {file_key}: counted as evaluating (eval not started)"
+                            )
+                    else:
+                        # A status none of the three sets above names. Counting
+                        # it as evaluating keeps the run short of a terminal
+                        # status for as long as it is there, so this is a
+                        # "someone added an EvaluationStatus and did not come
+                        # here" alarm, not a routine branch — hence WARNING.
+                        evaluating_files += 1
+                        logger.warning(
+                            f"File {file_key}: unrecognised EvaluationStatus "
+                            f"{eval_status!r}; counting as evaluating, which will "
+                            f"hold test run {test_run_id} short of a terminal status"
+                        )
+                elif doc_status == "FAILED":
+                    processing_failed_files += 1
+                    logger.info(f"File {file_key}: counted as failed")
+                elif doc_status == "ABORTED":
+                    # Count aborted documents as processing failures
+                    processing_failed_files += 1
+                    logger.info(f"File {file_key}: counted as failed (aborted)")
+                elif doc_status == "QUEUED":
+                    queued_files += 1
+                    logger.info(f"File {file_key}: counted as queued")
+                else:
+                    logger.info(
+                        f"File {file_key}: still processing (status: {doc_status})"
+                    )
+            else:
+                logger.warning(f"Document not found: doc#{test_run_id}/{file_key}")
+                # Count missing documents as queued (not yet created)
+                queued_files += 1
+
+        # Calculate total failed files
+        baseline_failed_files = item.get(
+            "BaselineFailedFiles", 0
+        )  # Set by copier, never updated
+        total_failed_files = (
+            baseline_failed_files + processing_failed_files
+        )  # Recalculated each call
+
+        logger.info(
+            f"Test run {test_run_id} counts: completed={completed_files}, processing_failed={processing_failed_files}, baseline_failed={baseline_failed_files}, total_failed={total_failed_files}, evaluating={evaluating_files}, queued={queued_files}, total={files_count}"
+        )
+
+        # Determine overall test run status based on document and evaluation states
+        if (
+            completed_files == files_count
+            and files_count > 0
+            and total_failed_files == 0
+        ):
+            overall_status = "COMPLETE"
+        elif (
+            total_failed_files > 0
+            and (completed_files + total_failed_files + evaluating_files) == files_count
+        ):
+            overall_status = "PARTIAL_COMPLETE"
+        elif evaluating_files > 0:
+            overall_status = "EVALUATING"
+        elif queued_files == files_count:
+            overall_status = "QUEUED"  # All files are still queued
+        elif (
+            completed_files + total_failed_files + evaluating_files + queued_files
+            < files_count
+        ):
+            overall_status = "RUNNING"  # Some files are actively processing
+        else:
+            overall_status = item.get("Status", "RUNNING")
+
+        # Auto-update database metadata if calculated status differs from stored status
+        stored_status = item.get("Status", "RUNNING")
+        if overall_status != stored_status:
+            # Calculate completedAt from document completion times if status is complete
+            calculated_completed_at = item.get("CompletedAt")
+            if (
+                overall_status in ["COMPLETE", "PARTIAL_COMPLETE"]
+                and not calculated_completed_at
+            ):
+                calculated_completed_at = _calculate_completed_at(
+                    test_run_id, files, table
+                )
+
+            logger.info(
+                f"Auto-updating test run {test_run_id} status from {stored_status} to {overall_status}"
+            )
+            try:
+                table.update_item(
+                    Key={"PK": f"testrun#{test_run_id}", "SK": "metadata"},
+                    UpdateExpression="SET #status = :status, #completedAt = :completedAt, CompletedFiles = :completedFiles, FailedFiles = :failedFiles",
+                    ExpressionAttributeNames={
+                        "#status": "Status",
+                        "#completedAt": "CompletedAt",
+                    },
+                    ExpressionAttributeValues={
+                        ":status": overall_status,
+                        ":completedAt": calculated_completed_at,
+                        ":completedFiles": completed_files,
+                        ":failedFiles": total_failed_files,
+                    },
+                )
+                logger.info(
+                    f"Successfully updated test run {test_run_id} status to {overall_status}"
+                )
+
+                # Queue metric calculation for completed test runs
+                if _awaiting_metrics(item, overall_status):
+                    _queue_cache_update(test_run_id)
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to auto-update test run {test_run_id} status: {e}"
+                )
+
+        # Report EVALUATING to caller until cached metrics are available
+        display_status = _display_status(item, overall_status)
+        if _awaiting_metrics(item, overall_status):
+            # Self-heal when the status did NOT change on this call — i.e. the
+            # transition enqueue above didn't fire, because the run reached its
+            # terminal status on an earlier call whose aggregation then failed.
+            # Without this the run reports EVALUATING forever while showing every
+            # file processed and zero evaluating (issue #619).
+            #
+            # The UI polls this resolver every 5 seconds per in-progress run, so
+            # the throttle window is read from the item already in hand rather
+            # than by attempting the conditional write on every poll — the write
+            # would be rejected almost every time, and a rejected conditional
+            # write still costs write capacity. _queue_cache_update re-checks
+            # atomically, so this shortcut can only skip work, never duplicate it.
+            if overall_status == stored_status and not _cache_update_recently_queued(
+                item
+            ):
+                _queue_cache_update(test_run_id)
+
+        progress = (
+            ((completed_files + total_failed_files) / files_count * 100)
+            if files_count > 0
+            else 0
+        )
+
+        result = {
+            "testRunId": test_run_id,
+            "status": display_status,
+            "filesCount": files_count,
+            "completedFiles": completed_files,
+            "failedFiles": total_failed_files,
+            "evaluatingFiles": evaluating_files,
+            "progress": progress,
+        }
+
+        logger.info(f"Test run {test_run_id} final result: {result}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Error getting test run status for {test_run_id}: {e}")
+        return None
+
+
+def _athena_supplements(test_run_id):
+    """Fetch the Athena-only extras that supplement a successful Stickler run.
+
+    Returns ``(evaluation_metrics, cost_data)``, each degrading to its documented
+    "no data" shape if Athena is unavailable, the reporting tables haven't been
+    created yet, or the query fails for any other reason.
+
+    Deliberately swallows every exception. These two values are *additive* —
+    split-classification metrics and cost — on top of accuracy/confidence
+    metrics that Stickler has already computed successfully. Letting an Athena
+    error escape here is what caused issue #619: a run whose Stickler
+    aggregation produced perfectly good numbers ended up caching nothing at all,
+    which left the UI reporting EVALUATING forever.
+    """
+    try:
+        evaluation_metrics = _get_evaluation_metrics_from_athena(test_run_id)
+    except Exception as e:
+        logger.warning(
+            f"Athena split-classification metrics unavailable for {test_run_id}; "
+            f"continuing with Stickler metrics only: {e}"
+        )
+        evaluation_metrics = {}
+
+    try:
+        cost_data = _get_cost_data_from_athena(test_run_id)
+    except Exception as e:
+        logger.warning(
+            f"Athena cost data unavailable for {test_run_id}; reporting zero cost: {e}"
+        )
+        cost_data = {"total_cost": 0, "cost_breakdown": {}}
+
+    return evaluation_metrics, cost_data
+
+
+_FIELDS_ATHENA_CANNOT_SUPPLY = (
+    "graded_packet_metrics",
+    "classification_errors",
+    "excluded_document_count",
+)
+
+
+def _fields_athena_cannot_supply(aggregation_metrics):
+    """The aggregation's results that the cache reads and Athena cannot compute.
+
+    A run in which no section has an extractable schema, such as a
+    classification-only run, produces no extraction comparisons, so the
+    aggregation reports ``document_count`` 0 and the Athena fallback supplies
+    only the split metrics and the cost: it averages confidence over attribute
+    comparisons, and such a run writes none. The aggregation still measures the
+    fields in ``_FIELDS_ATHENA_CANNOT_SUPPLY`` from each document's own
+    evaluation, so they are carried over instead of being discarded with the
+    rest of its answer.
+    """
+    return {
+        key: aggregation_metrics[key]
+        for key in _FIELDS_ATHENA_CANNOT_SUPPLY
+        if key in aggregation_metrics
+    }
+
+
+def _aggregate_test_run_metrics(test_run_id):
+    """Aggregate metrics using Stickler bulk evaluator (with Athena fallback)"""
+
+    # Fetch config for MLflow logging (best-effort, don't block on failure)
+    test_run_config = None
+    try:
+        test_run_config = _get_test_run_config(test_run_id)
+    except Exception as e:
+        logger.warning(f"Failed to fetch config for MLflow logging: {e}")
+
+    # Try Stickler-based aggregation via Lambda function
+    test_execution_aggregation_arn = os.environ.get(
+        "TEST_EXECUTION_AGGREGATION_FUNCTION_ARN"
+    )
+    carried_over = {}
+
+    if test_execution_aggregation_arn:
+        try:
+            # Invoke the test execution aggregation function
+            response = lambda_client.invoke(
+                FunctionName=test_execution_aggregation_arn,
+                InvocationType="RequestResponse",
+                Payload=json.dumps({"test_run_id": test_run_id}),
+            )
+
+            # Parse response
+            payload = json.loads(response["Payload"].read())
+
+            if payload.get("statusCode") == 200:
+                stickler_metrics = json.loads(payload["body"])
+
+                # If we got valid results, use them and get split metrics and confidence from Athena
+                if stickler_metrics.get("document_count", 0) > 0:
+                    logger.info(
+                        f"Using Stickler aggregation for test run {test_run_id}"
+                    )
+
+                    # Get split metrics + cost from Athena. Best-effort: these
+                    # only *supplement* the Stickler numbers, so a failure here
+                    # must never discard them (issue #619).
+                    athena_metrics, cost_data = _athena_supplements(test_run_id)
+
+                    # Prefer Stickler confidence over Athena (Stickler v0.4.0+ has better calibration)
+                    stickler_avg_confidence = stickler_metrics.get("average_confidence")
+                    athena_avg_confidence = athena_metrics.get("average_confidence")
+
+                    # Use Stickler confidence if available, fallback to Athena
+                    avg_confidence = (
+                        stickler_avg_confidence
+                        if stickler_avg_confidence is not None
+                        else athena_avg_confidence
+                    )
+
+                    # Merge Stickler metrics with Athena split metrics
+                    merged_metrics = {
+                        **stickler_metrics,
+                        "average_confidence": avg_confidence,
+                        "split_classification_metrics": athena_metrics.get(
+                            "split_classification_metrics", {}
+                        ),
+                        "total_cost": cost_data.get("total_cost", 0),
+                        "cost_breakdown": cost_data.get("cost_breakdown", {}),
+                    }
+
+                    logger.info(
+                        f"Confidence source for {test_run_id}: "
+                        f"{'Stickler' if stickler_avg_confidence is not None else 'Athena'} "
+                        f"(value: {avg_confidence})"
+                    )
+                    _invoke_mlflow_logger(
+                        test_run_id, merged_metrics, config=test_run_config
+                    )
+                    return merged_metrics
+                else:
+                    carried_over = _fields_athena_cannot_supply(stickler_metrics)
+                    logger.warning(
+                        f"Test execution aggregation returned empty metrics (document_count=0) for {test_run_id}, falling back to Athena"
+                    )
+            else:
+                logger.warning(f"Test execution aggregation returned error: {payload}")
+
+        except Exception as e:
+            logger.error(
+                f"Test execution aggregation Lambda failed for {test_run_id}, falling back to Athena: {e}"
+            )
+    else:
+        logger.info(
+            "TEST_EXECUTION_AGGREGATION_FUNCTION_ARN not set, using Athena aggregation"
+        )
+
+    # Fallback to Athena-based aggregation
+    logger.info(f"Using Athena aggregation for test run {test_run_id}")
+    evaluation_metrics = _get_evaluation_metrics_from_athena(test_run_id)
+    cost_data = _get_cost_data_from_athena(test_run_id)
+
+    athena_result = {
+        "overall_accuracy": evaluation_metrics.get("overall_accuracy"),
+        "weighted_overall_scores": evaluation_metrics.get(
+            "weighted_overall_scores", {}
+        ),
+        "avg_weighted_overall_score": _average_weighted_overall_score(
+            evaluation_metrics.get("weighted_overall_scores")
+        ),
+        "average_confidence": evaluation_metrics.get("average_confidence"),
+        "accuracy_breakdown": evaluation_metrics.get("accuracy_breakdown", {}),
+        "split_classification_metrics": evaluation_metrics.get(
+            "split_classification_metrics", {}
+        ),
+        "total_cost": cost_data.get("total_cost", 0),
+        "cost_breakdown": cost_data.get("cost_breakdown", {}),
+        **carried_over,
+    }
+    _invoke_mlflow_logger(test_run_id, athena_result, config=test_run_config)
+    return athena_result
+
+
+def _captured_config_of(item):
+    """The configuration a run captured, whether stored compressed or inline.
+
+    Runs record their configuration as a gzip Binary attribute; runs created
+    before that stored the body inline under ``Config``.
+
+    Uses ``parse_float=Decimal`` for the compressed path so non-integer
+    numbers land as ``Decimal``, matching the legacy-inline path where
+    DDB's resource client returns them as ``Decimal`` already. Same
+    reason ``_decompress_config_item`` uses this in ``test_runner``.
+
+    Caveat — integer-valued numbers are not perfectly type-symmetric
+    across the two storage formats. ``_json_default`` collapses an
+    integer-valued ``Decimal`` (``Decimal('0.0')``, ``Decimal('3.0')``)
+    to a Python ``int`` at compress time, so the JSON payload writes
+    ``0`` / ``3`` rather than ``0.0`` / ``3.0``; ``parse_int`` on
+    read-back keeps those as ``int``, while the legacy-inline path
+    would have kept them as ``Decimal``. Downstream consumers that
+    switch on ``isinstance(x, Decimal)`` for integer-valued numbers
+    should treat ``int`` and ``Decimal`` as equivalent for the
+    integer case (JSON has no representation for "integer-valued
+    Decimal" — the whole path is inherently lossy for the int/float
+    distinction on that specific shape).
+    """
+    if item.get("_config_storage") == "compressed":
+        blob = item.get("_compressed_config")
+        if blob is None:
+            return {}
+        raw = blob if isinstance(blob, bytes) else bytes(blob)
+        try:
+            return json.loads(
+                gzip.decompress(raw).decode("utf-8"), parse_float=Decimal
+            )
+        except Exception as e:
+            logger.error(f"Failed to decompress captured test run config: {e}")
+            return {}
+    return item.get("Config", {})
+
+
+def _get_test_run_config(test_run_id):
+    """Get test run configuration from metadata record"""
+    table = dynamodb.Table(os.environ["TRACKING_TABLE"])  # type: ignore[attr-defined]
+    response = table.get_item(Key={"PK": f"testrun#{test_run_id}", "SK": "metadata"})
+
+    config = _captured_config_of(response.get("Item", {}))
+
+    # Convert DynamoDB Decimal objects to regular Python types for JSON serialization
+    def convert_decimals(obj):
+        if isinstance(obj, dict):
+            return {k: convert_decimals(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_decimals(v) for v in obj]
+        elif hasattr(obj, "__class__") and obj.__class__.__name__ == "Decimal":
+            # Convert Decimal to float or int
+            if obj % 1 == 0:
+                return int(obj)
+            else:
+                return float(obj)
+        else:
+            return obj
+
+    return convert_decimals(config)
+
+
+def _build_config_comparison(configs):
+    """Build configuration differences - compare actual Config structure"""
+    if not configs or len(configs) < 2:
+        return None
+
+    def get_nested_value(dictionary, path):
+        """Get nested value from dictionary using dot notation path"""
+        keys = path.split(".")
+        current = dictionary
+        for key in keys:
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            elif isinstance(current, list) and key.isdigit():
+                # Handle array index access
+                index = int(key)
+                if 0 <= index < len(current):
+                    current = current[index]
+                else:
+                    return None
+            else:
+                return None
+        return current
+
+    def get_all_paths(dictionary, prefix=""):
+        """Get all nested paths from dictionary"""
+        paths = []
+        ignored_fields = {
+            "UpdatedAt",
+            "Description",
+            "CreatedAt",
+            "IsActive",
+            "Configuration",
+            "version_name",
+            "classes",
+        }
+
+        for key, value in dictionary.items():
+            # Skip ignored metadata fields
+            if key in ignored_fields:
+                continue
+
+            current_path = f"{prefix}.{key}" if prefix else key
+            if isinstance(value, dict):
+                paths.extend(get_all_paths(value, current_path))
+            elif isinstance(value, list):
+                # Handle arrays by creating indexed paths for each element
+                for i, item in enumerate(value):
+                    item_path = f"{current_path}.{i}"
+                    if isinstance(item, dict):
+                        paths.extend(get_all_paths(item, item_path))
+                    else:
+                        paths.append(item_path)
+            else:
+                paths.append(current_path)
+        return paths
+
+    # Get all possible configuration paths from all configs
+    all_paths = set()
+
+    for config_item in configs:
+        config = config_item["config"]
+        actual_config = config.get("Config", {})
+        all_paths.update(get_all_paths(actual_config))
+
+    # Sort paths for consistent ordering with configuration UI
+    sorted_paths = sorted(all_paths)
+
+    differences = []
+    for path in sorted_paths:
+        values = {}
+        has_differences = False
+        first_value = None
+
+        # Get values for each test run
+        for config_item in configs:
+            test_run_id = config_item["testRunId"]
+            config = config_item["config"]
+            actual_config = config.get("Config", {})
+
+            value = get_nested_value(actual_config, path)
+
+            # Always include the value, even if None (missing field)
+            if value is None:
+                str_value = "<missing>"
+            elif isinstance(value, str):
+                str_value = value.strip()
+            else:
+                str_value = str(value).strip()
+
+            values[test_run_id] = str_value
+
+            # Check for differences using normalized values
+            if first_value is None:
+                first_value = str_value
+            elif first_value != str_value:
+                has_differences = True
+
+        # Include if there are differences (including missing vs present)
+        if has_differences:
+            differences.append({"setting": path, "values": values})
+
+    return differences
+
+
+def _execute_athena_query(query, database):
+    """Execute Athena query and return results."""
+    try:
+        # Get query result location from environment
+        result_location = os.environ.get("ATHENA_OUTPUT_LOCATION")
+
+        # Start query execution
+        response = athena.start_query_execution(
+            QueryString=query,
+            QueryExecutionContext={"Database": database},
+            ResultConfiguration={"OutputLocation": result_location},
+        )
+
+        query_execution_id = response["QueryExecutionId"]
+
+        # Wait for query to complete. Round-25: with the 2-day bounded
+        # date window on the cost query (see _get_cost_data_from_athena),
+        # queries complete in seconds. 60s poll timeout is generous.
+        # (Round-24 briefly widened this to 180s to compensate for the
+        # round-7 unbounded date filter; the date-filter revert makes
+        # that unnecessary.)
+        max_attempts = 30
+        final_result = None
+        for attempt in range(max_attempts):
+            result = athena.get_query_execution(QueryExecutionId=query_execution_id)
+            status = result["QueryExecution"]["Status"]["State"]
+
+            if status == "SUCCEEDED":
+                final_result = result
+                break
+            elif status in ["FAILED", "CANCELLED"]:
+                error = result["QueryExecution"]["Status"].get(
+                    "StateChangeReason", "Unknown error"
+                )
+                logger.error(f"Athena query failed: {error}")
+                return []
+
+            time.sleep(2)
+        else:
+            # Round-23 review fix (#1416): stop the orphan Athena query
+            # before returning — otherwise it keeps scanning bytes and
+            # billing indefinitely (up to the workgroup DML timeout,
+            # typically 30 min for Athena engine v2/v3). Best-effort;
+            # never raise from this fallback path.
+            try:
+                athena.stop_query_execution(QueryExecutionId=query_execution_id)
+                logger.warning(
+                    f"Athena query {query_execution_id} timed out after "
+                    f"{max_attempts * 2} seconds — stop_query_execution issued."
+                )
+            except Exception as stop_err:
+                logger.warning(
+                    f"stop_query_execution({query_execution_id}) failed: {stop_err}"
+                )
+            return []
+
+        # Round-21 review fix: emit the AthenaBytesScanned control-plane
+        # cost metric so this resolver's Athena spend shows up in
+        # ``control_plane_hourly`` under component=``test-results``.
+        # Before this, the 149 daily invocations of this resolver ran
+        # queries whose DataScannedInBytes was NEVER published to
+        # CloudWatch — the rollup Lambda saw invocations+duration but
+        # ``est_athena_cost=0``. Matches the pattern the analytics-agent
+        # ``athena_tool.py`` uses (round-5 review fix wired it there).
+        try:
+            bytes_scanned = (
+                (final_result or {})
+                .get("QueryExecution", {})
+                .get("Statistics", {})
+                .get("DataScannedInBytes")
+            )
+            if bytes_scanned is not None:
+                from idp_common.metrics import emit_control_plane_cost_metric
+
+                emit_control_plane_cost_metric(
+                    component="test-results",
+                    athena_bytes=int(bytes_scanned),
+                )
+        except Exception as e:  # nosec — telemetry must not break the resolver
+            # WARN, not silent, so a future packaging/import regression is
+            # visible in the log instead of returning invisible zeros in
+            # control_plane_hourly.
+            logger.warning(f"Failed to emit test-results Athena cost metric: {e!r}")
+
+        # Get query results
+        results = []
+        paginator = athena.get_paginator("get_query_results")
+
+        for page in paginator.paginate(QueryExecutionId=query_execution_id):
+            for row in page["ResultSet"]["Rows"][1:]:  # Skip header row
+                row_data = {}
+                for i, col in enumerate(
+                    page["ResultSet"]["ResultSetMetadata"]["ColumnInfo"]
+                ):
+                    col_name = col["Name"]
+                    value = row["Data"][i].get("VarCharValue")
+                    if value is not None:
+                        # Try to convert numeric values
+                        try:
+                            if "." in value:
+                                row_data[col_name] = float(value)
+                            else:
+                                row_data[col_name] = int(value)
+                        except ValueError:
+                            row_data[col_name] = value
+                    else:
+                        row_data[col_name] = None
+                results.append(row_data)
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Error executing Athena query: {e}")
+        return []
+
+
+def _get_evaluation_metrics_from_athena(test_run_id):
+    """Get split classification metrics and confidence from Athena"""
+    database = os.environ.get("ATHENA_DATABASE")
+    if not database:
+        logger.warning("ATHENA_DATABASE environment variable not set")
+        return {}
+
+    # test_run_id lands in a string-literal context, so it is escaped (it may
+    # legitimately contain spaces/parens/quotes from the test set name); the
+    # database name is an identifier and keeps the strict allow-list.
+    like_prefix = _sql_like_prefix(test_run_id, "test_run_id")
+    _validate_sql_input(database, "database")
+
+    # Get only split classification metrics from Athena
+    # Other metrics (accuracy, precision, recall, etc.) come from Stickler aggregation
+    query = f"""
+    SELECT
+        SUM(CAST(total_pages AS INT)) as total_pages,
+        SUM(CAST(total_splits AS INT)) as total_splits,
+        SUM(CAST(correctly_classified_pages AS INT)) as correctly_classified_pages,
+        SUM(CAST(correctly_split_without_order AS INT)) as correctly_split_without_order,
+        SUM(CAST(correctly_split_with_order AS INT)) as correctly_split_with_order
+    FROM "{database}"."document_evaluations"
+    WHERE document_id LIKE '{like_prefix}%' ESCAPE '{_LIKE_ESCAPE}'
+    """  # nosec B608 - escaped by _sql_like_prefix() / _validate_sql_input()
+
+    results = _execute_athena_query(query, database)
+
+    if not results or not results[0]:
+        return {}
+
+    result = results[0]
+
+    # Get confidence data from attribute_evaluations table
+    confidence_query = f"""
+    SELECT AVG(CAST(confidence AS DOUBLE)) as avg_confidence
+    FROM "{database}"."attribute_evaluations"
+    WHERE document_id LIKE '{like_prefix}%' ESCAPE '{_LIKE_ESCAPE}'
+      AND confidence IS NOT NULL AND confidence != ''
+    """  # nosec B608 - escaped by _sql_like_prefix() / _validate_sql_input()
+
+    confidence_results = _execute_athena_query(confidence_query, database)
+    avg_confidence = (
+        confidence_results[0]["avg_confidence"]
+        if confidence_results and confidence_results[0]["avg_confidence"] is not None
+        else None
+    )
+
+    # Calculate split accuracies from summed counts
+    # Athena returns None for SUM() on empty result sets, so default to 0
+    total_pages = (
+        result.get("total_pages") if result.get("total_pages") is not None else 0
+    )
+    total_splits = (
+        result.get("total_splits") if result.get("total_splits") is not None else 0
+    )
+    correctly_classified_pages = (
+        result.get("correctly_classified_pages")
+        if result.get("correctly_classified_pages") is not None
+        else 0
+    )
+    correctly_split_without_order = (
+        result.get("correctly_split_without_order")
+        if result.get("correctly_split_without_order") is not None
+        else 0
+    )
+    correctly_split_with_order = (
+        result.get("correctly_split_with_order")
+        if result.get("correctly_split_with_order") is not None
+        else 0
+    )
+
+    page_level_accuracy = (
+        correctly_classified_pages / total_pages if total_pages > 0 else None
+    )
+    split_accuracy_without_order = (
+        correctly_split_without_order / total_splits if total_splits > 0 else None
+    )
+    split_accuracy_with_order = (
+        correctly_split_with_order / total_splits if total_splits > 0 else None
+    )
+
+    return {
+        "average_confidence": avg_confidence,
+        "split_classification_metrics": {
+            "page_level_accuracy": page_level_accuracy,
+            "split_accuracy_without_order": split_accuracy_without_order,
+            "split_accuracy_with_order": split_accuracy_with_order,
+            "total_pages": total_pages,
+            "total_splits": total_splits,
+            "correctly_classified_pages": correctly_classified_pages,
+            "correctly_split_without_order": correctly_split_without_order,
+            "correctly_split_with_order": correctly_split_with_order,
+        },
+    }
+
+
+# Hard ceiling on how many `metering` date partitions the cost query may span.
+# The window is normally derived from the run's own lifecycle (see
+# `_cost_query_date_filter`), so this only bites on a pathological run — one
+# abandoned mid-flight, or whose `CompletedAt` is far in the future because of a
+# clock problem. Without it, such a run would scan months of raw metering,
+# re-triggering the HIVE_S3_THROTTLING / poll-timeout failure that emptied the
+# UI's cost section before.
+#
+# Not exposed as a CFN parameter — it's a support escape hatch, settable on the
+# deployed function without a stack update if a customer legitimately has runs
+# spanning more than a week. Parsed defensively so a bad value degrades to the
+# default instead of failing Lambda init for every request.
+def _cost_query_max_partition_days():
+    raw = os.environ.get("COST_QUERY_MAX_PARTITION_DAYS", "7")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            f"COST_QUERY_MAX_PARTITION_DAYS={raw!r} is not an integer; "
+            f"using the default of 7 date partitions"
+        )
+        return 7
+    if value < 1:
+        logger.warning(
+            f"COST_QUERY_MAX_PARTITION_DAYS={value} is below the 1-day floor; using 1"
+        )
+        return 1
+    return value
+
+
+_COST_QUERY_MAX_PARTITION_DAYS = _cost_query_max_partition_days()
+
+
+def _lookup_test_run_completed_at(test_run_id):
+    """Return the run's `CompletedAt` (ISO string) or None.
+
+    Single-key `get_item` on the run's metadata row. Best-effort: any failure
+    returns None and the caller falls back to the fixed 2-day window.
+    """
+    try:
+        table = dynamodb.Table(os.environ["TRACKING_TABLE"])  # type: ignore[attr-defined]
+        item = table.get_item(
+            Key={"PK": f"testrun#{test_run_id}", "SK": "metadata"},
+            ProjectionExpression="CompletedAt",
+        ).get("Item")
+        value = (item or {}).get("CompletedAt")
+        # Only a real ISO string is usable. Anything else (absent, None, or a
+        # non-string left by a stubbed client in tests) falls back rather than
+        # reaching the parser and logging a spurious warning.
+        return value if isinstance(value, str) else None
+    except Exception as e:
+        logger.warning(
+            f"Could not read CompletedAt for {test_run_id} ({e}); cost query "
+            f"falls back to the fixed 2-day partition window"
+        )
+        return None
+
+
+def _cost_query_date_filter(test_run_id, completed_at=None):
+    """Build the `AND date IN (...)` partition filter for the cost query.
+
+    The selective predicate on the cost query is `document_id LIKE '<run>/%'`;
+    this filter exists only to bound how much of the `metering` lake Athena has
+    to open. Getting it wrong in either direction has bitten us:
+
+    - Too wide (an unbounded upper edge, round-7) scanned days of raw metering,
+      hit `HIVE_S3_THROTTLING`, timed out the resolver's poll loop, and left
+      Test Studio's "Estimated cost" section empty for every run.
+    - Too narrow (a fixed `run_date`, `run_date+1`, round-25) is correct only
+      while `metering.date` means *queue* time. Since the Phase-1 partitioning
+      change it means **completion** time, so any run whose documents finish
+      more than ~24h after the date embedded in its ID — HITL review, a
+      throttled or very large batch — silently drops out of the total.
+
+    So bound it by the run's actual lifecycle instead of guessing: from the
+    run's start date (parsed from `test_run_id`) through the day its last
+    document completed, plus one day. The `+1` covers a metering row written
+    just after a `CompletionTime` that sat close to midnight UTC. For a run that
+    completes the same day — the overwhelming majority — this yields exactly the
+    same two partitions as before, so the common case costs nothing extra.
+
+    Falls back to `run_date`, `run_date+1` when `CompletedAt` is missing or
+    unparseable (a still-running run, or a row predating the attribute).
+
+    Returns "" when `test_run_id` carries no parseable date, which leaves the
+    query unpruned — pre-existing behavior, unchanged.
+    """
+    date_match = re.search(r"-(\d{4})(\d{2})(\d{2})-", test_run_id)
+    if not date_match:
+        return ""
+
+    year, month, day = date_match.groups()
+    run_date = datetime(int(year), int(month), int(day), tzinfo=timezone.utc)
+
+    end_date = run_date + timedelta(days=1)
+    reason = "no CompletedAt; fixed 2-day fallback window"
+    if completed_at:
+        try:
+            parsed = datetime.fromisoformat(str(completed_at).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            # +1 day: a document completing at 23:58 has its metering row
+            # written moments later, possibly in the next date partition.
+            candidate = parsed.astimezone(timezone.utc).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ) + timedelta(days=1)
+            # A CompletedAt *before* the run's start date means the ID's date
+            # and the tracking row disagree; trust the wider of the two rather
+            # than emitting an empty range.
+            end_date = max(end_date, candidate)
+            reason = f"derived from CompletedAt={completed_at}"
+        except (ValueError, TypeError) as e:
+            logger.warning(
+                f"Unparseable CompletedAt={completed_at!r} for {test_run_id} "
+                f"({e}); using the fixed 2-day fallback window"
+            )
+
+    span_days = (end_date - run_date).days
+    if span_days > _COST_QUERY_MAX_PARTITION_DAYS:
+        end_date = run_date + timedelta(days=_COST_QUERY_MAX_PARTITION_DAYS)
+        logger.warning(
+            f"Cost query window for {test_run_id} clamped from {span_days} to "
+            f"{_COST_QUERY_MAX_PARTITION_DAYS} date partitions "
+            f"(COST_QUERY_MAX_PARTITION_DAYS). Documents completing after "
+            f"{end_date.strftime('%Y-%m-%d')} are NOT counted in the reported "
+            f"cost — it is an under-estimate for this run."
+        )
+        reason = f"clamped to {_COST_QUERY_MAX_PARTITION_DAYS} days"
+
+    dates = []
+    cursor = run_date
+    while cursor <= end_date:
+        dates.append(cursor.strftime("%Y-%m-%d"))
+        cursor += timedelta(days=1)
+
+    rendered = ", ".join(f"'{d}'" for d in dates)
+    logger.info(
+        f"Using date filter for cost query: date IN ({rendered}) — {reason}. "
+        f"metering.date is COMPLETION time, so the window must reach the run's "
+        f"last document completion, not just its start date."
+    )
+    return f"AND date IN ({rendered})"
+
+
+def _get_cost_data_from_athena(test_run_id, completed_at=None):
+    """Get cost data from Athena metering table.
+
+    ``completed_at`` is the run's `CompletedAt` timestamp, used to size the
+    partition window (see `_cost_query_date_filter`). Looked up from the
+    tracking table when not supplied.
+    """
+    database = os.environ.get("ATHENA_DATABASE")
+    if not database:
+        logger.warning("ATHENA_DATABASE environment variable not set")
+        return {"total_cost": 0, "cost_breakdown": {}}
+
+    # See _get_evaluation_metrics_from_athena: literal context for test_run_id,
+    # identifier context for the database name.
+    like_prefix = _sql_like_prefix(test_run_id, "test_run_id")
+    _validate_sql_input(database, "database")
+
+    if completed_at is None:
+        completed_at = _lookup_test_run_completed_at(test_run_id)
+    date_filter = _cost_query_date_filter(test_run_id, completed_at)
+
+    query = f"""
+    SELECT
+        context,
+        service_api,
+        unit,
+        SUM(CAST(value AS DOUBLE)) as total_value,
+        AVG(CAST(unit_cost AS DOUBLE)) as unit_cost,
+        SUM(CAST(estimated_cost AS DOUBLE)) as total_estimated_cost
+    FROM "{database}"."metering"
+    WHERE document_id LIKE '{like_prefix}/%' ESCAPE '{_LIKE_ESCAPE}'
+    {date_filter}
+    GROUP BY context, service_api, unit
+    """  # nosec B608 - escaped by _sql_like_prefix() / _validate_sql_input()
+
+    results = _execute_athena_query(query, database)
+
+    if not results:
+        return {"total_cost": 0, "cost_breakdown": {}}
+
+    cost_breakdown = {}
+    total_cost = 0
+
+    for result in results:
+        context = result["context"]
+        service_api = result["service_api"]
+        unit = result["unit"]
+        total_value = result["total_value"]
+        unit_cost = result["unit_cost"]
+        estimated_cost = (
+            result["total_estimated_cost"]
+            if result["total_estimated_cost"] is not None
+            else 0
+        )
+
+        if context not in cost_breakdown:
+            cost_breakdown[context] = {}
+
+        key = f"{service_api}_{unit}"
+        cost_breakdown[context][key] = {
+            "unit": unit,
+            "value": total_value,
+            "unit_cost": unit_cost,
+            "estimated_cost": estimated_cost,
+        }
+
+        total_cost += estimated_cost
+
+    return {"total_cost": total_cost, "cost_breakdown": cost_breakdown}

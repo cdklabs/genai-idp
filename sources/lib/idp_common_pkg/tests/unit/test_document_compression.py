@@ -10,8 +10,9 @@ from unittest.mock import Mock, patch
 
 import boto3
 import pytest
-from idp_common.models import Document, Page, Section, Status
 from moto import mock_aws
+
+from idp_common.models import Document, Page, Section, Status
 
 
 class TestDocumentCompression:
@@ -27,6 +28,7 @@ class TestDocumentCompression:
             output_bucket="output-bucket",
             status=Status.CLASSIFYING,
             num_pages=2,
+            config_version="sample-health-insurance-review-v0.1.0",
         )
 
         # Add pages with large content
@@ -83,6 +85,11 @@ class TestDocumentCompression:
         assert compressed_data["status"] == "CLASSIFYING"
         assert compressed_data["sections"] == ["section_1", "section_2"]
         assert compressed_data["compressed"] is True
+        # config_version travels in the lightweight wrapper so consumers that
+        # never decompress (e.g. the pipeline-hooks dispatcher) can honor it.
+        assert (
+            compressed_data["config_version"] == "sample-health-insurance-review-v0.1.0"
+        )
         assert "s3_uri" in compressed_data
         assert "timestamp" in compressed_data
 
@@ -181,6 +188,12 @@ class TestDocumentCompression:
         with (
             patch("boto3.client") as mock_boto3,
             patch("time.time", side_effect=[1000.123, 1000.456]),
+            # On Python <3.13, logging.LogRecord.__init__ calls time.time(),
+            # which would consume our mocked side_effect values when the
+            # idp_common logger is at INFO level (as it can be in the full
+            # suite). Patch out the info() call so only compress()'s own
+            # time.time() calls consume the mock, keeping this deterministic.
+            patch("logging.Logger.info"),
         ):
             mock_s3 = Mock()
             mock_boto3.return_value = mock_s3
@@ -278,6 +291,15 @@ class TestDocumentCompression:
             mock_s3 = Mock()
             mock_boto3.return_value = mock_s3
 
+            # Give the fixture realistic page content. The wrapper is a small,
+            # near-fixed set of fields, so the "<20% of full document" check is
+            # only meaningful against a representatively-sized document rather
+            # than the tiny toy fixture shared by the other tests.
+            self.document.pages["1"].forms = {
+                f"field_{i}": f"value for field {i} on the invoice page"
+                for i in range(40)
+            }
+
             # Get sizes
             full_document_json = self.document.to_json()
             compressed_data = self.document.compress(self.bucket, "test")
@@ -315,3 +337,30 @@ class TestDocumentCompression:
 
         assert ocr_doc.status == Status.CLASSIFYING  # Original status
         assert extraction_doc.status == Status.EXTRACTING  # Modified status
+
+    @mock_aws
+    def test_decompress_key_with_hash(self):
+        """Compress→decompress round-trip must preserve S3 keys that contain '#'.
+
+        urlparse treats '#' as a URL fragment delimiter and silently truncates
+        the key at that character. parse_s3_uri uses str.split and is safe.
+        """
+        s3_client = boto3.client("s3", region_name="us-east-1")
+        s3_client.create_bucket(Bucket=self.bucket)
+
+        # id defaults to input_key in production (Document.from_s3_event), so a
+        # '#' in the filename lands in the compressed-state S3 key itself —
+        # that is the URI decompress() must parse without truncating.
+        hash_doc = Document(
+            id="incoming/invoices/invoice #123.pdf",
+            input_bucket="input-bucket",
+            input_key="incoming/invoices/invoice #123.pdf",
+            output_bucket="output-bucket",
+            status=Status.CLASSIFYING,
+        )
+
+        compressed_data = hash_doc.compress(self.bucket, "ocr")
+        assert "#" in compressed_data["s3_uri"]  # guard: URI must exercise the bug
+        restored = Document.decompress(self.bucket, compressed_data)
+
+        assert restored.input_key == "incoming/invoices/invoice #123.pdf"

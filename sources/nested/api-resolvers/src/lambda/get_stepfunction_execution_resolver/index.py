@@ -1,0 +1,1020 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+import json
+import logging
+import os
+import traceback
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import boto3
+
+from idp_common.config_scope import (
+    ScopeLookupError,
+    caller_email_from_claims,
+    caller_sub_from_claims,
+    resolve_allowed_config_versions,
+    scope_allows,
+)
+
+# The failure vocabulary is shared with the three other readers of an execution history,
+# because four private copies of it is how this class of defect kept reopening. The
+# module imports nothing outside the standard library, so it is in Lambda Layer 1 (core)
+# alongside `config_scope` with no packaging change.
+from idp_common.stepfunctions_history import (
+    FAILURE_RECOVERY_EVENTS,
+    TASK_LEVEL_FAILURE_EVENTS,
+    failure_detail_key,
+)
+from idp_common.utils.log_sanitizer import sanitize_event_for_logging
+
+# Configure detailed logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Create boto3 client with logging
+stepfunctions = boto3.client("stepfunctions")
+
+# DynamoDB resource for caller config-version scope lookups
+_dynamodb = boto3.resource("dynamodb")
+
+# Caller scope cache (TTL-based, per Lambda container) — mirrors
+# configuration_resolver so a burst of flow-viewer polls costs one Query.
+_user_scope_cache: Dict[str, Dict[str, Any]] = {}
+_USER_SCOPE_CACHE_TTL = 60  # seconds
+
+# ARN of this stack's document-processing state machine. Every executionArn the
+# caller supplies must belong to it.
+_STATE_MACHINE_ARN = os.environ.get("STATE_MACHINE_ARN", "")
+
+
+def _unauthorized(message: str) -> PermissionError:
+    """Build the denial the dispatcher turns into a 403.
+
+    http_api_dispatcher maps a resolver's ``PermissionError`` (or a message
+    beginning "Unauthorized"/"Forbidden") to HTTP 403 with errorType
+    "Unauthorized", which is what the UI keys on. Both are satisfied here so the
+    denial survives either match.
+    """
+    return PermissionError(f"Unauthorized: {message}")
+
+
+def _state_machine_name_from_arn(arn: str) -> str:
+    """Return the state-machine name an ARN refers to, or '' if unparseable.
+
+    Handles both a state-machine ARN (`...:stateMachine:NAME`) and an execution
+    ARN (`...:execution:NAME:EXECUTION_ID`). A distributed-map child execution
+    carries `NAME/mapRunLabel` in that position, so the label is trimmed.
+    """
+    parts = arn.split(":") if isinstance(arn, str) else []
+    if len(parts) < 7:
+        return ""
+    return parts[6].split("/")[0]
+
+
+def _require_execution_in_this_stack(execution_arn: str) -> None:
+    """Reject an executionArn that is not one of this stack's executions.
+
+    The caller supplies the ARN, so without this the operation reads any
+    execution the function's IAM role can describe. That role is scoped to
+    `<stack-name>-*` state machines, which still spans a sibling deployment whose
+    stack name shares this one's prefix (`idp` matching `idp-prod-...`). Matching
+    the state-machine name exactly closes that.
+    """
+    if not _STATE_MACHINE_ARN:
+        # No configured state machine to compare against. Fail closed rather than
+        # fall back to the IAM prefix: an unset env var must not widen access.
+        logger.error(
+            "STATE_MACHINE_ARN is not set; cannot verify the requested execution "
+            "belongs to this stack"
+        )
+        raise _unauthorized("Execution ARN cannot be verified")
+
+    expected = _state_machine_name_from_arn(_STATE_MACHINE_ARN)
+    requested = _state_machine_name_from_arn(execution_arn)
+    if not requested or requested != expected:
+        logger.warning(
+            "Rejected executionArn for state machine %r (this stack runs %r)",
+            requested,
+            expected,
+        )
+        raise _unauthorized("Execution does not belong to this deployment")
+
+
+def _get_caller_info(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract the caller's email and groups from the resolver event identity.
+
+    The email is the config-version scope lookup key, so it comes from the
+    ``email`` claim alone — see ``caller_email_from_claims``.
+    """
+    identity = event.get("identity") or {}
+    claims = identity.get("claims") or {}
+    groups = claims.get("cognito:groups", [])
+    if isinstance(groups, str):
+        groups = [groups]
+    email = caller_email_from_claims(claims)
+    # The immutable Cognito sub, the config-version scope lookup's PREFERRED key.
+    # It is not a fallback for the email: the two go to disjoint key spaces on the
+    # UsersTable. See caller_sub_from_claims.
+    caller_sub = caller_sub_from_claims(claims)
+    return {
+        "email": email,
+        "sub": caller_sub,
+        "groups": groups,
+        "is_admin": "Admin" in groups,
+    }
+
+
+def _get_user_allowed_config_versions(
+    caller_email: str, caller_sub: str = ""
+) -> Optional[List[str]]:
+    """The caller's allowedConfigVersions, or None for an unrestricted caller.
+
+    Thin wrapper over the shared fail-closed lookup, so this resolver and every
+    other consumer of ``allowedConfigVersions`` resolve it identically. Raises
+    ``ScopeLookupError`` when the scope cannot be evaluated; the caller denies.
+    """
+    return resolve_allowed_config_versions(
+        caller_email,
+        caller_sub=caller_sub,
+        users_table_name=os.environ.get("USERS_TABLE_NAME", ""),
+        dynamodb=_dynamodb,
+        cache=_user_scope_cache,
+        cache_ttl=_USER_SCOPE_CACHE_TTL,
+    )
+
+
+def _config_version_of_execution(execution_response: Dict[str, Any]) -> Optional[str]:
+    """Read the config version the execution processed its document under.
+
+    The workflow input is `{"document": <compressed wrapper>}` and the wrapper
+    carries `config_version` (see Document.compress). Returns None when the input
+    is absent or does not name one.
+    """
+    raw_input = execution_response.get("input")
+    if not raw_input:
+        return None
+    try:
+        document = (json.loads(raw_input) or {}).get("document") or {}
+    except Exception as e:
+        logger.warning(f"Could not parse execution input for scope check: {e}")
+        return None
+    version = document.get("config_version")
+    return version if isinstance(version, str) and version else None
+
+
+def _enforce_config_version_scope(
+    event: Dict[str, Any], execution_response: Dict[str, Any]
+) -> None:
+    """Apply the caller's config-version scope to the execution they asked for.
+
+    A caller restricted to named configuration versions must not read the
+    processing detail of a document handled under a version outside that set —
+    the execution input and step history name the document and the S3 location of
+    its full state. Unrestricted callers are unaffected.
+    """
+    caller = _get_caller_info(event)
+    if caller["is_admin"]:
+        return
+
+    # Fails CLOSED. A scope that cannot be *evaluated* (no UsersTable wired, no
+    # email claim on the verified identity, a failed DynamoDB query) is not a
+    # caller without restrictions, and reading it as one would serve the
+    # execution input and step history — which name the document and the S3
+    # location of its full state — to a caller entitled to neither (AUTH.T07).
+    try:
+        allowed = _get_user_allowed_config_versions(
+            caller["email"], caller.get("sub", "")
+        )
+    except ScopeLookupError as e:
+        logger.error("Denying getStepFunctionExecution: %s", e)
+        raise _unauthorized("Your configuration scope could not be verified") from e
+    if allowed is None:
+        return
+
+    # The shared matcher, not a `in allowed` membership test. Scope entries may be
+    # glob patterns (`tenant-a_*`), which are first-class in this axis because
+    # deployments predating revision history encode lineage in the profile name — a
+    # membership test would deny a pattern-scoped caller every execution they are
+    # entitled to. It also subsumes the "names no version" case: `scope_allows`
+    # denies an unnamed target whenever a scope is set, because an execution that
+    # does not say which profile it ran under cannot be proven to be in scope.
+    version = _config_version_of_execution(execution_response)
+    if not scope_allows(allowed, version):
+        logger.warning(
+            "Denying caller %s: execution ran under config version %r, allowed %s",
+            caller["email"],
+            version,
+            sorted(allowed),
+        )
+        raise _unauthorized("Execution is outside your configuration scope")
+
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    Lambda handler to get Step Functions execution details
+
+    Args:
+        event: AppSync event containing executionArn
+        context: Lambda context
+
+    Returns:
+        Step Functions execution details with step history
+    """
+    try:
+        # Log incoming request
+        logger.info(
+            f"Received request: {json.dumps(sanitize_event_for_logging(event))}"
+        )
+
+        execution_arn = event["arguments"]["executionArn"]
+        logger.info(f"Getting execution details for: {execution_arn}")
+
+        # Authorization, in two parts. The caller names the execution, so bound it
+        # to this deployment before calling Step Functions at all, then bound it to
+        # the caller's configuration scope once the input tells us which version
+        # the document ran under.
+        _require_execution_in_this_stack(execution_arn)
+
+        # Get execution details with detailed logging
+        logger.info(f"Calling describe_execution API for {execution_arn}")
+        start_time = datetime.now()
+        try:
+            execution_response = stepfunctions.describe_execution(
+                executionArn=execution_arn
+            )
+            logger.info(
+                f"describe_execution API call successful, status: {execution_response.get('status', 'UNKNOWN')}"
+            )
+        except Exception as api_error:
+            logger.error(f"describe_execution API call failed: {str(api_error)}")
+            logger.error(f"Error details: {traceback.format_exc()}")
+            raise api_error
+
+        _enforce_config_version_scope(event, execution_response)
+
+        api_duration = (datetime.now() - start_time).total_seconds()
+        logger.info(f"describe_execution API call took {api_duration:.2f} seconds")
+
+        # Get execution history with pagination to capture all events
+        all_events = []
+        next_token = None
+        page_count = 0
+
+        logger.info(f"Starting to fetch execution history for {execution_arn}")
+        history_start_time = datetime.now()
+
+        while True:
+            page_count += 1
+            history_params = {
+                "executionArn": execution_arn,
+                "maxResults": 1000,  # Increased to capture more events
+                "reverseOrder": False,
+            }
+
+            if next_token:
+                history_params["nextToken"] = next_token
+
+            page_start_time = datetime.now()
+            logger.info(
+                f"Fetching execution history page {page_count} with params: {history_params}"
+            )
+
+            try:
+                history_response = stepfunctions.get_execution_history(**history_params)
+                page_events = history_response["events"]
+                all_events.extend(page_events)
+
+                page_duration = (datetime.now() - page_start_time).total_seconds()
+                logger.info(
+                    f"Retrieved page {page_count} with {len(page_events)} events in {page_duration:.2f} seconds"
+                )
+
+                next_token = history_response.get("nextToken")
+                if not next_token:
+                    break
+            except Exception as history_error:
+                logger.error(
+                    f"Failed to fetch execution history page {page_count}: {str(history_error)}"
+                )
+                logger.error(f"Error details: {traceback.format_exc()}")
+                raise history_error
+
+        history_duration = (datetime.now() - history_start_time).total_seconds()
+        logger.info(
+            f"Retrieved {len(all_events)} total events in {page_count} pages, took {history_duration:.2f} seconds"
+        )
+
+        # Log event types and counts for debugging
+        event_type_counts = {}
+        for event in all_events:
+            event_type = event["type"]
+            event_type_counts[event_type] = event_type_counts.get(event_type, 0) + 1
+
+        logger.info(f"Event type counts: {json.dumps(event_type_counts)}")
+
+        # Check for failure events specifically
+        failure_events = [
+            e
+            for e in all_events
+            if "Failed" in e["type"]
+            or "TimedOut" in e["type"]
+            or "Aborted" in e["type"]
+        ]
+        if failure_events:
+            logger.info(f"Found {len(failure_events)} failure events")
+            for i, failure in enumerate(failure_events):
+                logger.info(
+                    f"Failure event {i + 1}: Type={failure['type']}, ID={failure['id']}"
+                )
+                # Log detailed failure information
+                if "taskFailedEventDetails" in failure:
+                    details = failure["taskFailedEventDetails"]
+                    logger.info(
+                        f"Task failure details: Error={details.get('error')}, Cause={details.get('cause')}"
+                    )
+
+        # Process execution details
+        parse_start_time = datetime.now()
+        logger.info("Starting to parse execution history")
+        steps = parse_execution_history(all_events)
+        parse_duration = (datetime.now() - parse_start_time).total_seconds()
+        logger.info(
+            f"Parsed execution history into {len(steps)} steps in {parse_duration:.2f} seconds"
+        )
+
+        # Check for failed steps
+        failed_steps = [s for s in steps if s["status"] == "FAILED"]
+        if failed_steps:
+            logger.info(f"Found {len(failed_steps)} failed steps")
+            for i, step in enumerate(failed_steps):
+                logger.info(
+                    f"Failed step {i + 1}: Name={step['name']}, Error={step['error']}"
+                )
+
+        # Create final response
+        execution_details = {
+            "executionArn": execution_response["executionArn"],
+            "status": execution_response["status"],
+            "startDate": execution_response["startDate"].isoformat()
+            if execution_response.get("startDate")
+            else None,
+            "stopDate": execution_response.get("stopDate").isoformat()
+            if execution_response.get("stopDate")
+            else None,
+            "input": execution_response.get("input"),
+            "output": execution_response.get("output"),
+            "steps": steps,
+        }
+
+        # Add top-level error information if execution failed
+        if execution_response["status"] == "FAILED":
+            # Extract error from output if available
+            try:
+                if execution_response.get("output"):
+                    output_json = json.loads(execution_response["output"])
+                    if "error" in output_json:
+                        execution_details["error"] = output_json["error"]
+                    elif "Error" in output_json:
+                        execution_details["error"] = output_json["Error"]
+                    elif "errorMessage" in output_json:
+                        execution_details["error"] = output_json["errorMessage"]
+            except Exception as parse_error:
+                logger.warning(
+                    f"Failed to parse execution output for error details: {str(parse_error)}"
+                )
+
+            # If we couldn't extract from output, use the terminal failure's error — not
+            # the first failed step's, which after a recovered retry is one the workflow
+            # went on to survive. See `_terminal_failure_error`.
+            if "error" not in execution_details:
+                terminal_error = _terminal_failure_error(steps)
+                if terminal_error is not None:
+                    execution_details["error"] = terminal_error
+
+        total_duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Successfully retrieved and processed execution details for {execution_arn} in {total_duration:.2f} seconds"
+        )
+        return execution_details
+
+    except PermissionError:
+        # An authorization denial must reach the dispatcher as a raised
+        # PermissionError so it becomes a 403. The catch-all below turns
+        # exceptions into a 200 with an error payload, which would render a
+        # denial as an ordinary "failed to retrieve" message.
+        raise
+
+    except Exception as e:
+        logger.error(f"Error getting Step Functions execution: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Return error in a format that can be displayed in the UI
+        execution_arn = "Unknown"
+        if isinstance(event, dict):
+            if "arguments" in event:
+                execution_arn = event["arguments"].get("executionArn", "Unknown")
+            elif "executionArn" in event:
+                execution_arn = event.get("executionArn", "Unknown")
+
+        return {
+            "executionArn": execution_arn,
+            "status": "ERROR",
+            "error": f"Failed to retrieve execution details: {str(e)}",
+            "steps": [],
+        }
+
+
+#: Event types whose failure reads naturally as a timeout to a user. Every one of them
+#: is a task's work exceeding a limit, so they share one phrasing.
+_TIMEOUT_FAILURE_EVENTS = frozenset(
+    {"TaskTimedOut", "LambdaFunctionTimedOut", "ActivityTimedOut"}
+)
+
+#: Per-type wording for a failure that carries no `error`. Anything not named here falls
+#: back to the event type itself, which is more useful to a user than "Unknown error"
+#: and cannot go stale as the vocabulary grows.
+_MISSING_ERROR_TEXT = {
+    "TaskFailed": "Unknown error",
+    "LambdaFunctionFailed": "Lambda function failed",
+    # The three timeout types keep the base wording, which a user has seen since before
+    # the four per-type formatters became one.
+    "TaskTimedOut": "Timeout occurred",
+    "LambdaFunctionTimedOut": "Timeout occurred",
+    "ActivityTimedOut": "Timeout occurred",
+}
+
+
+def _causal_step_key(
+    event: Dict[str, Any],
+    event_id_to_step: Dict[int, str],
+    events_by_id: Dict[int, Dict[str, Any]],
+) -> Optional[str]:
+    """The step key this outcome event is causally about, or ``None``.
+
+    Follows the ``previousEventId`` chain back to the state transition that owns the event.
+    This is **causal** rather than positional, which is the one correlation that survives a
+    concurrent ``Map`` or ``Parallel``: the branches share a single history and interleave,
+    so the event that merely sits nearest can belong to a sibling branch of the same state.
+    Recorded as the outstanding residual of #1139; this is it.
+
+    It has to be a walk, not a single hop. A failure event's ``previousEventId`` names the
+    event immediately before it in its own chain — ``TaskStarted``, which names
+    ``TaskScheduled``, which names the ``*StateEntered`` — so the one-hop form matched only
+    hand-built events and, on a real history, every ``TaskFailed`` fell through to the
+    positional search.
+
+    Termination needs no hop limit and deliberately does not use one: a ``previousEventId``
+    always names a strictly **lower** id, so requiring that of every hop makes the walk
+    finite by the ordering itself. A hop limit would instead be a guess about how long a
+    chain can get, and it would be wrong — each ``Retry`` attempt adds its own
+    scheduled/started/failed events to the chain, so the length grows with the retry count
+    rather than being bounded by the shape.
+    """
+    current = event
+    highest_seen = event.get("id")
+    if not isinstance(highest_seen, int):
+        return None
+    while True:
+        previous_event_id = current.get("previousEventId")
+        # `bool` is a subclass of `int`, and `previousEventId: True` would otherwise
+        # satisfy this and walk to event id 1.
+        if (
+            not isinstance(previous_event_id, int)
+            or isinstance(previous_event_id, bool)
+            or not (0 < previous_event_id < highest_seen)
+        ):
+            return None
+        if previous_event_id in event_id_to_step:
+            return event_id_to_step[previous_event_id]
+        next_event = events_by_id.get(previous_event_id)
+        if next_event is None:
+            return None
+        highest_seen = previous_event_id
+        current = next_event
+
+
+def _correlate_step(
+    step_name: Optional[str],
+    step_map: Dict[str, Dict[str, Any]],
+    statuses: "set[str]",
+    *,
+    keys_only: bool = False,
+) -> Optional[str]:
+    """The key of the step an outcome event belongs to, or ``None``.
+
+    ``find_step_name_for_failure_event`` returns a step *key* (e.g.
+    ``"ClassificationStep_2"``) on every one of its paths, including the resource-derived
+    one, which returns ``<name>_synthetic_<id>``. The bare-name comparison below is
+    therefore **unreachable** unless a state is literally named ``<something>_<digits>``; it
+    is inherited from before the correlation arms were audited and is kept only because
+    removing it would change behaviour for that one naming coincidence. Do not read it as
+    covering a case the correlator actually produces.
+
+    ``statuses`` bounds which steps may be claimed. A failure claims a step still
+    ``RUNNING``; a later success claims one already ``FAILED``, which is the recovered
+    retry. Passing it explicitly is what keeps those two from matching each other's steps.
+
+    ``keys_only`` drops the bare-name comparison, and the **clear** passes it. That
+    comparison can match a *different* step than the one correlated — a step named
+    ``Extraction_1`` alongside a step keyed ``Extraction_1`` — and the two directions are
+    not equally forgiving: claiming the wrong step for a failure puts a red mark in the
+    wrong place, which is visible, while claiming the wrong step for a clear erases a real
+    failure, which is not. No state in ``patterns/unified`` has a name of that shape, so
+    this is closing a gap rather than fixing a live defect.
+    """
+    if not step_name:
+        return None
+    for key, data in step_map.items():
+        matches = key == step_name or (not keys_only and data["name"] == step_name)
+        if matches and data["status"] in statuses:
+            return key
+    return None
+
+
+def _failure_message(event_type: str, event: Dict[str, Any]) -> str:
+    """Render a failure event's detail as the single string the UI shows for a step.
+
+    The detail member is derived from the event type rather than looked up in a table —
+    see `idp_common.stepfunctions_history.failure_detail_key`. A hand-kept table is how a
+    recognised failure ends up displaying an empty error: the type is matched, its detail
+    key is missing, and the step goes red with nothing in it.
+    """
+    details = event.get(failure_detail_key(event_type), {})
+    if not isinstance(details, dict):
+        details = {}
+    error = details.get("error") or _MISSING_ERROR_TEXT.get(event_type, event_type)
+    cause = details.get("cause", "")
+
+    if event_type in _TIMEOUT_FAILURE_EVENTS:
+        message = f"Task timed out: {error}"
+        if cause:
+            try:
+                message = f"{message} - {json.dumps(json.loads(cause), indent=2)}"
+            except (json.JSONDecodeError, TypeError):
+                message = f"{message} - {cause}"
+        return message
+
+    message = error
+    if cause:
+        try:
+            cause_json = json.loads(cause)
+        except (json.JSONDecodeError, TypeError):
+            return f"{error}: {cause}"
+        if isinstance(cause_json, dict):
+            if "errorMessage" in cause_json:
+                message = (
+                    f"{cause_json.get('errorType', 'Error')}: "
+                    f"{cause_json['errorMessage']}"
+                )
+                stack = cause_json.get("stackTrace")
+                if isinstance(stack, list):
+                    rendered = "\n".join(str(line) for line in stack)
+                    message = f"{message}\n\nStack trace:\n{rendered}"
+            elif "message" in cause_json:
+                message = cause_json["message"]
+            else:
+                message = json.dumps(cause_json, indent=2)
+    return message
+
+
+def _terminal_failure_error(steps: List[Dict[str, Any]]) -> Optional[str]:
+    """The error to show for the execution as a whole, or ``None`` if nothing failed.
+
+    **The terminal failure, not the first one.** The pipeline retries throttles, service
+    exceptions and timeouts in many places, so a failed execution routinely carries an
+    earlier failure it recovered from; showing that one names an error nobody needs to
+    act on. The synthetic ``Execution`` step carries the terminal ``ExecutionFailed``
+    detail and is preferred for that reason. Where there is none — which today means the
+    history did not reach the end of the execution — the most recently *started* failed
+    step is the closest available answer, and it is still not the earliest one.
+
+    This is deliberately not ``[s for s in steps if s["status"] == "FAILED"][0]``. That
+    expression does return the terminal error today, but only because the synthetic step
+    is the one step with no ``startDate`` and the sort key maps ``None`` to ``""``, which
+    sorts ahead of every real timestamp. Giving that step a start time — an obvious
+    tidy-up — would silently turn it into the first failure again.
+
+    The second arm selects the latest ``stopDate`` — when the failure happened — rather than
+    the last element, so it does not depend on the order of ``steps``. The one input for
+    which it still does is every failed step **missing** a ``stopDate``, which no real
+    response produces because recording a failure always sets one; that total tie resolves
+    to the last element as given, which is at least not the first. An earlier version used
+    ``failed[-1]`` unconditionally and so was order-dependent whenever no ``Execution`` step
+    was present, which is the case the caller could least afford it in.
+    """
+    failed = [step for step in steps if step["status"] == "FAILED"]
+    if not failed:
+        return None
+    for step in failed:
+        if step["type"] == "Execution":
+            return step["error"]
+    # `stopDate` is set whenever a failure is recorded, so it orders the failures by when
+    # they happened. A step missing one sorts first, which keeps it from displacing a
+    # failure that carries a time. The scan runs in REVERSE so that a tie — every step
+    # missing a `stopDate`, which no real response produces — resolves to the LAST failure
+    # rather than the first; `max` keeps the first maximal element it sees, and first is
+    # the one answer this function exists to avoid.
+    return max(reversed(failed), key=lambda step: step.get("stopDate") or "")["error"]
+
+
+def parse_execution_history(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Parse Step Functions execution history events into step details with enhanced Map state support
+
+    Args:
+        events: List of execution history events
+
+    Returns:
+        List of step details including Map state iterations
+    """
+    steps = []
+    step_map = {}
+    event_id_to_step = {}  # Map event IDs to step names for correlation
+    map_iterations = {}  # Track Map state iterations
+    # Built once so the causal `previousEventId` walk below is a lookup per hop rather
+    # than a scan of the whole history per hop.
+    events_by_id = {event["id"]: event for event in events}
+
+    # First pass: identify all states and their basic information
+    for event in events:
+        event_type = event["type"]
+        event_id = event["id"]
+        timestamp = event["timestamp"].isoformat()
+
+        # Handle state entered events
+        if event_type in [
+            "TaskStateEntered",
+            "ChoiceStateEntered",
+            "PassStateEntered",
+            "WaitStateEntered",
+            "ParallelStateEntered",
+            "MapStateEntered",
+        ]:
+            step_name = event["stateEnteredEventDetails"]["name"]
+            step_type = event_type.replace("StateEntered", "")
+
+            # Create unique key for this step instance
+            step_key = f"{step_name}_{event_id}"
+
+            step_map[step_key] = {
+                "name": step_name,
+                "type": step_type,
+                "status": "RUNNING",
+                "startDate": timestamp,
+                "stopDate": None,
+                "input": event["stateEnteredEventDetails"].get("input"),
+                "output": None,
+                "error": None,
+                "eventId": event_id,
+                "isMapState": step_type == "Map",
+            }
+            event_id_to_step[event_id] = step_key
+
+        # Handle state exited events (successful completion)
+        elif event_type in [
+            "TaskStateExited",
+            "ChoiceStateExited",
+            "PassStateExited",
+            "WaitStateExited",
+            "ParallelStateExited",
+            "MapStateExited",
+        ]:
+            step_name = event["stateExitedEventDetails"]["name"]
+
+            # Find the corresponding step by name and update it
+            for step_key, step_data in step_map.items():
+                if step_data["name"] == step_name and step_data["status"] == "RUNNING":
+                    step_data["status"] = "SUCCEEDED"
+                    step_data["stopDate"] = timestamp
+                    step_data["output"] = event["stateExitedEventDetails"].get("output")
+                    break
+
+        # Handle Map iteration events
+        elif event_type == "MapIterationStarted":
+            iteration_details = event.get("mapIterationStartedEventDetails", {})
+            map_name = iteration_details.get("name", "Unknown")
+            iteration_index = iteration_details.get("index", 0)
+
+            # Create a unique key for this iteration
+            iteration_key = f"{map_name}_iteration_{iteration_index}_{event_id}"
+
+            step_map[iteration_key] = {
+                "name": f"{map_name} (Iteration {iteration_index + 1})",
+                "type": "MapIteration",
+                "status": "RUNNING",
+                "startDate": timestamp,
+                "stopDate": None,
+                "input": iteration_details.get("input"),
+                "output": None,
+                "error": None,
+                "eventId": event_id,
+                "isMapIteration": True,
+                "iterationIndex": iteration_index,
+                "parentMapName": map_name,
+            }
+
+            # Track iterations for the parent Map state
+            if map_name not in map_iterations:
+                map_iterations[map_name] = []
+            map_iterations[map_name].append(iteration_key)
+
+        elif event_type == "MapIterationSucceeded":
+            iteration_details = event.get("mapIterationSucceededEventDetails", {})
+            map_name = iteration_details.get("name", "Unknown")
+            iteration_index = iteration_details.get("index", 0)
+
+            # Find and update the corresponding iteration
+            for step_key, step_data in step_map.items():
+                if (
+                    step_data.get("parentMapName") == map_name
+                    and step_data.get("iterationIndex") == iteration_index
+                    and step_data["status"] == "RUNNING"
+                ):
+                    step_data["status"] = "SUCCEEDED"
+                    step_data["stopDate"] = timestamp
+                    step_data["output"] = iteration_details.get("output")
+                    break
+
+        elif event_type == "MapIterationFailed":
+            iteration_details = event.get("mapIterationFailedEventDetails", {})
+            map_name = iteration_details.get("name", "Unknown")
+            iteration_index = iteration_details.get("index", 0)
+            error = iteration_details.get("error", "Map iteration failed")
+            cause = iteration_details.get("cause", "")
+
+            # Format error message with cause if available
+            error_message = error
+            if cause:
+                try:
+                    # Try to parse cause as JSON for better formatting
+                    cause_json = json.loads(cause)
+                    if isinstance(cause_json, dict):
+                        if "errorMessage" in cause_json:
+                            error_message = f"{error}: {cause_json['errorMessage']}"
+                        elif "message" in cause_json:
+                            error_message = f"{error}: {cause_json['message']}"
+                        else:
+                            error_message = f"{error}: {json.dumps(cause_json)}"
+                except (json.JSONDecodeError, TypeError):
+                    # If cause is not JSON, append it as-is
+                    error_message = f"{error}: {cause}"
+
+            # Find and update the corresponding iteration
+            for step_key, step_data in step_map.items():
+                if (
+                    step_data.get("parentMapName") == map_name
+                    and step_data.get("iterationIndex") == iteration_index
+                    and step_data["status"] == "RUNNING"
+                ):
+                    step_data["status"] = "FAILED"
+                    step_data["stopDate"] = timestamp
+                    step_data["error"] = error_message
+                    break
+
+        # Handle every task-level failure event, whatever the integration.
+        #
+        # This was three near-identical blocks covering `TaskFailed`, `TaskTimedOut` and
+        # `LambdaFunctionFailed` (plus `TaskAborted`, which is not a `HistoryEventType`
+        # and so never ran). The event types come from the shared vocabulary now — see
+        # `idp_common.stepfunctions_history` — because a failure type this loop did not
+        # name left its step showing **RUNNING** in the flow viewer for good: nothing
+        # else ever sets a terminal status on a step, so a Lambda that timed out or a
+        # task the service could not schedule read as still in progress.
+        elif event_type in TASK_LEVEL_FAILURE_EVENTS:
+            logger.debug(f"Processing {event_type} event ID: {event.get('id')}")
+
+            step_name = find_step_name_for_failure_event(
+                event, events, event_id_to_step, events_by_id
+            )
+            step_key = _correlate_step(step_name, step_map, {"RUNNING"})
+
+            if step_key:
+                step_map[step_key]["status"] = "FAILED"
+                step_map[step_key]["stopDate"] = timestamp
+                error_message = _failure_message(event_type, event)
+                step_map[step_key]["error"] = error_message
+                logger.info(
+                    f"Processed {event_type} for step '{step_name}': {error_message}"
+                )
+            else:
+                logger.warning(
+                    f"Could not find step for {event_type} event: {event['id']}"
+                )
+
+        # A later attempt of the same task SUCCEEDED, so the failure recorded above was
+        # recovered and the step is running again, not failed.
+        #
+        # ⚠️ This is what keeps a recovered `Retry` from rendering as a red step on an
+        # execution that succeeded. A `Retry` re-runs the task without re-entering the
+        # state, so there is one step for all the attempts and nothing else in this parser
+        # ever takes a terminal status back: the `*StateExited` handler above matches only
+        # a step still `RUNNING`, so once a failure has set `FAILED` the later success
+        # cannot reach it.
+        #
+        # It keys on the task-level SUCCESS event and deliberately not on the state's exit
+        # transition. Whether a failure routed through a `Catch` also emits `*StateExited`
+        # for the state that failed is a property of the service rather than of its model,
+        # and is not established here; if it does, clearing on that transition would mark a
+        # genuinely failed state as succeeded, which is #1139 again. An attempt that failed
+        # terminally emits no success event, so this cannot make that mistake — and if the
+        # assumption behind the set were wrong the clear simply never fires, leaving the
+        # failure visible.
+        elif event_type in FAILURE_RECOVERY_EVENTS:
+            # ⚠️ Correlated by the CAUSAL chain only, never by the positional or
+            # last-resort arms. Those arms answer "which step is nearest" rather than
+            # "which step is this event about", and the two failure directions are not
+            # symmetric: a misattributed *failure* puts a red mark on the wrong step, which
+            # an operator can see, while a misattributed *clear* erases a real failure,
+            # which nobody can. `get_execution_history` always populates `previousEventId`,
+            # so the restriction costs nothing on a real history and bounds the damage a
+            # malformed one can do to leaving a failure showing.
+            step_key = _correlate_step(
+                _causal_step_key(event, event_id_to_step, events_by_id),
+                step_map,
+                {"FAILED"},
+                keys_only=True,
+            )
+            if step_key:
+                logger.info(
+                    f"{event_type} for step '{step_key}' follows a failed attempt; "
+                    "the failure was recovered, so the step is running again"
+                )
+                step_map[step_key]["status"] = "RUNNING"
+                step_map[step_key]["stopDate"] = None
+                step_map[step_key]["error"] = None
+
+        # Handle execution failed event
+        elif event_type == "ExecutionFailed":
+            execution_failed_details = event.get("executionFailedEventDetails", {})
+            error = execution_failed_details.get("error", "Execution failed")
+            cause = execution_failed_details.get("cause", "")
+
+            # Format error message
+            error_message = error
+            if cause:
+                try:
+                    cause_json = json.loads(cause)
+                    if isinstance(cause_json, dict):
+                        if "errorMessage" in cause_json:
+                            error_message = f"{error}: {cause_json['errorMessage']}"
+                        else:
+                            error_message = (
+                                f"{error}: {json.dumps(cause_json, indent=2)}"
+                            )
+                except (json.JSONDecodeError, TypeError):
+                    error_message = f"{error}: {cause}"
+
+            # Store execution failure in a special step
+            execution_failed_key = f"ExecutionFailed_{event_id}"
+            step_map[execution_failed_key] = {
+                "name": "Execution",
+                "type": "Execution",
+                "status": "FAILED",
+                "startDate": None,  # We don't have a specific start time for this synthetic step
+                "stopDate": timestamp,
+                "input": None,
+                "output": None,
+                "error": error_message,
+                "eventId": event_id,
+                "isExecutionFailure": True,
+            }
+            logger.info(f"Processed ExecutionFailed event: {error_message}")
+
+    # Second pass: enhance Map states with iteration information
+    for step_key, step_data in step_map.items():
+        if step_data.get("isMapState") and step_data["name"] in map_iterations:
+            iterations = map_iterations[step_data["name"]]
+            step_data["mapIterations"] = len(iterations)
+            step_data["mapIterationDetails"] = [
+                step_map[iter_key] for iter_key in iterations if iter_key in step_map
+            ]
+
+            # If any iteration failed, mark the Map state as failed
+            if any(
+                step_map[iter_key]["status"] == "FAILED"
+                for iter_key in iterations
+                if iter_key in step_map
+            ):
+                step_data["status"] = "FAILED"
+                # Collect errors from failed iterations
+                failed_iterations = [
+                    step_map[iter_key]
+                    for iter_key in iterations
+                    if iter_key in step_map and step_map[iter_key]["status"] == "FAILED"
+                ]
+                if failed_iterations:
+                    step_data["error"] = (
+                        f"Map state failed: {len(failed_iterations)} of {len(iterations)} iterations failed"
+                    )
+
+    # Convert to list and sort by start time
+    steps = list(step_map.values())
+    steps.sort(key=lambda x: x["startDate"] if x["startDate"] else "")
+
+    # Clean up internal fields that shouldn't be exposed
+    for step in steps:
+        step.pop("eventId", None)
+        step.pop("isMapState", None)
+        step.pop("isMapIteration", None)
+        step.pop("iterationIndex", None)
+        step.pop("parentMapName", None)
+        step.pop("isExecutionFailure", None)
+
+    return steps
+
+
+def find_step_name_for_failure_event(
+    failure_event: Dict[str, Any],
+    all_events: List[Dict[str, Any]],
+    event_id_to_step: Dict[int, str],
+    events_by_id: Optional[Dict[int, Dict[str, Any]]] = None,
+) -> Optional[str]:
+    """
+    Find the step name associated with a failure event by correlating with previous events
+
+    Args:
+        failure_event: The failure event
+        all_events: All execution history events
+        event_id_to_step: Mapping of event IDs to step names
+        events_by_id: Optional pre-built id → event index, to avoid rebuilding it
+
+    Returns:
+        Step name if found, None otherwise
+    """
+    try:
+        failure_event_id = failure_event["id"]
+        failure_event_type = failure_event["type"]
+        logger.debug(
+            f"Finding step name for {failure_event_type} event ID {failure_event_id}"
+        )
+        if events_by_id is None:
+            events_by_id = {event["id"]: event for event in all_events}
+
+        # Causal correlation first — see `_causal_step_key` for why it is a walk and why
+        # it needs no hop limit.
+        causal = _causal_step_key(failure_event, event_id_to_step, events_by_id)
+        if causal:
+            logger.debug(
+                f"Found step key {causal} by following the previousEventId chain from "
+                f"event {failure_event_id}"
+            )
+            return causal
+
+        # Positional fallback: the most recent TaskStateEntered event before this failure.
+        # Reached when the chain is broken or absent, and it is the arm that can name a
+        # sibling `Map` iteration, so it stays a fallback rather than becoming the rule.
+        logger.debug(
+            f"Searching for most recent TaskStateEntered event before failure event {failure_event_id}"
+        )
+        for event in reversed(all_events):
+            if event["id"] >= failure_event_id:
+                continue
+            if event["type"] == "TaskStateEntered":
+                step_name = event["stateEnteredEventDetails"]["name"]
+                logger.debug(
+                    f"Found most recent TaskStateEntered event with step name {step_name}"
+                )
+                return f"{step_name}_{event['id']}"
+
+        # Fallback: try to extract from task details if available
+        if "taskFailedEventDetails" in failure_event:
+            resource = failure_event["taskFailedEventDetails"].get("resource", "")
+            if resource:
+                # Extract step name from resource ARN if possible
+                # This is a best-effort approach
+                parts = resource.split(":")
+                if len(parts) > 1:
+                    step_name = parts[-1].split("/")[-1]
+                    logger.debug(f"Extracted step name {step_name} from resource ARN")
+                    # Since we don't have an event ID, create a synthetic one
+                    return f"{step_name}_synthetic_{failure_event_id}"
+
+        # If we still don't have a step name, look for any running step
+        logger.debug(
+            "Searching for any running step that might be associated with this failure"
+        )
+        # `event_id_to_step` maps an event id to a step KEY, so unpack it in that
+        # order: the loop previously named the id `step_key` and returned it,
+        # which handed the caller an int where it matches `step_map` keys and
+        # names by equality — so this last-resort correlation could never
+        # succeed, and a failure went unattributed to any step.
+        #
+        # Reversed, so this last resort prefers the most recently correlated step,
+        # like every strategy above it. Insertion order is event order, so the
+        # forward walk would return the *first* step of the execution, which is the
+        # least likely to be the one that just failed.
+        for event_id, step_key in reversed(list(event_id_to_step.items())):
+            if event_id and step_key:
+                logger.debug(f"Found potential step key {step_key}")
+                return step_key
+
+        logger.warning(
+            f"Could not find step name for failure event ID {failure_event_id}"
+        )
+        return None
+
+    except Exception as e:
+        logger.warning(f"Error finding step name for failure event: {str(e)}")
+        logger.warning(f"Error details: {traceback.format_exc()}")
+        return None

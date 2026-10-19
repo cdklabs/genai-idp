@@ -5,6 +5,7 @@
 DynamoDB client for direct table operations.
 """
 
+import copy
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -62,12 +63,18 @@ class DynamoDBClient:
             logger.error(f"Failed to initialize DynamoDB client: {str(e)}")
             raise DynamoDBError(f"Failed to initialize DynamoDB client: {str(e)}")
 
-    def put_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def put_item(
+        self, item: Dict[str, Any], condition_expression: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Put an item into the DynamoDB table.
 
         Args:
             item: The item to put into the table
+            condition_expression: Optional ConditionExpression (e.g.
+                ``attribute_not_exists(PK)`` for idempotent create-if-absent).
+                Raises DynamoDBError with error_code
+                ``ConditionalCheckFailedException`` if the condition fails.
 
         Returns:
             Dict containing the response from DynamoDB
@@ -76,7 +83,10 @@ class DynamoDBClient:
             DynamoDBError: If the DynamoDB operation fails
         """
         try:
-            response = self.table.put_item(Item=item)
+            kwargs: Dict[str, Any] = {"Item": item}
+            if condition_expression:
+                kwargs["ConditionExpression"] = condition_expression
+            response = self.table.put_item(**kwargs)
             logger.debug(f"Successfully put item with PK: {item.get('PK')}")
             return response
         except ClientError as e:
@@ -95,6 +105,7 @@ class DynamoDBClient:
         expression_attribute_names: Optional[Dict[str, str]] = None,
         expression_attribute_values: Optional[Dict[str, Any]] = None,
         return_values: str = "ALL_NEW",
+        condition_expression: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Update an item in the DynamoDB table.
@@ -105,6 +116,14 @@ class DynamoDBClient:
             expression_attribute_names: Optional attribute name mappings
             expression_attribute_values: Optional attribute value mappings
             return_values: What to return after the update
+            condition_expression: Optional ConditionExpression, evaluated by
+                DynamoDB against the item as it exists at write time. This is the
+                only way a read-modify-write through this client can detect that
+                the state it read has since changed: without one, every writer
+                succeeds and the loser's data is gone with nothing reporting it.
+                Raises DynamoDBError with error_code
+                ``ConditionalCheckFailedException`` if the condition fails, which
+                is the caller's signal to re-read and retry.
 
         Returns:
             Dict containing the response from DynamoDB
@@ -124,6 +143,9 @@ class DynamoDBClient:
 
             if expression_attribute_values:
                 update_params["ExpressionAttributeValues"] = expression_attribute_values
+
+            if condition_expression:
+                update_params["ConditionExpression"] = condition_expression
 
             response = self.table.update_item(**update_params)
             logger.debug(f"Successfully updated item with key: {key}")
@@ -193,6 +215,19 @@ class DynamoDBClient:
             logger.error(f"BotoCore error during get_item: {str(e)}")
             raise DynamoDBError(f"BotoCore error: {str(e)}")
 
+    def batch_get_items(self, keys: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Batch get items from the DynamoDB table (max 100 keys)."""
+        if not keys:
+            return []
+        try:
+            response = self.dynamodb.batch_get_item(
+                RequestItems={self.table.name: {"Keys": keys}}
+            )
+            return response.get("Responses", {}).get(self.table.name, [])
+        except (ClientError, BotoCoreError) as e:
+            logger.error(f"DynamoDB batch_get_item failed: {e}")
+            raise DynamoDBError(f"Batch get failed: {e}")
+
     def transact_write_items(
         self, transact_items: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
@@ -209,10 +244,13 @@ class DynamoDBClient:
             DynamoDBError: If the DynamoDB operation fails
         """
         try:
-            # Convert table references to use the table name
+            # Convert table references to use the table name. Deep-copied:
+            # a shallow copy shares the nested Put/Update/Delete dicts with
+            # the caller, so injecting TableName below would write into the
+            # caller's own payload.
             processed_items = []
             for item in transact_items:
-                processed_item = item.copy()
+                processed_item = copy.deepcopy(item)
                 if "Put" in processed_item:
                     processed_item["Put"]["TableName"] = self.table_name
                 elif "Update" in processed_item:

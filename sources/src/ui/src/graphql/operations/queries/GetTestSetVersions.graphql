@@ -1,0 +1,13 @@
+query GetTestSetVersions($testSetId: String!) {
+  getTestSetVersions(testSetId: $testSetId) {
+    testSetId
+    version
+    label
+    notes
+    fileCount
+    snapshotObjectCount
+    hasStoredLabels
+    createdAt
+    createdBy
+  }
+}

@@ -19,6 +19,10 @@ The web interface allows real-time configuration updates without stack redeploym
 - **Extraction Attributes**: Configure fields to extract for each document class (defined as JSON Schema properties)
 - **Few Shot Examples**: Upload and configure example documents to improve accuracy (supported in Pattern 2)
 - **Model Selection**: Choose between available Bedrock models for classification and extraction
+  > **💡 Cost Attribution Tip:** You can replace standard model IDs with [Bedrock Application Inference Profile](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-create.html) ARNs to enable cost-allocation tagging (e.g., for MAP migration tracking). This is a configuration-only change — no code modifications required. See [Cost Attribution with Application Inference Profiles](./cost-calculator.md#cost-attribution-with-bedrock-application-inference-profiles) for step-by-step instructions.
+  > **🤖 OpenAI GPT-6 Astra:** `us.openai.gpt-6-astra` (US regions) and `global.openai.gpt-6-astra` (every region, and cheaper) are selectable for OCR, classification, extraction — **including agentic extraction** — assessment, summarization, evaluation, and chat. Astra runs on the standard Converse API (**not** the bedrock-mantle path the GPT-5.x models use), has a 1.05M context window with automatic prompt caching, and is tuned via `reasoning_effort` (`none`/`low`/`medium`/`high`/`xhigh`/`max`) instead of temperature/top_p, which it rejects. It is **not** supported for Discovery or Policy Discovery. Note input above 272K tokens bills at roughly double the rate recorded in `pricing.yaml`. See [OpenAI Models](./openai-models.md#gpt-6-astra-converse) for the full support matrix and caveats.
+  > **🤖 OpenAI GPT-5.x:** `openai.gpt-5.4`, `openai.gpt-5.5`, and the GPT-5.6 family (`openai.gpt-5.6-sol` / `-terra` / `-luna`) are selectable for OCR, classification, extraction, assessment, summarization, evaluation, and chat (US regions only), and are tuned via a `reasoning_effort` field instead of temperature/top_p. They are **not** supported for agentic extraction or Discovery. See [OpenAI GPT-5.x Models](./openai-models.md) for the full support matrix and caveats.
+  > **🤖 xAI Grok:** `us.xai.grok-4.6` (US regions) and `global.xai.grok-4.6` (EU/APAC too, and cheaper) are selectable for OCR, classification, extraction — **including agentic extraction** — assessment, summarization, evaluation, chat, and the rule-validation/agent paths. Grok runs on the standard Converse API, is tuned via `reasoning_effort` (`none`/`low`/`medium`/`high`/`xhigh`) instead of temperature/top_p, and is **not** supported for Discovery or Policy Discovery. Flex/Priority tiers and prompt caching do **not** work despite being advertised. See [xAI Grok Models](./grok-models.md) for the full support matrix and caveats.
 - **Prompt Engineering**: Customize system and task prompts for optimal results
 - **OCR Features**: Configure Textract features (TABLES, FORMS, SIGNATURES, LAYOUT) for enhanced data capture
 - **Evaluation Methods**: Set evaluation methods and thresholds for each attribute
@@ -35,12 +39,23 @@ Key capabilities:
 - **Track** which version was used for each processed document and test run
 - **Select** a specific version when uploading documents, running tests, or using the CLI
 
-For comprehensive documentation, see [configuration-versions.md](configuration-versions.md).
+#### Managed Configuration Versions
+
+The stack automatically deploys **managed configuration versions** for each pre-deployed test set (`fake-w2`, `docsplit`, `ocr-benchmark`, `realkie-fcc-verified`). These are marked with `managed: true` and have the following behavior:
+
+- **Overwritten on stack updates** — always reflect the latest defaults shipped with the solution
+- **Save disabled** — the Save button is disabled and an info banner explains the config is stack-managed
+- **Delete disabled** — managed versions cannot be deleted in the UI or via the API
+- **Editable copies** — use **Create profile** in the Configuration Profiles table to create a custom, editable copy
+- **Not importable** — managed configs are stored separately (`config_library/managed_config/`) and do not appear in the configuration import browser
+- **Test Studio integration** — when a test set is selected, the matching managed config version is auto-selected
+
+For comprehensive documentation, see [configuration-profiles.md](configuration-profiles.md).
 
 ### Configuration Management Features
 
-- **Save Changes**: Save your current configuration changes. The button is **enabled only when you have unsaved changes** (comparing your edits against the last saved configuration). After a successful save, a confirmation banner is displayed.
-- **Unsaved Changes Indicator**: Individual fields with unsaved edits display an orange dot next to the field label, and an info banner with a "Discard changes" button appears when the configuration form has unsaved edits.
+- **Save Changes**: Save your current configuration changes. The button is **enabled only when you have unsaved changes** (comparing your edits against the last saved configuration); when it's disabled on a stack-managed version, hovering it explains why. After a successful save, a confirmation banner **and** a brief success toast (top-right notification area) are shown. Less-frequent actions (Export, Save as default, Restore default (All), Save current edits as new profile, and BDA sync) are grouped under an **Actions** menu next to Save changes. To create a new profile from an existing one's *saved* state, use **Create profile** in the Configuration Profiles table instead.
+- **Unsaved Changes Indicator**: Individual fields with unsaved edits display an orange dot next to the field label, and an info banner with a "Discard changes" button appears when the configuration form has unsaved edits (shown on all versions, including the stack-managed `default`).
 - **Browser Navigation Guard**: The browser warns before leaving the page when unsaved configuration changes exist (both on browser close/refresh and SPA navigation).
 - **Save as Default**: Save your current version's configuration as the new default baseline. This replaces the existing default configuration. **Warning**: Default configurations may be overwritten during solution upgrades - export your configuration first for backup.
 - **Restore Default (All)**: Reset the current version's configuration back to the default values, replacing all customizations.
@@ -107,8 +122,20 @@ The GenAI IDP Accelerator uses a **system defaults** architecture where configur
 ### How It Works
 
 1. **System defaults** are loaded first from `lib/idp_common_pkg/idp_common/config/system_defaults/`:
-   - `pattern-1.yaml` - BDA mode defaults (used when `use_bda: true`)
-   - `pattern-2.yaml` - Pipeline mode defaults (used when `use_bda: false`)
+   - `pattern-1.yaml` - BDA mode defaults
+   - `pattern-2.yaml` - Pipeline mode defaults
+
+   Which of the two is used comes from the caller's explicit pattern argument. Where
+   that is omitted, the tools that auto-detect it (the SDK's config download and
+   upload, and the `update_configuration` Lambda) select `pattern-1.yaml` only for a
+   configuration whose `classification.classificationMethod` is `bda`, and
+   `pattern-2.yaml` otherwise — they do not read the top-level `use_bda` flag, so a
+   BDA deployment configured only through `use_bda: true` resolves against
+   `pattern-2.yaml`. That is benign but not free: your own `use_bda: true` still wins
+   the merge, so the workflow routes to BDA as you asked, and the cost is a
+   configuration carrying the OCR, classification, chat, rule-validation and LLM
+   extraction defaults BDA mode does not use. `use_bda` is what routes the workflow at
+   run time; the pattern file only decides which defaults are merged underneath it.
 
 2. **User configurations** are merged on top, overriding only the specified values
 
@@ -135,6 +162,32 @@ classes:
 
 All other settings (OCR, classification, extraction, assessment, evaluation, summarization, discovery, agents) are inherited from the pattern's system defaults.
 
+### The system defaults are the canonical list of every setting
+
+This page is organized by topic and covers the settings people ask about most — it is
+**not** an exhaustive key reference, and a newly added option may not be described here
+yet. The authoritative enumeration is the `system_defaults/` directory itself:
+
+| file | covers |
+|---|---|
+| `base.yaml` | top-level keys shared by every pattern |
+| `base-ocr.yaml` | OCR backends and image handling |
+| `base-classification.yaml` | classification, `sectionSplitting`, `contextPagesCount` |
+| `base-extraction.yaml` | extraction, `agentic.*`, `forced_tool.*`, `multi_instance_detection.*` |
+| `base-confidence.yaml` | assessment / confidence |
+| `base-evaluation.yaml`, `base-summarization.yaml`, `base-discovery.yaml`, `base-agents.yaml`, `base-chat.yaml`, `base-geometry.yaml`, `base-rule-validation.yaml`, `base-rule-discovery.yaml`, `base-classes.yaml`, `base-notes.yaml` | the remaining stages |
+| `pattern-1.yaml` / `pattern-2.yaml` | which of the above compose for BDA vs Pipeline mode |
+
+Every key in those files carries its shipped default and an inline comment explaining
+what it does, when to change it, and — where it has been measured — the evidence. Reading
+them is the reliable way to find out what is tunable; they are also what the **Web UI
+shows** for `Config#default`, so what you read there is what the UI presents.
+
+For **measured** guidance on which settings are worth changing — including the ones added
+most recently — see the [Configuration Guidance paper](./benchmarking/config-guidance.md).
+Its §7 covers the current release's options with the A/B numbers behind each
+recommendation, and states plainly where a setting was measured to buy nothing.
+
 ### Override Example
 
 To override specific settings while keeping others at defaults:
@@ -146,14 +199,110 @@ notes: "Configuration with custom classification method"
 classification:
   classificationMethod: textbasedHolisticClassification
 
-# Override assessment to enable granular mode
-assessment:
-  granular:
-    enabled: true
+# Override confidence to use integrated mode
+extraction:
+  confidence:
+    mode: integrated
 
 classes:
   # ... your document classes
 ```
+
+### A key the solution does not recognise is reported, not applied
+
+A configuration key whose name no setting matches is **ignored on load**, at every
+level of the file. The configuration is still accepted and the run still completes —
+what changes is that the shipped default stays in force, which looks exactly like a
+working configuration. A misspelled `enabled` leaves a guard on; a mis-nested
+`fail_action` leaves the default `warn` in place, and the conclusion a reader draws
+is that escalation does not work.
+
+Every such key is therefore named, with the full path to where it was written:
+
+```
+IDPConfig: Ignoring unknown nested fields (not defined in model, so the shipped
+default stays in force): extraction.validation.enabld (did you mean
+extraction.validation.enabled?), ocr.dpi (did you mean ocr.image.dpi?)
+```
+
+Two places to look for it:
+
+- **Before you upload.** `idp-cli config-validate --config-file <file>` lists them
+  as warnings, with the path. This is the cheap moment — the file is in front of
+  you. Note that `idp-cli config-upload` does **not** print them: it checks only
+  whether the configuration is valid, and an ignored key does not make it invalid.
+  `--strict` turns a **top-level** extra into a non-zero exit; a nested one is
+  reported but does not fail, so adding this flag to a pipeline cannot break a
+  configuration that passes today.
+- **On load, in CloudWatch.** The same finding appears at `WARNING` from the Lambda
+  that loaded the configuration. Search the log group for `Ignoring` after changing
+  a configuration — that matches the unknown-key line and the deprecated-key one.
+
+⚠️ **A key at the wrong nesting level is the trap worth knowing about**, because the
+name itself is valid. `dpi` is a real setting, under `ocr.image`. Written as
+`ocr.dpi` it is ignored — and so is any bad *value* you gave it, because the check
+that would have rejected it lives with the real key:
+
+```yaml
+ocr:
+  dpi: 300          # ignored: no such setting at this level
+  image:
+    dpi: 300        # this is the one that takes effect
+```
+
+That is why the message offers the path the key belongs at. Since `ocr.backend` and
+`ocr.model_id` genuinely are one level up, this is an easy mistake to make and a hard
+one to see afterwards.
+
+The same works the other way round: write `ocr.image.backend`, one level too deep,
+and the message points you back at `ocr.backend`.
+
+**A "did you mean" appears only when there is one answer.** Some setting names are
+used in several places — `enabled` exists at eight different places one level under
+`extraction` — and in that case the key is still reported but no path is suggested,
+because a guess would send you to edit something that was already correct.
+
+**The warning is not an error.** An unrecognised key does not stop a configuration
+from being accepted or a deployment from loading it, so upgrading cannot break a
+stored configuration on this account. It also means the only signal is the warning:
+after changing a setting, confirm the value you set is the value in effect rather
+than inferring it from the absence of an error.
+
+Two kinds of key are deliberately *not* reported, because nothing is being dropped:
+free-form content whose names are yours to choose — your document `classes`, a
+pipeline hook's `args` — and the pipeline-hook blocks, which keep whatever they are
+given.
+
+#### Pricing and Model Limits are separate records, and they report the same way
+
+The **Pricing** and **View / Edit Model Limits** panels edit their own records
+rather than part of the configuration document, so the paragraphs above describe
+them too but the message names the record instead of the configuration:
+
+```
+ModelConfigLimitsConfig: Ignoring unknown nested fields (not defined in model, so
+the shipped default stays in force): model_limits[0].max_input_tokenz (did you mean
+model_limits[0].max_input_tokens?)
+```
+
+The list index is part of the path, so the line tells you which row to fix. Two
+things worth knowing about these two records specifically:
+
+- **A stray key at the top of the record is refused outright**, with a validation
+  error rather than a warning, because these records recognise only their own small
+  set of top-level keys. The warning above is for a key *inside* a row, which is
+  where the silent drop was: a row's own settings were accepted permissively, so a
+  misspelled `max_input_tokens` left the shipped context window for that model
+  family in force while the save reported success.
+- **A price belongs to a unit, not to the entry.** Writing `price` alongside `name`
+  and `units` on a pricing entry is the mis-nesting equivalent of `ocr.dpi`: it is
+  ignored, the shipped rate stays in force, and the cost figures carry on looking
+  plausible. The warning names `pricing[<n>].price` and points at
+  `pricing[].units[].price`.
+
+As with the configuration document, the finding appears at `WARNING` in the log
+group of whichever function loaded or saved the record — so search for `Ignoring`
+after editing either panel.
 
 ### Benefits
 
@@ -171,6 +320,89 @@ The `config_library/` directory contains example configurations demonstrating th
 
 See the [config_library README](../config_library/README.md) for available configurations and usage examples.
 
+### Retired and legacy Bedrock models
+
+Bedrock retires model versions over time. A retired model is removed from the
+model picklists (the enums in `patterns/unified/template.yaml` and
+`template.yaml`) but **keeps** its `config_library/pricing.yaml` entry, so a cost
+report covering documents processed while it was still selectable resolves the
+right rate. Model IDs in a
+configuration are plain strings, not a closed enum, so **a stored configuration
+that still names a retired model keeps loading** — it just fails at invoke time
+with:
+
+```
+ResourceNotFoundException: This model version has reached the end of its life.
+```
+
+The failing stage's model is named in the Lambda log line and by the Error
+Analyzer agent's `fetch_pipeline_configuration` tool. Repoint the stage at a
+current model to fix it.
+
+Two failure shapes to distinguish:
+
+- **End of life** — the model is gone for everyone, in every region, and no
+  account can invoke it. It is removed from the picklists.
+  `us.amazon.nova-premier-v1:0` (end of life 2026-09-14) and
+  `us.anthropic.claude-3-5-haiku-20241022-v1:0` are examples. You can confirm the
+  state yourself: `aws bedrock get-foundation-model --model-identifier
+  amazon.nova-premier-v1:0` answers `ResourceNotFoundException` with the
+  end-of-life message, while a live model returns its details.
+- **Provider-legacy, account-scoped** — the model still exists and existing users
+  can still invoke it, but access is withdrawn per account after inactivity:
+  `ResourceNotFoundException: Access denied. This Model is marked by provider as
+  Legacy and you have not been actively using the model in the last 30 days.`
+  Such models stay selectable, because they work for accounts that have used
+  them recently — if you hit this error, either pick a current model or request
+  access again in the Bedrock console.
+
+  `us.anthropic.claude-sonnet-4-5-20250929-v1:0` is the selectable model closest
+  to this state: an AWS Health notice puts it in legacy from 2026-10-08 with end
+  of life on 2027-04-08, which `list-foundation-models` had not yet reflected
+  when this page was written. `us.anthropic.claude-opus-4-1-20250805-v1:0` is
+  the model the API does report as `LEGACY` (end of life 2027-01-08), and it is
+  no longer in any picklist here, so you will meet it only in a configuration
+  stored before it was removed. Read the state yourself rather than from this
+  page:
+
+  ```bash
+  aws bedrock list-foundation-models --by-provider anthropic \
+    --query 'modelSummaries[].{id:modelId,lifecycle:modelLifecycle}'
+  ```
+
+  A legacy model also receives no further Service Quota increases, so it is a
+  poor choice for new work even while it answers. No default in the commercial
+  partition names one. **GovCloud is the exception.** That partition offers
+  three models — `us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0`,
+  `amazon.nova-pro-v1:0` and `amazon.nova-lite-v1:0` — and the
+  `lending-package-sample-govcloud` preset names the Sonnet for extraction,
+  summarization, LLM evaluation and confidence escalation, so a GovCloud
+  deployment runs the legacy Sonnet for those stages until that partition offers
+  a successor. (The `--govcloud` template transform defaults the knowledge-base
+  model to `amazon.nova-pro-v1:0`; it reaches the Sonnet only by selecting that
+  preset.)
+
+A model removed from the picklists keeps its `pricing.yaml` entry, so cost
+reports covering documents processed while it was selectable still resolve the
+right rate.
+
+**`config-validate` catches it before you deploy.** `idp-cli config-validate` and
+`idp-cli config-upload` (unless you pass `--no-validate`) reject a configuration
+that pins an end-of-life model, naming the date and the command that confirms it,
+rather than letting the failure appear part-way through a document. Loading a
+stored configuration that still names one is unaffected — the model fields are
+plain strings and nothing revalidates a stored config — so an existing deployment
+does not break on upgrade; it keeps failing at inference exactly as it already
+was, until you repoint the stage.
+
+**Upgrading a stack that selected a removed model.** `KnowledgeBaseModelId` is a
+CloudFormation parameter, so if your stack's current value is a model that this
+release removed from `AllowedValues`, the stack update is rejected with
+`Parameter value ... does not match AllowedValues` rather than proceeding. Pass a
+current model for that parameter in the same update. A removed model named in
+your stored *configuration* (rather than a stack parameter) does not block the
+update; repoint that stage in the Configuration editor.
+
 ## Summarization Configuration
 
 ### Enable/Disable Summarization
@@ -181,7 +413,7 @@ Summarization can be controlled via the configuration file rather than CloudForm
 ```yaml
 summarization:
   enabled: true  # Set to false to disable summarization
-  model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+  model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
   temperature: 0.0
   # ... other summarization settings
 ```
@@ -200,28 +432,38 @@ summarization:
 
 **Note:** Prior to v0.4.0, this feature was controlled by the `IsSummarizationEnabled` CloudFormation parameter. The configuration-based approach provides runtime control without requiring stack redeployment.
 
-## Assessment Configuration
+## Confidence (Assessment) Configuration
 
-### Enable/Disable Assessment
+As of **config v0.6**, per-field **confidence** and **geometry** are **outputs of
+extraction**, configured under `extraction.confidence.*` and
+`extraction.geometry.*` — there is no top-level `assessment.{model, geometry_mode,
+...}` block anymore. Human-in-the-loop review is configured under the top-level
+`hitl.*` block. See [Extraction & Confidence](./extraction-and-confidence.md) for
+the full reference.
 
-Similar to summarization, assessment can now be controlled via the configuration file rather than CloudFormation stack parameters. This provides more flexibility and eliminates the need for stack redeployment when changing assessment behavior.
+### Enable/Disable Confidence
+
+Confidence is controlled via the configuration file rather than CloudFormation
+stack parameters. This provides runtime control without stack redeployment.
 
 **Configuration-based Control (Recommended):**
 ```yaml
-assessment:
-  enabled: true  # Set to false to disable assessment
-  model: us.amazon.nova-lite-v1:0
-  temperature: 0.0
-  # ... other assessment settings
+extraction:
+  confidence:
+    enabled: true             # false disables confidence entirely (zero LLM cost)
+    mode: separate            # off | separate (default) | integrated
+    model: us.amazon.nova-lite-v1:0
+    temperature: 0.0
+    list_batch_size: 25       # rows per assessment batch for large lists
+    # ... other confidence settings
 ```
 
-**Key Benefits:**
-- **Runtime Control**: Enable/disable without stack redeployment
-- **Cost Optimization**: Zero LLM costs when disabled (`enabled: false`)
-- **Simplified Architecture**: No conditional logic in state machines
-- **Backward Compatible**: Defaults to `enabled: true` when property is missing
+**Confidence modes** (`extraction.confidence.mode`):
+- **`separate`** *(default)* — on the Simple path, confidence runs as the standalone Assessment step; on the Advanced (agentic) path it runs inside each extraction shard and the standalone step auto-skips.
+- **`integrated`** — a single extraction inference returns values **and** inline confidence together (works on **both** the simple and agentic paths); the standalone Assessment step auto-skips.
+- **`off`** — no confidence scoring (equivalent to `enabled: false`); zero LLM cost.
 
-**Behavior When Disabled:**
+**Behavior When Disabled** (`enabled: false` or `mode: off`):
 - Assessment lambda is still called (minimal overhead)
 - Service immediately returns with logging: "Assessment is disabled via configuration"
 - No LLM API calls or S3 operations are performed
@@ -229,33 +471,71 @@ assessment:
 
 **Note:** Prior to v0.4.0, this feature was controlled by the `IsAssessmentEnabled` CloudFormation parameter. The configuration-based approach provides runtime control without requiring stack redeployment.
 
-### Advanced Assessment Configuration
+### Large lists (`list_batch_size`)
 
-For complex documents with many attributes, enable granular assessment for improved accuracy and performance:
+For complex documents with large lists (bank statements with hundreds of
+transactions, line-item tables), the standalone Assessment step **batches large
+lists automatically**: it slices the largest list field into
+`extraction.confidence.list_batch_size` chunks (default **25**), scores each chunk
+sequentially, then reconciles so every list cell gets its own confidence and
+bounding box. A bounded missing-row retry re-scores any dropped rows so coverage
+reaches 100%. `list_batch_size` is a ceiling on a derived size: lower it if a chunk
+under-enumerates, but raising it does not cut
+inference count.
 
 ```yaml
-assessment:
-  enabled: true
-  model: us.amazon.nova-lite-v1:0
-  granular_mode: true  # Enable granular assessment
-  simple_batch_size: 5  # Group simple attributes (3-5 recommended)
-  list_batch_size: 1    # Process list items individually for accuracy
-  max_workers: 10       # Parallel processing threads
+extraction:
+  confidence:
+    enabled: true
+    mode: separate
+    list_batch_size: 25       # rows per assessment batch for large lists
 ```
 
-**Benefits:**
-- Better accuracy through focused prompts
-- Cost optimization via prompt caching
-- Reduced latency through parallel processing
-- Scalability for documents with 100+ attributes
+> **Granular assessment is retired.** The former "granular assessment" service
+> (parallel thread-pool fan-out with DynamoDB caching, formerly `assessment.granular`
+> / `extraction.confidence.granular` with `max_workers` / `simple_batch_size` / etc.)
+> has been **retired and deleted**. Large-list batching is its full replacement and
+> `list_batch_size` is the one knob. Any leftover `granular.*` keys still validate
+> but are ignored — no config edit required.
 
-**Ideal For:**
-- Bank statements with hundreds of transactions
-- Documents with 10+ attributes
-- Complex nested structures
-- Performance-critical scenarios
+**For large documents**, prefer **Advanced (agentic) extraction** — it shards both
+extraction and confidence assessment and yields the best-calibrated confidence.
 
-For detailed information, see [assessment.md](assessment.md).
+### Classification confidence (`classification.confidence.*`)
+
+Separate from the extraction confidence above, and **on by default** — so an
+existing deployment that never set it starts paying for it on upgrade.
+
+```yaml
+classification:
+  confidence:
+    mode: topk          # topk (default) | off
+    top_k_candidates: 3 # alternative classes returned per page
+```
+
+Each page's classification returns its top-K candidate classes with
+probabilities, giving a per-page confidence you can threshold on and a visible
+reason when a page is ambiguous.
+
+⚠️ **It costs output tokens on every page.** Unlike extraction confidence, which
+is per *section*, this scales with page count. Measured at roughly **+17% of the
+classification step**, which is a small share of a typical bill because
+classification is cheap relative to extraction — but on a page-heavy corpus it is
+not free. Set `mode: off` to return to the previous behaviour.
+
+See [Classification](./classification.md) for the full reference, including how the
+score reaches the UI and what a `None` confidence means.
+
+### v0.5 → v0.6 config migration
+
+- **Confidence and geometry moved under `extraction.*`** in v0.6: the former top-level `assessment.*` confidence settings are now `extraction.confidence.*`, and `assessment.geometry_mode` / `assessment.ground_geometry_in_ocr` are now `extraction.geometry.mode`. HITL moved to the top-level `hitl.*` block.
+- **Migrate-on-read handles old configs automatically** — pre-v0.6 configurations are migrated transparently when loaded; **no manual edit is required**.
+- **Granular assessment is retired** and its config keys are a **no-op** (they validate but are ignored).
+- **`list_batch_size`** is the knob for large lists; for large documents, Advanced (agentic) extraction is recommended.
+
+See [Granular Assessment Retirement](./migration-granular-retirement.md) for details.
+
+For detailed information, see [Extraction & Confidence](extraction-and-confidence.md).
 
 ## Stack Parameters
 
@@ -267,16 +547,20 @@ Key parameters that can be configured during CloudFormation deployment:
 - `MaxConcurrentWorkflows`: Control concurrent document processing (default: 100)
 - `DataRetentionInDays`: Set retention period for documents and tracking records (default: 365 days)
 - `ErrorThreshold`: Number of workflow errors that trigger alerts (default: 1)
-- `ExecutionTimeThresholdMs`: Maximum acceptable execution time before alerting (default: 30000 ms)
-- `LogLevel`: Set logging level (DEBUG, INFO, WARN, ERROR)
+- `ExecutionTimeThresholdMs`: Maximum acceptable execution time before alerting (default: 300000 ms)
+- `WorkflowExecutionTimeoutSeconds`: Execution-level bound on one document's workflow; an execution still running after it ends `TIMED_OUT`, releases its concurrency slot, and fires `WorkflowTimeoutsAlarm` (default: 21600 s, i.e. 6 hours). See [Monitoring](./monitoring.md#workflowexecutiontimeoutseconds--the-execution-level-bound)
+- `BDACallbackTimeoutSeconds`: How long the BDA step waits for its asynchronous completion callback before failing (default: 7200 s); keep it below `WorkflowExecutionTimeoutSeconds`
+- `QueueStalledAgeThresholdSeconds`: How long the oldest queued document may wait *with no queue progress at all* before `DocumentQueueStalledAlarm` fires (default: 1800 s). Not a backlog limit — see [Monitoring](./monitoring.md#documentqueuestalledalarm--why-it-is-not-a-queue-depth-alarm)
+- `LogLevel`: Set logging level (DEBUG, INFO, WARN, ERROR; default: `WARN`). `WARN` is the default because `INFO` and `DEBUG` can emit sensitive values — document contents, PII and S3 presigned URLs — into CloudWatch. At `INFO` or `DEBUG`, access logging is also enabled on the web UI's REST API stage (request metadata only — no request/response bodies), capturing requests that fail before reaching a Lambda (e.g. authorizer 401/403s, WAF blocks); at the `WARN` default that access log is **not** configured, so raise `LogLevel` to `INFO` if you need that audit trail
 - `WAFAllowedIPv4Ranges`: IP restrictions for web UI access (default: allow all)
-- `CloudFrontPriceClass`: Set CloudFront price class for UI distribution
-- `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access
+- `CloudFrontPriceClass`: Set CloudFront price class for UI distribution (CloudFront hosting only)
+- `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access (CloudFront hosting only)
+- `WebUIHosting`: Select hosting mode — `CloudFront` (default) or `APIGateway` for VPC-based hosting (see [API Gateway Hosting](./apigateway-hosting.md))
 - `CustomConfigPath`: Optional S3 URI to a custom configuration file that overrides pattern presets. Leave blank to use selected pattern configuration. Example: s3://my-bucket/custom-config/config.yaml
 
 ### Integration and Tracing Parameters
-- `EnableXRayTracing`: Enable X-Ray tracing for Lambda functions and Step Functions (default: true). Provides distributed tracing capabilities for debugging and performance analysis.
-- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-integration.md](mcp-integration.md) for details.
+- `EnableXRayTracing`: Enable X-Ray tracing for Lambda functions and Step Functions (default: true). Provides distributed tracing capabilities for debugging and performance analysis. It covers every traced Lambda function in the main stack, the unified pattern and the nested feature-platform stack, plus both state machines — so setting it to `false` turns tracing off, and stops the associated X-Ray charges, for everything the main stack creates. On `false` those functions run in `PassThrough` mode: they record nothing of their own and continue a trace only if a caller already sampled the request. It does **not** reach an extension you install from the Extensions catalog: each is a separate stack with its own parameters and traces unconditionally, and for those of its functions whose execution role can write a trace segment that means real X-Ray charges. See [monitoring.md](./monitoring.md#installed-extensions-trace-unconditionally).
+- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-server.md](mcp-server.md) for details.
 - `EnableECRImageScanning`: Enable automatic vulnerability scanning for Lambda container images in ECR for Patterns 1-3 (default: false). Recommended for production deployments but may impact deployment reliability. See [troubleshooting.md](troubleshooting.md) for guidance.
 
 ### Pattern Selection
@@ -298,6 +582,8 @@ Key parameters that can be configured during CloudFormation deployment:
 - `PostProcessingLambdaHookFunctionArn`: Optional Lambda ARN for custom post-processing (see [post-processing-lambda-hook.md](post-processing-lambda-hook.md) for detailed implementation guidance)
 - `BedrockGuardrailId`: Optional Bedrock Guardrail ID to apply
 - `BedrockGuardrailVersion`: Version of Bedrock Guardrail to use
+- `MalwareScanning`: Hold each uploaded document at ingest until Amazon GuardDuty Malware Protection for S3 reports it clean — `DISABLED` (default), `GATE_ONLY` (gate on a plan managed elsewhere) or `CREATE_PLAN` (this stack creates the GuardDuty plan and role). See [malware-scanning.md](malware-scanning.md)
+- `AllowUnscannableDocuments`: Whether a document GuardDuty could not scan (password-protected, over its quotas, SSE-C encrypted, scan error) may still be processed (default: `false`, so such documents stop in `MALWARE_SCAN_FAILED`). This is a ceiling over the per-configuration `malware_scanning.on_unscannable` setting, which is editable from the web UI — setting that to `allow` has no effect unless this is also `true`
 
 For details on processing modes, see [architecture.md](architecture.md). For legacy pattern-specific references, see [pattern-1.md](pattern-1.md) (BDA) and [pattern-2.md](pattern-2.md) (Pipeline).
 
@@ -327,7 +613,7 @@ The solution provides built-in cost estimation capabilities:
 - Historical cost analysis and trends
 - Budget alerts and threshold monitoring
 
-See [COST_CALCULATOR.md](../COST_CALCULATOR.md) for detailed cost analysis across different processing volumes.
+See [the cost considerations guide](./cost-calculator.md) for the cost drivers of each processing mode, the optimization levers, what the built-in estimate cannot express, and how to attribute Bedrock spend with an application inference profile.
 
 ## Bedrock Guardrail Integration
 
@@ -339,6 +625,7 @@ Guardrails provide:
 - **Content Filtering**: Block harmful, inappropriate, or sensitive content
 - **Topic Restrictions**: Prevent processing of specific topic areas
 - **Data Protection**: Redact or block personally identifiable information (PII)
+- **Automated Reasoning Checks**: Enable formal verification of model outputs against defined policies using [Automated Reasoning](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning.html), ensuring factual consistency and logical correctness
 - **Custom Filters**: Define organization-specific content policies
 
 ### Configuring Guardrails
@@ -362,6 +649,59 @@ This applies guardrails to all Bedrock model interactions, including:
 
 For more information on creating and managing Guardrails, see the [Amazon Bedrock documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html).
 
+⚠️ **Guardrails do not read the uploaded file.** They inspect the text sent to and
+returned by the model, so a malicious PDF or Office document — whose payload is in
+the file's structure, not its extracted text — is invisible to them. Scanning the
+file itself is a separate, optional control: see
+[Malware Scanning](#malware-scanning) below.
+
+## Malware Scanning
+
+Uploaded documents can be held at ingest until Amazon GuardDuty Malware
+Protection for S3 reports them clean. Off by default.
+
+### What is configured where
+
+Enablement is **infrastructure** and lives in CloudFormation, because a GuardDuty
+protection plan cannot be created by editing a configuration row:
+
+- `MalwareScanning`: `DISABLED` (default) | `GATE_ONLY` | `CREATE_PLAN`
+- `AllowUnscannableDocuments`: `false` (default) | `true`
+
+Policy is **configuration** and lives in the `malware_scanning` section, editable
+in the Visual Editor and versioned with the rest of the configuration:
+
+```yaml
+malware_scanning:
+  # What to do with a document GuardDuty returned no verdict for — a
+  # password-protected file, an object over its quotas, an SSE-C encrypted
+  # object, or an internal scan error.
+  on_unscannable: block    # block (default) | allow
+  # Publish to the stack's SNS alerts topic when a document is refused.
+  alert_on_block: true
+```
+
+⚠️ **`on_unscannable: allow` needs the stack parameter too.** The configuration is
+editable by any Admin from the web UI, so `AllowUnscannableDocuments` acts as a
+ceiling over it: with that parameter `false`, setting the configuration to `allow`
+has no effect and the gate logs that it ignored it. Loosening the policy takes
+both a configuration change and a stack update.
+
+A document GuardDuty reports as **infected** is always refused. That is not
+configurable and the schema offers no field for it.
+
+### Statuses you will see
+
+| Status | Meaning |
+|---|---|
+| `MALWARE_SCANNING` | Uploaded, waiting for the verdict. No workflow has started. |
+| `QUARANTINED` | GuardDuty found malware. Not processed. |
+| `MALWARE_SCAN_FAILED` | No verdict was obtainable and the policy fails closed. Not processed. |
+
+For the design, the GuardDuty IAM and KMS prerequisites, the metrics and alarms,
+the cost and quota figures, and what the gate does **not** cover, see
+[malware-scanning.md](malware-scanning.md).
+
 ## Concurrency and Throttling Management
 
 The solution implements sophisticated concurrency control and throttling management:
@@ -377,26 +717,231 @@ The solution tracks metrics for throttling events and successful retries, viewab
 
 ### Step Functions Retry Configuration
 
-The Step Functions state machine includes comprehensive retry policies for API failures:
+The state machine retries each processing task on **transient** failures only. Step
+Functions matches the error *name* the Lambda reports (the Python exception class),
+so each task lists the Lambda service errors and the Bedrock throttling /
+availability codes. Eight task states additionally list `TransientError` — the five
+extraction and assessment states (in-process extraction, shard plan, shard, shard
+merge, assessment) and the three rule-validation states (policy classification,
+per-section rule validation, orchestration). That is the one name their handlers
+re-raise a transient cause under when it arrives as an ordinary Python exception (a
+botocore read or connect timeout, a dropped connection, a Strands wrapper around
+one). The classification lives in
+`idp_common.utils.transient_errors`. It judges an exception by its own error
+code first (a `ValidationException` is deterministic whatever its message says),
+and looks through only explicit `raise ... from` wrappers, so a wrapper cannot
+hide a transient root and a swallowed transient error cannot lend its transience
+to an unrelated failure raised after it.
+
+**Why the name rather than the codes.** A `Retry.ErrorEquals` entry can only match a
+class name, so it matches a Bedrock throttle only because botocore names the
+exception class after the modeled error code. Most transient failures do not arrive
+that way — a read timeout is a `ReadTimeoutError`, a throttling code that is not
+modeled on the operation arrives as a bare `ClientError`, and `ModelTimeoutException`
+and `InternalServerException` are modeled but were never in the shorter lists. Listing
+every such name in every state would be a second, drifting copy of the
+classification, so the library answers the question once and reports the answer under
+one name. A state whose handler does **not** re-raise that name must not list it, and
+`patterns/unified/tests/test_workflow_transient_retry.py` checks both directions.
+
+Deterministic failures — a malformed request (`ValidationException`), a schema
+violation, an unparseable document, missing input — keep their own names and are
+**not** retried: eight attempts at 2.5× backoff cannot make a document that fails the
+same way every time succeed, they only multiply its cost and delay. No task retries
+`States.TaskFailed` or `States.ALL` for that reason.
+
+**A Lambda timeout is deterministic, so it gets its own retrier with
+`MaxAttempts: 1`.** `Sandbox.Timedout` is Step Functions' name for a function that
+hit its configured timeout, `States.Timeout` for a task that hit the state's own
+bound, and `Lambda.Unknown` for an unhandled Lambda fault — a timeout is one cause
+of it and an out-of-memory kill the other. In all three cases the document needs
+more work than the function has room for, so each further attempt burns another
+full timeout and fails identically. While these codes shared the transient ladder,
+one such document held a workflow-concurrency slot for about 5.2 hours (8 attempts
+of 900 s at 2.5× backoff) before failing anyway. Every Lambda task state now
+carries the single-attempt timeout retrier, which previously only `EvaluationStep`
+had. Throttling and Lambda service errors keep the full ladder — the split narrows
+what is retried, it does not weaken retrying for genuinely transient faults.
 
 ```json
 {
   "Retry": [
     {
-      "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-      "IntervalSeconds": 2,
-      "MaxAttempts": 6,
-      "BackoffRate": 2
+      "ErrorEquals": [
+        "States.Timeout", "Lambda.Unknown", "Sandbox.Timedout"
+      ],
+      "IntervalSeconds": 5,
+      "MaxAttempts": 1,
+      "BackoffRate": 1.0
     },
     {
-      "ErrorEquals": ["States.TaskFailed"],
-      "IntervalSeconds": 1,
-      "MaxAttempts": 3,
-      "BackoffRate": 2
+      "ErrorEquals": [
+        "Lambda.ServiceException", "Lambda.AWSLambdaException",
+        "Lambda.SdkClientException", "Lambda.TooManyRequestsException",
+        "ThrottlingException", "ServiceUnavailableException",
+        "InternalServerException", "TransientError"
+      ],
+      "IntervalSeconds": 10,
+      "MaxAttempts": 8,
+      "BackoffRate": 2.5
     }
   ]
 }
 ```
+
+Per-state values differ (the shard-plan and policy-classification states use shorter
+intervals and 6 attempts on the transient ladder, and `Lambda.Unknown` appears only
+where a state already listed it), but the shape above holds everywhere: one
+single-attempt timeout retrier, one generous transient retrier, and no
+`States.ALL`. `scripts/tests/test_state_machine_retry_policies.py` enumerates the
+Lambda task states out of `workflow.asl.json` and asserts both halves, so a state
+added later is covered without editing the test.
+
+#### Adding a Lambda task state to the workflow
+
+Because that test enumerates the definition rather than naming states, a new Lambda
+task state inherits three requirements the moment it is added. All 24 existing states
+comply; a new one that does not will fail `make test-packages-cicd` in both CIs,
+naming the state:
+
+1. **It must carry a transient retrier** — at least one of `ThrottlingException`,
+   `Lambda.TooManyRequestsException`, `Lambda.ServiceException` or
+   `ServiceUnavailableException`, with `MaxAttempts` of 3 or more. A state with no
+   `Retry` block at all fails: one Bedrock or Textract throttle would otherwise lose
+   the document. This is a repo-wide rule rather than a property of the states
+   [#917](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/917)
+   happened to touch, deliberately — #917 was originally fixed as a list of state
+   names, which is exactly why eleven of the twelve task states then in the file kept
+   the wrong ladder for a release.
+2. **Timeout codes, if listed, go in their own retrier with `MaxAttempts: 1`.**
+   Mixing them into the transient retrier fails a separate assertion, because the two
+   budgets are different numbers and sharing one retrier means changing either changes
+   both.
+3. **No wildcard retrier.** `States.ALL` and `States.TaskFailed` in a `Retry` block put
+   timeouts, unparseable documents and bad schemas on whatever ladder they carry, which
+   would bypass both rules above without naming a timeout code.
+
+If a future state genuinely must not retry — an idempotency hazard, for instance — add
+it to a named, commented exemption set in that test file rather than deleting the
+assertion.
+
+#### Sharded extraction: the shard Map, and the budget inside one shard
+
+Advanced (agentic) extraction splits a section into shards and runs each in its own
+Lambda invocation through a Distributed Map, `ExtractionShardMap`. Three things about
+how that Map handles failure, because they interact:
+
+**No shard failure is tolerated, on purpose.** The Map sets neither
+`ToleratedFailurePercentage` nor `ToleratedFailureCount`, so Step Functions' default
+of zero applies and one failed shard fails the Map. Raising the tolerance would let a
+document *complete* with shards missing, and a document that reports success with
+part of its data absent is worse than one that fails: nothing downstream — not
+confidence scoring, not evaluation, not the UI — can tell that anything is gone.
+
+**The Map itself is retried once.** Every shard persists its own result to S3 as soon
+as it finishes, and a shard whose result is already there loads it instead of
+re-inferring. So retrying the Map re-runs only the shards that did not complete,
+which is what that persistence exists for.
+
+Be clear about what that retry costs, because it is not one extra invocation. For a
+shard that completed it costs nothing. For the shard that failed, the second Map pass
+re-runs `ShardExtractionStep`'s **entire** retry ladder from the start:
+
+| The failed shard hit | One Map pass | With the retry |
+|---|---|---|
+| `Sandbox.Timedout` (single-attempt timeout retrier) | 2 × 900 s | **4 × 900 s** |
+| a transient error (8 attempts, 10 s at 2× = 2,550 s of backoff) | up to 9 × 900 s + 2,550 s | that again, bounded only by `WorkflowExecutionTimeoutSeconds` (21,600 s by default) |
+
+That trade is deliberate: one duplicated ladder is worth not discarding a document's
+completed shards. It is also why the count is one and stays one — at two or more, a
+deterministic shard failure multiplies whole ladders rather than attempts.
+`scripts/tests/test_state_machine_retry_policies.py` holds Map-level retriers to the
+same single-attempt rule as the Lambda task states.
+
+**A failed Map names the section and the cause.** The `Catch` on
+`ExtractionShardMap` routes to a `Fail` state, so the execution reports
+`ExtractionShardMapFailed` with a cause carrying the section id and the Map's error
+output rather than a bare `States.ExceedToleratedFailureThreshold`. The failing shard's
+individual error lives in the **Map Run**, reachable from the `ExtractionShardMap`
+entry in the execution history — a Distributed Map records per-iteration failures there
+rather than on the parent execution. The catcher names that one error rather than
+`States.ALL`, because the Map's other failure modes (`States.DataLimitExceeded`,
+`States.Runtime`) already report a specific and differently-actionable condition.
+
+Inside one shard, several durations draw on the same invocation:
+
+| | Value | What it bounds |
+|---|---|---|
+| Agentic `read_timeout` | 600 s | One socket read on the **streamed** extraction call — time to first response event, then each inter-event gap |
+| Confidence `read_timeout` | 300 s | One **non-streamed** `converse`, which bounds the whole response rather than a gap, so it is legitimately larger. Inside the shard invocation whenever confidence runs in `separate` mode |
+| botocore attempts per call | 1 | botocore retries a read timeout *itself*, multiplying either timeout above inside a single call, where no deadline check can see it |
+| Retry backoff allowance | 90 s | Total time the retry ladder around the agent call may spend asleep, across all attempts |
+| Lambda `Timeout` | 900 s | The whole invocation — Lambda's maximum, so it cannot be widened |
+
+What keeps a shard inside its invocation is **not** that these numbers sum to less than
+900 — they do not. It is that the retry ladder refuses to *begin* an attempt the size of
+the one that just failed when the remaining invocation cannot hold it, and raises the
+underlying error instead. That surfaces as a `ReadTimeoutError` the shard handler wraps
+as `TransientError`, which `ShardExtractionStep` retries eight times against a
+state-machine budget of 21,600 s. The alternative is that the invocation is killed at
+900 s: Step Functions reports that as `Sandbox.Timedout`, which is deterministic and
+retried once (see above), so the transient blip a retry would have cleared becomes the
+failure that is not retried.
+
+⚠️ **Do not lower the agentic `read_timeout` to make the table add up.** That is what
+600 s → 180 s did, and it broke the largest-table extraction in this repository's own
+integration suite for a week. The reasoning behind the cut — "the path streams, so a
+healthy generation emits deltas continuously and three minutes of silence is a stall by
+definition" — is wrong for an agent loop: a gap here also covers the whole wait between
+submitting a tool result and the first event of the model's reply, on a request carrying
+a large cached prefix and a dozen-plus page images. Measured on `samples/Nuveen.pdf`
+(532 table rows, 17 pages) that gap exceeds 180 s reproducibly and fits inside 600 s.
+Change the value only against a measurement of that gap
+([#1310](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/1310)).
+
+The numbers live together in `idp_common.timeout_budget`, and
+`lib/idp_common_pkg/tests/unit/extraction/test_shard_timeout_budget.py` asserts the
+remaining arithmetic — one agentic stall plus all the backoff leaves room to return —
+reading the resolved client configurations rather than the source, so botocore's own
+attempt count is inside the bound, along with the ladder's stop behaviour and the Map's
+`Retry`, `Catch` and zero tolerance.
+
+**The `BedrockClient` ladder is bounded the same way, not by the table.** The client
+used for the non-streamed call makes 7 retries backing off 2 s doubling to 300 s, with
+no cumulative allowance, so its own worst case is far outside one invocation whatever
+the table says — eight attempts at a 300 s read timeout is 2,400 s, and three fill a
+900 s function exactly. It consults the invocation deadline at every retry decision and
+clamps every backoff to what remains
+([#1362](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/1362)),
+which is what makes a request too slow for one read timeout fail in one attempt's time
+as a retryable error, rather than consuming the invocation and being reported as
+deterministic.
+
+⚠️ **The bound is "no attempt begins that the remaining invocation cannot hold, given
+what the ladder has already measured".** It is not "no attempt overruns". The check
+compares what remains against the **costliest** attempt the ladder has measured so far
+plus the backoff about to be slept, so what it cannot refuse is an attempt more
+expensive than anything it has seen: a ladder's first attempt is unmeasured, and a
+ladder whose attempts have all been cheap will begin one expensive attempt before the
+figure reflects it. On the LambdaHook path, where one attempt may occupy 840 s of a
+900 s caller, seven quick throttles followed by one real stall still ends past the wall.
+
+Taking the cost from the configured `read_timeout` instead would close that and would
+refuse requests that were going to complete — a read timeout is an upper bound on an
+attempt, not its expected cost, so a hook that normally returns in 20 s would be refused
+in all but the first 60 s of every invocation. What the gate does remove is the ladder
+repeating an expense it has already proved, which is the shape both #1310 and #1362
+reported. The residual that follows is that one full stall on each of the two clients can
+still together exceed the invocation (600 + 300 + 90 is over 900), which is why the
+arithmetic above is stated as what it is rather than as a guarantee.
+
+⚠️ **Returning early is not the same as being retried.** Where the error that surfaces
+is a read timeout the handlers wrap it as `TransientError` and the state machine retries
+it; on two of the refusal paths — the OpenAI Responses HTTP-status branch and the
+LambdaHook function-error branch — the ladder's own exhausted path raises a
+`RuntimeError` that classification does not read as transient, and the gate raises the
+same thing rather than inventing a different name. At those two the gain is the freed
+invocation and the released concurrency slot, not a retry.
 
 ### Concurrency Control
 
@@ -454,7 +999,8 @@ Document class schemas support evaluation-specific extensions for fine-grained c
 
 ### Available Extensions
 
-- `x-aws-idp-evaluation-method`: Comparison method (EXACT, FUZZY, NUMERIC_EXACT, SEMANTIC, LLM, HUNGARIAN)
+- `x-aws-idp-evaluation-method`: Comparison method (EXACT, FUZZY, LEVENSHTEIN, NUMERIC_EXACT, SEMANTIC, DATE, LLM, HUNGARIAN)
+- `x-aws-idp-evaluation-method-config`: Optional comparator config (used by DATE: `dayfirst`, `tolerance`, `range_mode`)
 - `x-aws-idp-evaluation-threshold`: Minimum score to consider a match (0.0-1.0)
 - `x-aws-idp-evaluation-weight`: Field importance for weighted scoring (default: 1.0, higher values = more important)
 
@@ -511,7 +1057,7 @@ Pattern-2 and Pattern-3 support configurable strategies for how classified pages
 
 ### Available Strategies
 
-- **`disabled`**: Treats the entire document as a single section with the first detected class. Simplest approach for single-document processing.
+- **`disabled`**: Treats the entire document as a single section. With page-level classification the section takes the class most pages were given, counting only pages given a class the configuration defines (ties go to the earliest page); with holistic classification it takes the first segment's class. Simplest approach for single-document processing.
   
 - **`page`**: Creates one section per page, preventing automatic joining of same-type documents. Useful for deterministic processing of documents containing multiple forms of the same type (e.g., multiple W-2s, multiple invoices in one packet).
   
@@ -552,6 +1098,10 @@ classification:
 - Cost reduction for documents with consistent patterns
 - Simplified processing for homogeneous document types
 
+## Prompt Preview
+
+The Configuration page includes a **Prompt Preview** tab that lets you see the actual prompts sent to the LLM for each processing step (Classification, Extraction, Assessment, Summarization) with your configuration values filled in. This is useful for optimizing document class schemas and prompt templates — you can see exactly how your class names, descriptions, and JSON Schema attributes appear in the prompt that the LLM receives. See [web-ui.md](web-ui.md#prompt-preview) for details.
+
 ## Prompt Optimization
 
 ### Bedrock Prompt Caching
@@ -588,6 +1138,120 @@ Everything **before** the `<<CACHEPOINT>>` delimiter is cached and reused across
 - **Cost Savings**: Cached tokens cost significantly less than regular input tokens
 - **Performance**: Reduced processing time for cached content
 - **Token Efficiency**: Particularly beneficial for long system prompts or few-shot examples
+
+#### Minimum cacheable prefix — per model, and not monotonic
+
+A `<<CACHEPOINT>>` only creates a cache entry if the prefix before it clears the
+model's **minimum cacheable prefix**. Below it Bedrock reports `cacheWrite = 0` and
+`cacheRead = 0`, raises nothing, and bills the prefix at full input price on every
+request. The minimum is model-dependent and **newer is not safer**:
+
+| Model | Minimum cacheable prefix |
+|---|---:|
+| Claude Opus 5, Opus 5.5, Fable 5, **Haiku 5.5**, **Sonnet 5.5** | 512 tokens |
+| Claude **Sonnet 5**, Sonnet 4.6, Sonnet 4.5, Sonnet 4, Opus 4.8, Opus 4.1, Opus 4, 3.7 Sonnet | 1,024 tokens |
+| Claude Opus 4.7 | 2,048 tokens |
+| Claude Opus 4.6, Opus 4.5, **Haiku 4.5** | **4,096 tokens** |
+| Amazon Nova | ≤ 355 tokens (below any shipped class) |
+
+Measured across the shipped presets, 25% of classes never cache on the 1,024-token
+tier and **none** do on Haiku 4.5 — choosing Haiku 4.5 to save money on extraction
+gets you no caching at all, with no indication of it in the response.
+
+Note the two Haikus sit at opposite ends of this table, so "Haiku" is not a tier.
+Haiku 5.5's minimum is 512 tokens — the lowest here, 8x below Haiku 4.5's — which
+makes it the one cheap model where caching is worth configuring rather than written
+off: a class that never cached on Haiku 4.5 may well cache on it.
+
+**Nor is a version number a tier.** The two Sonnets are in different rows above:
+Sonnet 5.5 caches from 512 tokens and Sonnet 5 from 1,024. So the 25% of shipped
+classes that never cache on the 1,024-token tier is a figure about Sonnet 5, not
+about Sonnet 5.5 — on which some of those same classes do cache. If you are
+switching between the two, re-run `idp-cli config-validate`: its per-class warning
+is computed against the configured model's own minimum, so the answer changes with
+the model and not only with the prompt.
+
+`idp-cli config-validate` (and the SDK validate operation) now **warns per class**
+when a Simple-mode extraction prompt prefix — system prompt plus the task prompt up
+to the marker, with the class schema substituted — is under the configured extraction
+model's minimum, naming both numbers. The estimate is chars/4, accurate to about
+±10% against Bedrock's own count on the surveyed classes, so a class whose estimate
+lands within 10% of the minimum is reported as "may not cache" rather than declared
+safe. Remedies: add real field descriptions to the class (which also helps
+extraction), pick a model with a lower minimum, or turn caching off (below).
+
+What the warning does **not** cover, deliberately: the classification, assessment
+(confidence) and rule-validation prompts, which also carry `<<CACHEPOINT>>` markers
+and keep them regardless of the setting below; the Advanced (agentic) extraction
+path, whose prefix is the agent's own system prompt; the forced-tool `toolSpec` and
+the multi-instance detection probe (both off by default, both make the real prefix
+*longer*, so the estimate errs toward warning); application inference-profile ARNs
+(not resolved to a base model, so no warning); and the newer tokenizer introduced
+with Claude Opus 4.7 and shared by Opus 4.8, Opus 5, Opus 5.5 and Fable 5, which
+produces up to
+about 1.35× the tokens the estimate assumes — again in the direction of a spurious
+warning, never a missed one.
+
+#### Turning caching off (`extraction.prompt_cache: off`)
+
+A cache **write** is billed at 1.25× input price and only pays back when a second
+request with the same prefix arrives inside the 5-minute TTL — break-even is exactly
+the second request. A deployment that processes one document of a class per TTL
+pays about **+25% on the prefix for nothing**. Decline it with:
+
+```yaml
+extraction:
+  prompt_cache: off     # auto (default) | off
+```
+
+`off` sends no cache points on either extraction path (Simple and Advanced) and
+suppresses the validation warning above. The setting is also in the Web UI under
+**Configuration → Extraction → Prompt caching**. A bare `off` in YAML parses as the
+boolean `false`; both spellings (and `"off"` quoted) are accepted. It applies to
+**extraction only**: classification, assessment and rule-validation prompts keep
+their cache points.
+
+#### Reading cache efficiency back (per phase and per class)
+
+Cache read and write tokens have always been metered and priced, but a row of numbers
+does not say whether the cache point did anything. The product now classifies them
+into one of six states wherever they are shown (the literal value, as stored in the
+section result and the Athena columns, in parentheses):
+
+| State | Meaning | What to do |
+|---|---|---|
+| **caching** (`caching`) | Reads are landing; the ~0.1× read price applies to the prefix (the read share is shown) | Nothing |
+| **write-only** (`write-only`) | Writes with no reads: paying 1.25× on the prefix and collecting nothing | Expected when a class is processed once per 5-minute TTL; a low-volume deployment can set `prompt_cache: off` |
+| **never cached** (`never-cached`) | Reads and writes are both zero although a cache point reached a model that supports it: the cache point is inert | The prefix is below the model's minimum (named); run `idp-cli config-validate` for the per-class estimate, add real field descriptions, or pick a model with a lower minimum |
+| **off** (`disabled`) | `extraction.prompt_cache: off`, so zero/zero is the intended outcome | Nothing |
+| **no cache point** (`no-cache-point`) | No cache point reached the model: the prompt has no `<<CACHEPOINT>>` marker, or the model is not one the client sends cache points to (Claude still reports `cacheReadInputTokens: 0` in that case, so the counts alone cannot tell this from *never cached*) | Add a marker, or nothing if caching was not wanted |
+| ↳ **on an implicit-caching model** | Same state, different meaning — and the report says so explicitly. OpenAI GPT-6 Astra (Converse) and GPT-5.4 / GPT-5.5 (bedrock-mantle) cache **without** a `cachePoint` block, so this state is the normal, healthy one for them and does **not** mean caching is unavailable. Astra in fact *rejects* an explicit cache point. Expect the state to become `caching` once a prefix is seen a second time within the TTL. GPT-5.6 Sol/Terra/Luna are **not** in this set: their caching is explicit, driven by a `<<CACHEPOINT>>` marker the client translates into a Responses-API breakpoint (see [OpenAI models](./openai-models.md#gpt-5x-prompt-caching)), so for them the generic row above applies and the remedy is to add a marker | Nothing — do not add a `<<CACHEPOINT>>` marker for Astra or GPT-5.4/5.5 |
+| **no cache data** (`no-cache-data`) | The backend reported no cache units at all (a LambdaHook, a model without them) | Nothing can be concluded |
+
+Measured reads or writes always win over the configuration flag: if tokens were cached,
+the state says so. The view is in three places:
+
+- **Per phase — Web UI document panel, cost table.** Each phase's subtotal row (OCR,
+  Classification, Extraction, Summarization…) carries the verdict for that phase; hover
+  for the token counts. Derived from the document's metering map, which is keyed by
+  phase and model, so this level cannot tell an inert cache point from one that was
+  never sent, and says so; each context is matched exactly, so escalation calls have
+  their own row. The `extraction.prompt_cache` knob is only mentioned on the
+  Extraction row, since it governs nothing else.
+- **Per class — Web UI section Processing Report tab, "Processing Path".** The section's
+  own cache read / written / uncached input tokens and request count, the state, and for
+  *never cached* the model's minimum cacheable prefix. The same line is in the text
+  report. The source is `metadata.prompt_cache` in the section's `result.json`,
+  recorded by the extraction service before the section's metering is folded into the
+  document total (extraction only, including escalation calls). Whether a cache point
+  reached the model is known here (marker present after the knob, and a supported
+  model; an inference-profile ARN counts as unknown), which is what separates *no
+  cache point* from *never cached*.
+- **Per class across documents — Athena.** Because the section result is flattened into
+  the `document_sections_<class>` tables, the same fields are queryable as
+  `"metadata.prompt_cache.state"`, `"metadata.prompt_cache.read_share"`,
+  `"metadata.prompt_cache.cache_read_input_tokens"` and so on; see the sample query in
+  [reporting-database.md](reporting-database.md#prompt-cache-efficiency-per-class).
 
 For pricing details on cached tokens, see [cost-calculator.md](cost-calculator.md).
 
@@ -637,7 +1301,8 @@ Patterns 2 and 3 support multiple OCR backend engines for flexible document proc
 
 ### Available Backends
 
-- **Textract** (default): AWS Textract with advanced feature support (TABLES, FORMS, SIGNATURES, LAYOUT)
+- **Textract** (default): AWS Textract with advanced feature support (TABLES, FORMS, SIGNATURES, LAYOUT). Cheapest for raw text (~$1.50/1K pages); TABLES +$15/1K, FORMS +$50/1K.
+- **BDA**: Amazon Bedrock Data Automation "standard output" used as a pure OCR engine — reading-order markdown with **tables and layout** plus word-level confidence/bounding boxes in one call, flat **$10/1K pages**. Auto-enables the agentic extraction table tool. Best for table-heavy documents and predictable pricing without composing Textract features. (Distinct from the whole-pipeline BDA mode `use_bda`, which also does classification/extraction.)
 - **Bedrock**: LLM-based OCR using Claude/Nova models with customizable prompts for better handling of complex documents
 - **None**: Image-only processing without OCR (useful for pure visual analysis)
 
@@ -645,13 +1310,153 @@ Patterns 2 and 3 support multiple OCR backend engines for flexible document proc
 
 ```yaml
 ocr:
-  backend: textract  # or "bedrock", "none"
-  
+  backend: textract  # or "bda", "bedrock", "none"
+
+  # Textract features. DEFAULT: TABLES + LAYOUT + SIGNATURES (see trade-off below).
+  features:
+    - name: TABLES
+    - name: LAYOUT
+    - name: SIGNATURES
+
+  # For BDA backend (optional): use a specific standard-output SYNC project
+  # instead of the per-stack <stackname>_OCR_StdOutput project the stack
+  # provisions (delivered via the BDA_OCR_PROJECT_ARN env var).
+  #
+  # NOTE: backend "bda" is COMMERCIAL-PARTITION ONLY. GovCloud and China offer
+  # Bedrock Data Automation but reject the SYNC document-modality project this
+  # backend needs, so the stack does not create it there and the ARN is empty.
+  # See docs/govcloud-deployment.md#bedrock-data-automation-as-the-ocr-backend.
+  bda_project_arn: null
+
   # For Bedrock backend:
-  bedrock_model: us.anthropic.claude-3-5-sonnet-20241022-v2:0
+  bedrock_model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
   system_prompt: "You are an OCR expert..."
   task_prompt: "Extract all text from this document..."
 ```
+
+### When to choose BDA vs Textract for OCR
+
+- **BDA** — you want table-aware OCR (bank/brokerage statements, invoices) with a
+  single flat per-page price and no feature tuning. One call returns markdown
+  tables, layout, word confidence, and bounding boxes; per-page processing scales
+  past BDA's ~10-page synchronous limit automatically.
+- **Textract** — you need only raw text (much cheaper: ~$0.0015/page), or you
+  already tune specific Textract features. For table-heavy docs, `TABLES` on
+  Textract (~$0.015/page, with `LAYOUT` and `SIGNATURES` free alongside it) costs
+  somewhat more per page than BDA ($0.01/page) up to 1M pages/month and the same
+  above it (Textract's `TABLES` tier drops to $0.010); benchmark accuracy on your
+  corpus rather than choosing on price alone.
+
+### Textract features & the TABLES cost/accuracy trade-off
+
+`ocr.features` selects which Amazon Textract analysis features run. The default is
+**`TABLES` + `LAYOUT` + `SIGNATURES`** — of which only `TABLES` is billed (see
+below).
+
+- **`TABLES` is on by default because tables are common and the accuracy gain is
+  large.** It makes Textract emit structured Table/Cell blocks (with per-cell text,
+  confidence, and geometry) that linearize into clean Markdown pipe-tables for the
+  agentic table parser — yielding more complete extraction *and* more accurate
+  confidence/geometry on table-heavy documents. In validation on a 24-page
+  brokerage statement, `TABLES` extracted **all 1,440 rows (every page)** while
+  `LAYOUT`-only silently dropped ~5 pages (~300 rows) where the plain-text
+  linearization mis-segmented the table.
+- **Cost trade-off** (`TABLES` ≈ **$0.015/page**, with `LAYOUT` and `SIGNATURES`
+  free alongside it, vs `LAYOUT`-only ≈ **$0.004/page** — ~3.75× on the Textract
+  line item):
+  - **Documents *with* tables:** the extra OCR cost is typically *more*
+    cost-effective and scalable end-to-end — cleaner cell structure means fewer LLM
+    extraction retries, fewer confidence truncations/re-batches, and less downstream
+    correction than fighting a mis-linearized plain-text table.
+  - **Documents *without* tables:** `TABLES` adds cost with no benefit. If your
+    corpus is table-free (forms, prose, single-value docs), **remove the `TABLES`
+    entry** to fall back to cheaper `LAYOUT`-only OCR.
+
+Set `ocr.features` per configuration to match the documents each stack processes.
+
+### The `SIGNATURES` feature
+
+`SIGNATURES` is **on by default**, because signature presence is a common
+extraction target (loan packages, tax forms, claims, consents) and it adds **no
+Textract charge** in the default combination. The
+[Textract pricing page](https://aws.amazon.com/textract/pricing/) states it
+directly: *"Signatures feature is included free of cost with any combination of
+Forms, Tables, Queries, and Layout"* — AWS emits no usage type at all for a feature
+that is free in combination. Used **alone**, without any of those features,
+`SIGNATURES` is billed at ~$0.0035/page.
+
+With `SIGNATURES` enabled, Textract reports each region it believes contains a
+signature, as a **detection confidence plus a bounding box** — not text. Those
+detections reach the rest of the pipeline in three places:
+
+- **Page text** (used by the extraction prompt and the Web UI markdown view) —
+  the linearizer inserts an inline `[SIGNATURE]` token per detection, and an
+  `OCR signature detections` block is appended listing each one's normalized
+  position and confidence.
+- **`textConfidence.json`** (used by the confidence/assessment prompt) — the same
+  block, appended after the per-line confidence table.
+- **`pageData.json`** — a `signatures` array, which the Web UI page viewer lists
+  under **Signature detections** with a clickable bounding box and a
+  colour-coded confidence.
+
+**Read the confidence.** A detection is not proof of a signature: Textract will
+flag a stray pen mark, smudge or scanning artifact, typically at *low*
+confidence (single- or low-double-digit). The appended block reports each
+detection's confidence band, its page position in left/right + upper/lower terms,
+— because a bare `left=0.572` is not usable evidence in practice: on the form in
+[#634](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/634)
+both the extraction and the confidence model read that as *"the first (left)
+signature box"* when the detection was in the right-hand cell.
+
+#### Extracting a reliable signed/unsigned boolean
+
+Measured on that form — an unsigned Form 4549 whose left signature cell holds only
+a faint smudge, with a date filled in beside it (Claude Sonnet 4.5, temperature 0,
+page images attached, repeated runs). Prose alone does not do it: descriptions
+saying "smudges are not signatures" still returned `true`, as did few-shot examples
+alone, and as did the detections block alone.
+
+**What worked, 9/9 and then confirmed end-to-end on a live stack, is a description
+that turns the detection confidence into an explicit decision rule.** Give the
+boolean field a description along these lines:
+
+> Does a handwritten signature (a person's name or initials) exist in the LEFT
+> "Signature of taxpayer" box near the bottom of page 2? Decide with this rule, in
+> order: (1) Look at the `--- OCR signature detections ---` block in the document
+> text. It lists EVERY region the OCR engine flagged as a possible signature, each
+> with a detection confidence from 0-100. (2) Answer false unless that block
+> contains a detected region with confidence of 50 or higher that falls in the LEFT
+> signature box (left half of the page). A confidence below 50 means a faint or
+> ambiguous mark — a stray pen mark, smudge, speck or scanning artifact — and MUST
+> be treated as NOT a signature. (3) If the block lists no region for that box,
+> answer false. (4) A date in the adjacent Date column is NOT evidence of a
+> signature; handwriting elsewhere is NOT evidence. (5) Only answer true when a
+> qualifying detection (confidence >= 50) is present AND you can see a handwritten
+> name or initials there. (6) IGNORE any inline `[SIGNATURE]` marker in the text:
+> it is placed by reading order, so its position next to a field is NOT evidence
+> that that field is signed — use ONLY the detections block. (7) A faint mark you
+> can see does NOT override rules 2-3. When in doubt, answer false.
+
+Rules 6 and 7 are the ones that made it deterministic. Without 6 the model latches
+onto the inline token's accidental adjacency; without 7 it overrides the OCR
+evidence with its own read of the smudge.
+
+Two supporting measures, if you have them:
+
+- **Keep `SIGNATURES` enabled** so the block exists at all — the rule above depends
+  on it.
+- **A few-shot example of the negative case** (the unsigned document *with* a date
+  present) also works, and needs `{FEW_SHOT_EXAMPLES}` in the extraction
+  `task_prompt` — present in the shipped prompts; a custom prompt must add it. See
+  [few-shot-examples.md](few-shot-examples.md). Note that with examples but *no*
+  detections block the false positive did not disappear, it **moved to the other
+  taxpayer's field**: the model could tell a mark existed but not which cell owned
+  it.
+
+**If your corpus has no signature fields, remove the `SIGNATURES` entry.** Pages
+with a detection (including false positives on stray ink) add a few prompt tokens
+and an extra signal the model may over-read, for no benefit when nothing asks about
+signatures. Removing it costs nothing, since the feature was free to begin with.
 
 ### Bedrock OCR Benefits
 
@@ -704,29 +1509,63 @@ See `notebooks/examples/demo-lambda/` for:
 - SAM deployment template for example Lambda
 - Complete documentation and examples
 
-For more details, see [extraction.md](extraction.md).
+For more details, see [Extraction & Confidence](extraction-and-confidence.md).
 
-### Review Agent Model (Agentic Extraction)
+### Making a truncated list fail the section (`extraction.row_shortfall_action`)
 
-For agentic extraction workflows, you can specify a separate model for reviewing extraction work:
+Extraction compares the rows it returned for a list field with the rows in the section's own
+OCR tables *of the same width*. When those tables hold at least 30 rows and fewer than half
+came back, that is recorded as `extraction_rows_below_ocr_estimate`. Like every other
+processing issue it does not change the document's status, so a document carrying 3% of a
+long table reports `COMPLETED` — and a truncated run is *cheaper* than a complete one, so
+neither status nor cost flags it. This setting is how a deployment changes that:
 
 ```yaml
 extraction:
-  model: us.amazon.nova-pro-v1:0
-  review_agent_model: us.anthropic.claude-3-7-sonnet-20250219-v1:0  # Optional
+  row_shortfall_action: warn     # warn (default) | fail
 ```
 
-If not specified, defaults to the main extraction model. This allows using a more powerful model for validation while using a cost-effective model for initial extraction.
+Under `fail`, the partial rows, the issue and the processing report are written to the
+section's `result.json` first and the section then fails, so the failure costs the claim of
+success and not the data. It changes only what the shortfall costs, never when it is
+detected, and it applies to both Simple and Advanced extraction.
 
-**Benefits:**
-- Cost optimization by using different models for different tasks
-- Enhanced accuracy with specialized review model
-- Flexibility in model selection for extraction vs. validation
+⚠️ **`fail` is opt-in for a reason and needs a check first.** Matching is on width alone and
+matched tables are summed over the whole section, so a 2- or 3-property array that models an
+entity *group* rather than table rows collects evidence that has nothing to do with it —
+and the two shapes are structurally identical. In the default preset a fully correct
+extraction of `Bank-Statement.account_summary` (2 properties, 5 rows) scores 0.13, because a
+monthly statement's 31-row two-column Daily Balance table is summed into its evidence. Nine
+such fields ship in the config library. Before turning `fail` on, confirm every
+array-of-object field in your classes models table rows and that no unrelated table in the
+same section shares a width with one. It is the right setting for a corpus of long
+transaction lists, which is what it was built for. Editable in the Web UI under
+**Configuration → Extraction → Truncated list outcome**; the shapes to check are listed in
+[Extraction & Confidence](extraction-and-confidence.md#why-fail-is-opt-in-and-what-to-check-before-turning-it-on).
 
-**Use Cases:**
-- Use Nova Pro for extraction, Claude Sonnet for review
-- Balance between cost and accuracy requirements
-- Experimentation with different model combinations
+### Tiered Models (Validation + Escalation)
+
+Extraction supports a **cost-tiered** strategy: extract with a fast/cheap model, then automatically re-extract only the fields that fail schema validation with a stronger model. This is configured under `extraction.validation`:
+
+```yaml
+extraction:
+  model: us.amazon.nova-pro-v1:0          # fast/cheap primary extractor
+  validation:
+    enabled: true                          # on by default since v0.7
+    fail_action: escalate                  # default is 'warn' (free); escalate costs money
+    escalation_model: us.anthropic.claude-opus-4-8   # stronger tier, used only on failure
+```
+
+> **Moved in v0.7.** This block was `extraction.agentic.validation`. It now lives at
+> `extraction.validation` because Simple extraction runs the same validate-and-retry
+> path, so the setting is no longer agentic-only. Stored configurations are migrated
+> automatically on read — no action is required.
+
+When validation fails, only the failing top-level fields are re-extracted with `escalation_model` (a per-class `x-aws-idp-extraction-escalation-model` override takes precedence) and merged back — typically a small fraction of documents, so the stronger model's cost is incurred only where it's needed. See [Schema validation and model escalation](extraction-and-confidence.md#schema-validation-and-model-escalation) for the full feature, including the deterministic table-parsing tool, the completeness heuristic, and sharding for large documents.
+
+> Validation and escalation are editable in the Web UI under **Configuration → Extraction → Schema Validation & Escalation**; the Advanced-mode options (table parsing, sharding) are under **Advanced extraction settings**. Sub-options are progressively revealed as you enable each feature.
+
+> **Deprecated:** the older `extraction.agentic.review_agent` / `review_agent_model` fields are no-ops retained only for backward compatibility — use `extraction.validation` + `escalation_model` above instead.
 
 ## Cost Tracking and Optimization
 
@@ -788,6 +1627,110 @@ extraction:
 - **Smart Scaling**: Only downsizes images when necessary (scale factor < 1.0)
 - **High-Quality Resampling**: Better visual quality after resizing
 - **Original Format Preservation**: Maintains PNG, JPEG, and other formats when possible
+
+### Effective per-image budget: 3.75 MiB, enforced post-base64
+
+Amazon Bedrock rejects any single image over **5 MiB** — and it measures the
+**base64-encoded** payload, not the stored bytes. The effective budget for a stored
+page image is therefore **3.75 MiB (3,932,160 bytes)**, and any image over it fails
+the whole request with `ValidationException: image exceeds 5 MB maximum`, which on a
+document means a hard `FAILED` status at the extraction (or classification) step.
+The Converse API also rejects any image over **8,000 px** on a side regardless of size
+(this applies to every model routed through Converse, not only Claude).
+
+Because the defaults above preserve original resolution, a high-resolution page image
+**uploaded as PNG or JPEG** is stored as-is and can cross that budget — that is the case
+measured in #778 (source PNGs of 3.8–5.4 MB). PDF pages are rendered by the OCR step and
+stored as JPEG, which rarely approaches the limit even at `ocr.image.dpi: 300`. The
+pipeline now
+**downscales such an image to fit, proportionally, in as few passes as possible**
+(same format first; lossless formats fall back to JPEG only if they still do not
+fit) instead of failing the document, logs a `WARNING` naming the sizes, and — for
+extraction — records the reduction per page under the section's
+`metadata.image_downscale` so a page the model saw at lower resolution than stored
+is auditable. To avoid the downscale (and the warning) on every request, set
+`target_width` / `target_height` so pages render inside the budget. See
+[#778](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/778).
+
+### A request with more than 20 page images caps every image at 2,000 px
+
+The 8,000 px figure above is the **single-image** limit. A second, stricter limit
+applies to the request as a whole: once one request carries **more than 20** image
+blocks, every image in it must be within **2,000 px** per side, or Bedrock rejects
+the request with `image exceed max allowed size for many-image requests: 2000
+pixels`. `document` blocks count toward the 20 alongside images, and so do images
+the agentic extraction tool returns mid-run.
+
+This is what made a 21+ page section fail even though every page was individually
+well inside 8,000 px
+([#994](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/994)).
+The pipeline now **detects the request shape and downscales the images to 2,000 px
+itself**, logging one `WARNING` per request that says how many images were reduced.
+Extraction records the reduction in the section's `metadata.image_downscale` as
+before.
+
+**Which page counts this affects depends on the extraction mode**, because the
+limit binds on the images in one *request*, not on the section:
+
+| Configuration | Downscales at |
+|---|---|
+| Simple (`extraction.mode: simple`) | 21 or more pages in the section |
+| **Advanced, shipped defaults** (`max_concurrent_batches: 10`, `max_pages_per_shard: 5`) | about **101** or more pages |
+| Advanced, `max_concurrent_batches: 5` | about 51 or more pages |
+| Advanced, `max_concurrent_batches: 2` | about 21 or more pages |
+| Advanced, `max_concurrent_batches: 1` (sharding off) | 11 or more pages |
+| Advanced, `max_images_per_agent: 10` or lower | never — the request cannot reach 11 attached images |
+
+Advanced mode halves whatever the per-request figure is, because the agent re-sends
+its attached page images on every turn and its `view_image` tool can add a further
+copy of a page to the same request: 11 attached pages can present 22 image blocks.
+The estimate is deliberately pessimistic — some lost resolution is cheaper than a
+rejected request.
+
+Two things about the Advanced figures. `max_concurrent_batches` is a cap on the
+number of shards as well as on parallelism, so raising it makes each request
+*smaller* and the threshold *higher*; that is why the shipped default of 10 reaches
+the clamp only on very long sections. And `max_pages_per_shard` is **not** a ceiling
+on how many pages one request carries: when honouring it would need more shards than
+`max_concurrent_batches` allows, the planner discards those ranges and repacks the
+pages into exactly that many **token-balanced** groups, ignoring the page cap. Being
+token-balanced rather than page-balanced, one text-heavy page can occupy a shard of
+its own and leave the sparse pages crowded into another, so the page counts above
+are approximate. They are approximate in one direction only: the pipeline derives
+the bound from the worse of the planner's two regimes rather than from a formula,
+so on a document with uneven — or entirely absent — text per page the clamp can
+engage *earlier* than the table says, never later.
+
+This also reaches stages other than extraction. Holistic classification sends every
+page of a packet in one request, so a packet over 20 pages now has its page images
+downscaled at classification time too.
+
+**What the re-encode costs.** It removes roughly 15% of the image tokens. Whether
+that costs *accuracy* depends on the model: Claude 4.7+, Opus 5 and Sonnet 5
+tokenize images on a high-resolution tier whose own target is about a 2,576 px long
+edge, so 2,000 px sits roughly 20% below the resolution those models would
+otherwise have used — a real reduction, not a free one. On Sonnet 4.6, Haiku 4.5
+and the 3.x family the tier target is about 1,568 px, so the clamp costs nothing
+there. **We have not measured extraction accuracy with and without it.** If you
+process dense small print on a high-resolution-tier model, prefer keeping requests
+under the threshold rather than relying on the clamp. `agentic.max_images_per_agent`
+is the only hard ceiling on images per agent request, so it is the lever that always
+works; raising `max_concurrent_batches` splits a section across more, smaller
+requests; lowering `max_pages_per_shard` also closes shards earlier, which on the
+shipped defaults is what bounds any section up to 50 pages; and splitting the
+documents themselves works in any mode.
+
+To avoid the per-request re-encode itself, set `target_width` / `target_height` to
+`2000` (or less) for stages that send many page images. If your sections routinely
+exceed the thresholds above, that is the better choice: the resolution loss is
+identical, and you get the smaller payload on every request instead of re-deriving
+it each time.
+
+**One limit remains.** Bedrock also caps the total size of a request, independently
+of its token count and of any per-image limit, and nothing here bounds that. A long
+enough request — on the order of 60 clamped pages — still fails, reported as `Input
+is too long for requested model`. Splitting the document or lowering the pages per
+request is the remedy.
 
 ### Configuration Benefits
 

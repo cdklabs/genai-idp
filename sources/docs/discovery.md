@@ -7,73 +7,49 @@ SPDX-License-Identifier: MIT-0
 
 # Discovery Module
 
-The Discovery module is an intelligent document analysis system that automatically identifies document structures, field types, and organizational patterns to create document processing blueprints. This module provides a **pattern-neutral discovery process** that works across all processing patterns, with specialized implementations for pattern-specific automation.
+The Discovery module is an intelligent document analysis system that automatically identifies document structures, field types, and organizational patterns to generate document processing configurations. Discovery works identically in both processing modes of the [unified pattern](architecture.md) — **BDA mode** (`use_bda: true`) and **Pipeline mode** (`use_bda: false`). When BDA mode is active, discovery also automates BDA blueprint creation and management.
 
-Demo video (3m)
+Demo video (Single Doc Discovery) (4m)
 
+https://github.com/user-attachments/assets/9c3923fb-f4ff-43cd-a563-44c7c6132921
 
-https://github.com/user-attachments/assets/101f73f6-27f1-4995-b35e-fa2fb44eb254
+Demo video (Multiple Doc Discovery) (4m)
 
+https://github.com/user-attachments/assets/b0bc5df0-cd8f-472c-98c6-299ac3a9bd43
 
-Demo video (10m)
-
-
-https://github.com/user-attachments/assets/ba7f863f-0cac-4778-8bcf-b4beee8a3301
-
-
-## Pattern-Neutral Discovery vs Pattern-Specific Implementation
-
-The Discovery module operates on two levels:
-
-### 🌐 Pattern-Neutral Discovery Process
-- **Document Analysis**: Core discovery logic works across all patterns (Pattern 1, 2, and 3)
-- **Standardized Configuration**: Generates consistent document class definitions regardless of target pattern
-- **Flexible Output**: Produces pattern-agnostic configuration that can be adapted to any processing workflow
-- **Reusable Components**: Common discovery services and configuration management
-
-### 🎯 Pattern-Specific Implementation
-- **Pattern 1 (BDA)**: Automated BDA blueprint creation and management
-- **Pattern 2 & 3**: Direct configuration updates for Textract + Bedrock workflows
-- **Extensible Architecture**: New patterns can implement custom discovery handlers
-
-This dual approach ensures discovery insights can be leveraged across different processing architectures while enabling pattern-specific optimizations.
 
 ## Table of Contents
 
-- [Pattern-Neutral Discovery vs Pattern-Specific Implementation](#pattern-neutral-discovery-vs-pattern-specific-implementation)
 - [Overview](#overview)
   - [What is Discovery](#what-is-discovery)
   - [Key Features](#key-features)
   - [Use Cases](#use-cases)
 - [Architecture](#architecture)
-  - [Pattern-Neutral Components](#pattern-neutral-components)
-  - [Pattern-Specific Implementations](#pattern-specific-implementations)
+  - [Core Components](#core-components)
   - [Processing Flow](#processing-flow)
   - [Integration Points](#integration-points)
 - [Discovery Methods](#discovery-methods)
   - [Discovery Without Ground Truth](#discovery-without-ground-truth)
   - [Discovery With Ground Truth](#discovery-with-ground-truth)
+  - [Multi-Section Package Discovery](#multi-section-package-discovery)
+  - [Multi-Document Collection Discovery](#multi-document-collection-discovery)
   - [Choosing the Right Method](#choosing-the-right-method)
 - [Configuration](#configuration)
   - [Model Configuration](#model-configuration)
   - [Prompt Customization](#prompt-customization)
   - [Output Format Configuration](#output-format-configuration)
+  - [Configuration Management](#configuration-management)
 - [Using the Discovery Module](#using-the-discovery-module)
   - [Web UI Interface](#web-ui-interface)
   - [API Integration](#api-integration)
   - [Processing Results](#processing-results)
-- [Configuration Management](#configuration-management)
-  - [Schema Definition](#schema-definition)
-  - [Default Configuration](#default-configuration)
-  - [Customization Options](#customization-options)
-- [BdaIDP Sync Feature](#bdaidp-sync-feature)
-  - [How BdaIDP Sync Works](#how-bdaidp-sync-works)
-  - [Sync Process Flow](#sync-process-flow)
-  - [Key Features](#key-features-1)
-  - [Limitations and Constraints](#limitations-and-constraints)
-  - [Best Practices for Sync Success](#best-practices-for-sync-success)
-  - [Troubleshooting Sync Issues](#troubleshooting-sync-issues)
-  - [Schema Design Recommendations](#schema-design-recommendations)
+  - [Class name normalization](#class-name-normalization)
+- [BDA Integration](#bda-integration)
+  - [Automated Blueprint Creation](#automated-blueprint-creation)
+  - [Intelligent Update Detection](#intelligent-update-detection)
+  - [BDA Schema Conversion](#bda-schema-conversion)
+  - [Blueprint Lifecycle Management](#blueprint-lifecycle-management)
+  - [BdaIDP Sync Feature](#bdaidp-sync-feature)
 - [Best Practices](#best-practices)
   - [Document Selection](#document-selection)
   - [Ground Truth Preparation](#ground-truth-preparation)
@@ -83,7 +59,7 @@ This dual approach ensures discovery insights can be leveraged across different 
   - [Error Handling](#error-handling)
 - [Limitations](#limitations)
   - [Known Limitations](#known-limitations)
-  
+
 
 ## Overview
 
@@ -97,18 +73,24 @@ The Discovery module analyzes document samples to automatically identify:
 - **Document Classes**: Categorization and naming of document types
 - **Organizational Patterns**: How fields are grouped and related
 
-This analysis produces structured configuration templates that can be used to configure document processing workflows in any of the supported patterns (Pattern 1, 2, or 3).
+This analysis produces structured configuration templates that can be used to configure document processing workflows. The discovery process is the same regardless of whether you run in BDA mode or Pipeline mode — the only difference is that BDA mode adds automatic blueprint creation as a downstream step.
 
 ### Key Features
 
 - **🤖 Automated Analysis**: Uses advanced LLMs to analyze document structure without manual intervention
-- **📋 Blueprint Generation**: Creates ready-to-use configuration templates for document processing
+- **📋 Configuration Generation**: Creates ready-to-use configuration templates for document processing
 - **🎯 Ground Truth Support**: Leverages existing labeled data to improve discovery accuracy
+- **📄 Multi-Section Discovery**: Discover multiple document classes from a single multi-page PDF package by defining page ranges
+- **✨ AI Auto-Detect Sections**: Automatically identify document section boundaries using LLM analysis
+- **🏷️ Class Name Hints**: Pre-label discovered classes from auto-detect or manual labels
 - **🔧 Configurable Models**: Supports multiple Bedrock models with customizable parameters
 - **📝 Custom Prompts**: Allows fine-tuning of analysis behavior through prompt engineering
 - **🔄 Iterative Refinement**: Enables progressive improvement of document understanding
 - **🌐 Multi-Format Support**: Handles PDF documents and various image formats
 - **⚡ Real-Time Processing**: Provides immediate feedback through the web interface
+- **📊 PDF Page Thumbnails**: Visual page preview with color-coded range highlighting in the browser
+- **🔗 BDA Blueprint Automation**: Automatic BDA blueprint creation when running in BDA mode
+- **📦 Multi-Document Collection Discovery**: Discover document classes from a collection of documents using embedding-based clustering (local or S3)
 
 ### Use Cases
 
@@ -134,97 +116,43 @@ This analysis produces structured configuration templates that can be used to co
 
 ## Architecture
 
-### Pattern-Neutral Components
+### Core Components
 
 **Discovery Processor Lambda (`src/lambda/discovery_processor/index.py`):**
-- **Universal Job Processing**: Handles discovery jobs from SQS queue across all patterns
-- **Pattern-Agnostic Analysis**: Orchestrates document analysis workflow using common services
-- **Standardized Error Handling**: Consistent job status management and error reporting
-- **Configuration Event Routing**: Triggers pattern-specific configuration updates
+- Handles discovery jobs from the SQS queue
+- Orchestrates document analysis workflow using common services
+- Consistent job status management and error reporting
+- Triggers configuration updates (including BDA blueprint automation in BDA mode)
 
 **Classes Discovery Service (`lib/idp_common_pkg/idp_common/discovery/classes_discovery.py`):**
-- **Core Discovery Engine**: Pattern-neutral document analysis and structure identification
-- **Bedrock Integration**: LLM-powered document understanding with configurable models
-- **Universal Configuration Format**: Generates standardized document class definitions
-- **Ground Truth Processing**: Supports both guided and unguided discovery methods
+- Core discovery engine for document analysis and structure identification
+- LLM-powered document understanding with configurable Bedrock models
+- Generates standardized document class definitions
+- Supports both guided (ground truth) and unguided discovery methods
 
 **Discovery Panel UI (`src/ui/src/components/discovery/DiscoveryPanel.jsx`):**
-- **Pattern-Agnostic Interface**: Unified web interface for all discovery operations
-- **Real-time Monitoring**: Job status tracking via GraphQL subscriptions
-- **Universal Results Display**: Consistent visualization across all patterns
-- **Export Flexibility**: Configuration export adapted to target pattern
+- Unified web interface for all discovery operations
+- Job status tracking by polling `getDiscoveryJob` every 10 seconds while a job is
+  active (`DiscoveryJobDetails.tsx`); GraphQL subscriptions are not used
+- PDF page thumbnail rendering with color-coded range highlighting
+- Configuration export and integration
 
-**Discovery Tracking Table:**
-- **Cross-Pattern Tracking**: DynamoDB table for job status across all patterns
-- **Metadata Storage**: Pattern-neutral job information and progress tracking
-- **Event Coordination**: Enables real-time updates and pattern-specific notifications
+**Discovery Tracking Table (DynamoDB):**
+- Job status tracking and progress monitoring
+- Metadata storage for job information
+- Enables real-time UI updates via event coordination
 
-**Configuration Table:**
-- **Metadata Storage**: Discovered classes are stored in configuration table as "custom" configuration classes
+**Configuration Table (DynamoDB):**
+- Discovered classes are stored as "custom" configuration classes
+- Shared across both BDA and Pipeline processing modes
 
-
-### Pattern-Specific Implementations
-
-#### Pattern 1: BDA Blueprint Automation
-
-**BDA Discovery Function (`patterns/pattern-1/src/bda_discovery_function/index.py`):**
-- **Configuration Event Handler**: Processes configuration update events from discovery jobs
-- **Automated Blueprint Management**: Creates and updates BDA blueprints based on discovery results
-- **Project Integration**: Seamlessly integrates with existing BDA projects
-
-**BDA Blueprint Service (`lib/idp_common_pkg/idp_common/bda/bda_blueprint_service.py`):**
-- **Blueprint Lifecycle Management**: Automated creation, updating, and versioning of BDA blueprints
-- **Schema Conversion**: Transforms discovery results into BDA-compatible schemas
-- **Project Synchronization**: Maintains consistency between discovery configuration and BDA projects
-- **Change Detection**: Intelligent updates only when configuration changes are detected
-
-**Schema Converter (`lib/idp_common_pkg/idp_common/bda/schema_converter.py`):**
-- **Format Translation**: Converts pattern-neutral discovery results to BDA blueprint schemas
-- **Field Mapping**: Transforms discovery field definitions to BDA-compatible formats
-- **Validation**: Ensures generated schemas meet BDA requirements
-
-**Key Features of Pattern 1 Implementation:**
-- **🤖 Automated Blueprint Creation**: Discovery results automatically generate BDA blueprints
-- **🔄 Intelligent Updates**: Only updates blueprints when actual changes are detected
-- **📋 Version Management**: Automatic blueprint versioning and project integration
-- **🎯 Zero-Touch Deployment**: No manual blueprint configuration required
-
-#### Pattern 2 & 3: Direct Configuration Updates
-
-**Configuration Update Process:**
-- **Direct Integration**: Discovery results directly update pattern configuration
-- **Immediate Availability**: New document classes available for processing immediately
-- **Manual Review**: Optional human review before configuration activation
-- **Rollback Support**: Configuration versioning for easy rollback if needed
-
-#### Extensible Architecture for New Patterns
-
-The discovery system is designed to support additional patterns through:
-
-**Generic Configuration Events:**
-```python
-# Configuration event structure (pattern-agnostic)
-{
-    "eventType": "CONFIGURATION_UPDATE",
-    "documentClasses": [...],
-    "metadata": {...}
-}
-```
-
-**Pattern Registration:**
-- New patterns can register configuration event handlers
-- Custom transformation logic for pattern-specific requirements
-- Standardized integration points for consistent behavior
-
-**Implementation Guide for New Patterns:**
-1. **Create Configuration Handler**: Implement pattern-specific configuration update logic
-2. **Register Event Processor**: Subscribe to configuration update events
-3. **Define Schema Transformation**: Convert discovery results to pattern format
-4. **Integrate with UI**: Ensure discovery results display correctly for the pattern
+**BDA Blueprint Automation (BDA mode only):**
+- **BDA Discovery Function** (`patterns/unified/src/bda_discovery_function/index.py`): Processes configuration update events and manages BDA blueprints
+- **BDA Blueprint Service** (`lib/idp_common_pkg/idp_common/bda/bda_blueprint_service.py`): Blueprint lifecycle management, schema conversion, and project synchronization
+- **Schema Converter** (`lib/idp_common_pkg/idp_common/bda/schema_converter.py`): Transforms discovery results to BDA-compatible schemas
 
 ### Processing Flow
 
-#### Pattern-Neutral Discovery Flow
 ```mermaid
 graph TD
     A[Document Upload] --> B[Discovery Job Creation]
@@ -233,34 +161,17 @@ graph TD
     D --> E{Ground Truth Available?}
     E -->|Yes| F[Discovery with Ground Truth]
     E -->|No| G[Discovery without Ground Truth]
-    F --> H[Bedrock Analysis]
+    F --> H[Bedrock LLM Analysis]
     G --> H
     H --> I[Structure Extraction]
-    I --> J[Pattern-Neutral Configuration]
+    I --> J[Configuration Generation]
     J --> K[Configuration Table Update]
-    K --> P[Job Completion]
-    P --> O[UI Notification]
-```
-
-#### Pattern 1: BDA Blueprint Automation Flow
-```mermaid
-graph TD
-    A[View/Edit Configuration UI] --> B[Save Changes]
-    B --> C[Configuration Update Event]
-    C --> D[BDA Discovery Lambda - Blueprint Service]
-    D --> E{Blueprint Exists?}
-    E -->|Yes| F[Check for Changes]
-    E -->|No| G[Create New Blueprint]
-    F -->|Changes Found| H[Update Blueprint]
-    F -->|No Changes| N[Skip Update]
-    G --> I[Schema Converter]
-    H --> I[Schema Converter]
-    I --> J[Generate BDA Schema]
-    J --> K[Create/Update in BDA]
-    K --> L[Create Blueprint Version]
-    L --> M[Update Project]
-    M --> N[Success Response]
-    H --> N
+    K --> L{BDA Mode?}
+    L -->|Yes| M[BDA Blueprint Automation]
+    M --> N[Create/Update Blueprints]
+    N --> O[Job Completion]
+    L -->|No| O
+    O --> P[UI Notification]
 ```
 
 ### Integration Points
@@ -280,9 +191,9 @@ graph TD
 - Configurable model selection
 - Prompt-based structure extraction
 
-**GraphQL/AppSync Integration:**
-- Real-time job status updates
-- UI synchronization and notifications
+**Web UI API Integration:**
+- Job status written to DynamoDB and read by the UI, which polls `listDiscoveryJobs` through the REST API while a job is in flight
+- Operations routed by the shared dispatcher at `POST /op/{field}` (`nested/api-resolvers/`)
 - Configuration management APIs
 
 ## Discovery Methods
@@ -392,30 +303,317 @@ discovery:
       </GROUND_TRUTH_REFERENCE>
 ```
 
+### Multi-Section Package Discovery
+
+For multi-page document packages (e.g., lending packages, insurance packets, healthcare bundles) that contain multiple different document types, the Discovery module supports discovering **multiple classes from a single PDF** by defining page ranges.
+
+#### Discovery Modes
+
+When a PDF file is selected, the UI presents two discovery modes:
+
+- **Single Section Document**: Discovers one class from the entire document (with optional ground truth). This is the original behavior.
+- **Multi-Section Package**: Define page ranges to discover multiple classes from different sections of the document. Each range creates a separate, independent discovery job.
+
+#### Page Range Selection
+
+In Multi-Section Package mode, the UI displays:
+
+1. **PDF Page Thumbnails** — rendered in the browser using `pdfjs-dist`, showing a visual grid of all pages with color-coded highlighting for each defined range
+2. **Page Range Inputs** — editable start/end page numbers for each range
+3. **Document Type Labels** — optional text field per range for labeling the document type (e.g., `W2-Form`, `Invoice`). When provided, the label is used as a class name hint for the discovery LLM. Labels are normalized to the class-name character set before use (see [Class name normalization](#class-name-normalization)).
+
+#### AI Auto-Detect Sections
+
+The **"✨ Auto-detect sections"** button uses an LLM to automatically identify document section boundaries:
+
+1. The PDF is uploaded to S3
+2. The `autoDetectSections` GraphQL mutation calls a Lambda that sends the full PDF to Bedrock
+3. The LLM returns a JSON array of sections: `[{"start": 1, "end": 2, "type": "Letter"}, ...]`
+4. Page ranges are auto-populated with the LLM's boundary detection, including type labels
+5. User can review, adjust ranges, edit labels, then click "Start Discovery"
+
+The auto-detect prompt is fully configurable via the Discovery Configuration in View/Edit Configuration (`discovery.auto_split` section).
+
+#### Configuration
+
+```yaml
+discovery:
+  auto_split:
+    model_id: "us.amazon.nova-pro-v1:0"
+    temperature: 0.0    # Low temperature for consistent boundary detection
+    top_p: 0.1
+    max_tokens: 4096
+    system_prompt: >-
+      You are an expert document analyst. Your task is to identify
+      distinct document sections within a multi-page document package.
+      Return only valid JSON.
+    user_prompt: >-
+      Analyze this multi-page document package. Identify the page boundaries
+      where different document types or sections begin and end...
+```
+
+#### API Usage
+
+```python
+from idp_common.discovery.classes_discovery import ClassesDiscovery
+
+discovery = ClassesDiscovery(
+    input_bucket="my-bucket",
+    input_prefix="lending_package.pdf",
+    version="my-config-version"
+)
+
+# Auto-detect section boundaries
+sections = discovery.auto_detect_sections(
+    input_bucket="my-bucket",
+    input_prefix="lending_package.pdf"
+)
+# Returns: [{"start": 1, "end": 2, "type": "Letter"}, {"start": 3, "end": 5, "type": "W2-Form"}, ...]
+
+# Discover a specific page range with class name hint
+result = discovery.discovery_classes_with_document(
+    input_bucket="my-bucket",
+    input_prefix="lending_package.pdf",
+    page_range="3-5",
+    class_name_hint="W2-Form"
+)
+
+# Override the Bedrock model for a single call
+# (e.g. swap in Claude Opus without editing base-discovery.yaml or redeploying)
+result = discovery.discovery_classes_with_document(
+    input_bucket="my-bucket",
+    input_prefix="lending_package.pdf",
+    page_range="3-5",
+    class_name_hint="W2 Form",
+    model_id="us.anthropic.claude-opus-4-6-v1",
+)
+```
+
+> **Model override (issue [#309](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/309)):**
+> `auto_detect_sections`, `discovery_classes_with_document`, and
+> `discovery_classes_with_document_and_ground_truth` all accept an optional
+> `model_id` parameter. When supplied, it replaces the configured discovery
+> model (`auto_split.model_id`, `without_ground_truth.model_id`, or
+> `with_ground_truth.model_id`) for that call only — behavior is unchanged
+> when the parameter is `None`. This is exposed end-to-end through the
+> [SDK](./idp-sdk.md#discoveryrun) and the
+> [CLI](./idp-cli.md#discover) as `--model-id`.
+
+#### How Page Extraction Works
+
+When a `page_range` is specified for a PDF, the system uses `pypdfium2` to extract only the specified pages into a new sub-PDF before sending to the Bedrock LLM. This means:
+- The LLM only sees the relevant pages, improving accuracy
+- Each page range job is independent and can run in parallel
+- The original document is never modified
+
+### Multi-Document Collection Discovery
+
+While the other discovery methods analyze a single document at a time, **Multi-Document Collection Discovery** discovers document classes from a *collection* of documents using embedding-based clustering. Given a folder of mixed documents (e.g., invoices, W-2s, bank statements), it automatically groups similar documents together and generates a JSON Schema and classification for each group.
+
+> **Requires extra dependencies:** `pip install -e "lib/idp_common_pkg[multi_document_discovery]"` or `make setup` from the project root. This installs scikit-learn, scipy, numpy, strands-agents, and pypdfium2.
+
+> **Minimum 2 documents per class:** Clusters with fewer than 2 documents are filtered as noise. Ensure you provide at least 2 documents for each expected document type.
+
+#### How It Works
+
+```mermaid
+graph LR
+    A[Document Collection] --> B[Embed]
+    B --> C[Cluster]
+    C --> D[Analyze]
+    D --> E[Reflect]
+    E --> F[Discovered Classes + Schemas]
+```
+
+1. **Embed** — Each document's first page is rendered to an image and embedded as a vector using Amazon Bedrock (`us.cohere.embed-v4:0` by default)
+2. **Cluster** — Embeddings are clustered using KMeans with automatic K selection via silhouette analysis (scikit-learn). Clusters with fewer than `min_cluster_size` (default: 2) documents are filtered as noise.
+3. **Analyze** — For each cluster, a Strands agent with Claude (`us.anthropic.claude-sonnet-4-6`) examines sample document images and generates a classification name + JSON Schema definition
+4. **Reflect** — The agent produces a Markdown reflection report reviewing all discovered classes, their relationships, and potential overlaps
+
+#### Supported File Types
+
+`.pdf`, `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.webp`
+
+#### Two Execution Modes
+
+| Mode | Documents Source | Use Case | Entry Point |
+|------|-----------------|----------|-------------|
+| **Local** | Local filesystem | CLI/SDK development, no AWS infra needed | `run_local_pipeline()` |
+| **S3** | Amazon S3 bucket | Lambda/Step Functions, production workloads | `run_full_pipeline()` |
+
+Both modes produce identical `MultiDocDiscoveryResult` output and support the same pipeline steps.
+
+#### Usage — IDP CLI
+
+The simplest way to run multi-document discovery:
+
+```bash
+# Discover classes from a directory of documents
+idp-cli discover-multidoc --dir /path/to/documents/
+
+# With explicit files
+idp-cli discover-multidoc -d invoice1.pdf -d invoice2.pdf -d w2_form.pdf -d w2_form2.pdf
+
+# Save results to a configuration profile
+idp-cli discover-multidoc --dir /path/to/documents/ --save-to-config --config-profile v1
+```
+
+See [IDP CLI Reference — `discover-multidoc`](idp-cli.md) for all options.
+
+#### Usage — IDP SDK
+
+```python
+from idp_sdk import IDPClient
+
+client = IDPClient()
+result = client.discovery.run_multi_doc(
+    document_dir="/path/to/documents/",
+    progress_callback=lambda step, data: print(f"{step}: {data}"),
+)
+
+print(f"Status: {result.status}")
+print(f"Found {result.total_clusters} clusters from {result.total_documents} documents")
+
+for cls in result.discovered_classes:
+    print(f"  {cls.classification} — {cls.document_count} docs")
+    if cls.json_schema:
+        print(f"    Fields: {list(cls.json_schema.get('properties', {}).keys())}")
+
+print(result.reflection_report)
+```
+
+See [IDP SDK Reference — `discovery.run_multi_doc()`](idp-sdk.md) for all parameters.
+
+#### Usage — idp_common Directly
+
+```python
+from idp_common.discovery.multi_document_discovery import MultiDocumentDiscovery
+
+discovery = MultiDocumentDiscovery(
+    region="us-east-1",
+    config={
+        "embedding_model_id": "us.cohere.embed-v4:0",
+        "analysis_model_id": "us.anthropic.claude-sonnet-4-6",
+        "min_cluster_size": 2,
+    },
+)
+
+# Local pipeline
+result = discovery.run_local_pipeline(
+    document_dir="/path/to/documents/",
+    config_version="v1",  # Optional: save to DynamoDB config
+)
+
+# Or S3 pipeline
+result = discovery.run_full_pipeline(
+    bucket="my-bucket",
+    prefix="documents/batch-001/",
+)
+```
+
+See [idp_common API Reference — MultiDocumentDiscovery](idpcommon-api-reference.md#multidocumentdiscovery--multi-document-collection-discovery) for full method-level documentation.
+
+#### Output
+
+The pipeline returns a `MultiDocDiscoveryResult` containing:
+
+| Field | Description |
+|-------|-------------|
+| `discovered_classes` | List of discovered classes, each with `classification`, `json_schema`, `document_count`, `sample_doc_ids` |
+| `reflection_report` | Markdown report analyzing all discovered classes |
+| `total_documents` | Total documents processed |
+| `num_clusters` | Number of clusters found |
+| `num_failed_embeddings` | Documents that failed embedding |
+| `num_successful_schemas` / `num_failed_schemas` | Schema generation success/failure counts |
+
+#### Web UI
+
+The Web UI includes a **Multi-Doc Discovery** tab in the Discovery panel. This tab allows you to:
+- Select a directory of documents or upload multiple files
+- Monitor pipeline progress with step-by-step status updates
+- View discovered classes and their generated schemas
+
+> **Note:** The Web UI multi-doc discovery feature requires the IDP stack to be deployed with the multi-document discovery nested stack enabled.
+
+#### Best For
+
+- **Bulk onboarding**: You have a folder of hundreds of mixed documents and want to automatically discover all document types
+- **No prior knowledge**: You don't know what types of documents are in the collection
+- **Classification + Schema in one step**: Generates both the document class names and extraction schemas simultaneously
+- **Local development**: Run from your workstation with just Bedrock model access — no AWS deployment needed
+
 ### Choosing the Right Method
 
-| Factor | Without Ground Truth | With Ground Truth |
-|--------|---------------------|-------------------|
-| **Use Case** | New document exploration | Configuration optimization |
-| **Accuracy** | Good for structure discovery | Higher accuracy for known patterns |
-| **Speed** | Fast, single-pass analysis | Optimized based on reference data |
-| **Consistency** | May vary between runs | Consistent with reference patterns |
-| **Setup Effort** | Minimal - just upload document | Requires ground truth preparation |
-| **Best For** | Unknown document types | Improving existing workflows |
+| Factor | Without Ground Truth | With Ground Truth | Multi-Section Package | Multi-Document Collection |
+|--------|---------------------|-------------------|-----------------------|--------------------------|
+| **Input** | Single document | Single document + ground truth | Single multi-page PDF | Collection of documents |
+| **Use Case** | New document exploration | Configuration optimization | Mixed document packages | Bulk class discovery |
+| **Accuracy** | Good for structure discovery | Higher for known patterns | Good per-section | Good for clustering |
+| **Speed** | Fast, single-pass | Optimized with reference | Parallel per range | Minutes for 100+ docs |
+| **Setup Effort** | Minimal | Requires ground truth | Define page ranges | Just point at a folder |
+| **Output** | 1 class + schema | 1 class + schema | N classes + schemas | N classes + schemas |
+| **Best For** | Unknown document types | Improving existing workflows | Known multi-doc packages | Unknown mixed collections |
+| **Extra Deps** | None | None | None | `multi_document_discovery` pip extra |
 
 ## Configuration
 
-The Discovery module supports comprehensive configuration through the Pattern 1 template and configuration files. All settings can be customized through the web UI or configuration files.
+The Discovery module supports comprehensive configuration through the deployment template and configuration files. All settings can be customized through the web UI's View/Edit Configuration panel or configuration files.
 
 ### Model Configuration
 
 **Supported Models:**
 - `us.amazon.nova-lite-v1:0` - Fast, cost-effective for simple documents
 - `us.amazon.nova-pro-v1:0` - Balanced performance and accuracy (recommended)
-- `us.amazon.nova-premier-v1:0` - Highest accuracy for complex documents
-- `us.anthropic.claude-3-haiku-20240307-v1:0` - Fast processing
-- `us.anthropic.claude-3-5-sonnet-20241022-v2:0` - High accuracy
-- `us.anthropic.claude-3-7-sonnet-20250219-v1:0` - Latest capabilities
+- `us.anthropic.claude-haiku-4-5-20251001-v1:0` - Fast processing
+- `us.anthropic.claude-haiku-5-5` - Fastest and cheapest; first Haiku with reasoning effort
+- `us.anthropic.claude-sonnet-4-5-20250929-v1:0` - High accuracy, but an AWS
+  Health notice puts it in legacy with end of life on 2027-04-08
+- `us.anthropic.claude-sonnet-4-6` - High accuracy, Active
+- `us.anthropic.claude-sonnet-5` - Latest capabilities
+- `us.anthropic.claude-sonnet-5-5` - 1M default context window and the cheapest
+  cache reads of any Claude here. **Not available for Multi-Document Discovery
+  cluster analysis** — see the note below
+
+> **⚠️ Two Claude models are not available for Multi-Document Discovery cluster
+> analysis**, although both work for every other Discovery mode: **Claude Opus
+> 5.5** and **Claude Sonnet 5.5**. Cluster analysis
+> (`discovery.multi_document.analysis_model_id`) is the one path that asks the agent
+> framework for structured output, and the framework retries with a **forced** tool
+> call when the model answers in prose instead of calling the tool — which is a
+> normal outcome, not an error. Both models reject a forced `toolChoice` with a 400,
+> so they would appear to work and then lose one cluster's analysis whenever the
+> retry happened to be needed. They are therefore absent from that one picklist, and
+> `idp-cli config-validate` rejects a hand-edited config that names either, since a
+> config can name a model the picklist does not list. Claude **Sonnet 5**, **Opus 5**
+> and **Haiku 5.5** all accept forcing and are offered — the restriction is per model
+> id, not per family.
+
+> **⚠️ OpenAI GPT-5.x is NOT supported for Discovery.** Discovery ingests whole
+> PDFs as Bedrock `document` content blocks, which the OpenAI Responses API
+> (`bedrock-mantle`) cannot accept (text + image only). All `openai.gpt-5.*`
+> models (including GPT-5.6 Sol/Terra/Luna) are intentionally absent from the
+> discovery model picklists;
+> selecting one via a hand-edited config is rejected by `idp-cli config-validate`
+> and raises at runtime. Use a Claude or Nova model for Discovery. See
+> [OpenAI GPT-5.x Models](openai-models.md).
+
+> **⚠️ xAI Grok is NOT supported for Discovery either.** Grok 4.6
+> (`us.xai.grok-4.6`, `global.xai.grok-4.6`) reaches the Converse API and works
+> for extraction, but it rejects `document` content blocks outright — *"This
+> model doesn't support documents"* — because its input modalities are text and
+> image only. Both Grok IDs are absent from the discovery model picklists, and
+> selecting one via a hand-edited config is rejected by config validation at save
+> time. Note this does **not** limit Grok for agentic extraction, which it fully
+> supports. See [xAI Grok Models](grok-models.md).
+
+> **⚠️ OpenAI GPT-6 Astra is NOT supported for Discovery either.** Astra
+> (`us.openai.gpt-6-astra`, `global.openai.gpt-6-astra`) reaches the Converse API
+> and is fully supported for extraction — including agentic extraction — but it
+> rejects `document` content blocks: *"This model doesn't support the document
+> field for user messages"*. Its input modalities are text and image only. Both
+> Astra IDs are absent from the discovery model picklists, and selecting one via a
+> hand-edited config is rejected by config validation at save time. See
+> [OpenAI Models](openai-models.md#gpt-6-astra-converse).
 
 **Model Parameters:**
 ```yaml
@@ -518,6 +716,74 @@ discovery:
 - `normal` - Standard field groupings
 - `List` - Repeating tabular data structures
 
+### Configuration Management
+
+**Schema Definition:**
+
+The Discovery configuration is defined in the CloudFormation template with comprehensive UI schema support:
+
+```yaml
+UpdateSchemaConfig:
+  Type: AWS::CloudFormation::CustomResource
+  Properties:
+    ServiceToken: !Ref UpdateConfigurationFunctionArn
+    Schema:
+      type: object
+      properties:
+        discovery:
+          order: 5
+          type: object
+          sectionLabel: Discovery Configuration
+          description: Configuration for document class discovery functionality
+          properties:
+            without_ground_truth:
+              order: 0
+              type: object
+              sectionLabel: Discovery Without Ground Truth
+              # ... detailed field definitions
+```
+
+**UI Integration Features:**
+- **Dropdown Model Selection**: Predefined list of supported Bedrock models
+- **Range Validation**: Temperature, top_p with proper min/max values
+- **Textarea Prompts**: Multi-line editing for system and user prompts
+- **Real-time Validation**: Immediate feedback on configuration changes
+- **Help Text**: Contextual descriptions for each configuration option
+
+**Default Settings:**
+```yaml
+discovery:
+  without_ground_truth:
+    model_id: "us.amazon.nova-pro-v1:0"
+    temperature: 1.0
+    top_p: 0.1
+    max_tokens: 10000
+    system_prompt: "You are an expert in processing forms..."
+    user_prompt: "This image contains forms data..."
+  with_ground_truth:
+    model_id: "us.amazon.nova-pro-v1:0"
+    temperature: 1.0
+    top_p: 0.1
+    max_tokens: 10000
+    system_prompt: "You are an expert in processing forms..."
+    user_prompt: "This image contains unstructured data..."
+  output_format:
+    sample_json: "{...}"
+```
+
+**Configuration Loading Priority:**
+1. Custom configuration from DynamoDB (if available)
+2. Mode-specific system defaults (`pattern-1.yaml` for BDA mode, `pattern-2.yaml` for Pipeline mode)
+3. Built-in default configuration
+4. Environment variable fallbacks
+
+**Customization Options:**
+
+- **Model Selection**: Choose models based on document complexity and processing requirements. Balance accuracy vs. cost vs. speed. Consider context window limits for large documents.
+- **Prompt Engineering**: Customize system prompts for domain-specific terminology. Adjust user prompts for specific document layouts. Include examples or constraints in prompts.
+- **Parameter Tuning**: Adjust temperature for consistency vs. creativity. Modify top_p for focused vs. diverse analysis. Set appropriate max_tokens for document complexity.
+- **Output Customization**: Define custom field naming conventions. Specify required field types and formats. Configure grouping and organizational patterns.
+
 ## Using the Discovery Module
 
 ### Web UI Interface
@@ -525,19 +791,50 @@ discovery:
 **Accessing Discovery:**
 1. Navigate to the main application dashboard
 2. Click on the "Discovery" tab or panel
-3. Upload document(s) for analysis
-4. Optionally upload ground truth file (JSON format)
-5. Click "Start Discovery" to begin analysis
+3. Select a **Configuration Profile** to save discovered classes to, or click
+   **Create profile** to create one on the fly (the new profile inherits its
+   settings and existing document classes from a chosen source profile)
+4. Choose a **Save mode**:
+   - **Add to existing schema** (default) — keeps the profile's existing document
+     classes and adds/updates the discovered ones. A discovered class with the
+     same name has its **properties** replaced by what discovery found, while
+     the class-level settings you configured on it (extraction model, prompts,
+     confidence thresholds, classification regexes, multi-instance, few-shot
+     examples) are **preserved** — see
+     [Re-discovering a class you have configured](#re-discovering-a-class-you-have-configured)
+   - **Replace existing schema** — removes all existing document classes in the
+     selected profile first, then saves only the newly discovered ones. For
+     multi-section discovery, the schema is cleared once before the batch runs,
+     so all sections in the run are rebuilt into a clean schema. A confirmation
+     warning is shown while Replace is selected.
+5. Upload a document file (PDF, PNG, JPG, TIFF)
+6. For PDFs, choose a **Discovery Mode**:
+   - **Single Section Document** — discovers one class from the whole document; optionally upload a ground truth JSON file
+   - **Multi-Section Package** — define page ranges (manually or via ✨ Auto-detect) to discover multiple classes
+7. Click **"Start Discovery"** (or "Start Discovery (N sections)" for multi-section)
+8. Monitor progress in real-time in the Discovery Jobs table below
+
+> **Note:** "Save mode" and "Create profile" apply to Single Document,
+> Multiple Documents (multi-doc clustering), and Policy Discovery alike. In
+> Replace mode, class discovery clears the profile's `classes` list while Policy
+> Discovery clears its `policy_classes` list.
 
 **Monitoring Progress:**
-- Real-time job status updates via GraphQL subscriptions
-- Progress indicators and status messages
-- Error notifications and troubleshooting guidance
-- Estimated completion times
+- Progress messages refreshed by 10-second polling (e.g., "Analyzing document structure with AI...", "Saving to configuration..."); GraphQL subscriptions are not used
+- Live elapsed time counter for active jobs
+- Discovered document class name shown as a green badge on success (e.g., `W4-Form`)
+- Failure root cause displayed in expandable error details with user-friendly messages
+- Search/filter bar to find jobs by document name, config profile, status, or class name
+- Time range selector (Last hour, 24 hours, 2 days, 7 days, All time)
+- Pagination with configurable page size
+- Resizable columns and column visibility preferences (settings gear icon)
+- Multi-select with delete capability to clean up old jobs
 
 **Reviewing Results:**
-- Interactive preview of discovered structure
-- Field-by-field review and validation
+- Discovered class name prominently displayed as a badge in the Result column
+- Config Profile hyperlinked to the configuration editor
+- Original document filename displayed (timestamp prefix stripped)
+- Duration column showing total processing time
 - Export options for configuration integration
 - Comparison with existing configurations
 
@@ -620,229 +917,152 @@ result = discovery.discovery_classes_with_document_and_ground_truth(
 - **Merge with Existing**: Combine with current document class definitions
 - **Create New Class**: Add as new document type to existing configuration
 
-## Configuration Event System
+### Samples that hold several records of one class
 
-The Discovery module uses a generic configuration event system that enables pattern-specific implementations while maintaining a consistent discovery process.
+Discovery is the one stage that sees the pages while authoring the schema, so it
+is also asked — in the same model call, as diagnostic metadata that is stripped
+before the schema is validated — how many separate, complete documents of the
+discovered class the sample contains. The question is the one the extraction
+[multi-instance detection probe](extraction-and-confidence.md#multi-instance-sections-x-aws-idp-multi-instance)
+uses ("count complete documents, not pages, sections or repeated headers"), so the
+two signals agree.
 
-### Event Architecture
+When the answer is two or more, the job carries a **suggestion**, never a config
+write:
 
-**Configuration Update Events:**
-Configuration events are triggered when discovery jobs complete and contain pattern-neutral results that can be processed by any pattern implementation.
+- **Job details page** (single-document discovery): *"This sample appears to
+  contain N 'X' records"* with an **Enable several documents per section** action.
+  Clicking it sets `x-aws-idp-multi-instance: true` on that class in the job's
+  configuration version (clearing any `x-aws-idp-instance-array` designation) and
+  reminds you that committed evaluation baselines for the class then need
+  `scripts/migrate_multi_instance_baselines.py`. If the class already has the flag
+  (a re-run keeps it), the panel says so instead.
+- **Jobs table**: a blue *"N records in sample"* badge next to the class name.
+- **API / SDK**: the job's `multiInstanceHint` field, a JSON string
+  `{"instance_count", "class_name", "already_multi_instance", "message"}`; the
+  `ClassesDiscovery` result dict carries the same object as `multi_instance_hint`
+  (`None` for one record).
 
-```json
-{
-  "eventType": "CONFIGURATION_UPDATE",
-  "source": "discovery-processor",
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
+Why suggest rather than set: enabling the flag changes the shape of every result
+for the class (`{"instances": [...]}`), which invalidates baselines and downstream
+consumers, and one sample cannot tell "this class is multi-record" from "this
+packet should have been split into several sections" — those want different fixes
+(`x-aws-idp-multi-instance` versus classification section splitting), and only
+you know which. Not setting it costs nothing until a multi-record document
+arrives, and the extraction-time detection probe is there to catch that.
 
-### Pattern 1: BDA Blueprint Implementation
+Measured once, on the shipped `samples/paystub_multi_instance.pdf` (three
+records) and `samples/bank-statement-multipage.pdf` (one document, several pages)
+with the default discovery model at its default temperature of 1.0: the count was
+right in every run (3 in four of four runs, 1 in one of one), and the key never
+reached the saved schema. Three control runs without the question produced the
+same 12 properties each time, while three runs with it produced 12, 11 and 12
+with some property-name variance — too few runs to call an effect, but if you see
+schema drift on a re-run, that is the first thing to suspect.
 
-**Event Processing:**
-Pattern 1 implements a sophisticated blueprint management system that responds to configuration events:
+### Class name normalization
 
-```python
-# BDA Discovery Function Handler
-def handler(event, context):
-    """
-    Processes configuration update events for Pattern 1.
-    Automatically creates/updates BDA blueprints based on discovery results.
-    """
-    bda_project_arn = os.environ.get("BDA_PROJECT_ARN")
-    blueprint_service = BdaBlueprintService(
-        dataAutomationProjectArn=bda_project_arn
-    )
-    
-    # Process configuration update event
-    result = blueprint_service.create_blueprints_from_custom_configuration()
-    return result
-```
+A document class id (`$id` / `x-aws-idp-document-type`) is not only a label: it
+is composed into names in downstream AWS APIs. The strictest consumer is Bedrock
+Data Automation, whose `CreateBlueprint` requires the blueprint name to match
+`[a-zA-Z0-9-_]+` — and the accelerator builds that name as
+`{stack}-{class_id}-{suffix}`. A class id containing a space therefore fails the
+API call outright rather than degrading.
 
-**Blueprint Lifecycle Management:**
-- **Creation**: New document classes automatically generate BDA blueprints
-- **Updates**: Changes in discovery results trigger blueprint updates
-- **Versioning**: Blueprint versions are managed automatically
-- **Project Integration**: Blueprints are seamlessly integrated into BDA projects
+Discovery's prompts ask the model for a name in that character set, but a prompt
+is guidance, not a guarantee. Discovery therefore normalizes the id before
+saving it:
 
-**Change Detection:**
-The system intelligently detects when updates are needed:
+| Discovered id | Saved as |
+|---|---|
+| `Task cards` | `Task-cards` |
+| `Blank page` | `Blank-page` |
+| `Invoice (Final)` | `Invoice-Final` |
+| `Bank_Statement` | `Bank_Statement` (unchanged) |
+| `W2-Form` | `W2-Form` (unchanged) |
 
-```python
-def _check_for_updates(self, custom_class: dict, blueprint: dict):
-    """
-    Compares discovery results with existing blueprint to determine if updates are needed.
-    Only triggers updates when actual changes are detected.
-    """
-    # Check document class and description changes
-    if (custom_class["name"] != schema["class"] or 
-        custom_class["description"] != schema["description"]):
-        return True
-    
-    # Check field-level changes
-    for group in groups:
-        for field in fields:
-            if field_changed(field, existing_blueprint_field):
-                return True
-    
-    return False
-```
+Notes:
 
-### Implementing Configuration Events for New Patterns
+- **Letters, digits, hyphens and underscores are preserved as-is.** An id that
+  already works is never rewritten, so no BDA blueprint (or anything else keyed
+  on the class name) is orphaned by a rename.
+- **The original text is kept** in the class `description` when the class has no
+  description of its own, so the human-readable name is not lost.
+- **A profile saved before normalization is repaired in place.** If the config
+  already holds the un-normalized spelling of a class (`Task cards`),
+  re-discovering that document replaces that entry rather than adding
+  `Task-cards` beside it — two classes sharing a normalized id would also share
+  a BDA blueprint name prefix. Classes you are not re-discovering are never
+  renamed, including two curated classes that happen to normalize to the same
+  id.
+- **An id with nothing usable in it** (e.g. `???`) is left unchanged and logged
+  as a warning — inventing a name would present a fabricated class as if the
+  model had produced it. Rename it in the Schema Builder before using features
+  that derive resource names from the class id.
+- The Web UI's Schema Builder enforces the same character set when you author or
+  edit a class by hand.
 
-The configuration event system is designed to be extensible for new patterns:
+### Re-discovering a class you have configured
 
-#### Step 1: Create Event Handler
-```python
-def pattern_x_configuration_handler(event, context):
-    """
-    Custom configuration handler for Pattern X.
-    Processes discovery results according to pattern-specific requirements.
-    """
-    try:
-        # Extract discovery results from event
-        # retrieve custom classes from configuration table for processing.
-        
-        # Transform to pattern-specific format
-        pattern_config = transform_to_pattern_x_format(custom_classes)
-        
-        # Update pattern-specific configuration
-        update_pattern_x_configuration(pattern_config)
-        
-        return {"status": "success", "message": "Configuration updated"}
-        
-    except Exception as e:
-        logger.error(f"Pattern X configuration update failed: {e}")
-        return {"status": "error", "message": str(e)}
-```
+Running Discovery again on a document class that already exists in the target
+configuration profile **updates the class's properties and keeps its class-level
+settings**. Discovery owns what it produces — the property list, and the class id
+when there was none. Everything else you configured on that class in the Schema
+Designer or in YAML is carried forward:
 
-#### Step 2: Register Event Processor
-```yaml
-# CloudFormation template for Pattern X
-PatternXConfigurationHandler:
-  Type: AWS::Lambda::Function
-  Properties:
-    Handler: index.pattern_x_configuration_handler
-    Runtime: python3.9
-    Environment:
-      Variables:
-        PATTERN_NAME: "pattern-x"
-        CONFIG_TABLE: !Ref ConfigurationTable
+| Setting | Kept across re-discovery |
+|---|---|
+| `x-aws-idp-extraction-model`, `-extraction-escalation-model` | ✅ |
+| `x-aws-idp-extraction-system-prompt`, `-extraction-task-prompt` | ✅ |
+| `x-aws-idp-confidence-threshold`, `-confidence-escalation-model` | ✅ |
+| `x-aws-idp-document-name-regex`, `-document-page-content-regex` | ✅ |
+| `x-aws-idp-page-types` (class-level) | ✅ |
+| `x-aws-idp-exclude-from-processing`, `-exclusion-reason` | ✅ |
+| `x-aws-idp-examples` (few-shot) | ✅ |
+| `x-aws-idp-multi-instance` | ✅ |
+| `x-aws-idp-instance-array` | ✅ **only if** the named array property is still in the new schema (see below) |
+| `properties` (the fields and their descriptions) | ❌ — replaced by what discovery found |
+| `description` | ❌ — discovery is asked for one, so its text replaces yours (logged) |
+| `required`, `$defs` | ❌ — they describe the old properties, so they are dropped with them |
+| Per-**property** `x-aws-idp-evaluation-method` / `-evaluation-threshold` | ❌ — replaced with the property |
+| Per-**property** `x-aws-idp-source-page-types` | ❌ — replaced with the property |
 
-# Event source mapping
-ConfigurationEventSource:
-  Type: AWS::Lambda::EventSourceMapping
-  Properties:
-    EventSourceArn: !GetAtt ConfigurationQueue.Arn
-    FunctionName: !Ref PatternXConfigurationHandler
-```
+The rule is "preserve anything discovery did not produce", so a class-level
+setting added in a future release is covered without changing this list. If
+discovery does replace a setting, it is logged at write time (a `WARNING` naming
+the key) rather than only becoming visible in the next document processed.
 
-### Benefits of the Generic Event System
+Three consequences worth knowing:
 
-**🔄 Loose Coupling**: Patterns can implement discovery integration independently
-**📈 Scalability**: New patterns can be added without modifying core discovery logic
-**🎯 Flexibility**: Each pattern can optimize configuration handling for its specific needs
-**🔧 Maintainability**: Clear separation between discovery logic and pattern-specific implementation
-**⚡ Performance**: Asynchronous event processing enables parallel pattern updates
+- **Per-attribute** settings are not preserved — evaluation method/threshold, and
+  the `x-aws-idp-source-page-types` that drives BLANK-vs-MISSING page handling.
+  A re-discovered attribute can legitimately come back with a different type, and
+  a stale evaluation method on it can score worse than none. Re-apply these after
+  a re-discovery, or use **Replace existing schema** deliberately.
+- **`x-aws-idp-instance-array` is dropped if its property is gone.** It names a
+  top-level array property, and a configuration naming a property that does not
+  exist is rejected outright — keeping it would fail the whole save rather than
+  lose one setting. The drop is logged; re-declare it on the new schema if the
+  class still holds several records per section.
+- Normalizing a class id (`Task cards` → `Task-cards`) carries the old entry's
+  settings across the rename, so repairing an id does not reset the class. If two
+  spellings normalize to the same id, the settings come from one of them (chosen
+  deterministically) and the other is named in a warning.
 
-## Configuration Management
+Use **Replace existing schema** when you *want* a clean rebuild — it removes the
+profile's document classes first, so nothing is carried forward.
 
-### Schema Definition
+## BDA Integration
 
-The Discovery module configuration is defined in the Pattern 1 CloudFormation template with comprehensive UI schema support:
-
-**Schema Structure:**
-```yaml
-UpdateSchemaConfig:
-  Type: AWS::CloudFormation::CustomResource
-  Properties:
-    ServiceToken: !Ref UpdateConfigurationFunctionArn
-    Schema:
-      type: object
-      properties:
-        discovery:
-          order: 5
-          type: object
-          sectionLabel: Discovery Configuration
-          description: Configuration for document class discovery functionality
-          properties:
-            without_ground_truth:
-              order: 0
-              type: object
-              sectionLabel: Discovery Without Ground Truth
-              # ... detailed field definitions
-```
-
-**UI Integration Features:**
-- **Dropdown Model Selection**: Predefined list of supported Bedrock models
-- **Range Validation**: Temperature, top_p with proper min/max values
-- **Textarea Prompts**: Multi-line editing for system and user prompts
-- **Real-time Validation**: Immediate feedback on configuration changes
-- **Help Text**: Contextual descriptions for each configuration option
-
-### Default Configuration
-
-**Pattern 1 Default Settings:**
-```yaml
-discovery:
-  without_ground_truth:
-    model_id: "us.amazon.nova-pro-v1:0"
-    temperature: 1.0
-    top_p: 0.1
-    max_tokens: 10000
-    system_prompt: "You are an expert in processing forms..."
-    user_prompt: "This image contains forms data..."
-  with_ground_truth:
-    model_id: "us.amazon.nova-pro-v1:0"
-    temperature: 1.0
-    top_p: 0.1
-    max_tokens: 10000
-    system_prompt: "You are an expert in processing forms..."
-    user_prompt: "This image contains unstructured data..."
-  output_format:
-    sample_json: "{...}"
-```
-
-**Configuration Loading Priority:**
-1. Custom configuration from DynamoDB (if available)
-2. Pattern-specific configuration file
-3. Built-in default configuration
-4. Environment variable fallbacks
-
-### Customization Options
-
-**Model Selection:**
-- Choose models based on document complexity and processing requirements
-- Balance accuracy vs. cost vs. speed
-- Consider context window limits for large documents
-
-**Prompt Engineering:**
-- Customize system prompts for domain-specific terminology
-- Adjust user prompts for specific document layouts
-- Include examples or constraints in prompts
-
-**Parameter Tuning:**
-- Adjust temperature for consistency vs. creativity
-- Modify top_p for focused vs. diverse analysis
-- Set appropriate max_tokens for document complexity
-
-**Output Customization:**
-- Define custom field naming conventions
-- Specify required field types and formats
-- Configure grouping and organizational patterns
-
-## Pattern 1: BDA Blueprint Management
-
-Pattern 1 provides the most advanced discovery implementation with automated BDA blueprint creation and management.
+When running in **BDA mode** (`use_bda: true`), discovery provides additional automation for BDA blueprint management. This section covers BDA-specific features that are not active in Pipeline mode.
 
 ### Automated Blueprint Creation
 
-**Zero-Touch Blueprint Generation:**
-When discovery completes for Pattern 1, the system automatically:
+When discovery completes in BDA mode, the system automatically:
 
-1. **Analyzes Discovery Results**: Processes pattern-neutral discovery output
+1. **Analyzes Discovery Results**: Processes the discovery output
 2. **Converts to BDA Schema**: Transforms field definitions to BDA-compatible format
-3. **Creates/Updates Blueprints**: Manages blueprint lifecycle in BDA project
+3. **Creates/Updates Blueprints**: Manages blueprint lifecycle in the BDA project
 4. **Versions Blueprints**: Automatically creates new versions when changes are detected
 5. **Integrates with Project**: Ensures blueprints are available for document processing
 
@@ -850,6 +1070,26 @@ When discovery completes for Pattern 1, the system automatically:
 ```
 {StackName}-{DocumentClass}-{UniqueId}
 Example: IDP-W4Form-a1b2c3d4
+```
+
+**BDA Blueprint Automation Flow:**
+```mermaid
+graph TD
+    A[View/Edit Configuration UI] --> B[Save Changes]
+    B --> C[Configuration Update Event]
+    C --> D[BDA Discovery Lambda — Blueprint Service]
+    D --> E{Blueprint Exists?}
+    E -->|Yes| F[Check for Changes]
+    E -->|No| G[Create New Blueprint]
+    F -->|Changes Found| H[Update Blueprint]
+    F -->|No Changes| N[Skip Update]
+    G --> I[Schema Converter]
+    H --> I
+    I --> J[Generate BDA Schema]
+    J --> K[Create/Update in BDA]
+    K --> L[Create Blueprint Version]
+    L --> M[Update Project]
+    M --> N[Success Response]
 ```
 
 ### Intelligent Update Detection
@@ -941,8 +1181,8 @@ Discovery field types are automatically converted to BDA-compatible formats:
 ### Blueprint Lifecycle Management
 
 **Creation Workflow:**
-1. **Discovery Completion**: Pattern-neutral discovery results are generated
-2. **Configuration Event**: BDA Discovery Function receives configuration update event
+1. **Discovery Completion**: Discovery results are generated and saved to the configuration table
+2. **Configuration Event**: BDA Discovery Function receives a configuration update event
 3. **Blueprint Service**: Processes configuration and manages blueprint lifecycle
 4. **Schema Generation**: Converts discovery results to BDA schema format
 5. **Blueprint Creation**: Creates new blueprint in BDA service
@@ -956,20 +1196,13 @@ Discovery field types are automatically converted to BDA-compatible formats:
 4. **Version Creation**: Creates new blueprint version
 5. **Project Sync**: Ensures project references latest version
 
-### Integration with BDA Projects
-
 **Project Association:**
 - Blueprints are automatically associated with the configured BDA project
 - Project ARN is specified during stack deployment
 - Multiple document classes can share the same BDA project
-
-**Version Management:**
-- Each blueprint update creates a new version
-- Versions are automatically managed by the system
 - Projects always reference the latest blueprint version
 
-**Permissions:**
-The system requires specific permissions for BDA integration:
+**Required Permissions:**
 ```yaml
 BDABlueprintPermissions:
   - bedrock:CreateBlueprint
@@ -978,268 +1211,112 @@ BDABlueprintPermissions:
   - bedrock:ListBlueprints
   - bedrock:GetBlueprint
   - bedrock:DeleteBlueprint
+  - bedrock:InvokeBlueprintOptimizationAsync
+  - bedrock:GetBlueprintOptimizationStatus
 ```
 
-### Monitoring and Troubleshooting
-
-**CloudWatch Logs:**
-- Blueprint creation/update activities are logged
+**Monitoring:**
+- Blueprint creation/update activities are logged to CloudWatch
 - Schema conversion details are captured
 - Error conditions are clearly documented
 
-**Common Issues:**
-- **Permission Errors**: Ensure BDA permissions are correctly configured
-- **Schema Validation**: BDA schemas must meet specific format requirements
-- **Project Integration**: Verify BDA project ARN is correct and accessible
+### Blueprint Optimization
 
-**Success Indicators:**
-- Blueprint appears in BDA console
-- Blueprint version is created successfully
-- Project shows associated blueprints
-- Document processing uses new blueprint
+The Blueprint Optimization feature uses the BDA `InvokeBlueprintOptimizationAsync` API to automatically improve extraction accuracy for discovered document classes. When a discovery job includes a ground truth file, the system can optimize the BDA blueprint by comparing extraction results against the ground truth and refining the blueprint schema.
 
-## Best Practices
+#### How It Works
 
-### Document Selection
+1. **Blueprint Lookup**: The optimizer checks if a blueprint already exists for the discovered class in the BDA project. If found, it reuses the existing blueprint; otherwise, it creates a new one following the standard naming convention (`{StackName}-{ClassName}-{hash}`).
+2. **S3 Asset Preparation**: The sample document (PDF) and ground truth (JSON) S3 URIs are constructed from the discovery bucket.
+3. **Optimization Invocation**: The `InvokeBlueprintOptimizationAsync` API is called with the blueprint ARN, sample document, ground truth, and an output S3 prefix.
+4. **Status Polling**: The system polls `GetBlueprintOptimizationStatus` with exponential backoff (5s initial, 30s max, 15-minute timeout) until a terminal state is reached.
+5. **Results Evaluation**: The optimization results (stored at `{outputPrefix}/optimization_results.json`) contain before/after metrics. The system compares `exactMatch` and `f1` scores.
+6. **Schema Application**: If the optimized schema shows improvement, the blueprint is updated with the new schema, a new version is created, and the IDP class configuration is updated.
 
-**Choose Representative Samples:**
-- Select documents that represent typical variations
-- Include both simple and complex examples
-- Ensure all important sections are represented
-- Use high-quality, clear document images
+#### Optimization Flow
 
-**Document Quality Guidelines:**
-- **Resolution**: Minimum 150 DPI for text clarity
-- **Format**: PDF preferred, high-quality images acceptable
-- **Completeness**: Include all pages of multi-page documents
-- **Legibility**: Ensure text is readable and not corrupted
-
-**Sample Size Recommendations:**
-- **Single Document**: Good for initial exploration
-- **2-3 Documents**: Better for understanding variations
-- **5+ Documents**: Optimal for comprehensive analysis
-- **Different Layouts**: Include various form versions if available
-
-### Ground Truth Preparation
-
-**JSON Format Requirements:**
-```json
-{
-  "document_class": "FormName",
-  "field_name_1": "expected_value_1",
-  "field_name_2": "expected_value_2",
-  "nested_object": {
-    "sub_field": "sub_value"
-  },
-  "array_field": ["item1", "item2"]
-}
+```mermaid
+graph TD
+    A[Discovery Completes with Ground Truth] --> B[Blueprint Optimization Lambda]
+    B --> C{Existing Blueprint?}
+    C -->|Yes| D[Reuse Existing Blueprint]
+    C -->|No| E[Create New Blueprint]
+    D --> F[Invoke Optimization API]
+    E --> F
+    F --> G[Poll for Completion]
+    G --> H{Result?}
+    H -->|Success| I[Fetch Results from S3]
+    H -->|ServiceError/ClientError| J[Report Failure]
+    H -->|Timeout| J
+    I --> K{Improved?}
+    K -->|Yes| L[Update Blueprint Schema]
+    K -->|No| M[Keep Original Schema]
+    L --> N[Create Blueprint Version]
+    N --> O[Update IDP Config]
+    O --> P[Report OPTIMIZATION_COMPLETED]
+    M --> P
+    J --> Q[Report OPTIMIZATION_FAILED]
 ```
 
-**Best Practices:**
-- **Field Names**: Use descriptive, consistent naming conventions
-- **Data Types**: Include examples of all expected data types
-- **Completeness**: Cover all important fields in the document
-- **Accuracy**: Ensure ground truth data is correct and validated
-- **Structure**: Reflect the logical organization of document fields
+#### UI Status Display
 
-**Ground Truth Sources:**
-- Existing database schemas or data models
-- Manual annotation of sample documents
-- Previous extraction results (validated)
-- Domain expert knowledge and requirements
+The Discovery Panel shows optimization progress with dedicated status indicators:
 
-### Configuration Tuning
+| Status | UI Label | Description |
+|--------|----------|-------------|
+| `OPTIMIZATION_IN_PROGRESS` | Optimizing | Optimization is running (blueprint creation, API invocation, polling) |
+| `OPTIMIZATION_COMPLETED` | Optimized | Optimization finished (improved or no improvement) |
+| `OPTIMIZATION_FAILED` | Optimization Failed | Optimization encountered an error |
 
-**Model Selection Guidelines:**
-- **Nova Lite**: Simple forms with clear structure
-- **Nova Pro**: Most document types (recommended default)
-- **Nova Premier**: Complex layouts, handwritten content
-- **Claude Models**: Alternative for specific use cases
+The Result column shows additional context:
+- **Improved**: Class name badge + accuracy improvement message (e.g., "exactMatch: 0.78 → 0.91")
+- **No improvement**: Message indicating original schema was kept
+- **Failed**: Expandable error details
 
-**Parameter Optimization:**
+#### Components
+
+- **`BlueprintOptimizer`** (`lib/idp_common_pkg/idp_common/bda/blueprint_optimizer.py`): Core orchestrator — manages the full optimization lifecycle including blueprint lookup/creation, API invocation, polling, evaluation, and schema application.
+- **`blueprint_optimization` Lambda** (`src/lambda/blueprint_optimization/index.py`): Async Lambda handler invoked by the discovery processor. Writes job status to the tracking table (which the UI polls) and reports errors.
+- **`OptimizationResult`**: Dataclass returned by the optimizer with status, metrics, blueprint ARN, and optionally the optimized schema.
+
+#### Configuration
+
+Blueprint optimization is disabled by default. To enable it, set both `use_bda: true` and `enable_blueprint_optimization: true` in your configuration profile via the View/Edit Configuration UI or directly in the config YAML:
+
 ```yaml
-# For consistent, structured output
-discovery:
-  without_ground_truth:
-    temperature: 0.0    # Low creativity
-    top_p: 0.1         # Focused sampling
-    
-# For creative structure discovery
-discovery:
-  without_ground_truth:
-    temperature: 1.0    # High creativity
-    top_p: 0.3         # Diverse sampling
+use_bda: true
+enable_blueprint_optimization: true
 ```
 
-**Prompt Engineering Tips:**
-- **Be Specific**: Clearly define expected field types and formats
-- **Include Examples**: Show desired output structure in prompts
-- **Set Constraints**: Specify field naming conventions and limitations
-- **Domain Context**: Include relevant domain knowledge and terminology
+When enabled, the optimizer uses:
+- The same BDA project as the main blueprint service (per configuration profile)
+- The same blueprint naming convention (`{StackName}-{ClassName}-{hash}`)
+- The discovery bucket for S3 input/output URIs
+- The `bedrock-data-automation` client with `boto3>=1.42.0` (bundled in the Lambda function's `requirements.txt`)
 
-**Iterative Improvement:**
-1. Start with default configuration
-2. Run discovery on sample documents
-3. Review and validate results
-4. Adjust prompts and parameters based on findings
-5. Re-run discovery to validate improvements
-6. Repeat until satisfactory results are achieved
+#### IAM Permissions
 
-## Troubleshooting
+The Blueprint Optimization Lambda requires these additional Bedrock permissions (configured in `template.yaml`):
 
-### Common Issues
-
-**Issue: Discovery Job Fails to Start**
-```
-Symptoms: Job status remains "PENDING" or shows "FAILED" immediately
-Causes: 
-- Invalid document format or corrupted file
-- Insufficient permissions for S3 access
-- Missing or invalid configuration
-
-Solutions:
-- Verify document is valid PDF or supported image format
-- Check S3 bucket permissions and access policies
-- Validate configuration syntax and required fields
-- Review CloudWatch logs for specific error messages
+```yaml
+- bedrock:InvokeBlueprintOptimizationAsync
+- bedrock:GetBlueprintOptimizationStatus
 ```
 
-**Issue: Pattern 1 Blueprint Creation Fails**
-```
-Symptoms: Discovery completes but BDA blueprints are not created/updated
-Causes:
-- Missing BDA permissions
-- Invalid BDA project ARN
-- Schema conversion errors
-- BDA service throttling
-
-Solutions:
-- Verify BDA permissions in IAM role
-- Check BDA project ARN in stack parameters
-- Review BDA Discovery Function logs
-- Implement retry logic for throttling
-- Validate generated schema format
+Resource ARN patterns:
+```yaml
+- arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*
+- arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint-optimization-invocation/*
 ```
 
-**Issue: Configuration Events Not Processing**
-```
-Symptoms: Discovery completes but pattern-specific updates don't occur
-Causes:
-- SQS queue configuration issues
-- Lambda function errors
-- Event routing problems
-- Permission issues
+#### Retry and Error Handling
 
-Solutions:
-- Check SQS queue visibility and permissions
-- Review pattern-specific Lambda function logs
-- Verify event source mappings
-- Validate IAM permissions for event processing
-```
+- **S3 Eventual Consistency**: The optimization results file may not be immediately available after the API reports success. The system retries up to 5 times with 2-second delays.
+- **Polling Timeout**: If optimization doesn't complete within 15 minutes, the result is `TIMED_OUT`.
+- **API Errors**: `ServiceError` and `ClientError` from the BDA API are captured and reported as `OPTIMIZATION_FAILED`.
+- **Blueprint Not Found**: If the blueprint stage doesn't match (must be `LIVE`), the API returns `ResourceNotFoundException`.
 
-**Issue: Poor Field Detection Quality**
-```
-Symptoms: Missing fields, incorrect field types, poor grouping
-Causes:
-- Document quality issues (low resolution, poor scan)
-- Inappropriate model selection for document complexity
-- Generic prompts not suited for document type
-
-Solutions:
-- Use higher resolution documents (minimum 150 DPI)
-- Try different models (Nova Premier for complex documents)
-- Customize prompts with domain-specific terminology
-- Provide ground truth data for better guidance
-```
-
-**Issue: Inconsistent Results Between Runs**
-```
-Symptoms: Different field structures on repeated analysis
-Causes:
-- High temperature setting causing creative variation
-- Ambiguous document structure or layout
-- Insufficient prompt constraints
-
-Solutions:
-- Reduce temperature to 0.0 for consistent results
-- Add more specific constraints in user prompts
-- Use ground truth data to establish expected patterns
-- Include examples in prompts for guidance
-```
-
-**Issue: Timeout or Performance Problems**
-```
-Symptoms: Jobs taking too long or timing out
-Causes:
-- Large documents exceeding processing limits
-- Complex layouts requiring extensive analysis
-- Model capacity or throttling issues
-
-Solutions:
-- Split large documents into smaller sections
-- Use faster models (Nova Lite) for initial analysis
-- Implement retry logic with exponential backoff
-- Consider preprocessing to simplify document structure
-```
-
-### Error Handling
-
-**Configuration Validation:**
-```python
-def validate_discovery_config(config):
-    """Validate discovery configuration before processing."""
-    required_fields = ['model_id', 'system_prompt', 'user_prompt']
-    
-    for scenario in ['without_ground_truth', 'with_ground_truth']:
-        scenario_config = config.get('discovery', {}).get(scenario, {})
-        for field in required_fields:
-            if not scenario_config.get(field):
-                raise ValueError(f"Missing required field: {field} in {scenario}")
-    
-    # Validate model ID
-    supported_models = [
-        'us.amazon.nova-lite-v1:0',
-        'us.amazon.nova-pro-v1:0',
-        'us.amazon.nova-premier-v1:0',
-        # ... other supported models
-    ]
-    
-    model_id = scenario_config.get('model_id')
-    if model_id not in supported_models:
-        raise ValueError(f"Unsupported model: {model_id}")
-```
-
-**Graceful Degradation:**
-```python
-def discovery_with_fallback(discovery_service, document_key, ground_truth_key=None):
-    """Attempt discovery with fallback strategies."""
-    try:
-        # Try with ground truth if available
-        if ground_truth_key:
-            return discovery_service.discovery_classes_with_document_and_ground_truth(
-                input_bucket, document_key, ground_truth_key
-            )
-        else:
-            return discovery_service.discovery_classes_with_document(
-                input_bucket, document_key
-            )
-    except Exception as e:
-        logger.warning(f"Discovery failed with error: {e}")
-        
-        # Fallback to simpler model or configuration
-        fallback_config = get_fallback_config()
-        fallback_service = ClassesDiscovery(
-            input_bucket=input_bucket,
-            input_prefix=document_key,
-            config=fallback_config
-        )
-        
-        return fallback_service.discovery_classes_with_document(
-            input_bucket, document_key
-        )
-```
-
-## BdaIDP Sync Feature
+### BdaIDP Sync Feature
 
 The BdaIDP Sync feature provides bidirectional synchronization between BDA (Bedrock Data Automation) blueprints and IDP custom classes. This feature enables seamless integration between BDA's blueprint management system and IDP's document class configuration, with support for AWS Standard blueprints, optimized parallel processing, and configurable **Replace** or **Merge** sync modes.
 
@@ -1249,7 +1326,7 @@ https://github.com/user-attachments/assets/6016614d-e582-4956-8c39-c189a52f63c6
 
 
 
-### How BdaIDP Sync Works
+#### How BdaIDP Sync Works
 
 The sync feature operates through the `sync_bda_idp_resolver` Lambda function, which orchestrates the synchronization process:
 
@@ -1266,7 +1343,7 @@ The sync feature operates through the `sync_bda_idp_resolver` Lambda function, w
 6. **Cleanup Management**: Removes orphaned blueprints that no longer have corresponding IDP classes (replace mode only)
 7. **Parallel Processing**: Uses multi-threading for improved performance with configurable worker count
 
-### Sync Process Flow
+#### Sync Process Flow
 
 ```mermaid
 graph TD
@@ -1305,7 +1382,7 @@ graph TD
     U --> AB
 ```
 
-### Key Features
+#### Key Sync Features
 
 **🔄 Flexible Sync Directions**
 - **Bidirectional** (default): Full two-way synchronization between BDA and IDP
@@ -1351,7 +1428,7 @@ graph TD
 - Maintains mapping of original to sanitized names
 - Prevents blueprint creation failures due to invalid characters
 
-### Sync Direction Configuration
+#### Sync Direction Configuration
 
 The sync direction can be specified when calling the sync operation:
 
@@ -1417,7 +1494,7 @@ result = service.create_blueprints_from_custom_configuration(
 BDA_SYNC_MAX_WORKERS=10
 ```
 
-### AWS Standard Blueprint Conversion
+#### AWS Standard Blueprint Conversion
 
 The sync feature includes automatic conversion of AWS Standard blueprints to custom blueprints:
 
@@ -1491,20 +1568,9 @@ The sync feature includes automatic conversion of AWS Standard blueprints to cus
 - Thread-safe operations with proper locking
 - Skips blueprints that already have corresponding IDP classes
 
-### Limitations and Constraints
+#### Limitations and Constraints
 
-#### AWS Standard Blueprint Handling
-
-**AWS Standard Blueprints are automatically converted:**
-- AWS-provided blueprints (identifiable by `aws:blueprint` in ARN) are read-only
-- During `bda_to_idp` or `bidirectional` sync, AWS blueprints are:
-  - Automatically converted to custom blueprints
-  - Transformed into IDP classes
-  - Removed from the BDA project after successful conversion
-- Conversion only occurs if no corresponding IDP class exists
-- Failed conversions are logged but don't stop the sync process
-
-#### BDA Schema Limitations
+##### BDA Schema Limitations
 
 **Nested Objects Not Supported:**
 BDA currently has limitations with complex nested structures that affect sync operations:
@@ -1516,7 +1582,7 @@ BDA currently has limitations with complex nested structures that affect sync op
     "type": "object",
     "properties": {
       "personalInfo": {
-        "type": "object",  // Nested object - not supported
+        "type": "object",
         "properties": {
           "name": {"type": "string"},
           "address": {"type": "string"}
@@ -1549,7 +1615,7 @@ Arrays within object definitions are not supported by BDA:
     "type": "object",
     "properties": {
       "shifts": {
-        "type": "array",  // Nested array - not supported
+        "type": "array",
         "items": {"$ref": "#/$defs/Shift"}
       }
     }
@@ -1565,40 +1631,16 @@ Arrays within object definitions are not supported by BDA:
 }
 ```
 
-#### Sync Failure Scenarios
+##### AWS Standard Blueprint Handling
 
-**Complex Schema Structures:**
-Schemas with nested objects or arrays will cause sync failures:
+- AWS-provided blueprints (identifiable by `aws:blueprint` in ARN) are read-only
+- During `bda_to_idp` or `bidirectional` sync, AWS blueprints are automatically converted to custom blueprints, transformed into IDP classes, and removed from the BDA project after successful conversion
+- Conversion only occurs if no corresponding IDP class exists
+- Failed conversions are logged but don't stop the sync process
 
-```json
-// Example of problematic schema structure
-{
-  "$defs": {
-    "Employee": {
-      "type": "object",
-      "properties": {
-        "personalInfo": {
-          "type": "object",  // This will cause sync failure
-          "properties": {
-            "firstName": {"type": "string"},
-            "lastName": {"type": "string"}
-          }
-        },
-        "workSchedule": {
-          "type": "array",   // This will cause sync failure
-          "items": {"$ref": "#/$defs/Shift"}
-        }
-      }
-    }
-  }
-}
-```
-
-### Performance Optimization
+#### Sync Performance
 
 **Multi-Threading Configuration:**
-
-The sync feature uses parallel processing to improve performance:
 
 ```python
 # Configure in environment
@@ -1626,11 +1668,9 @@ BDA_SYNC_MAX_WORKERS=10  # Default: 5
 - Use `idp_to_bda` when only updating blueprints from IDP changes
 - Use `bda_to_idp` when only importing AWS blueprints or BDA changes
 
-### Best Practices for Sync Success
+#### Best Practices for Sync
 
-#### 1. Choose Appropriate Sync Direction
-
-**Use Case-Based Selection:**
+**1. Choose Appropriate Sync Direction:**
 ```python
 # After modifying IDP classes in UI
 service.create_blueprints_from_custom_configuration(
@@ -1648,28 +1688,11 @@ service.create_blueprints_from_custom_configuration(
 )
 ```
 
-#### 2. Use Simplified IDP Schemas
+**2. Use Simplified IDP Schemas:**
 
-**Flatten Complex Structures:**
-```json
-// Instead of nested objects
-{
-  "employee": {
-    "type": "object",
-    "properties": {
-      "firstName": {"type": "string", "description": "Employee first name"},
-      "lastName": {"type": "string", "description": "Employee last name"},
-      "streetAddress": {"type": "string", "description": "Street address"},
-      "city": {"type": "string", "description": "City"},
-      "state": {"type": "string", "description": "State"}
-    }
-  }
-}
-```
+Flatten complex structures — avoid nested objects and place arrays at the top level only:
 
-**Use Top-Level Arrays Only:**
 ```json
-// Place arrays at the top level of the schema
 {
   "properties": {
     "employees": {
@@ -1684,22 +1707,13 @@ service.create_blueprints_from_custom_configuration(
       "properties": {
         "name": {"type": "string"},
         "id": {"type": "string"}
-        // No nested arrays or objects here
       }
     }
   }
 }
 ```
 
-#### 3. Pre-Sync Validation
-
-**Check Schema Structure Before Sync:**
-```bash
-# Use the IDP CLI or API to validate schema structure
-# Look for nested objects and arrays that might cause issues
-```
-
-**Validation Checklist:**
+**3. Pre-Sync Validation Checklist:**
 - ✅ No nested objects within object definitions
 - ✅ No arrays within object definitions  
 - ✅ All array properties have description or instruction fields
@@ -1708,133 +1722,7 @@ service.create_blueprints_from_custom_configuration(
 - ✅ Property names are less than 60 characters
 - ✅ No double-escaped quotes in instruction strings
 
-#### 4. Error Handling and Recovery
-
-**Monitor Sync Results:**
-```json
-// Sync response includes detailed status for each class
-{
-  "success": true,
-  "message": "Successfully synchronized 2 document classes bidirectionally",
-  "processedClasses": ["Invoice", "Receipt"],
-  "direction": "bidirectional",
-  "error": {
-    "type": "PARTIAL_SYNC_ERROR",
-    "message": "Failed to sync classes: ComplexForm",
-    "failedClasses": ["ComplexForm"]
-  }
-}
-```
-
-**Handle Partial Failures:**
-- Review failed classes for nested structures or special characters
-- Check CloudWatch logs for specific error messages
-- Simplify problematic schemas (flatten nested objects)
-- Sanitize property names (remove special characters)
-- Re-run sync after schema modifications with appropriate direction
-- Monitor thread execution times for performance issues
-
-**Common Failure Scenarios:**
-```python
-# Scenario 1: Special characters in property names
-# Error: "Skipping property 'Employee&Name' - contains special characters"
-# Solution: Property names are automatically sanitized, check logs for mapping
-
-# Scenario 2: Nested object structures
-# Error: "Skipping nested object property 'address' - not supported by BDA"
-# Solution: Flatten the structure into individual fields
-
-# Scenario 3: AWS blueprint conversion failure
-# Error: "Failed to convert AWS blueprint: schema validation error"
-# Solution: Check AWS blueprint schema format, may need manual intervention
-```
-
-### Troubleshooting Sync Issues
-
-#### Common Error Patterns
-
-**1. Nested Structure Errors**
-```
-Error: Skipping nested object property 'personalInfo' - not supported by BDA
-Solution: Flatten the object structure into individual fields
-```
-
-**2. Array Instruction Missing**
-```
-Error: Array property missing required 'instruction' field
-Solution: Array properties are automatically defaulted to "-" if missing
-Note: This is handled automatically by the sync process
-```
-
-**3. Schema Validation Failures**
-```
-Error: BDA schema validation failed
-Solution: Ensure schema follows BDA draft-07 format requirements
-Check for: missing type fields, invalid references, unsupported structures
-```
-
-**4. Special Character Errors**
-```
-Error: Property name contains invalid characters: 'Employee&Name'
-Solution: Property names are automatically sanitized
-Check logs for name mapping: 'Employee&Name' -> 'EmployeeName'
-```
-
-**5. AWS Blueprint Conversion Errors**
-```
-Error: Failed to normalize AWS blueprint schema
-Solution: Check AWS blueprint format, may have unsupported structures
-Review normalization logs for specific issues
-```
-
-**6. Thread Execution Errors**
-```
-Error: Thread execution error during parallel processing
-Solution: Check CloudWatch logs for specific thread failures
-Consider reducing BDA_SYNC_MAX_WORKERS if experiencing timeouts
-```
-
-#### Debugging Steps
-
-1. **Check CloudWatch Logs:**
-   - Review `sync_bda_idp_resolver` function logs for sync orchestration
-   - Check `BdaBlueprintService` logs for detailed processing information
-   - Look for specific error messages about skipped properties
-   - Identify which classes failed and why
-   - Review thread execution logs for parallel processing issues
-   - Check for property name sanitization mappings
-
-2. **Validate Schema Structure:**
-   - Use JSON Schema validators to check format compliance
-   - Look for nested objects and arrays in definitions
-   - Verify all required fields are present
-   - Check for special characters in property names
-   - Ensure array properties have instruction or description fields
-   - Validate that schemas follow BDA draft-07 requirements
-
-3. **Test with Simplified Schema:**
-   - Create a minimal test schema without nested structures
-   - Verify sync works with simple structure
-   - Test with single class before batch processing
-   - Use appropriate sync direction for testing
-   - Gradually add complexity while monitoring for failures
-   - Monitor performance with different worker counts
-
-4. **Verify Sync Direction:**
-   - Confirm correct sync direction for your use case
-   - Check that AWS blueprints are only processed in `bda_to_idp` or `bidirectional` mode
-   - Verify cleanup only runs in `idp_to_bda` or `bidirectional` mode
-   - Test each direction independently if issues occur
-
-5. **Monitor Performance:**
-   - Check thread execution times in CloudWatch logs
-   - Adjust `BDA_SYNC_MAX_WORKERS` based on performance
-   - Monitor API throttling from BDA service
-   - Review parallel processing efficiency
-
-### Schema Design Recommendations
-
-#### Recommended Pattern
+**4. Schema Design — Recommended Pattern:**
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1870,41 +1758,281 @@ Consider reducing BDA_SYNC_MAX_WORKERS if experiencing timeouts
 }
 ```
 
-#### Avoid These Patterns
+#### Troubleshooting Sync Issues
+
+**Common Error Patterns:**
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Skipping nested object property 'personalInfo'` | Nested objects not supported by BDA | Flatten the object structure into individual fields |
+| `Array property missing required 'instruction' field` | Missing metadata | Handled automatically (defaults to "-") |
+| `BDA schema validation failed` | Invalid schema format | Ensure schema follows BDA draft-07 requirements |
+| `Property name contains invalid characters` | Special characters in names | Automatically sanitized; check logs for name mapping |
+| `Failed to normalize AWS blueprint schema` | Unsupported AWS blueprint structures | Check AWS blueprint format; may need manual intervention |
+| `Thread execution error during parallel processing` | Parallel processing failure | Check CloudWatch logs; consider reducing `BDA_SYNC_MAX_WORKERS` |
+
+**Debugging Steps:**
+
+1. **Check CloudWatch Logs**: Review `sync_bda_idp_resolver` and `BdaBlueprintService` logs for detailed error messages, thread execution logs, and property name sanitization mappings.
+2. **Validate Schema Structure**: Use JSON Schema validators; look for nested objects/arrays in definitions; check for special characters in property names.
+3. **Test with Simplified Schema**: Start with a minimal test schema, verify sync works, then gradually add complexity.
+4. **Verify Sync Direction**: Confirm the correct direction for your use case; test each direction independently if issues occur.
+
+## Best Practices
+
+### Document Selection
+
+**Choose Representative Samples:**
+- Select documents that represent typical variations
+- Include both simple and complex examples
+- Ensure all important sections are represented
+- Use high-quality, clear document images
+
+**Document Quality Guidelines:**
+- **Resolution**: Minimum 150 DPI for text clarity
+- **Format**: PDF preferred, high-quality images acceptable
+- **Completeness**: Include all pages of multi-page documents
+- **Legibility**: Ensure text is readable and not corrupted
+
+**Sample Size Recommendations:**
+- **Single Document**: Good for initial exploration
+- **2-3 Documents**: Better for understanding variations
+- **5+ Documents**: Optimal for comprehensive analysis
+- **Different Layouts**: Include various form versions if available
+
+### Ground Truth Preparation
+
+**JSON Format Requirements:**
 ```json
 {
-  // ❌ Avoid nested objects
-  "$defs": {
-    "Employee": {
-      "type": "object", 
-      "properties": {
-        "address": {
-          "type": "object",  // This will be skipped
-          "properties": {
-            "street": {"type": "string"},
-            "city": {"type": "string"}
-          }
-        }
-      }
-    }
-  }
+  "document_class": "FormName",
+  "field_name_1": "expected_value_1",
+  "field_name_2": "expected_value_2",
+  "nested_object": {
+    "sub_field": "sub_value"
+  },
+  "array_field": ["item1", "item2"]
 }
 ```
 
-The BdaIDP Sync feature provides powerful integration capabilities while working within BDA's current limitations. By following these guidelines and using simplified schema designs, you can ensure successful synchronization between IDP and BDA systems.
+**Best Practices:**
+- **Field Names**: Use descriptive, consistent naming conventions
+- **Data Types**: Include examples of all expected data types
+- **Completeness**: Cover all important fields in the document
+- **Accuracy**: Ensure ground truth data is correct and validated
+- **Structure**: Reflect the logical organization of document fields
+
+**Ground Truth Sources:**
+- Existing database schemas or data models
+- Manual annotation of sample documents
+- Previous extraction results (validated)
+- Domain expert knowledge and requirements
+
+### Configuration Tuning
+
+**Model Selection Guidelines:**
+- **Nova Lite**: Simple forms with clear structure
+- **Nova Pro**: Most document types (recommended default)
+- **Claude Sonnet 4.5 / 4.6**: Complex layouts, handwritten content
+- **Claude Models**: Alternative for specific use cases
+
+**Parameter Optimization:**
+```yaml
+# For consistent, structured output
+discovery:
+  without_ground_truth:
+    temperature: 0.0    # Low creativity
+    top_p: 0.1         # Focused sampling
+    
+# For creative structure discovery
+discovery:
+  without_ground_truth:
+    temperature: 1.0    # High creativity
+    top_p: 0.3         # Diverse sampling
+```
+
+**Prompt Engineering Tips:**
+- **Be Specific**: Clearly define expected field types and formats
+- **Include Examples**: Show desired output structure in prompts
+- **Set Constraints**: Specify field naming conventions and limitations
+- **Domain Context**: Include relevant domain knowledge and terminology
+
+**Iterative Improvement:**
+1. Start with default configuration
+2. Run discovery on sample documents
+3. Review and validate results
+4. Adjust prompts and parameters based on findings
+5. Re-run discovery to validate improvements
+6. Repeat until satisfactory results are achieved
+
+## Troubleshooting
+
+### Common Issues
+
+**Issue: Discovery Job Fails to Start**
+```
+Symptoms: Job status remains "PENDING" or shows "FAILED" immediately
+Causes: 
+- Invalid document format or corrupted file
+- Insufficient permissions for S3 access
+- Missing or invalid configuration
+
+Solutions:
+- Verify document is valid PDF or supported image format
+- Check S3 bucket permissions and access policies
+- Validate configuration syntax and required fields
+- Review CloudWatch logs for specific error messages
+```
+
+**Issue: BDA Blueprint Creation Fails (BDA mode only)**
+```
+Symptoms: Discovery completes but BDA blueprints are not created/updated
+Causes:
+- Missing BDA permissions
+- Invalid BDA project ARN
+- Schema conversion errors
+- BDA service throttling
+
+Solutions:
+- Verify BDA permissions in IAM role
+- Check BDA project ARN in stack parameters
+- Review BDA Discovery Function logs
+- Implement retry logic for throttling
+- Validate generated schema format
+```
+
+**Issue: Configuration Events Not Processing**
+```
+Symptoms: Discovery completes but configuration updates don't occur
+Causes:
+- SQS queue configuration issues
+- Lambda function errors
+- Event routing problems
+- Permission issues
+
+Solutions:
+- Check SQS queue visibility and permissions
+- Review Lambda function logs
+- Verify event source mappings
+- Validate IAM permissions for event processing
+```
+
+**Issue: Poor Field Detection Quality**
+```
+Symptoms: Missing fields, incorrect field types, poor grouping
+Causes:
+- Document quality issues (low resolution, poor scan)
+- Inappropriate model selection for document complexity
+- Generic prompts not suited for document type
+
+Solutions:
+- Use higher resolution documents (minimum 150 DPI)
+- Try different models (Claude Sonnet 4.6 for complex documents)
+- Customize prompts with domain-specific terminology
+- Provide ground truth data for better guidance
+```
+
+**Issue: Inconsistent Results Between Runs**
+```
+Symptoms: Different field structures on repeated analysis
+Causes:
+- High temperature setting causing creative variation
+- Ambiguous document structure or layout
+- Insufficient prompt constraints
+
+Solutions:
+- Reduce temperature to 0.0 for consistent results
+- Add more specific constraints in user prompts
+- Use ground truth data to establish expected patterns
+- Include examples in prompts for guidance
+```
+
+**Issue: Timeout or Performance Problems**
+```
+Symptoms: Jobs taking too long or timing out
+Causes:
+- Large documents exceeding processing limits
+- Complex layouts requiring extensive analysis
+- Model capacity or throttling issues
+
+Solutions:
+- Split large documents into smaller sections
+- Use faster models (Nova Lite) for initial analysis
+- Implement retry logic with exponential backoff
+- Consider preprocessing to simplify document structure
+```
+
+### Error Handling
+
+**Configuration Validation:**
+```python
+def validate_discovery_config(config):
+    """Validate discovery configuration before processing."""
+    required_fields = ['model_id', 'system_prompt', 'user_prompt']
+    
+    for scenario in ['without_ground_truth', 'with_ground_truth']:
+        scenario_config = config.get('discovery', {}).get(scenario, {})
+        for field in required_fields:
+            if not scenario_config.get(field):
+                raise ValueError(f"Missing required field: {field} in {scenario}")
+    
+    # Validate model ID
+    supported_models = [
+        'us.amazon.nova-lite-v1:0',
+        'us.amazon.nova-pro-v1:0',
+        # ... other supported models
+    ]
+    
+    model_id = scenario_config.get('model_id')
+    if model_id not in supported_models:
+        raise ValueError(f"Unsupported model: {model_id}")
+```
+
+**Graceful Degradation:**
+```python
+def discovery_with_fallback(discovery_service, document_key, ground_truth_key=None):
+    """Attempt discovery with fallback strategies."""
+    try:
+        # Try with ground truth if available
+        if ground_truth_key:
+            return discovery_service.discovery_classes_with_document_and_ground_truth(
+                input_bucket, document_key, ground_truth_key
+            )
+        else:
+            return discovery_service.discovery_classes_with_document(
+                input_bucket, document_key
+            )
+    except Exception as e:
+        logger.warning(f"Discovery failed with error: {e}")
+        
+        # Fallback to simpler model or configuration
+        fallback_config = get_fallback_config()
+        fallback_service = ClassesDiscovery(
+            input_bucket=input_bucket,
+            input_prefix=document_key,
+            config=fallback_config
+        )
+        
+        return fallback_service.discovery_classes_with_document(
+            input_bucket, document_key
+        )
+```
 
 ## Limitations
 
 ### Known Limitations
-**Configuration Table**
+
+**Configuration Table:**
 - Discovery feature stores all custom classes as an array in Configuration table with "custom" key.
 - ~~DynamoDB has hard limit of 400 KB per item.~~ **Resolved**: Configuration data is now gzip-compressed before storing to DynamoDB, achieving 37-95x compression ratios. Configurations with 3,000+ document classes fit comfortably within the 400KB limit.
-**Discovery Output Format**
-- Output format is configuration via View/Edit configuration. JSON format should follow custom classes format.  
+
+**Discovery Output Format:**
+- Output format is configured via View/Edit Configuration. JSON format should follow custom classes format.  
 - Output in any other format will result in failure.
-**Production Usage**
-- We recommend not to use the Discovery module in production. This is to reduce the risk of any hallunication during the document discovery. 
-- We recommend to use discovery module in your lower environment to discovery and construct the configurations. Export the tested configuration to production deployment.
+
+**Production Usage:**
+- We recommend not to use the Discovery module in production. This is to reduce the risk of any hallucination during the document discovery. 
+- We recommend using the Discovery module in your lower environment to discover and construct the configurations. Export the tested configuration to production deployment.
 
 
 The Discovery module provides a powerful foundation for understanding and processing new document types. By following these guidelines and best practices, you can effectively leverage the module to bootstrap document processing workflows and continuously improve their accuracy and coverage.

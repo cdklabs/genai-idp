@@ -8,6 +8,7 @@ Tests for dynamic schema generation in evaluation service.
 from unittest.mock import patch
 
 import pytest
+
 from idp_common.evaluation.service import EvaluationService
 from idp_common.models import Section
 
@@ -30,7 +31,14 @@ class TestDynamicSchemaGeneration:
         return EvaluationService(region="us-east-1", config=config)
 
     def test_infer_schema_from_simple_data(self, evaluation_service):
-        """Test schema inference from simple flat data structure."""
+        """Auto-generated schemas keep type inference but no longer stamp
+        per-leaf ``x-aws-idp-evaluation-method``: Stickler 1.0's native
+        comparator inference (turned on by the mapper via
+        ``x-aws-stickler-infer-unspecified: true`` at the schema root)
+        picks a comparator per leaf from its type AND its field-name token,
+        which is strictly better than the type-only fallback this service
+        used to stamp here.
+        """
         data = {
             "invoice_number": "INV-12345",
             "amount": 1250.50,
@@ -45,19 +53,19 @@ class TestDynamicSchemaGeneration:
         assert schema["x-aws-idp-document-type"] == "Invoice"
         assert "properties" in schema
 
-        # Verify property types and methods
+        # Verify property types (unchanged)
         props = schema["properties"]
         assert props["invoice_number"]["type"] == "string"
-        assert props["invoice_number"]["x-aws-idp-evaluation-method"] == "FUZZY"
-
         assert props["amount"]["type"] == "number"
-        assert props["amount"]["x-aws-idp-evaluation-method"] == "NUMERIC_EXACT"
-
-        assert props["quantity"]["type"] == "integer"
-        assert props["quantity"]["x-aws-idp-evaluation-method"] == "NUMERIC_EXACT"
-
+        # Integers are normalized to "number" so int baselines match float
+        # predictions without type-mismatch errors (_normalize_integer_to_number)
+        assert props["quantity"]["type"] == "number"
         assert props["is_paid"]["type"] == "boolean"
-        assert props["is_paid"]["x-aws-idp-evaluation-method"] == "EXACT"
+
+        # No per-leaf evaluation-method stamping — inference happens later,
+        # in Stickler, driven by the root flag the mapper sets.
+        for prop in props.values():
+            assert "x-aws-idp-evaluation-method" not in prop
 
     def test_infer_schema_from_nested_object(self, evaluation_service):
         """Test schema inference from nested object structure."""
@@ -96,7 +104,12 @@ class TestDynamicSchemaGeneration:
         # Verify array structure
         props = schema["properties"]
         assert props["line_items"]["type"] == "array"
-        assert props["line_items"]["x-aws-idp-evaluation-method"] == "HUNGARIAN"
+
+        # Structured arrays no longer need an ``x-aws-idp-evaluation-method:
+        # HUNGARIAN`` stamp: Stickler always uses Hungarian row-matching for
+        # ``List[Object]`` and the mapper strips this key on structured arrays
+        # regardless. The fallback that used to stamp it here is gone.
+        assert "x-aws-idp-evaluation-method" not in props["line_items"]
 
         # Verify items schema
         items = props["line_items"]["items"]
@@ -136,10 +149,30 @@ class TestDynamicSchemaGeneration:
 
         schema = evaluation_service._infer_schema_from_data(data, "Document")
 
-        # genson correctly infers None as "null" type (proper JSON Schema)
+        # genson infers None as "null", which Stickler can't evaluate, so
+        # _normalize_null_types converts it to "string" (comparable as empty value)
         props = schema["properties"]
-        assert props["optional_field"]["type"] == "null"
+        assert props["optional_field"]["type"] == "string"
         assert props["required_field"]["type"] == "string"
+
+    def test_infer_schema_strips_required(self, evaluation_service):
+        """Auto-generated schemas must not carry genson's 'required' arrays.
+
+        genson marks every observed key as required; for evaluation a missing
+        field is a scored miss, not a hard validation failure. _strip_required
+        removes them at every nesting level so the schema matches explicit configs.
+        """
+        data = {
+            "name": "John",
+            "address": {"street": "123 Main", "city": "Seattle"},
+            "items": [{"sku": "A1", "qty": 2}],
+        }
+
+        schema = evaluation_service._infer_schema_from_data(data, "Document")
+
+        assert "required" not in schema
+        assert "required" not in schema["properties"]["address"]
+        assert "required" not in schema["properties"]["items"]["items"]
 
     @patch("idp_common.evaluation.service.s3.get_json_content")
     def test_auto_generation_with_missing_config(
@@ -264,6 +297,7 @@ class TestDynamicSchemaGeneration:
         # Verify metadata is object
         assert doc_info_props["metadata"]["type"] == "object"
 
-        # Verify items is array of objects with Hungarian matching
+        # Verify items is array of objects. No ``x-aws-idp-evaluation-method:
+        # HUNGARIAN`` stamp — Stickler always Hungarian-matches List[Object].
         assert doc_info_props["items"]["type"] == "array"
-        assert doc_info_props["items"]["x-aws-idp-evaluation-method"] == "HUNGARIAN"
+        assert "x-aws-idp-evaluation-method" not in doc_info_props["items"]

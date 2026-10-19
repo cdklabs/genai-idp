@@ -7,7 +7,13 @@ Tests for deploy command parameter handling
 Verifies that stack updates only modify explicitly provided parameters.
 """
 
-from idp_sdk.core.stack import build_parameters
+from unittest.mock import MagicMock
+
+import click
+import pytest
+
+from idp_cli.cli import _default_email_mutable_for_new_federated_stack, _parse_tags
+from idp_sdk._core.stack import StackDeployer, build_parameters
 
 
 class TestParameterPreservation:
@@ -19,13 +25,11 @@ class TestParameterPreservation:
             admin_email="admin@example.com",
             max_concurrent=100,
             log_level="INFO",
-            enable_hitl="false",
         )
 
         assert params["AdminEmail"] == "admin@example.com"
         assert params["MaxConcurrentWorkflows"] == "100"
         assert params["LogLevel"] == "INFO"
-        assert params["EnableHITL"] == "false"
 
     def test_build_parameters_update_no_params(self):
         """Test parameter building for update with no parameters - should be empty"""
@@ -43,7 +47,6 @@ class TestParameterPreservation:
         assert params["MaxConcurrentWorkflows"] == "200"
         assert "AdminEmail" not in params
         assert "LogLevel" not in params
-        assert "EnableHITL" not in params
 
     def test_build_parameters_update_selective_log_level_only(self):
         """Test parameter building for update with only log level"""
@@ -53,20 +56,17 @@ class TestParameterPreservation:
         assert params["LogLevel"] == "DEBUG"
         assert "AdminEmail" not in params
         assert "MaxConcurrentWorkflows" not in params
-        assert "EnableHITL" not in params
 
     def test_build_parameters_update_multiple_selective(self):
         """Test parameter building for update with multiple selective parameters"""
         params = build_parameters(
             max_concurrent=150,
             log_level="DEBUG",
-            enable_hitl="true",
         )
 
         # Only the provided parameters should be included
         assert params["MaxConcurrentWorkflows"] == "150"
         assert params["LogLevel"] == "DEBUG"
-        assert params["EnableHITL"] == "true"
         assert "AdminEmail" not in params
 
     def test_build_parameters_additional_params(self):
@@ -89,7 +89,6 @@ class TestParameterPreservation:
             admin_email=None,
             max_concurrent=None,
             log_level=None,
-            enable_hitl=None,
             custom_config=None,
         )
 
@@ -129,7 +128,6 @@ class TestParameterPreservationIntegration:
 
         # These should NOT be in the dict (CloudFormation preserves them)
         assert "LogLevel" not in params
-        assert "EnableHITL" not in params
         assert "AdminEmail" not in params
 
     def test_new_stack_scenario_all_required_params(self):
@@ -143,7 +141,6 @@ class TestParameterPreservationIntegration:
             admin_email="user@example.com",
             max_concurrent=100,  # Default value
             log_level="INFO",  # Default value
-            enable_hitl="false",  # Default value
         )
 
         # Required params for new stack
@@ -152,7 +149,6 @@ class TestParameterPreservationIntegration:
         # Defaults should be included for new stack
         assert params["MaxConcurrentWorkflows"] == "100"
         assert params["LogLevel"] == "INFO"
-        assert params["EnableHITL"] == "false"
 
     def test_update_with_custom_config_only(self):
         """
@@ -168,3 +164,241 @@ class TestParameterPreservationIntegration:
 
         # When custom_config is None, shouldn't be in params
         assert "CustomConfigPath" not in params
+
+
+def _make_deployer(stack_exists):
+    """Build a StackDeployer with boto3 / template IO stubbed out.
+
+    Returns (deployer, cfn_mock) so tests can assert on the CloudFormation
+    create_stack / update_stack call kwargs.
+    """
+    deployer = StackDeployer.__new__(StackDeployer)
+    deployer.region = "us-west-2"
+    cfn_mock = MagicMock()
+    cfn_mock.create_stack.return_value = {"StackId": "arn:stack/new"}
+    cfn_mock.update_stack.return_value = {"StackId": "arn:stack/existing"}
+    deployer.cfn = cfn_mock
+
+    # Use a small inline template body so no S3 upload path is triggered.
+    deployer._read_template = MagicMock(return_value="Resources: {}")
+    deployer._stack_exists = MagicMock(return_value=stack_exists)
+    deployer._get_stack_parameters = MagicMock(return_value={})
+    deployer._get_template_parameters = MagicMock(return_value=set())
+    return deployer, cfn_mock
+
+
+class TestParseTags:
+    """Tests for the --tags CLI string parser."""
+
+    def test_none_returns_empty(self):
+        assert _parse_tags(None) == {}
+
+    def test_empty_string_returns_empty(self):
+        assert _parse_tags("") == {}
+
+    def test_single_pair(self):
+        assert _parse_tags("Owner=docs-team") == {"Owner": "docs-team"}
+
+    def test_multiple_pairs_and_whitespace(self):
+        assert _parse_tags(" Owner=docs-team , Environment=prod ") == {
+            "Owner": "docs-team",
+            "Environment": "prod",
+        }
+
+    def test_value_may_contain_equals(self):
+        # Only the first '=' splits key/value.
+        assert _parse_tags("Expr=a=b") == {"Expr": "a=b"}
+
+    def test_key_with_allowed_special_chars(self):
+        assert _parse_tags("aws:cost-center=1234") == {"aws:cost-center": "1234"}
+
+    def test_missing_equals_raises(self):
+        with pytest.raises(click.BadParameter):
+            _parse_tags("OwnerNoValue")
+
+    def test_empty_key_raises(self):
+        with pytest.raises(click.BadParameter):
+            _parse_tags("=value")
+
+
+class TestStackTags:
+    """Tests for stack-level tag propagation in deploy_stack."""
+
+    def test_create_includes_tags(self):
+        deployer, cfn_mock = _make_deployer(stack_exists=False)
+
+        deployer.deploy_stack(
+            stack_name="idp-test",
+            template_path="/tmp/template.yaml",  # nosec B108 - test fixture path, deploy is mocked (no file I/O)
+            parameters={},
+            tags={"Owner": "docs-team", "Environment": "prod"},
+        )
+
+        _, kwargs = cfn_mock.create_stack.call_args
+        assert kwargs["Tags"] == [
+            {"Key": "Owner", "Value": "docs-team"},
+            {"Key": "Environment", "Value": "prod"},
+        ]
+
+    def test_update_includes_tags_when_provided(self):
+        deployer, cfn_mock = _make_deployer(stack_exists=True)
+
+        deployer.deploy_stack(
+            stack_name="idp-test",
+            template_path="/tmp/template.yaml",  # nosec B108 - test fixture path, deploy is mocked (no file I/O)
+            parameters={},
+            tags={"Owner": "docs-team"},
+        )
+
+        _, kwargs = cfn_mock.update_stack.call_args
+        assert kwargs["Tags"] == [{"Key": "Owner", "Value": "docs-team"}]
+
+    def test_update_omits_tags_when_none_preserves_existing(self):
+        """No tags passed on update -> Tags key omitted so CFN keeps existing."""
+        deployer, cfn_mock = _make_deployer(stack_exists=True)
+
+        deployer.deploy_stack(
+            stack_name="idp-test",
+            template_path="/tmp/template.yaml",  # nosec B108 - test fixture path, deploy is mocked (no file I/O)
+            parameters={},
+            tags=None,
+        )
+
+        _, kwargs = cfn_mock.update_stack.call_args
+        assert "Tags" not in kwargs
+
+    def test_create_omits_tags_when_none(self):
+        deployer, cfn_mock = _make_deployer(stack_exists=False)
+
+        deployer.deploy_stack(
+            stack_name="idp-test",
+            template_path="/tmp/template.yaml",  # nosec B108 - test fixture path, deploy is mocked (no file I/O)
+            parameters={},
+        )
+
+        _, kwargs = cfn_mock.create_stack.call_args
+        assert "Tags" not in kwargs
+
+
+class TestExternalIdPEmailMutableDefault:
+    """#835: a NEW federated stack gets ExternalIdPEmailMutable=true unless the
+    caller chose; updates, headless and non-federated deploys are untouched.
+
+    The template cannot default the flag to true (a Cognito schema flag is fixed
+    at pool creation, so that would wedge every existing stack's next update),
+    but the CLI knows create from update and can supply the safe value for a
+    new stack only.
+    """
+
+    def _run(self, params, **kw):
+        defaults = {"stack_exists": False, "headless": False}
+        defaults.update(kw)
+        return _default_email_mutable_for_new_federated_stack(params, **defaults)
+
+    def test_new_federated_stack_defaults_true(self):
+        params = {"ExternalIdPType": "OIDC", "ExternalIdPName": "Okta"}
+        assert self._run(params) == "true"
+        assert params["ExternalIdPEmailMutable"] == "true"
+
+    def test_explicit_value_is_respected(self):
+        params = {"ExternalIdPType": "SAML", "ExternalIdPEmailMutable": "false"}
+        assert self._run(params) is None
+        assert params["ExternalIdPEmailMutable"] == "false"
+
+    def test_update_never_injects_it(self):
+        # Flipping the flag on an existing pool fails the update; on an update
+        # the CLI must forward only what the caller asked for.
+        params = {"ExternalIdPType": "OIDC"}
+        assert self._run(params, stack_exists=True) is None
+        assert "ExternalIdPEmailMutable" not in params
+
+    def test_headless_never_injects_it(self):
+        # The headless template strips Cognito and this parameter; passing it
+        # would be a CFN ValidationError.
+        params = {"ExternalIdPType": "OIDC"}
+        assert self._run(params, headless=True) is None
+        assert "ExternalIdPEmailMutable" not in params
+
+    @pytest.mark.parametrize("params", [{}, {"ExternalIdPType": ""}])
+    def test_non_federated_stack_untouched(self, params):
+        assert self._run(dict(params)) is None
+        assert "ExternalIdPEmailMutable" not in params
+
+
+class TestLogLevelOption:
+    """`--log-level` must not treat any value as a stand-in for 'unset'.
+
+    The option used to default to `INFO` and the deploy command dropped the
+    parameter whenever it equalled `INFO` — harmless while the template default
+    was also `INFO`, but the template now defaults to `WARN`, so dropping an
+    explicit `--log-level INFO` would silently deploy `WARN` instead.
+    """
+
+    @staticmethod
+    def _option():
+        from idp_cli.cli import deploy
+
+        return next(p for p in deploy.params if p.name == "log_level")
+
+    def test_default_is_unset_so_cfn_preserves_or_uses_template_default(self):
+        assert self._option().default is None
+
+    def test_info_is_still_a_choice(self):
+        # Dropping INFO from the choices would be a breaking CLI change; the
+        # fix is to forward it, not to forbid it.
+        assert "INFO" in self._option().type.choices
+
+    def test_explicit_level_reaches_the_stack_parameters(self):
+        # build_parameters is what the deploy command forwards to; an explicit
+        # level must survive as a real CloudFormation parameter.
+        assert build_parameters(log_level="INFO")["LogLevel"] == "INFO"
+
+    def test_unset_level_is_omitted(self):
+        assert "LogLevel" not in build_parameters(log_level=None)
+
+
+class TestEnableHitlIsNoLongerAStackParameter:
+    """`--enable-hitl true` must refuse, not build a rejected parameter set.
+
+    The root template stopped declaring `EnableHITL` in v0.4.11, when HITL became a
+    configuration setting, but `build_parameters` kept emitting it — so
+    `idp-cli deploy --enable-hitl true` died at CreateStack with
+    ``Parameters: [EnableHITL] do not exist in the template`` and created nothing.
+
+    The tests in this file were what let that stand for that whole span: they
+    asserted ``params["EnableHITL"] == "true"``, which pins the name the function
+    produced rather than the names the template accepts. The load-bearing check is
+    therefore NOT here — it is
+    ``scripts/tests/test_script_deployed_template_parameters.py::test_build_parameters_emits_only_declared_parameters``,
+    which reads the template. What these two add is the flag's surface: it is still
+    accepted as `false` so an existing script keeps working, and `true` now says
+    where HITL moved to instead of failing opaquely in CloudFormation.
+    """
+
+    @staticmethod
+    def _option():
+        from idp_cli.cli import deploy
+
+        return next(p for p in deploy.params if p.name == "enable_hitl")
+
+    def test_the_flag_is_still_accepted_so_existing_invocations_keep_working(self):
+        option = self._option()
+        assert option.default == "false"
+        assert set(option.type.choices) == {"true", "false"}
+
+    def test_true_is_refused_with_the_place_hitl_actually_lives(self):
+        from click.testing import CliRunner
+
+        from idp_cli.cli import deploy
+
+        result = CliRunner().invoke(
+            deploy, ["--stack-name", "any-stack", "--enable-hitl", "true"]
+        )
+        assert result.exit_code == 1, result.output
+        assert "no longer a stack parameter" in result.output
+        assert "Assessment & HITL Configuration" in result.output
+
+    def test_build_parameters_does_not_accept_it_at_all(self):
+        import inspect
+
+        assert "enable_hitl" not in inspect.signature(build_parameters).parameters

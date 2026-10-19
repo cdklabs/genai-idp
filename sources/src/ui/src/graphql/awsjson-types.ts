@@ -30,6 +30,7 @@ export interface CostBreakdownServiceDetail {
   estimated_cost?: number;
   value?: number;
   unit_cost?: number;
+  unit?: string;
   [key: string]: unknown;
 }
 
@@ -53,6 +54,147 @@ export interface SplitClassificationMetrics {
     total?: number;
     [key: string]: unknown;
   };
+}
+
+/** A predicted section over the pages of an unmatched ground-truth section. */
+export interface PredictedSectionSummary {
+  class?: string | null;
+  /** Its pages as sorted, inclusive 0-based `[first, last]` runs. */
+  page_ranges?: number[][];
+}
+
+/** One ground-truth section no predicted section the evaluation recorded reproduces. */
+export interface ClassificationError {
+  doc_key?: string;
+  section_id?: string | number | null;
+  /**
+   * `class` — wrong document class, so extraction ran the wrong schema.
+   * `unmatched` — no recorded predicted section holds exactly the section's
+   * pages: a splitting difference, unless `predicted_sections_incomplete` is
+   * set. `order` — right class and pages, wrong page order.
+   */
+  kind?: 'class' | 'unmatched' | 'order';
+  expected_class?: string | null;
+  predicted_class?: string | null;
+  expected_pages?: number[];
+  predicted_pages?: number[];
+  /**
+   * `unmatched` only: the predicted sections sharing a page with the expected
+   * pages, in page order, capped by the aggregation Lambda
+   * (MAX_PREDICTED_SECTIONS_PER_ERROR). `predicted_section_count` is the
+   * uncapped number. Absent on runs aggregated by an earlier release, which
+   * report an unmatched section as kind `class` with predicted class
+   * "No Match" instead.
+   */
+  predicted_sections?: PredictedSectionSummary[];
+  predicted_section_count?: number;
+  /**
+   * `unmatched` only, and present only when true: some of the expected pages
+   * are on no predicted section the evaluation recorded, in a document whose
+   * record is known to be incomplete, so a predicted section over them may
+   * have gone unrecorded. The record is known to be incomplete when it holds a
+   * predicted section without pages, which is how a section of a class
+   * excluded from processing is recorded, or notes a section whose result
+   * failed to load. The aggregation does not tell which side that section was
+   * on, so a baseline section that failed to load sets this too. Also true when
+   * the ground-truth section was itself recorded without pages.
+   */
+  predicted_sections_incomplete?: boolean;
+}
+
+/**
+ * Parsed TestRun.classificationErrors.
+ *
+ * `errors` is capped by the aggregation Lambda because the whole run result is
+ * one DynamoDB attribute; `total` is the uncapped count, so a truncated list can
+ * still say how much it is not showing. `{}` when the aggregation Lambda supplied
+ * none (it is not configured, failed or predates this field); a
+ * classification-only run keeps its detail on the Athena fallback.
+ */
+export interface ClassificationErrors {
+  errors?: ClassificationError[];
+  total?: number;
+  documents_affected?: number;
+  truncated?: boolean;
+}
+
+/**
+ * Parsed graded packet metrics from TestRun.gradedPacketMetrics AWSJSON field.
+ *
+ * Aggregated by the test-execution-aggregation Lambda as a simple unweighted
+ * mean across documents that reported each key (see
+ * ``_aggregate_graded_packet_metrics``). All values are in [0.0, 1.0] where
+ * 1.0 is perfect. Empty ``{}`` when no document reported graded metrics —
+ * older results.json payloads or classification runs with no page overlap.
+ */
+export interface GradedPacketMetrics {
+  mean?: {
+    final_score?: number;
+    clustering_score?: number;
+    v_measure?: number;
+    rand_index?: number;
+    avg_ordering_score?: number;
+    [key: string]: number | undefined;
+  };
+  per_document?: {
+    [documentId: string]: {
+      final_score?: number;
+      clustering_score?: number;
+      v_measure?: number;
+      rand_index?: number;
+      avg_ordering_score?: number;
+      [key: string]: number | undefined;
+    };
+  };
+  document_count?: number;
+}
+
+/** Parsed field metrics from TestRun.fieldMetrics AWSJSON field */
+export interface FieldMetrics {
+  [fieldName: string]: {
+    tp?: number;
+    fp?: number;
+    tn?: number;
+    fn?: number;
+    [key: string]: unknown;
+  };
+}
+
+/** Parsed confusion matrix from TestRun.confusionMatrix AWSJSON field */
+export interface ConfusionMatrix {
+  tp?: number;
+  fp?: number;
+  tn?: number;
+  fn?: number;
+  fa?: number;
+  fd?: number;
+  [key: string]: unknown;
+}
+
+/** Parsed confidence metrics from TestRun.confidenceMetrics AWSJSON field (Stickler v0.4.0+) */
+export interface ConfidenceMetrics {
+  overall?: {
+    auroc?: { value: number | null };
+    ece?: { value: number | null; bins?: Array<unknown> };
+    brier?: { value: number | null };
+    [key: string]: unknown;
+  };
+  fields?: {
+    [fieldName: string]: {
+      auroc?: { value: number | null };
+      ece?: { value: number | null; bins?: Array<unknown> };
+      brier?: { value: number | null };
+      [key: string]: unknown;
+    };
+  };
+  coverage?: {
+    fields_with_confidence: number;
+    fields_total: number;
+    ratio: number;
+  };
+  field_count?: number;
+  total_pairs?: number;
+  [key: string]: unknown;
 }
 
 /** Parsed comparison metrics from TestRunComparison.metrics AWSJSON field */
@@ -79,6 +221,35 @@ export interface PricingData {
       price: number;
       [key: string]: unknown;
     }>;
+    [key: string]: unknown;
+  }>;
+  [key: string]: unknown;
+}
+
+/**
+ * Parsed `PricingResponse.nonChargeableUnits`: per pricing key, the metering
+ * units the BACKEND declares free, so a consumer never has to decide what a
+ * pricing entry omitting a unit means.
+ *
+ * The declarations live in `idp_common.metering_units` and are expanded per
+ * pricing key by `declared_free_units`, which is the one place their two scopes
+ * (per service, and per exact key for the prompt-cache units) are known. An
+ * absent or unparseable payload means "no declarations", which resolves an
+ * omitted unit to unpriced rather than to $0.00 — the direction that shows the
+ * gap. See `components/document-panel/pricing.ts`.
+ */
+export interface NonChargeableUnits {
+  [pricingKey: string]: string[];
+}
+
+/** Parsed model config limits from ModelConfigLimitsResponse AWSJSON fields */
+export interface ModelConfigLimitsData {
+  model_limits?: Array<{
+    pattern: string;
+    max_output_tokens: number;
+    max_input_tokens?: number;
+    description?: string;
+    reference?: string;
     [key: string]: unknown;
   }>;
   [key: string]: unknown;

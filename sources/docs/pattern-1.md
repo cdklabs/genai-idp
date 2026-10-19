@@ -13,7 +13,7 @@ SPDX-License-Identifier: MIT-0
 
 This pattern implements an intelligent document processing workflow using Amazon Bedrock Data Automation (BDA) for orchestrating ML-powered document processing tasks. It leverages BDA's ability to extract insights from documents using pre-configured templates and workflows.
 
-<img src="../images/IDP-Pattern1-BDA.drawio.png" alt="Architecture" width="800">
+For the current architecture diagram, see the unified architecture in [architecture.md](./architecture.md).
 
 ## Table of Contents
 
@@ -27,7 +27,6 @@ This pattern implements an intelligent document processing workflow using Amazon
 - [Monitoring and Metrics](#monitoring-and-metrics)
   - [CloudWatch Metrics](#cloudwatch-metrics)
   - [Dashboard Components](#dashboard-components)
-  - [Error Tracking](#error-tracking)
 - [Concurrency and Throttling](#concurrency-and-throttling)
   - [BDA API Throttling](#bda-api-throttling)
   - [Error Handling](#error-handling)
@@ -210,9 +209,9 @@ payload = {
 
 Pattern-1 supports Human-in-the-Loop (HITL) review capabilities using Amazon SageMaker Augmented AI (A2I). This feature allows human reviewers to validate and correct extracted information when the system's confidence falls below a specified threshold.
 
-**Pattern-1 Specific Configuration:**
-- `EnableHITL`: Boolean parameter to enable/disable the HITL feature
-- `Pattern1 - Existing Private Workforce ARN`: Optional parameter to use existing private workforce
+**Pattern-1 Specific Configuration:** HITL is enabled through the configuration
+(Web UI **Configuration → Assessment & HITL Configuration**, or the config YAML),
+not a CloudFormation parameter — the `EnableHITL` parameter was removed in v0.4.11.
 
 For comprehensive HITL documentation including workflow details, configuration steps, best practices, and troubleshooting, see the [Human-in-the-Loop Review Guide](./human-review.md). 
 

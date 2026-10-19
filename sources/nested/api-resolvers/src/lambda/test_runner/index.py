@@ -1,0 +1,888 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+import gzip
+import json
+import logging
+import math
+import os
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+import boto3
+from botocore.exceptions import ClientError
+
+from idp_common.api_adapter import ResourceNotFound  # type: ignore
+from idp_common.utils.log_sanitizer import sanitize_event_for_logging
+
+logger = logging.getLogger()
+logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+
+s3 = boto3.client("s3")
+dynamodb = boto3.resource("dynamodb")
+sqs = boto3.client("sqs")
+
+# A run id is ``<test set name>-<UTC timestamp to the second>``. Two runs of the
+# same set submitted within one second therefore want the same id; the metadata
+# write is conditional so the second one notices, and it retries with the next
+# second's id rather than overwriting the first run (and sharing its input
+# prefix, which is what merged two A/B arms into one run — #879). The shape is
+# kept because the UI and the GSI backfill parse ``-\d{8}-\d{6}`` out of object
+# keys; a millisecond or random suffix would change every consumer of the id.
+_MAX_TEST_RUN_ID_ATTEMPTS = 10
+
+
+class TestRunIdTaken(Exception):
+    """A run with this id already exists; the caller should pick another."""
+
+
+def _caller_in_groups(event, allowed):
+    """Defense-in-depth RBAC check against the caller's Cognito groups.
+
+    The schema restricts this field via @aws_cognito_user_pools(cognito_groups),
+    but we also enforce the group server-side so the operation is never reachable
+    by an unauthorized caller even if the schema directive is missing or
+    misconfigured (e.g. the prior @aws_auth directive, which AppSync silently
+    ignores on a multi-auth API).
+    """
+    groups = (event.get("identity") or {}).get("claims", {}).get("cognito:groups") or []
+    if isinstance(groups, str):
+        groups = [groups]
+    return bool(set(allowed).intersection(groups))
+
+
+def handler(event, context):
+    logger.info(
+        f"Test runner invoked with event: {json.dumps(sanitize_event_for_logging(event))}"
+    )
+
+    try:
+        # Defense-in-depth: startTestRun is an Admin+Author operation.
+        # Allow direct Lambda invocations (no 'identity' field or identity=None) for CI/automation.
+        # AppSync invocations always have 'identity' with non-None value, so RBAC is still enforced for UI users.
+        # Security: Direct invocation path is gated by IAM (lambda:InvokeFunction permission on this ARN),
+        # not Cognito groups. CI/automation uses IAM credentials; UI users go through AppSync + Cognito.
+        is_appsync_invoke = event.get("identity") is not None
+        if is_appsync_invoke and not _caller_in_groups(event, ("Admin", "Author")):
+            raise Exception(
+                "Unauthorized: this operation requires Admin or Author group"
+            )
+
+        # Route by GraphQL field. startTestRun is the default/legacy path.
+        field_name = event.get("info", {}).get("fieldName", "startTestRun")
+        if field_name == "sendTestRunToReview":
+            return send_test_run_to_review(event["arguments"])
+
+        input_data = event["arguments"]["input"]
+        test_set_id = input_data["testSetId"]
+        test_context = input_data.get("context", "")
+
+        # Validate context length
+        if test_context and len(test_context) > 500:
+            raise ValueError("Context cannot exceed 500 characters")
+
+        number_of_files = input_data.get("numberOfFiles")
+        # Names exactly which documents to process, where numberOfFiles takes the
+        # first N of the set.
+        object_keys = input_data.get("objectKeys") or []
+        document_class = input_data.get("documentClass")
+        config_version = input_data.get("configVersion")
+        # Revision of that profile to score against. Pinning it is what makes two
+        # runs of the same profile comparable — otherwise a run records only which
+        # profile it used, and a later save silently changes what that meant.
+        config_revision = input_data.get("configRevision")
+        # A draft-labeling run produces ground truth rather than being scored
+        # against it, so it is never evaluated. Carried as its own flag; the
+        # free-text `context` is a user-facing label and must not be load-bearing.
+        purpose = "draft-labeling" if input_data.get("draftLabeling") else "scoring"
+        tracking_table = os.environ["TRACKING_TABLE"]
+        config_table = os.environ["CONFIG_TABLE"]
+
+        # Get test set
+        test_set = _get_test_set(tracking_table, test_set_id)
+        if not test_set:
+            raise ResourceNotFound(f"Test set with ID '{test_set_id}' not found")
+
+        # Determine actual file count to process
+        test_set_file_count = test_set["fileCount"]
+        if int(test_set_file_count or 0) <= 0:
+            raise ValueError(
+                f"Test set '{test_set_id}' has no documents to run; add documents "
+                "to it first"
+            )
+        files_to_process = test_set_file_count
+
+        if object_keys:
+            if len(object_keys) > test_set_file_count:
+                raise ValueError(
+                    f"objectKeys ({len(object_keys)}) cannot exceed test set file "
+                    f"count ({test_set_file_count})"
+                )
+            files_to_process = len(object_keys)
+
+        if number_of_files is not None:
+            if number_of_files <= 0:
+                raise ValueError("numberOfFiles must be greater than 0")
+            if number_of_files > test_set_file_count:
+                raise ValueError(
+                    f"numberOfFiles ({number_of_files}) cannot exceed test set file count ({test_set_file_count})"
+                )
+            files_to_process = min(number_of_files, files_to_process)
+
+        # The run id is reserved when its metadata is written (below), so a
+        # collision with a run submitted in the same second is caught there.
+        submitted_at = datetime.now(timezone.utc)
+
+        # Resolve first, then capture, so the version is recorded on the run whether
+        # or not the caller named one. Passing the resolved name through also keeps
+        # this to a single scan of the config table.
+        effective_config_version = config_version or _active_config_version(
+            config_table
+        )
+        # A profile the caller named must exist. Without this the run was created
+        # anyway — an empty captured config, the profile stamped onto every
+        # document — and each document then failed in OCR, minutes later, with
+        # an error that pointed at IAM rather than at the missing profile (#878).
+        if config_version:
+            _require_profile(config_table, config_version)
+        # Resolve the profile's current revision when the caller did not name one,
+        # for the same reason the version is resolved here: the run must record
+        # which configuration it actually ran, not "whatever was current".
+        effective_config_revision = config_revision
+        if effective_config_revision is None and effective_config_version:
+            effective_config_revision = _published_revision(
+                config_table, effective_config_version
+            )
+        config = _capture_config(
+            config_table, effective_config_version, effective_config_revision
+        )
+
+        # Which labels this run is scored against. Default: the set's CURRENT labels,
+        # including any annotation in progress. Defaulting to the last published
+        # version instead made the ordinary loop — correct twenty documents, run, see
+        # the improvement — silently score the labels from before the corrections,
+        # while the review-effort panel invited exactly that loop. Pinning is explicit,
+        # as it is for the configuration revision above, and is what keeps two runs
+        # comparable once the ground truth has moved. The copier stages a pinned
+        # version's snapshot and the live baselines otherwise.
+        test_set_version = input_data.get("testSetVersion")
+        test_set_draft_version = None
+        if test_set_version is not None:
+            test_set_version = int(test_set_version)
+            latest_version = int(test_set.get("latestVersion") or 0)
+            if test_set_version < 1 or test_set_version > latest_version:
+                raise ValueError(
+                    f"testSetVersion {test_set_version} does not exist for test set "
+                    f"'{test_set_id}' (latest is {latest_version})"
+                )
+        elif test_set.get("draftVersion") is not None:
+            test_set_draft_version = int(test_set["draftVersion"])
+
+        # Store initial test run metadata. This is also where the id is
+        # reserved: the write refuses to overwrite an existing run, and a
+        # collision moves the id to the next second and tries again.
+        test_run_id = _reserve_test_run_id(
+            test_set["name"],
+            submitted_at,
+            lambda run_id: _store_test_run_metadata(
+                tracking_table,
+                run_id,
+                test_set_id,
+                test_set["name"],
+                config,
+                [],
+                test_context,
+                files_to_process,
+                effective_config_version,
+                test_set_version,
+                purpose=purpose,
+                config_revision=effective_config_revision,
+                test_set_draft_version=test_set_draft_version,
+            ),
+        )
+
+        # Send file copying job to SQS queue
+        queue_url = os.environ["FILE_COPY_QUEUE_URL"]
+
+        message_body = {
+            "testRunId": test_run_id,
+            "testSetId": test_set_id,
+            "trackingTable": tracking_table,
+            # Always pass the intended file count (default = test_set.fileCount,
+            # override = user's numberOfFiles, or len(objectKeys) when the caller
+            # named specific documents). The copier must cap the S3 listing to
+            # this count so that Files (the actual copied list) stays aligned
+            # with FilesCount (the metadata denominator) even when the
+            # underlying S3 test-set folder has drifted past the test set's
+            # declared fileCount — e.g. a user uploaded extra samples without
+            # bumping fileCount. Without this cap the copier would ingest every
+            # object under testset#<id>/input/, poll would report "N/K
+            # completed" where N > K, and the run's "Files" list would include
+            # documents that were never part of this test set.
+            #
+            # int() cast is load-bearing: test_set['fileCount'] is a
+            # DynamoDB ``Decimal`` (DDB's only numeric type), which
+            # ``json.dumps`` rejects with "Object of type Decimal is not JSON
+            # serializable" when we serialize the message body.
+            "filesToProcess": int(files_to_process),
+        }
+
+        # Only include numberOfFiles if it was specified
+        if number_of_files is not None:
+            message_body["numberOfFiles"] = number_of_files
+
+        if object_keys:
+            message_body["objectKeys"] = object_keys
+
+        # Pin the resolved version, not just an explicitly-requested one: the copier
+        # stamps this onto each object and the pipeline processes under it, so
+        # leaving it unset let the active config change between submit and
+        # processing — and the run's recorded ConfigVersion would then name a config
+        # the documents were never processed with.
+        if effective_config_version is not None:
+            message_body["configVersion"] = effective_config_version
+        # The copier stamps this onto each object, so the documents process under
+        # the exact revision the run says it scored.
+        if effective_config_revision is not None:
+            message_body["configRevision"] = int(effective_config_revision)
+        # The version this run scores against, so the copier stages that version's
+        # baseline snapshot rather than the set's current labels. Same reasoning as
+        # configVersion above: the run records what it scored against, so it has to read
+        # what it recorded.
+        if test_set_version is not None:
+            message_body["testSetVersion"] = int(test_set_version)
+
+        # The copier must not stage baselines for a draft-labeling run: the baseline
+        # is what the run is creating, so scoring against it would compare the
+        # extraction to a stale copy of itself.
+        if purpose == "draft-labeling":
+            message_body["purpose"] = purpose
+
+        # A single-document re-extract after a class correction. Passed straight
+        # through to the copier, which stamps it as S3 metadata so the
+        # classification step uses it instead of classifying again — the whole
+        # point of the request is that the model's own answer was wrong.
+        if document_class:
+            message_body["documentClass"] = document_class
+
+        sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(message_body))
+
+        logger.info(
+            f"Queued test run {test_run_id} for test set {test_set_id} with {files_to_process} files"
+        )
+
+        # Return immediately
+        return {
+            "testRunId": test_run_id,
+            "testSetName": test_set["name"],
+            "status": "QUEUED",
+            "filesCount": files_to_process,
+            "completedFiles": 0,
+            "createdAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        }
+
+    except ResourceNotFound as e:
+        # WARNING, not ERROR: a caller naming a test set, run or profile that does
+        # not exist is an ordinary outcome, and the same choice `api_adapter` makes
+        # for this class. Letting it fall into the catch-all below would put every
+        # 404 into the error channel — the noise-in-the-wrong-channel problem one
+        # level down from the 500-for-a-not-found this convention exists to fix.
+        logger.warning(f"Not found in test runner: {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"Error in test runner: {str(e)}")
+        raise
+
+
+def send_test_run_to_review(args):
+    """Mark a completed test run's documents for HITL review, on demand.
+
+    A test run's inputs are copied into the pipeline under a ``{test_run_id}/``
+    prefix, so each becomes a first-class ``doc#`` item with confidence alerts.
+    This flips those docs into the review hopper (HITLTriggered /
+    HITLStatus=PendingReview) without waiting for the confidence-only
+    auto-trigger. Only docs that have confidence alerts are queued.
+    """
+    test_run_id = args["testRunId"]
+    tracking_table = os.environ["TRACKING_TABLE"]
+    table = dynamodb.Table(tracking_table)  # type: ignore[attr-defined]
+
+    run = table.get_item(Key={"PK": f"testrun#{test_run_id}", "SK": "metadata"}).get(
+        "Item"
+    )
+    if not run:
+        raise ResourceNotFound(f"Test run '{test_run_id}' not found")
+
+    files = run.get("Files") or []
+    queued = 0
+    skipped = 0
+    for file_name in files:
+        object_key = f"{test_run_id}/{file_name}"
+        doc = table.get_item(Key={"PK": f"doc#{object_key}", "SK": "none"}).get("Item")
+        if not doc:
+            skipped += 1
+            continue
+
+        # Never reopen a review that is already completed or skipped.
+        alert_count = int(doc.get("ConfidenceAlertCount", 0) or 0)
+        status = doc.get("HITLStatus", "")
+        if alert_count <= 0 or status in (
+            "Review Completed",
+            "Review Skipped",
+            "Completed",
+            "Skipped",
+        ):
+            skipped += 1
+            continue
+
+        table.update_item(
+            Key={"PK": f"doc#{object_key}", "SK": "none"},
+            UpdateExpression=(
+                "SET HITLTriggered = :t, HITLStatus = :s, TestSetId = :tsid"
+            ),
+            ExpressionAttributeValues={
+                ":t": True,
+                ":s": "PendingReview",
+                ":tsid": run.get("TestSetId"),
+            },
+        )
+        queued += 1
+
+    logger.info(
+        f"send_test_run_to_review: run={test_run_id} queued={queued} skipped={skipped}"
+    )
+    return {
+        "testRunId": test_run_id,
+        "testSetId": run.get("TestSetId"),
+        "queuedCount": queued,
+        "skippedCount": skipped,
+    }
+
+
+def _get_test_set(tracking_table, test_set_id):
+    """Get test set by ID"""
+    table = dynamodb.Table(tracking_table)  # type: ignore[attr-defined]
+
+    try:
+        response = table.get_item(
+            Key={"PK": f"testset#{test_set_id}", "SK": "metadata"}
+        )
+        return response.get("Item")
+    except Exception as e:
+        logger.error(f"Error getting test set {test_set_id}: {e}")
+        return None
+
+
+def _decompress_config_item(item):
+    """
+    Decompress a DynamoDB config item if it uses compressed storage format.
+
+    Kept inline rather than imported from idp_common. NOT because the library is
+    unavailable — this function carries IDPCommonBaseLayer and already imports
+    ``idp_common.config.configuration_manager`` below, plus
+    ``idp_common.utils.log_sanitizer`` at module scope — but because this is a
+    small, stable decode of a storage format the resolver only reads. The
+    stronger reason to reach for idp_common would be if the compressed format
+    changed; if that happens, import the library version instead of editing this.
+    """
+    if item.get("_config_storage") != "compressed":
+        return item  # Legacy inline format — return as-is
+
+    compressed_data = item.get("_compressed_config")
+    if compressed_data is None:
+        return item
+
+    raw_bytes = (
+        bytes(compressed_data)
+        if not isinstance(compressed_data, bytes)
+        else compressed_data
+    )
+
+    try:
+        # parse_float=Decimal, for the same reason _capture_config gives for a
+        # pinned revision: this config is written straight into the run's
+        # DynamoDB item, and the resource client rejects Python floats ("Float
+        # types are not supported. Use Decimal types instead."). A compressed
+        # config carrying any non-integer number failed every startTestRun at
+        # submit until this matched the revision path. Two shipped presets still
+        # carry one: `unified/ds11-passport-application` (seven
+        # x-aws-idp-evaluation-threshold values) and `unified/rvl-cdip-package-sample`
+        # (three x-aws-idp-confidence-threshold values). Both reproduce it through
+        # this exact path -- gzip, json.dumps, then json.loads WITHOUT
+        # parse_float=Decimal yields seven and three Python floats respectively, and
+        # zero with it. test_compressed_config_floats.py is the deterministic
+        # reproduction; those two are the live ones.
+        config_data = json.loads(
+            gzip.decompress(raw_bytes).decode("utf-8"), parse_float=Decimal
+        )
+    except Exception as e:
+        logger.error(f"Failed to decompress config data: {e}")
+        return item
+
+    # Reconstruct: metadata fields + decompressed config data
+    metadata_fields = {
+        "Configuration",
+        "CreatedAt",
+        "UpdatedAt",
+        "IsActive",
+        "Description",
+    }
+    full_item = {k: v for k, v in item.items() if k in metadata_fields}
+    full_item.update(config_data)
+    return full_item
+
+
+# Ceiling on pages walked looking for the active config row. Each page examines
+# ~1MB of items and projects a single attribute, so this is far more versions than
+# a deployment holds.
+_MAX_CONFIG_SCAN_PAGES = 50
+
+
+def _resolve_active_config_key(table):
+    """Return the key ('Config#<version>') of the IsActive=true row, or None.
+
+    Paginates, and projects only the key. DynamoDB applies the 1MB page size to
+    the items EXAMINED, not the items matching FilterExpression, so an
+    unpaginated scan finds the active row only when it lands in the first page —
+    and an unprojected one reads whole config bodies, fitting only a handful of
+    versions per page. Missing the active row here captures the WRONG
+    configuration into the test run's metadata, so its comparisons are scored
+    against a config the documents were not processed under. See #599.
+    """
+    scan_kwargs = {
+        "FilterExpression": (
+            "begins_with(Configuration, :config_prefix) AND IsActive = :active"
+        ),
+        "ExpressionAttributeValues": {":config_prefix": "Config#", ":active": True},
+        "ProjectionExpression": "Configuration",
+    }
+    # Bounded: an unbounded paging loop spins forever if the table ever returns a
+    # repeating LastEvaluatedKey, and it hangs rather than fails under a mocked
+    # table, which is far harder to diagnose than a wrong answer.
+    for _ in range(_MAX_CONFIG_SCAN_PAGES):
+        response = table.scan(**scan_kwargs)
+        for item in response.get("Items", []):
+            return item["Configuration"]
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key or last_key == scan_kwargs.get("ExclusiveStartKey"):
+            return None
+        scan_kwargs["ExclusiveStartKey"] = last_key
+    logger.warning(
+        "No active config version found within %d scan pages; giving up",
+        _MAX_CONFIG_SCAN_PAGES,
+    )
+    return None
+
+
+def _active_config_version(config_table):
+    """Name of the active config version, or None.
+
+    Resolved before capture so the run's ``ConfigVersion`` is recorded even when the
+    caller did not name a version. Without it every run started against "Active
+    configuration" — the UI default — stored no version at all, which silently
+    disables anything comparing a run's config to another's: notably the guard that
+    refuses to score a config against the labels that same config drafted.
+    """
+    key = _resolve_active_config_key(dynamodb.Table(config_table))  # type: ignore[attr-defined]
+    if not key or not key.startswith("Config#"):
+        return None
+    return key[len("Config#") :] or None
+
+
+def _published_revision(config_table, config_version):
+    """The profile's current revision, or None when it has no history.
+
+    None is normal: an older deployment, or a profile untouched since the upgrade
+    that introduced revisions. The run then records no revision and the documents
+    process under the profile head, exactly as before.
+    """
+    try:
+        table = dynamodb.Table(config_table)  # type: ignore[attr-defined]
+        item = (
+            table.get_item(
+                Key={"Configuration": f"Config#{config_version}"},
+                ProjectionExpression="PublishedRevision",
+            ).get("Item")
+            or {}
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Could not resolve the published revision: {e}")
+        return None
+    published = item.get("PublishedRevision")
+    if published is None:
+        return None
+    try:
+        return int(published)
+    except (TypeError, ValueError):
+        logger.warning(f"Ignoring unusable PublishedRevision {published!r}")
+        return None
+
+
+def _require_profile(config_table, config_version):
+    """Raise ``ResourceNotFound`` unless the configuration profile head exists."""
+    table = dynamodb.Table(config_table)  # type: ignore[attr-defined]
+    item = table.get_item(
+        Key={"Configuration": f"Config#{config_version}"},
+        ProjectionExpression="Configuration",
+    ).get("Item")
+    if not item:
+        raise ResourceNotFound(f"Configuration profile '{config_version}' not found")
+
+
+def _pin_revision(config_table, config_version, revision):
+    """Mark a revision as pinned so retention cannot prune it.
+
+    A comparison between two runs is only interpretable while both runs'
+    configurations still exist, and the default retention window is 20 revisions.
+    Best-effort: failing to mark it must not fail the run.
+    """
+    try:
+        from idp_common.config.configuration_manager import ConfigurationManager
+
+        ConfigurationManager(table_name=config_table).mark_revision_pinned(
+            config_version, revision
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            f"Could not pin r{revision} of '{config_version}' against retention: {e}"
+        )
+
+
+def _capture_config(config_table, config_version=None, config_revision=None):
+    """Capture configuration - specific revision, specific profile, or active"""
+    table = dynamodb.Table(config_table)  # type: ignore[attr-defined]
+
+    config = {}
+
+    # A pinned revision is captured from its stored body, so the run records the
+    # configuration it actually scored rather than the profile's current state.
+    #
+    # A revision that cannot be read fails the run HERE, at submit time. It used
+    # to be a warning with a fallback to the profile head — "capture is for the
+    # record, not for processing" — but the revision was still stamped onto every
+    # document, and the pipeline (rightly) refuses to process a pinned revision
+    # it cannot read, so the run was doomed: N failed documents instead of one
+    # error at submit (#878).
+    if config_version and config_revision is not None:
+        from idp_common.config.configuration_manager import (
+            EXPIRED_REVISION_REMEDY,
+            ConfigurationManager,
+        )
+
+        try:
+            body = ConfigurationManager(table_name=config_table).get_revision(
+                config_version, config_revision
+            )
+        except Exception as e:  # noqa: BLE001
+            raise ValueError(
+                f"Could not read revision r{config_revision} of configuration "
+                f"profile '{config_version}': {e}"
+            ) from e
+        if body is None:
+            raise ValueError(
+                f"Revision r{config_revision} of configuration profile "
+                f"'{config_version}' is not available (deleted, pruned, expired "
+                f"under the Configuration bucket's DataRetentionInDays lifecycle "
+                f"rule, or never existed). {EXPIRED_REVISION_REMEDY} A test run is "
+                f"pinned when it is submitted, so once a new revision exists, "
+                f"resubmit the run pinned to it."
+            )
+        # A revision body is JSON, so it carries Python floats (e.g.
+        # temperature: 0.0). The captured config is written straight into the
+        # run's DynamoDB item, and the DynamoDB resource client rejects floats
+        # outright — "Float types are not supported. Use Decimal types
+        # instead." — which failed every startTestRun that pinned a revision.
+        # The config read from DynamoDB never hit this because it comes back as
+        # Decimal already.
+        config["Config"] = json.loads(json.dumps(body), parse_float=Decimal)
+        _pin_revision(config_table, config_version, config_revision)
+        return config
+
+    # Get Config (versioned) - this is what's used for comparisons
+    try:
+        if config_version:
+            key = f"Config#{config_version}"
+        else:
+            # Get active config version - scan for IsActive=True. The scan only
+            # locates the key; the body is read with GetItem below, so the
+            # projected scan stays cheap however large the configs are.
+            key = _resolve_active_config_key(table)
+            if not key:
+                logger.warning("No active config version found after a full scan")
+                return config
+        response = table.get_item(Key={"Configuration": key})
+        if "Item" in response:
+            config["Config"] = _decompress_config_item(response["Item"])
+        else:
+            logger.warning(f"Config {key} not found")
+
+    except Exception as e:
+        logger.warning(f"Could not retrieve Config: {e}")
+
+    return config
+
+
+def _test_run_id(test_set_name, at):
+    """``<test set name>-YYYYMMDD-HHMMSS`` for the moment ``at`` (UTC)."""
+    return f"{test_set_name}-{at.strftime('%Y%m%d-%H%M%S')}"
+
+
+def _reserve_test_run_id(test_set_name, submitted_at, store):
+    """Pick a run id no existing run holds, by writing the run's metadata.
+
+    ``store(run_id)`` must write the run item conditionally and raise
+    ``TestRunIdTaken`` when a run with that id already exists. On a collision
+    the id's timestamp component is advanced by one second and the write is
+    retried — the id then names a moment up to a few seconds after
+    ``CreatedAt``, which is recorded separately and stays exact.
+    """
+    for attempt in range(_MAX_TEST_RUN_ID_ATTEMPTS):
+        run_id = _test_run_id(test_set_name, submitted_at + timedelta(seconds=attempt))
+        try:
+            store(run_id)
+        except TestRunIdTaken:
+            logger.info(
+                f"Test run id {run_id} is already in use; trying the next second"
+            )
+            continue
+        return run_id
+    raise RuntimeError(
+        f"Could not allocate a unique test run id for test set "
+        f"'{test_set_name}' after {_MAX_TEST_RUN_ID_ATTEMPTS} attempts"
+    )
+
+
+def _confidence_fingerprint_of(config):
+    """``confidence_fingerprint`` of a captured ``{"Config": <body>}``, or None.
+    Best effort — a run must never fail over a curve key."""
+    body = config.get("Config") if isinstance(config, dict) else None
+    if not isinstance(body, dict) or not body:
+        return None
+    try:
+        from idp_common.config.revisions import confidence_fingerprint
+
+        return confidence_fingerprint(body)
+    except Exception as e:  # noqa: BLE001 — never fail a run over a curve key
+        logger.warning(f"Could not compute confidence fingerprint: {e}")
+        return None
+
+
+_CONFIG_STORAGE_MARKER = "_config_storage"
+_CONFIG_STORAGE_COMPRESSED = "compressed"
+_COMPRESSED_CONFIG_FIELD = "_compressed_config"
+_MAX_COMPRESSED_CONFIG_BYTES = 300 * 1024
+
+
+def _json_default(value):
+    """``json.dumps`` fallback for the captured-config round trip.
+
+    Decimals coerce to int/float (preserving integer-ness where possible).
+    Non-finite Decimals (``NaN``, ``Infinity``, ``-Infinity``) raise a
+    clear ``ValueError`` — they cannot round-trip through JSON at all,
+    and ``value % 1`` on them would otherwise raise the cryptic
+    ``decimal.InvalidOperation`` before the equality check is even
+    evaluated, failing ``startTestRun`` with a stack trace that hides
+    the real problem.
+
+    Common Python-native types (``datetime`` / ``date`` / ``time``,
+    ``UUID``, ``bytes``, ``set``) are handled by explicit converters
+    with documented round-trip semantics; genuinely-unknown types raise
+    ``TypeError`` so they surface loudly rather than being silently
+    coerced to a ``str()`` repr that corrupts the round-trip.
+    """
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError(
+                f"Config contains non-finite Decimal {value!r}; JSON "
+                f"cannot represent NaN/Infinity. Fix the config source."
+            )
+        # Convert to float FIRST — this catches magnitudes outside float64's
+        # range (subnormals underflow to ``0.0``, huge values overflow to
+        # ``inf``). Doing the integer test first would itself raise
+        # ``decimal.InvalidOperation`` on very-large-but-float-finite
+        # Decimals like ``Decimal('1E30')`` (31 digits > default context
+        # prec of 28; the internal division-with-remainder overflows the
+        # context even though ``float(1E30)`` is a fine 1e+30).
+        result = float(value)
+        if not math.isfinite(result):
+            raise ValueError(
+                f"Config contains a Decimal {value!r} that overflows to "
+                f"{result} when converted to float; JSON cannot represent "
+                f"infinity. Fix the config source."
+            )
+        if result == 0.0 and value != 0:
+            raise ValueError(
+                f"Config contains a Decimal {value!r} that underflows to "
+                f"0.0 when converted to float; JSON cannot preserve the "
+                f"value. Fix the config source (avoid subnormal magnitudes)."
+            )
+        # ``value == value.to_integral_value()`` rather than ``value % 1
+        # == 0`` — the modulo path raises ``InvalidOperation`` /
+        # ``DivisionImpossible`` on Decimals whose coefficient exceeds
+        # the current context precision (default 28 digits), which
+        # includes float-representable values like ``Decimal('1E30')``.
+        # ``to_integral_value`` is a rounding op with no arithmetic
+        # precision requirement, so it never trips on that path.
+        if value == value.to_integral_value():
+            return int(value)
+        return result
+    # Explicit converters for common Python-native types that ``json.dumps``
+    # doesn't handle natively. Historically ``_json_default`` fell through
+    # to ``str(value)`` for anything unrecognized — which meant configs
+    # containing ``datetime``, ``bytes``, ``UUID`` or ``set`` values
+    # serialized cleanly via their ``str()`` repr. A prior round replaced
+    # that with a blanket ``raise TypeError`` to surface unexpected types
+    # loudly, but that broke previously-working configs at
+    # ``startTestRun`` with no fallback. The right shape is EXPLICIT
+    # converters for the types that actually appear (each with a
+    # documented round-trip semantic) and a loud ``TypeError`` for
+    # everything else — configs get their known types converted, and
+    # genuinely-surprising types still raise where they should.
+    import datetime as _dt
+    import uuid as _uuid
+    import base64 as _b64
+
+    if isinstance(value, (_dt.datetime, _dt.date, _dt.time)):
+        # ISO-8601 — read-back is a string, not a datetime; that mirrors
+        # how DDB itself hands date-like fields back to callers.
+        return value.isoformat()
+    if isinstance(value, _uuid.UUID):
+        return str(value)
+    if isinstance(value, (bytes, bytearray)):
+        # base64 preserves round-trip fidelity; ``str(bytes)`` would emit
+        # ``"b'...'"`` which is neither valid data nor decodable.
+        return _b64.b64encode(bytes(value)).decode("ascii")
+    if isinstance(value, (set, frozenset)):
+        return (
+            sorted(value)
+            if all(isinstance(v, (str, int, float)) for v in value)
+            else list(value)
+        )
+    # Genuinely-surprising types raise so the failure is loud and named
+    # rather than silently coerced to a repr that corrupts the round-trip.
+    # Pinned by ``test_non_decimal_non_json_types_raise_typeerror_not_silent_str``.
+    raise TypeError(
+        f"Config contains a value of type {type(value).__name__} that is "
+        f"not JSON-serialisable and has no registered converter: {value!r}"
+    )
+
+
+def _compress_captured_config(config):
+    """gzip the captured ``{"Config": <body>}`` for the run's DynamoDB item.
+
+    Same storage shape as the configuration table, so a profile that fits
+    there also fits on every run that captures it. Raises ValueError when even
+    the compressed body would crowd out the attributes written to the item
+    later (the copier's Files list, the cached testRunResult aggregate).
+    """
+    raw = json.dumps(config, default=_json_default, separators=(",", ":")).encode(
+        "utf-8"
+    )
+    compressed = gzip.compress(raw)
+    logger.info(
+        f"Captured configuration: {len(raw):,} bytes -> {len(compressed):,} bytes "
+        "compressed"
+    )
+    if len(compressed) > _MAX_COMPRESSED_CONFIG_BYTES:
+        raise ValueError(
+            f"Configuration is too large to record on a test run: "
+            f"{len(compressed):,} bytes after compression "
+            f"({len(raw):,} bytes raw); the limit is "
+            f"{_MAX_COMPRESSED_CONFIG_BYTES:,} bytes. Reduce the configuration "
+            "profile (fewer classes, shorter prompts or descriptions) and retry."
+        )
+    return compressed
+
+
+def _store_test_run_metadata(
+    tracking_table,
+    test_run_id,
+    test_set_id,
+    test_set_name,
+    config,
+    files,
+    context=None,
+    file_count=0,
+    config_version=None,
+    test_set_version=None,
+    purpose="scoring",
+    config_revision=None,
+    test_set_draft_version=None,
+):
+    """Store test run metadata in tracking table"""
+    table = dynamodb.Table(tracking_table)  # type: ignore[attr-defined]
+
+    try:
+        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        item = {
+            "PK": f"testrun#{test_run_id}",
+            "SK": "metadata",
+            "ItemType": "testrun",
+            "InitialEventTime": created_at,
+            "TestSetId": test_set_id,
+            "TestSetName": test_set_name,
+            "TestRunId": test_run_id,
+            "Status": "QUEUED",
+            "FilesCount": file_count,
+            "CompletedFiles": 0,
+            "FailedFiles": 0,
+            "Files": files,
+            _CONFIG_STORAGE_MARKER: _CONFIG_STORAGE_COMPRESSED,
+            _COMPRESSED_CONFIG_FIELD: _compress_captured_config(config),
+            "CreatedAt": created_at,
+        }
+
+        # Persisted so downstream resolvers can tell a scoring run from one that
+        # CREATES the baseline. Without it the only marker was the free-text
+        # Context string ("Draft labeling run"), which a user can type themselves
+        # and which nothing guarantees.
+        #
+        # A PARAMETER, not a read of the caller's local. It was written as the
+        # latter, which is a NameError on every call — and since the except below
+        # re-raises, that failed every test run start outright.
+        item["Purpose"] = purpose
+
+        if context:
+            item["Context"] = context
+
+        if config_version:
+            item["ConfigVersion"] = config_version
+
+        if test_set_version is not None:
+            item["TestSetVersion"] = test_set_version
+        # Recorded when the run scored current labels while a transition was open,
+        # so the result can name the version those labels were heading toward.
+        if test_set_draft_version is not None:
+            item["TestSetDraftVersion"] = int(test_set_draft_version)
+
+        # Recorded alongside TestSetVersion: together they make a metric delta
+        # between two runs attributable to the configuration or the ground truth
+        # rather than ambiguous.
+        if config_revision is not None:
+            item["ConfigRevision"] = int(config_revision)
+
+        # The confidence fingerprint of the configuration this run captured: a
+        # hash of the confidence-relevant subset (extraction model and sampling,
+        # assessment settings). Test Studio keys confidence curves by it (#698),
+        # and this is the only Lambda in that loop with the configuration in
+        # hand, so it is computed here and copied onto labels by the harvest.
+        fingerprint = _confidence_fingerprint_of(config)
+        if fingerprint:
+            item["ConfidenceFingerprint"] = fingerprint
+
+        try:
+            # Never overwrite an existing run: two submissions in the same
+            # second produce the same id, and the loser used to silently
+            # replace the winner's metadata (#879).
+            table.put_item(Item=item, ConditionExpression="attribute_not_exists(PK)")
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code", "")
+            if code == "ConditionalCheckFailedException":
+                raise TestRunIdTaken(test_run_id) from e
+            raise
+        logger.info(f"Stored test run metadata for {test_run_id}")
+    except TestRunIdTaken:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to store test run metadata: {e}")
+        raise

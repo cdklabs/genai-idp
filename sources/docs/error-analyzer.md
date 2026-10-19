@@ -58,12 +58,18 @@ flowchart TD
     
     DocAnalysis --> Result[Analysis Result]
     SysAnalysis --> Result
-    Result -->|GraphQL Subscription| UI
+    Result -->|polled every 2s via getAgentJobStatus| UI
 ```
 
 ### Tool Ecosystem
 
-The Error Analyzer uses 8 specialized tools organized in a modular architecture:
+The Error Analyzer uses a set of specialized tools organized in a modular
+architecture. These include CloudWatch log search, DynamoDB document-record
+lookup, Step Functions execution analysis, X-Ray tracing, and
+`fetch_pipeline_configuration` — which returns the Bedrock model ID configured
+for each pipeline stage of a document's config version. The last is what lets
+the agent name the exact model behind a retired/unavailable-model error (the
+Bedrock error text itself does not name the model):
 
 ```mermaid
 flowchart LR
@@ -214,6 +220,31 @@ Example:
 </details>
 ```
 
+#### Reporting an Issue from the Modal
+
+When the analysis job reaches a terminal state (`COMPLETED` or `FAILED`), the
+Troubleshoot modal footer offers two additional actions:
+
+- **Report this issue on GitHub** — opens a pre-filled GitHub bug-report form in a
+  new tab, populated with the deployment environment (Region, Processing Mode,
+  Version/Build/Stack), the document context (object key, status, config version,
+  execution ARN, and any job error), and the agent's Markdown findings.
+- **Copy full details** — copies the complete environment + findings text to your
+  clipboard, for pasting content that the pre-filled URL can't carry (the issue link
+  length-caps the findings; the full transcript is not embedded in the URL).
+
+> **Privacy note:** GitHub issues on the public repository are visible to everyone,
+> and the findings can quote OCR'd document content. Nothing is submitted
+> automatically — review the pre-filled form and **redact any sensitive data**
+> before submitting. See [Feedback & Issue Reporting](web-ui.md#feedback--issue-reporting).
+
+The modal stays open until you press **Close** (an outside click or Esc no longer
+dismisses it, so a running analysis — which can take ~30 seconds — is not
+interrupted). Use **Minimize** to collapse it to a restore chip while the analysis
+finishes in the background. When the Error Analyzer is run from the
+[Agent Companion Chat](agent-companion-chat.md) instead, a **Create GitHub issue**
+button appears under the answer with the same bug/feature options.
+
 ### Query Patterns
 
 #### Document-Specific Queries
@@ -266,12 +297,12 @@ agents:
       model_id:
         type: string
         enum: [
-          "anthropic.claude-3-sonnet-20240229-v1:0",
-          "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-          "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-          "us.anthropic.claude-sonnet-4-20250514-v1:0"
+          "us.amazon.nova-pro-v1:0",
+          "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+          "us.anthropic.claude-sonnet-4-6"
         ]
-        default: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+        default: "us.anthropic.claude-sonnet-4-6"
       system_prompt:
         type: string
         format: textarea
@@ -292,15 +323,17 @@ agents:
 
 **Purpose**: Selects the Bedrock model for error analysis
 
-**Recommended**: `us.anthropic.claude-sonnet-4-20250514-v1:0`
+**Recommended**: `us.anthropic.claude-sonnet-4-6`
 - Superior reasoning for complex error diagnosis
 - Better structured output formatting
 - More accurate root cause identification
 
 **Alternative Options**:
-- `us.anthropic.claude-3-7-sonnet-20250219-v1:0`: Good balance of cost and capability
-- `us.anthropic.claude-3-5-sonnet-20241022-v2:0`: Cost-effective for simple errors
-- `anthropic.claude-3-sonnet-20240229-v1:0`: Legacy option
+- `us.anthropic.claude-haiku-4-5-20251001-v1:0`: Cost-effective for simple errors
+- `us.amazon.nova-pro-v1:0`: AWS-native option
+- `us.anthropic.claude-sonnet-4-5-20250929-v1:0`: Good balance of cost and
+  capability, but AWS has moved it to legacy (end of life 2027-04-08) and it
+  takes no further Service Quota increases
 
 #### system_prompt
 
@@ -364,7 +397,7 @@ For operational issues: Provide immediate troubleshooting steps
 ```yaml
 agents:
   error_analyzer:
-    model_id: us.anthropic.claude-sonnet-4-20250514-v1:0
+    model_id: us.anthropic.claude-sonnet-4-6
     system_prompt: |
       You are an intelligent error analysis agent for the GenAI IDP system.
       
@@ -425,7 +458,7 @@ For configuration issues, the agent directs users to the UI:
 Recommendations:
 • Navigate to Configuration panel in the Web UI
 • Update 'extraction.model' to use a higher-capacity model
-• Adjust 'assessment.granular.max_workers' from 4 to 2 to reduce memory pressure
+• Lower 'extraction.confidence.list_batch_size' from 25 to 10 to reduce per-inference load
 ```
 
 #### Operational Recommendations
@@ -604,7 +637,9 @@ stateDiagram-v2
 2. **Parent Tracking**: Component stores job state in parent
 3. **Modal Close**: Job continues running in background
 4. **Modal Reopen**: Automatically resumes displaying existing job
-5. **Status Updates**: Real-time updates via GraphQL subscription
+5. **Status Updates**: `TroubleshootModal.tsx` polls `getAgentJobStatus` every 2
+   seconds until the job reaches a terminal state; GraphQL subscriptions are not
+   used (`subscribeToJobCompletion` is a retained no-op that returns `null`)
 
 **User Experience**:
 - Users can close modal without losing analysis
@@ -769,13 +804,13 @@ Choose model based on error complexity:
 
 ```yaml
 # Simple validation errors, frequent analysis
-model_id: us.anthropic.claude-3-5-sonnet-20241022-v2:0
+model_id: us.anthropic.claude-haiku-4-5-20251001-v1:0
 
 # Complex multi-component failures, critical analysis
-model_id: us.anthropic.claude-sonnet-4-20250514-v1:0  # Recommended
+model_id: us.anthropic.claude-sonnet-4-6  # Recommended and the default
 
-# Legacy support only
-model_id: anthropic.claude-3-sonnet-20240229-v1:0
+# Still selectable, but AWS has moved it to legacy (end of life 2027-04-08)
+model_id: us.anthropic.claude-sonnet-4-5-20250929-v1:0
 ```
 
 #### Adjusting max_log_events
@@ -870,7 +905,7 @@ parameters:
    "ALWAYS format your response with exactly these three sections"
    
 2. Check model_id is using recommended Claude Sonnet 4:
-   us.anthropic.claude-sonnet-4-20250514-v1:0
+   us.anthropic.claude-sonnet-4-6
    
 3. If token limit reached, reduce max_log_events or time range
 ```
@@ -926,7 +961,11 @@ Check Lambda execution role has these permissions.
 
 ### Integration Points
 
-#### AppSync GraphQL API
+#### Web UI API operations
+
+These are the GraphQL-shaped operations the UI sends to `POST /op/{field}`; the
+names and argument shapes come from the retained schema contract in
+`nested/api-resolvers/src/api/schema.graphql`.
 
 **Mutations**:
 ```graphql
@@ -1200,10 +1239,11 @@ The Error Analyzer supports:
 ### Can I export analysis results?
 
 **Export Options**:
-1. **Copy from UI**: Select and copy formatted text
-2. **API Access**: Use `getAgentJobStatus` query
-3. **CloudWatch Logs**: Agent logs contain full results
-4. **Future Enhancement**: Export to PDF/JSON (roadmap)
+1. **Copy full details**: The Troubleshoot modal footer has a **Copy full details** button that copies the environment + findings as formatted text
+2. **Report this issue on GitHub**: Opens a pre-filled bug-report form with the findings and document context (see [Reporting an Issue from the Modal](#reporting-an-issue-from-the-modal))
+3. **Copy from UI**: Select and copy formatted text
+4. **API Access**: Use `getAgentJobStatus` query
+5. **CloudWatch Logs**: Agent logs contain full results
 
 ### How long are analysis results retained?
 

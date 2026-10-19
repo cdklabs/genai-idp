@@ -57,9 +57,10 @@ discovery:
       documents. Use provided ground truth data as reference to optimize field
       extraction and ensure consistency with expected document structure and
       field definitions.
-    max_tokens: "10000"
+    # Empty => use the selected model's maximum output limit (model_config_limits.yaml).
+    max_tokens: ""
     top_p: "0.1"
-    temperature: "1.0"
+    temperature: "0.0"
     user_prompt: >-
       This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference.
       <GROUND_TRUTH_REFERENCE>
@@ -76,6 +77,38 @@ discovery:
       Do not extract the values.
       Format the extracted data using the below JSON format:
       Format the extracted groups and fields using the below JSON format:
+  auto_split:
+    model_id: us.anthropic.claude-opus-4-6-v1:1m
+    system_prompt: >-
+      You are an expert document analyst. Your task is to identify
+      distinct document sections within a multi-page document package.
+      Return only valid JSON.
+    # Empty => use the selected model's maximum output limit (model_config_limits.yaml).
+    max_tokens: ""
+    top_p: "0.1"
+    temperature: "0.0"
+    user_prompt: >-
+      Analyze this multi-page document package. Identify the page boundaries
+      where different document types or sections begin and end.
+      For each distinct document section, provide:
+      - "start": the first page number (1-based)
+      - "end": the last page number (1-based)
+      - "type": a short label for the document type (e.g., "W2 Form", "Letter", "Invoice")
+      Return ONLY a JSON array, no other text:
+      [{"start": 1, "end": 2, "type": "Letter"}, {"start": 3, "end": 3, "type": "Invoice"}]
+  multi_document:
+    embedding_model_id: us.cohere.embed-v4:0
+    analysis_model_id: us.anthropic.claude-sonnet-4-6
+    temperature: "0.0"
+    # Empty => use the selected model's maximum output limit (model_config_limits.yaml).
+    max_tokens: ""
+    max_documents: 500
+    min_cluster_size: 2
+    num_sample_documents: 3
+    max_sample_size: 5
+    max_concurrent_embeddings: 5
+    max_concurrent_clusters: 3
+    system_prompt: ""
   without_ground_truth:
     model_id: us.amazon.nova-pro-v1:0
     system_prompt: >-
@@ -83,9 +116,10 @@ discovery:
       documents. Analyze forms line by line to identify field names, data types,
       and organizational structure. Focus on creating comprehensive blueprints
       for document processing without extracting actual values.
-    max_tokens: "10000"
+    # Empty => use the selected model's maximum output limit (model_config_limits.yaml).
+    max_tokens: ""
     top_p: "0.1"
-    temperature: "1.0"
+    temperature: "0.0"
     user_prompt: >-
       This image contains forms data. Analyze the form line by line.
       Image may contain multiple pages, process all the pages.

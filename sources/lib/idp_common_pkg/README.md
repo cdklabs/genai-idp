@@ -15,7 +15,7 @@ This README provides a high-level overview of the package. For detailed document
 - [**Extraction**](idp_common/extraction/README.md): Structured information extraction from documents
 - [**Evaluation**](idp_common/evaluation/README.md): Accuracy measurement against ground truth
 - [**Summarization**](idp_common/summarization/README.md): Document summary generation
-- [**AppSync**](idp_common/appsync/README.md): Document storage through GraphQL API
+- [**DynamoDB**](idp_common/dynamodb/README.md): Document tracking storage in the TrackingTable, plus the [document service factory](idp_common/docs_service_README.md) most Lambdas call
 - [**Reporting**](idp_common/reporting/README.md): Analytics data storage and management
 - [**BDA**](idp_common/bda/README.md): Integration with Bedrock Data Automation
 
@@ -29,16 +29,19 @@ This README provides a high-level overview of the package. For detailed document
 - **Extraction**: Structured field extraction using LLMs
 - **Evaluation**: Results comparison against ground truth
 - **Summarization**: Document summary generation
-- **AppSync**: GraphQL API integration for document storage
+- **DynamoDB**: Document tracking writes/reads against the TrackingTable, reached through the `docs_service` factory
+- **API adapter**: `idp_common.api_adapter`, which normalizes an API Gateway request into the resolver event shape for the UI's REST dispatcher
 - **Reporting**: Analytics data storage
 - **Discovery**: Automated document class schema generation using LLMs
+- **Document deletion**: `idp_common.delete_documents`, the one implementation the Web
+  UI resolver, the CLI and the SDK all delete through ([notes below](#document-deletion))
 
 ### AWS Service Clients
 
 - Bedrock client with retry logic
 - S3 client operations
 - CloudWatch metrics
-- AppSync client for GraphQL operations
+- DynamoDB client for TrackingTable operations
 
 ### Configuration
 
@@ -49,27 +52,39 @@ This README provides a high-level overview of the package. For detailed document
 
 ### Installation
 
-To minimize Lambda package size, install only the components you need:
+> ⚠️ **Always install from a local checkout — never by bare name.**
+> `idp_common` is first-party: it lives in this repo and is **not published to
+> PyPI**. The name `idp-common` on public PyPI is registered by an unrelated
+> third party, so `pip install idp_common` installs *someone else's package*.
+> Every command below therefore uses a path (`./` or `-e`). See
+> [Installing First-Party Packages Safely](../../docs/dependency-confusion.md).
+
+To minimize Lambda package size, install only the components you need. Run these
+from the repository root:
 
 ```bash
 # Install core functionality only (minimal dependencies)
-pip install "idp_common[core]"
+pip install -e "lib/idp_common_pkg[core]"
 
 # Install with specific component support
-pip install "idp_common[ocr]"
-pip install "idp_common[classification]"
-pip install "idp_common[extraction]"
-pip install "idp_common[evaluation]"
-pip install "idp_common[reporting]"
-pip install "idp_common[appsync]"
-pip install "idp_common[image]"
+pip install -e "lib/idp_common_pkg[ocr]"
+pip install -e "lib/idp_common_pkg[classification]"
+pip install -e "lib/idp_common_pkg[extraction]"
+pip install -e "lib/idp_common_pkg[evaluation]"
+pip install -e "lib/idp_common_pkg[reporting]"
+pip install -e "lib/idp_common_pkg[docs_service]"
+pip install -e "lib/idp_common_pkg[image]"
 
 # Install everything
-pip install "idp_common[all]"
+pip install -e "lib/idp_common_pkg[all]"
 
 # Install multiple components
-pip install "idp_common[ocr,classification]"
+pip install -e "lib/idp_common_pkg[ocr,classification]"
 ```
+
+To install every first-party package at once (the usual setup), use `make setup`
+— it installs them in a single pip invocation so the sibling names resolve
+locally rather than from an index.
 
 For Lambda functions, specify only the required components in requirements.txt:
 
@@ -82,7 +97,8 @@ For Lambda functions, specify only the required components in requirements.txt:
 ```python
 from idp_common import get_config
 from idp_common.models import Document
-from idp_common import ocr, classification, extraction, evaluation, appsync, reporting
+from idp_common import ocr, classification, extraction, evaluation, reporting
+from idp_common.docs_service import create_document_service
 
 # Get configuration (merged from Default and Custom records in the DynamoDb Configuration Table)
 cfg = get_config()
@@ -115,9 +131,9 @@ document = evaluation_service.evaluate_document(document, expected_document)
 reporter = reporting.SaveReportingData("reporting-bucket")
 reporter.save(document, data_to_save=["evaluation_results"])
 
-# Store document in AppSync
-appsync_service = appsync.DocumentAppSyncService()
-updated_document = appsync_service.update_document(document)
+# Record document state in the TrackingTable (DynamoDB)
+document_service = create_document_service()
+updated_document = document_service.update_document(document)
 ```
 
 ## 📦 Handling Large Documents
@@ -146,6 +162,58 @@ response = {
 ```
 
 See the [Core Data Models documentation](idp_common/README.md) for more details on document compression features.
+
+## Document deletion
+
+`idp_common.delete_documents` is the one implementation behind the Web UI's
+`deleteDocument` resolver, `idp-cli` and the SDK. `delete_single_document` removes a
+document's input object, all versions of its output objects, its list-index row, its
+run (version) records and its tracking record.
+
+Three things about it are worth knowing before you call it or extend it.
+
+**Every step records its own failure and the remaining steps still run, so `success` is
+`len(errors) == 0` rather than "the function returned".** A caller must read `success`;
+a call that returns is not a call that worked. The reason the steps are independent is
+that the cleanup spans S3 and DynamoDB and so cannot be one transaction — abandoning the
+rest of the cleanup after one fault leaves more behind than it removes.
+
+**One ordering rule is load bearing: the tracking record is kept when list-entry cleanup
+failed.** Every strategy for finding the list-index row is reached through that record's
+queued timestamp, so deleting it after a failed cleanup leaves the orphaned row
+unreachable — and the retry the reported failure asks for then finds no metadata, runs no
+strategy, and reports success with the row still listed.
+
+Note the bound: **only** a list-entry failure holds the record back. An S3 failure —
+either bucket — does not, so those cases delist the document while leaving objects
+behind. Calling `delete_single_document` again on the same key still completes the purge,
+because it re-lists the prefix and the surviving versions are found; what is gone is the
+route *from the web UI*, which has no row left to select. That asymmetry is why the purge
+accumulates its per-key refusals across every batch and reports after the last one rather
+than stopping at the first: a delete that reports a failure should not also have reclaimed
+less than one that said nothing.
+
+**A fault must not come back as a value a caller cannot distinguish from absence.** `[]`
+from the shard query means "this shard holds no entry for this document" and `False` from
+the cascade means "there was no entry to delete", so neither can also mean "the query
+failed" — those raise. The same applies at the S3 boundary and less obviously, because
+`DeleteObjects` answers HTTP 200 for a batch it refused entirely: per-key outcomes arrive
+in an `Errors` array and the service model declares no exception for them, so that array
+has to be read or a denied purge counts as a completed one.
+
+Two consequences for the deployment side. The output bucket is versioning-enabled, so the
+purge enumerates versions (`s3:ListBucketVersions`) and deletes them by version id
+(`s3:DeleteObjectVersion`) — **neither action is in SAM's `S3CrudPolicy`**, which grants
+the unversioned `s3:ListBucket` and `s3:DeleteObject`, so a role for this path needs them
+granted explicitly. And a sort key cannot appear in a `Query` `FilterExpression`:
+DynamoDB refuses it, so the selection of list rows belonging to a document is the
+client-side predicate `list_entry_names_document` rather than a server-side filter. That
+costs nothing a filter was saving, since a `FilterExpression` is applied after the items
+are read and consumes no extra read capacity. Note the asymmetry — `Scan` *does* permit
+key attributes in a filter, so a filtered scan naming `PK` or `SK` elsewhere is not the
+same mistake. `scripts/tests/test_dynamodb_query_filter_keys.py` guards the query form
+tree-wide, at source, because the expression is rejected by the service rather than by
+any library: neither a mock nor `moto` refuses it.
 
 ## ⚙️ Configuration
 

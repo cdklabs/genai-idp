@@ -9,6 +9,7 @@ import boto3
 import os
 import logging
 import cfnresponse
+from log_sanitizer import sanitize_event_for_logging
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -24,7 +25,7 @@ def lambda_handler(event, context):
     It can be triggered by CloudWatch Events or as a Custom Resource during CloudFormation deployment.
     """
 
-    logger.info(f"Received event: {json.dumps(event)}")
+    logger.info(f"Received event: {json.dumps(sanitize_event_for_logging(event))}")
 
     # Initialize response for CloudFormation custom resource
     if 'ResponseURL' in event:
@@ -100,7 +101,7 @@ def get_aws_ip_ranges(service):
     url = 'https://ip-ranges.amazonaws.com/ip-ranges.json'
     
     try:
-        response = urllib.request.urlopen(url)
+        response = urllib.request.urlopen(url)  # nosec B310 - hardcoded trusted AWS endpoint
         ip_ranges = json.loads(response.read().decode('utf-8'))
         
         # Extract IPv4 ranges for the specified service

@@ -1,0 +1,1 @@
+../../.claude/skills/extraction-pipeline.md

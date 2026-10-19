@@ -40,6 +40,11 @@ from .models import (
     AssessmentFieldGeometry,
     AssessmentGeometryResult,
     AssessmentMetrics,
+    # Discovery models
+    AutoDetectResult,
+    AutoDetectSection,
+    BaselineInfo,
+    BaselineResult,
     # Batch models
     BatchDeletionResult,
     BatchDownloadResult,
@@ -50,11 +55,27 @@ from .models import (
     BatchRerunResult,
     BatchResult,
     BatchStatus,
+    BucketInfo,
+    CancelUpdateResult,
+    # Chat models
+    ChatResponse,
     # Config models
+    ConfigActivateResult,
     ConfigCreateResult,
+    ConfigDeleteResult,
     ConfigDownloadResult,
+    ConfigListResult,
+    ConfigRevisionInfo,
+    ConfigRevisionListResult,
+    ConfigSyncBdaResult,
     ConfigUploadResult,
     ConfigValidationResult,
+    ConfigVersionInfo,
+    DeleteResult,
+    DiscoveredClassResult,
+    DiscoveryBatchResult,
+    DiscoveryResult,
+    DocumentBucket,
     # Document models
     DocumentDeletionResult,
     DocumentDownloadResult,
@@ -63,6 +84,8 @@ from .models import (
     DocumentMetadata,
     DocumentReprocessResult,
     DocumentRerunResult,
+    # Testing models
+    DocumentsAbortedResult,
     DocumentState,
     DocumentStatus,
     DocumentUploadResult,
@@ -70,28 +93,43 @@ from .models import (
     EvaluationBaselineListResult,
     EvaluationMetrics,
     EvaluationReport,
+    ExecutionsStoppedResult,
+    FailureAnalysis,
+    FailureCause,
+    FieldComparison,
     # Manifest models
     LoadTestResult,
     ManifestDocument,
     ManifestResult,
     ManifestValidationResult,
+    MultiDocDiscoveryResult,
+    # Stack models
+    OrphanedResourceCleanupResult,
     # Enums
     Pattern,
+    # Publish models
+    PublishResult,
     RerunStep,
     # Search models
     SearchCitation,
     SearchDocumentReference,
     SearchResult,
-    # Stack models
     StackDeletionResult,
     StackDeploymentResult,
+    StackMonitorResult,
+    StackOperationInProgress,
     StackResources,
+    StackStableStateResult,
     StackState,
-    # Testing models
     StopWorkflowsResult,
+    TemplateTransformResult,
+    TestComparisonResult,
+    TestRunResult,
+    UseAsBaselineResult,
+    classify_document_state,
 )
 
-__version__ = "0.5.2"
+__version__ = "0.6.12"
 
 __all__ = [
     # Client
@@ -107,12 +145,26 @@ __all__ = [
     # Enums
     "StackState",
     "DocumentState",
+    "DocumentBucket",
     "Pattern",
     "RerunStep",
+    # State classification
+    "classify_document_state",
+    # Publish models
+    "PublishResult",
+    "TemplateTransformResult",
     # Stack models
     "StackDeploymentResult",
     "StackDeletionResult",
     "StackResources",
+    "StackOperationInProgress",
+    "StackMonitorResult",
+    "StackStableStateResult",
+    "FailureCause",
+    "FailureAnalysis",
+    "BucketInfo",
+    "CancelUpdateResult",
+    "OrphanedResourceCleanupResult",
     # Batch models
     "BatchResult",
     "BatchProcessResult",
@@ -123,6 +175,8 @@ __all__ = [
     "BatchReprocessResult",
     "BatchDownloadResult",
     "BatchDeletionResult",
+    # Chat models
+    "ChatResponse",
     # Document models
     "DocumentStatus",
     "DocumentUploadResult",
@@ -137,6 +191,11 @@ __all__ = [
     "EvaluationReport",
     "EvaluationMetrics",
     "EvaluationBaselineListResult",
+    "BaselineResult",
+    "BaselineInfo",
+    "FieldComparison",
+    "DeleteResult",
+    "UseAsBaselineResult",
     # Assessment models
     "AssessmentConfidenceResult",
     "AssessmentFieldConfidence",
@@ -152,11 +211,29 @@ __all__ = [
     "ConfigValidationResult",
     "ConfigDownloadResult",
     "ConfigUploadResult",
+    "ConfigActivateResult",
+    "ConfigVersionInfo",
+    "ConfigListResult",
+    "ConfigDeleteResult",
+    "ConfigSyncBdaResult",
+    "ConfigRevisionInfo",
+    "ConfigRevisionListResult",
+    # Discovery models
+    "DiscoveryResult",
+    "DiscoveryBatchResult",
+    "AutoDetectResult",
+    "AutoDetectSection",
+    "DiscoveredClassResult",
+    "MultiDocDiscoveryResult",
     # Manifest models
     "ManifestDocument",
     "ManifestResult",
     "ManifestValidationResult",
     # Testing models
     "StopWorkflowsResult",
+    "ExecutionsStoppedResult",
+    "DocumentsAbortedResult",
     "LoadTestResult",
+    "TestRunResult",
+    "TestComparisonResult",
 ]

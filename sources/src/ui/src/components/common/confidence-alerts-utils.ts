@@ -6,6 +6,12 @@
  */
 
 interface MergedConfig {
+  // v0.6: HITL threshold moved to the top-level `hitl` block. `assessment`
+  // retained for pre-migration configs / backward compatibility.
+  hitl?: {
+    enabled?: boolean;
+    confidence_threshold?: number | string;
+  };
   assessment?: {
     hitl_confidence_score?: string;
     default_confidence_threshold?: number;
@@ -47,6 +53,17 @@ interface FieldHighlightInfo {
 
 interface FieldConfidenceInfo {
   hasConfidenceInfo: boolean;
+  /**
+   * Whether `explainability_info` holds an entry for this field at all,
+   * regardless of whether it carried a usable confidence number.
+   *
+   * Distinct from `hasConfidenceInfo` because the two answer different
+   * questions, and a caller that needs "was anything recorded about this
+   * field?" gets the wrong answer from the other one. A field assessed at a
+   * finer granularity — a scalar value whose entry is an object of sub-field
+   * confidences — has an entry and no number of its own.
+   */
+  hasEntry?: boolean;
   confidence?: number;
   confidenceThreshold?: number;
   isAboveThreshold?: boolean;
@@ -56,13 +73,30 @@ interface FieldConfidenceInfo {
 }
 
 export const getHitlConfidenceThreshold = (mergedConfig: MergedConfig | null): number => {
-  if (!mergedConfig || !mergedConfig.assessment || !mergedConfig.assessment.hitl_confidence_score) {
-    return 0.8; // Default threshold of 80%
+  // v0.6: threshold lives in the top-level `hitl` block as a 0.0-1.0 decimal
+  // (was assessment.default_confidence_threshold). Fall back to the legacy
+  // assessment.* keys for configs read before migration completes.
+  const hitl = mergedConfig?.hitl as { confidence_threshold?: number | string } | undefined;
+  if (hitl && hitl.confidence_threshold !== undefined && hitl.confidence_threshold !== null) {
+    const t = parseFloat(String(hitl.confidence_threshold));
+    if (!Number.isNaN(t)) {
+      // Stored as a 0.0-1.0 decimal; tolerate a legacy 1-100 percentage.
+      return t > 1 ? t / 100 : t;
+    }
   }
 
-  const threshold = parseFloat(mergedConfig.assessment.hitl_confidence_score);
-  // Convert from percentage (1-100) to decimal (0.0-1.0)
-  return threshold / 100;
+  const legacy = mergedConfig?.assessment as
+    | { default_confidence_threshold?: number | string; hitl_confidence_score?: number | string }
+    | undefined;
+  const legacyVal = legacy?.default_confidence_threshold ?? legacy?.hitl_confidence_score;
+  if (legacyVal !== undefined && legacyVal !== null) {
+    const t = parseFloat(String(legacyVal));
+    if (!Number.isNaN(t)) {
+      return t > 1 ? t / 100 : t;
+    }
+  }
+
+  return 0.8; // Default threshold of 80%
 };
 
 /**
@@ -105,7 +139,7 @@ const findExplainabilityData = (section: DocumentSection | null): Record<string,
     // If no specific explainability key found, check if Output contains field-level confidence data
     // Look for nested objects that might contain confidence scores
     const outputKeysArray = Object.keys(section.Output);
-    // eslint-disable-next-line no-restricted-syntax
+
     for (const key of outputKeysArray) {
       const value = section.Output[key];
       if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -329,6 +363,36 @@ export const getFieldHighlightInfo = (
  * @returns {Object} Object with confidence info and display properties
  */
 
+/**
+ * Aggregate confidence from the child assessments of a decomposed-string field.
+ *
+ * When the assessment LLM splits a plain-string field into sub-keyed child
+ * assessments, the field object has no top-level `confidence` but each direct child
+ * does. Returns the minimum child confidence (worst case — the value that should
+ * drive review highlighting) together with that child's threshold, or null when no
+ * direct child carries a numeric confidence.
+ */
+const aggregateChildConfidence = (fieldData: Record<string, unknown>): { confidence: number; confidenceThreshold?: number } | null => {
+  let minConfidence: number | null = null;
+  let thresholdForMin: number | undefined;
+
+  for (const value of Object.values(fieldData)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      continue;
+    }
+    const child = value as ConfidenceFieldData;
+    if (typeof child.confidence === 'number' && (minConfidence === null || child.confidence < minConfidence)) {
+      minConfidence = child.confidence;
+      thresholdForMin = typeof child.confidence_threshold === 'number' ? child.confidence_threshold : undefined;
+    }
+  }
+
+  if (minConfidence === null) {
+    return null;
+  }
+  return { confidence: minConfidence, confidenceThreshold: thresholdForMin };
+};
+
 export const getFieldConfidenceInfo = (
   fieldName: string,
   explainabilityInfo: Record<string, unknown> | Record<string, unknown>[] | null,
@@ -336,21 +400,21 @@ export const getFieldConfidenceInfo = (
   mergedConfig: MergedConfig | null = null,
 ): FieldConfidenceInfo => {
   if (!explainabilityInfo || !fieldName) {
-    return { hasConfidenceInfo: false };
+    return { hasConfidenceInfo: false, hasEntry: false };
   }
 
   // explainabilityInfo is typically an array, get the first element
   const explainabilityData = Array.isArray(explainabilityInfo) ? explainabilityInfo[0] : explainabilityInfo;
 
   if (!explainabilityData || typeof explainabilityData !== 'object') {
-    return { hasConfidenceInfo: false };
+    return { hasConfidenceInfo: false, hasEntry: false };
   }
 
   // Navigate to the nested location in explainabilityData using the path
   let currentExplainabilityData: Record<string, unknown> = explainabilityData;
 
   // Traverse the path to find the nested explainability data
-  // eslint-disable-next-line no-restricted-syntax
+
   for (const pathSegment of path) {
     if (currentExplainabilityData && typeof currentExplainabilityData === 'object') {
       if (Array.isArray(currentExplainabilityData)) {
@@ -360,7 +424,7 @@ export const getFieldConfidenceInfo = (
           // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop - Controlled data source, input validation performed upstream
           currentExplainabilityData = currentExplainabilityData[index] as Record<string, unknown>;
         } else {
-          return { hasConfidenceInfo: false };
+          return { hasConfidenceInfo: false, hasEntry: false };
         }
       } else {
         // Handle object properties
@@ -368,29 +432,58 @@ export const getFieldConfidenceInfo = (
         currentExplainabilityData = currentExplainabilityData[pathSegment] as Record<string, unknown>;
       }
     } else {
-      return { hasConfidenceInfo: false };
+      return { hasConfidenceInfo: false, hasEntry: false };
     }
   }
 
   // Now look for the field in the current explainability data location
   if (!currentExplainabilityData || typeof currentExplainabilityData !== 'object') {
-    return { hasConfidenceInfo: false };
+    return { hasConfidenceInfo: false, hasEntry: false };
   }
 
-  const fieldData = currentExplainabilityData[fieldName] as ConfidenceFieldData | null | undefined;
+  /**
+   * An array item's own entry is the node the path already reached.
+   *
+   * The renderer names a primitive list item `[0]` and passes the index in the
+   * path, so the navigation above has already arrived at the element; looking
+   * for a child key literally called "[0]" finds nothing, and the field reads as
+   * having no assessment entry when it has one. Array items that are objects are
+   * unaffected — their leaves are named fields resolved the usual way.
+   */
+  const isArrayItemKey = /^\[\d+\]$/.test(fieldName);
+  const fieldData = (isArrayItemKey ? currentExplainabilityData : currentExplainabilityData[fieldName]) as
+    | ConfidenceFieldData
+    | null
+    | undefined;
   if (!fieldData || typeof fieldData !== 'object') {
-    return { hasConfidenceInfo: false };
+    return { hasConfidenceInfo: false, hasEntry: false };
   }
 
-  const { confidence } = fieldData;
+  let { confidence } = fieldData;
   let confidenceThreshold = fieldData.confidence_threshold;
 
-  // Check if we have confidence data
-  const hasConfidence = typeof confidence === 'number';
-
-  if (!hasConfidence) {
-    return { hasConfidenceInfo: false };
+  // Some assessments decompose a single string field into sub-keyed child
+  // assessments (e.g. "Insurance Company": { "Fake Insurance Co": {confidence...},
+  // "650 Davis Street": {confidence...} }) instead of returning a flat
+  // {confidence} on the field itself. In that case aggregate the children: use the
+  // *minimum* child confidence (worst case is the right signal for review/alerts)
+  // and the matching child's threshold.
+  if (typeof confidence !== 'number') {
+    const aggregated = aggregateChildConfidence(fieldData);
+    if (aggregated) {
+      confidence = aggregated.confidence;
+      if (confidenceThreshold === undefined || confidenceThreshold === null) {
+        confidenceThreshold = aggregated.confidenceThreshold;
+      }
+    }
   }
+
+  // Check if we have confidence data
+  if (typeof confidence !== 'number') {
+    return { hasConfidenceInfo: false, hasEntry: true };
+  }
+  const hasConfidence = true;
+  const hasEntry = true;
 
   // Use dynamic threshold from configuration if available and no field-specific threshold
   if (mergedConfig && (confidenceThreshold === undefined || confidenceThreshold === null)) {
@@ -404,6 +497,7 @@ export const getFieldConfidenceInfo = (
     const isAboveThreshold = confidence >= confidenceThreshold!;
     return {
       hasConfidenceInfo: true,
+      hasEntry,
       confidence,
       confidenceThreshold,
       isAboveThreshold,
@@ -417,6 +511,7 @@ export const getFieldConfidenceInfo = (
   if (hasConfidence && !hasThreshold) {
     return {
       hasConfidenceInfo: true,
+      hasEntry,
       confidence,
       confidenceThreshold: undefined,
       isAboveThreshold: undefined,
@@ -427,7 +522,7 @@ export const getFieldConfidenceInfo = (
   }
 
   // Case 3: Neither available (handled by the hasConfidence check above)
-  return { hasConfidenceInfo: false };
+  return { hasConfidenceInfo: false, hasEntry: true };
 };
 
 /**

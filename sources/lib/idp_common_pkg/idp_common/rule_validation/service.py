@@ -15,19 +15,52 @@ import logging
 import os
 import re
 import time
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from idp_common import bedrock, s3, utils
 from idp_common.config.models import IDPConfig
+from idp_common.config.schema_constants import (
+    VALIDATION_ENGINE_LLM,
+    VALIDATION_ENGINE_Z3,
+    X_AWS_IDP_POLICY_TYPE,
+    X_AWS_IDP_RULE_ID,
+    X_AWS_IDP_RULE_JSON,
+    X_AWS_IDP_RULE_TYPE,
+    X_AWS_IDP_VALIDATION_ENGINE,
+)
 from idp_common.models import Document, RuleValidationResult, Status
+from idp_common.rule_validation.concurrency import resolve_semaphore
 from idp_common.rule_validation.models import FactExtractionResponse
+from idp_common.utils.transient_errors import reraise_if_transient
 
 logger = logging.getLogger(__name__)
 
 
+def _policy_type_of(policy_class: Dict[str, Any]) -> Optional[str]:
+    """Read a policy class's type, tolerating the legacy discriminator.
+
+    Raw rules-discovery output and pre-v0.5.9 configs carry
+    ``x-aws-idp-rule-type``. Keying only on the current name made such a class
+    contribute no policy type and no rule questions — rule validation produced
+    nothing, silently. Kept consistent with
+    ``PolicyClassificationService._load_policy_classes``, which must agree with
+    this or a class could classify yet yield zero questions.
+    """
+    return policy_class.get(X_AWS_IDP_POLICY_TYPE) or policy_class.get(
+        X_AWS_IDP_RULE_TYPE
+    )
+
+
 class RuleValidationService:
     """Service for validating documents against rules using LLMs."""
+
+    # Declared on the class so the `semaphore` property below resolves on an
+    # instance built without __init__ as well: several suites construct one with
+    # `__new__` and assign `_semaphore` themselves to pin a limit.
+    _semaphore = None
+    _semaphore_loop = None
 
     def __init__(
         self,
@@ -91,63 +124,91 @@ class RuleValidationService:
         # Get async processing config from typed configuration
         self.semaphore_limit = self.config.rule_validation.semaphore
         self._semaphore = None
+        self._semaphore_loop = None
         self.max_chunk_size = self.config.rule_validation.max_chunk_size
         self.token_size = self.config.rule_validation.token_size
         self.overlap_percentage = self.config.rule_validation.overlap_percentage
 
     @property
     def semaphore(self):
-        """Lazy initialization of semaphore in current event loop."""
-        if self._semaphore is None:
-            self._semaphore = asyncio.Semaphore(self.semaphore_limit)
+        """
+        The one semaphore bounding this service's concurrent Bedrock calls.
+
+        Built lazily so it binds to the loop that runs the work, and cached, so
+        that the ``async with self.semaphore:`` at the call site contends a single
+        semaphore rather than one per task. See
+        :mod:`idp_common.rule_validation.concurrency`, which both rule-validation
+        services share.
+        """
+        self._semaphore, self._semaphore_loop = resolve_semaphore(
+            self._semaphore, self._semaphore_loop, lambda: self.semaphore_limit
+        )
         return self._semaphore
 
-    def _get_rule_types(self, config: Dict[str, Any]) -> List[str]:
+    def _get_policy_types(self, config: Dict[str, Any]) -> List[str]:
         """
-        Extract rule types from rule_classes configuration.
+        Extract policy types from policy_classes configuration.
 
         Args:
             config: Configuration dictionary
 
         Returns:
-            List of rule type strings
+            List of policy type strings
         """
-        rule_classes = config.get("rule_classes", [])
-        rule_types = [
-            rule_class.get("x-aws-idp-rule-type")
-            for rule_class in rule_classes
-            if rule_class.get("x-aws-idp-rule-type")
+        policy_classes = config.get("policy_classes", [])
+        policy_types = [
+            pt for pt in (_policy_type_of(pc) for pc in policy_classes) if pt
         ]
         logger.debug(
-            f"Extracted {len(rule_types)} rule types from rule_classes: {rule_types}"
+            f"Extracted {len(policy_types)} policy types from policy_classes: {policy_types}"
         )
-        return rule_types
+        return policy_types
 
-    def _get_rule_questions(self, config: Dict[str, Any], rule_type: str) -> List[str]:
+    def _get_rule_metadata(
+        self, config: Dict[str, Any], policy_type: str
+    ) -> List[Dict[str, str]]:
         """
-        Extract rule questions for a specific rule type from rule_classes.
+        Extract rule metadata (description + engine field) for a specific policy type.
+
+        Each entry contains:
+          - "description": the rule question text
+          - "engine": the validation engine ("llm" or "z3"), defaults to "llm"
 
         Args:
             config: Configuration dictionary
-            rule_type: Rule type to get questions for
+            policy_type: Policy type to get metadata for
 
         Returns:
-            List of rule question strings
+            List of dicts with "description" and "engine" keys
         """
-        rule_classes = config.get("rule_classes", [])
-        for rule_class in rule_classes:
-            if rule_class.get("x-aws-idp-rule-type") == rule_type:
-                rule_properties = rule_class.get("rule_properties", {})
-                questions = [
-                    prop.get("description")
-                    for prop in rule_properties.values()
-                    if prop.get("description")
-                ]
+        policy_classes = config.get("policy_classes", [])
+        for policy_class in policy_classes:
+            if _policy_type_of(policy_class) == policy_type:
+                rule_properties = policy_class.get("rule_properties", {})
+                metadata = []
+                for prop in rule_properties.values():
+                    description = prop.get("description")
+                    if description:
+                        engine = prop.get(
+                            X_AWS_IDP_VALIDATION_ENGINE, VALIDATION_ENGINE_LLM
+                        )
+                        rule_id = prop.get(X_AWS_IDP_RULE_ID)
+                        rule_json = prop.get(X_AWS_IDP_RULE_JSON)
+                        metadata.append(
+                            {
+                                "description": description,
+                                "engine": engine,
+                                "rule_id": rule_id,
+                                "rule_json": rule_json,
+                            }
+                        )
                 logger.debug(
-                    f"Extracted {len(questions)} questions for rule_type '{rule_type}': {questions}"
+                    f"Extracted {len(metadata)} rule metadata entries for "
+                    f"policy_type '{policy_type}': "
+                    f"{[(m['description'][:40], m['engine']) for m in metadata]}"
                 )
-                return questions
-        logger.warning(f"No questions found for rule_type '{rule_type}'")
+                return metadata
+        logger.warning(f"No rule metadata found for policy_type '{policy_type}'")
         return []
 
     def _chunk_text_with_overlap(
@@ -175,25 +236,64 @@ class RuleValidationService:
         if estimated_tokens <= max_chunk_size:
             return [text]
 
-        # Calculate chunk size in characters
-        chunk_size_chars = max_chunk_size * token_size
+        # Calculate chunk size in characters. RuleValidationConfig validates both
+        # factors as > 0; the floor keeps the budget positive for a direct caller
+        # that did not come through the config model.
+        chunk_size_chars = max(1, max_chunk_size * token_size)
         overlap_chars = int(chunk_size_chars * (overlap_percentage / 100))
+
+        # Each pass advances `start` by chunk_size_chars - overlap_chars, so the
+        # overlap is what sets the stride and the resulting number of model calls.
+        # It is bounded at half a chunk, for two reasons that need different bounds
+        # and get the stricter one:
+        #
+        #   - Termination needs a stride of at least one character. overlap_percentage
+        #     is documented as 0-100 and 100 asks for a stride of zero.
+        #   - Cost needs a stride that is a *fraction* of the chunk. A one-character
+        #     stride terminates and is still ruinous: it emits len(text) -
+        #     chunk_size_chars + 1 chunks, one model call each, which on a 46,000
+        #     character document at the shipped 32,000-character chunk is ~14,000
+        #     calls. Half a chunk caps the count at twice the no-overlap count for
+        #     any requested percentage.
+        #
+        # The bound lives here rather than as a tighter `le=` on the config field,
+        # and the difference is larger than "a legal value stops being legal".
+        # Pydantic validation is not field-scoped: a stored config carrying
+        # overlap_percentage 75 would fail RuleValidationConfig parsing *as a whole*,
+        # so an upgrade would break rule validation on a stack that was working — and
+        # on the paths that read config through a swallowing accessor it would break
+        # it without saying so. Clamping degrades one knob and logs it; rejecting
+        # stops the pipeline. Nor is the clipped range carrying much: a fact would
+        # have to be longer than half a chunk (16,000 characters at the shipped
+        # budget) to survive a 50% overlap but not a 75% one.
+        bounded_overlap_chars = min(max(overlap_chars, 0), chunk_size_chars // 2)
+        if bounded_overlap_chars != overlap_chars:
+            logger.warning(
+                f"overlap_percentage={overlap_percentage} asks to repeat "
+                f"{overlap_chars} of every {chunk_size_chars} characters, which "
+                f"would leave too little forward progress per chunk; using "
+                f"{bounded_overlap_chars} instead. Lower overlap_percentage to at "
+                f"most 50 to control how much each chunk repeats."
+            )
+        overlap_chars = bounded_overlap_chars
 
         chunks = []
         start = 0
 
         while start < len(text):
-            end = start + chunk_size_chars
-            if end > len(text):
-                end = len(text)
+            end = min(start + chunk_size_chars, len(text))
+            chunks.append(text[start:end])
 
-            chunk = text[start:end]
-            chunks.append(chunk)
+            # This chunk reached the end of the text, so it is the last one.
+            # Deciding that here rather than after moving `start` is what makes
+            # the loop terminate: `end` has been clamped to len(text), so
+            # `end - overlap_chars` lands back inside the text for any non-zero
+            # overlap and the same tail slice would be emitted indefinitely.
+            if end >= len(text):
+                break
 
             # Move start position with overlap
             start = end - overlap_chars
-            if start >= len(text):
-                break
 
         return chunks
 
@@ -210,7 +310,8 @@ class RuleValidationService:
 
         Dynamic overlap strategy:
         - If previous chunk has multiple complete pages: use complete last page as overlap
-        - If previous chunk has only 1 complete page: use 10% of that page as overlap
+        - If previous chunk has only 1 complete page: use overlap_percentage of that
+          page as overlap, and nothing at all when that rounds down to no characters
 
         Args:
             text: The text to chunk with page markers
@@ -222,19 +323,17 @@ class RuleValidationService:
             List of text chunks with page-aware overlap
         """
         logger.debug(
-            f"DEBUG:PAGE_CHUNK_START text_length={len(text)} max_chunk_size={max_chunk_size} token_size={token_size} overlap_percentage={overlap_percentage}"
+            f"Page chunk start text_length={len(text)} max_chunk_size={max_chunk_size} token_size={token_size} overlap_percentage={overlap_percentage}"
         )
 
         if not text.strip():
-            logger.debug("DEBUG:PAGE_CHUNK_EMPTY_TEXT")
+            logger.debug("Page chunk empty text")
             return []
 
         # Early return if entire text fits in one chunk
         estimated_tokens = len(text) // token_size
         if estimated_tokens <= max_chunk_size:
-            logger.debug(
-                f"DEBUG:PAGE_CHUNK_SINGLE_CHUNK estimated_tokens={estimated_tokens}"
-            )
+            logger.debug(f"Page chunk single chunk estimated_tokens={estimated_tokens}")
             return [text]
 
         # Parse pages using regex
@@ -257,12 +356,12 @@ class RuleValidationService:
                     pages.append((page_number, page_content))
 
         logger.debug(
-            f"DEBUG:PAGE_CHUNK_PARSED_PAGES pages_count={len(pages)} page_numbers={[p[0] for p in pages]}"
+            f"Page chunk parsed pages pages_count={len(pages)} page_numbers={[p[0] for p in pages]}"
         )
 
         if not pages:
             # Fallback to character-based chunking if no pages found
-            logger.debug("DEBUG:PAGE_CHUNK_NO_PAGES_FALLBACK")
+            logger.debug("Page chunk no pages fallback")
             return self._chunk_text_with_overlap(
                 text, max_chunk_size, token_size, overlap_percentage
             )
@@ -290,30 +389,50 @@ class RuleValidationService:
         ) -> List[Tuple[str, str]]:
             """Get overlap pages based on dynamic strategy."""
             if not prev_pages:
-                logger.debug("DEBUG:PAGE_CHUNK_OVERLAP_NO_PREV_PAGES")
+                logger.debug("Page chunk overlap no prev pages")
                 return []
 
             page_numbers = [p[0] for p in prev_pages]
             total_prev_content_length = sum(len(p[1]) for p in prev_pages)
 
             logger.debug(
-                f"DEBUG:PAGE_CHUNK_OVERLAP_INPUT prev_pages_count={len(prev_pages)} page_numbers={page_numbers} total_content_length={total_prev_content_length}"
+                f"Page chunk overlap input prev_pages_count={len(prev_pages)} page_numbers={page_numbers} total_content_length={total_prev_content_length}"
             )
 
             if len(prev_pages) > 1:
                 # Multiple pages: use complete last page as overlap
                 last_page_num, last_page_content = prev_pages[-1]
                 logger.debug(
-                    f"DEBUG:PAGE_CHUNK_OVERLAP_MULTI_PAGE prev_pages_count={len(prev_pages)} page_numbers={page_numbers} using_complete_last_page={last_page_num} last_page_length={len(last_page_content)}"
+                    f"Page chunk overlap multi-page prev_pages_count={len(prev_pages)} page_numbers={page_numbers} using_complete_last_page={last_page_num} last_page_length={len(last_page_content)}"
                 )
                 return [prev_pages[-1]]
             else:
-                # Single page: use 10% of page as overlap
+                # Single page: use overlap_percentage of the page as overlap.
+                #
+                # Deliberately NOT bounded at half a page the way the character
+                # chunker bounds its overlap, because the cost argument that
+                # motivates that bound does not apply here. Overlap is added when a
+                # chunk is built and is never counted toward current_chunk_tokens, so
+                # it cannot change how pages are grouped: the number of chunks — and
+                # so of model calls — is invariant in overlap_percentage, and the
+                # repeated content is at most one page per chunk whatever the
+                # percentage. The worst case is therefore already the ~2x the
+                # character bound exists to enforce, and clamping here would cost
+                # context for no saving.
                 page_num, page_content = prev_pages[0]
-                overlap_size = len(page_content) * overlap_percentage // 100  # True 10%
+                overlap_size = len(page_content) * overlap_percentage // 100
+                if overlap_size <= 0:
+                    # No overlap was asked for, so repeat nothing. Slicing with a
+                    # zero bound would not do that: page_content[-0:] is
+                    # page_content[0:], the whole page, so zero overlap would
+                    # produce the maximum overlap.
+                    logger.debug(
+                        f"Page chunk overlap single-page page={page_num} original_length={len(page_content)} overlap_percentage={overlap_percentage} overlap_size={overlap_size} no_overlap=True"
+                    )
+                    return []
                 overlap_content = page_content[-overlap_size:]
                 logger.debug(
-                    f"DEBUG:PAGE_CHUNK_OVERLAP_SINGLE_PAGE page={page_num} original_length={len(page_content)} overlap_percentage={overlap_percentage} overlap_size={overlap_size} overlap_length={len(overlap_content)}"
+                    f"Page chunk overlap single-page page={page_num} original_length={len(page_content)} overlap_percentage={overlap_percentage} overlap_size={overlap_size} overlap_length={len(overlap_content)}"
                 )
                 return [(page_num, overlap_content)]
 
@@ -324,7 +443,7 @@ class RuleValidationService:
             page_tokens = get_page_tokens(page_content)
 
             logger.debug(
-                f"DEBUG:PAGE_CHUNK_PROCESSING chunk_idx={chunk_index} page={page_num} page_tokens={page_tokens} current_chunk_tokens={current_chunk_tokens}"
+                f"Page chunk processing chunk_idx={chunk_index} page={page_num} page_tokens={page_tokens} current_chunk_tokens={current_chunk_tokens}"
             )
 
             # Check if we can add this page to current chunk
@@ -333,7 +452,7 @@ class RuleValidationService:
                 current_chunk_pages.append((page_num, page_content))
                 current_chunk_tokens += page_tokens
                 logger.debug(
-                    f"DEBUG:PAGE_CHUNK_ADDED_PAGE chunk_idx={chunk_index} page={page_num} new_total_tokens={current_chunk_tokens}"
+                    f"Page chunk added page chunk_idx={chunk_index} page={page_num} new_total_tokens={current_chunk_tokens}"
                 )
                 i += 1
             else:
@@ -346,7 +465,7 @@ class RuleValidationService:
                     chunks.append(chunk_text)
 
                     logger.debug(
-                        f"DEBUG:PAGE_CHUNK_FINALIZED chunk_idx={chunk_index} pages={[p[0] for p in final_chunk_pages]} overlap_pages_count={len(overlap_pages)} chunk_length={len(chunk_text)}"
+                        f"Page chunk finalized chunk_idx={chunk_index} pages={[p[0] for p in final_chunk_pages]} overlap_pages_count={len(overlap_pages)} chunk_length={len(chunk_text)}"
                     )
 
                     # Update previous chunk pages for next iteration - use final chunk pages including overlap
@@ -363,7 +482,7 @@ class RuleValidationService:
                     chunks.append(chunk_text)
 
                     logger.debug(
-                        f"DEBUG:PAGE_CHUNK_OVERSIZED chunk_idx={chunk_index} page={page_num} page_tokens={page_tokens} overlap_pages_count={len(overlap_pages)} chunk_length={len(chunk_text)}"
+                        f"Page chunk oversized chunk_idx={chunk_index} page={page_num} page_tokens={page_tokens} overlap_pages_count={len(overlap_pages)} chunk_length={len(chunk_text)}"
                     )
 
                     # Update previous chunk pages
@@ -379,11 +498,11 @@ class RuleValidationService:
             chunks.append(chunk_text)
 
             logger.debug(
-                f"DEBUG:PAGE_CHUNK_FINAL chunk_idx={chunk_index} pages={[p[0] for p in final_chunk_pages]} overlap_pages_count={len(overlap_pages)} chunk_length={len(chunk_text)}"
+                f"Page chunk final chunk_idx={chunk_index} pages={[p[0] for p in final_chunk_pages]} overlap_pages_count={len(overlap_pages)} chunk_length={len(chunk_text)}"
             )
 
         logger.debug(
-            f"DEBUG:PAGE_CHUNK_COMPLETE total_chunks={len(chunks)} chunk_lengths={[len(c) for c in chunks]}"
+            f"Page chunk complete total_chunks={len(chunks)} chunk_lengths={[len(c) for c in chunks]}"
         )
 
         return chunks
@@ -426,7 +545,7 @@ class RuleValidationService:
         Since the common bedrock client is synchronous, we run it in an executor
         to maintain async compatibility.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         # Run the synchronous bedrock.invoke_model in an executor
         response = await loop.run_in_executor(
@@ -449,7 +568,7 @@ class RuleValidationService:
         self,
         rule: str,
         user_history: str,
-        rule_type: str,
+        policy_type: str,
         config: Dict[str, Any],
         extraction_results: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
@@ -459,7 +578,7 @@ class RuleValidationService:
         Args:
             rule: The rule question to evaluate
             user_history: The user history text
-            rule_type: Type of rule
+            policy_type: Type of policy
             config: Configuration for the validation
             extraction_results: Optional extraction results to include in the prompt
 
@@ -469,13 +588,11 @@ class RuleValidationService:
         async with self.semaphore:
             try:
                 # Generate unique task ID for tracking
-                import uuid
-
                 task_id = str(uuid.uuid4())[:8]
 
                 # Log start of processing with context
                 logger.debug(
-                    f"DEBUG:ASYNC_START task_id={task_id} rule_type='{rule_type}' rule='{rule[:60]}...' thread_id={asyncio.current_task()}"
+                    f"LLM start task_id={task_id} policy_type='{policy_type}' rule='{rule[:60]}...' thread_id={asyncio.current_task()}"
                 )
 
                 start_time = time.time()
@@ -490,7 +607,7 @@ class RuleValidationService:
                 placeholders = {
                     "DOCUMENT_TEXT": user_history,
                     "rule": rule,
-                    "rule_type": rule_type,
+                    "policy_type": policy_type,
                     "recommendation_options": config_obj.rule_validation.recommendation_options
                     or "",
                 }
@@ -514,7 +631,7 @@ class RuleValidationService:
 
                 # Log before LLM invocation
                 logger.debug(
-                    f"DEBUG:LLM_INVOKE_START task_id={task_id} rule_type='{rule_type}' rule='{rule[:60]}...' model='{model_id}'"
+                    f"LLM invoke task_id={task_id} policy_type='{policy_type}' rule='{rule[:60]}...' model='{model_id}'"
                 )
 
                 # Invoke the model
@@ -531,14 +648,14 @@ class RuleValidationService:
 
                 call_duration = time.time() - start_time
                 logger.debug(
-                    f"DEBUG:LLM_RESPONSE task_id={task_id} rule_type='{rule_type}' rule='{rule[:60]}...' duration={call_duration:.2f}s response_keys={list(response.keys()) if response else 'None'}"
+                    f"LLM response task_id={task_id} policy_type='{policy_type}' rule='{rule[:60]}...' duration={call_duration:.2f}s response_keys={list(response.keys()) if response else 'None'}"
                 )
 
                 # Extract and parse response
                 response_text = bedrock.extract_text_from_response(response)
 
                 logger.debug(
-                    f"DEBUG:PARSED_RESPONSE task_id={task_id} rule_type='{rule_type}' rule='{rule[:60]}...' response_length={len(response_text)} response_text={response_text[:200]}..."
+                    f"LLM parsed task_id={task_id} policy_type='{policy_type}' rule='{rule[:60]}...' response_length={len(response_text)} response_text={response_text[:200]}..."
                 )
 
                 # Parse JSON response
@@ -558,14 +675,14 @@ class RuleValidationService:
                 except json.JSONDecodeError:
                     logger.error(f"Failed to parse response as JSON: {response_text}")
                     response_dict = {
-                        "rule_type": rule_type,
+                        "policy_type": policy_type,
                         "rule": rule,
                         "extracted_facts": [],
                         "extraction_summary": f"Failed to parse response: {response_text}",
                     }
 
                 # Add rule context to response
-                response_dict["rule_type"] = rule_type
+                response_dict["policy_type"] = policy_type
                 response_dict["rule"] = rule
 
                 # Validate response with FactExtractionResponse model
@@ -576,12 +693,10 @@ class RuleValidationService:
 
                 # Add comprehensive logging for debugging
                 logger.debug(
-                    f"DEBUG: Raw response keys: {list(response.keys()) if response else 'None'}"
+                    f"Raw response keys: {list(response.keys()) if response else 'None'}"
                 )
-                logger.debug(f"DEBUG: Metering data from response: {metering}")
-                logger.debug(
-                    f"DEBUG: Current token_metrics before merge: {self.token_metrics}"
-                )
+                logger.debug(f"Metering data: {metering}")
+                logger.debug(f"Token metrics before merge: {self.token_metrics}")
 
                 # Merge metering data using the same utility as extraction service with synchronization
                 async with self.metrics_lock:
@@ -589,38 +704,128 @@ class RuleValidationService:
                     self.token_metrics = utils.merge_metering_data(
                         self.token_metrics, metering or {}
                     )
+                    logger.debug(f"Token metrics after merge: {self.token_metrics}")
                     logger.debug(
-                        f"DEBUG: Token metrics after merge: {self.token_metrics}"
-                    )
-                    logger.debug(
-                        f"DEBUG: Metrics changed: {old_metrics != self.token_metrics}"
+                        f"Metrics changed: {old_metrics != self.token_metrics}"
                     )
 
                 return validated_response.dict()
 
             except Exception as e:
                 logger.error(f"Error processing rule question: {str(e)}")
+                # #1101: a TRANSIENT fault must not be answered with a verdict.
+                # The dict below is a real answer to every downstream reader:
+                # "Information Not Found" is one of the configured
+                # ``recommendation_options``, it is counted in the document's
+                # rule-validation summary, and a feature hook turns a document made
+                # of them into INSUFFICIENT_DOCUMENTATION. Returning it because
+                # Bedrock throttled reports "this document does not evidence the
+                # rule" when what happened is "the model was busy" — and because it
+                # is not an exception, the document COMPLETES, so nothing retries
+                # and no failure is ever surfaced to anyone.
+                #
+                # Re-raise a transient cause under the one name RuleValidationStep
+                # retries. A DETERMINISTIC failure keeps the per-rule fallback: one
+                # unparseable response or schema violation should not discard the
+                # other rules' answers, which is the partial-failure tolerance the
+                # surrounding ``asyncio.gather`` was built for and which a retry
+                # could not improve on.
+                reraise_if_transient(e, where=f"rule validation rule '{rule[:60]}'")
                 return {
-                    "rule_type": rule_type,
+                    "policy_type": policy_type,
                     "rule": rule,
                     "supporting_pages": [],
                     "recommendation": "Information Not Found",
                     "reasoning": f"Error during processing: {str(e)}",
                 }
 
-    async def _process_rule_type(
+    async def _process_z3_fact_extraction(
         self,
-        rule_type: str,
+        rule_description: str,
+        rule_id: str,
+        policy_type: str,
+        extraction_results: Dict[str, Any],
+        document_text: str,
+        config: Dict[str, Any],
+        rule_json: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Extract facts for a Z3 rule using the standard fact extraction prompt,
+        augmented with Z3 parameter definitions for better context.
+
+        This uses the same LLM call as standard LLM rules (_process_rule_question),
+        but appends the Z3 parameter names/types/descriptions to the rule text so
+        the LLM knows what specific values to look for in the document.
+
+        The output format is identical to LLM rules — no special tagging.
+        The orchestrator determines which rules are Z3 by reading the config.
+
+        Args:
+            rule_description: The natural language rule text
+            rule_id: Unique rule identifier
+            policy_type: Type of policy
+            extraction_results: Structured extraction results for this section
+            document_text: Raw document text for this section
+            config: Configuration dictionary
+            rule_json: The RuleJSON object from config (x-aws-idp-rule-json)
+
+        Returns:
+            FactExtractionResponse dict (same format as LLM rules)
+        """
+        # Build augmented rule description with parameter context from RuleJSON
+        augmented_rule = rule_description
+        if rule_json:
+            parameters = rule_json.get("parameters", [])
+            if parameters:
+                param_lines = []
+                for param in parameters:
+                    name = param.get("name", "unknown")
+                    param_type = param.get("type", "String")
+                    description = param.get("description", "")
+                    param_lines.append(f"  - {name} ({param_type}): {description}")
+                params_context = "\n".join(param_lines)
+                augmented_rule = (
+                    f"{rule_description}\n\n"
+                    f"[Key parameters to extract evidence for:\n"
+                    f"{params_context}]"
+                )
+
+        # Use standard fact extraction with augmented rule text
+        result = await self._process_rule_question(
+            rule=augmented_rule,
+            user_history=document_text,
+            policy_type=policy_type,
+            config=config,
+            extraction_results=extraction_results,
+        )
+
+        # Restore the original rule description (without augmentation)
+        # so the orchestrator can match it against config
+        result["rule"] = rule_description
+
+        return result
+
+    async def _process_policy_type(
+        self,
+        policy_type: str,
         user_history: str,
         config: Dict[str, Any],
         extraction_results: Dict[str, Any] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Process all rule questions for a specific rule type.
+        Process all rule questions for a specific policy type.
+
+        Routes each rule to the appropriate engine based on its
+        x-aws-idp-validation-engine field:
+          - "z3" → fact extraction augmented with Z3 parameter context
+          - "llm" or absent → LLM engine (semantic reasoning)
+
+        All rules share the same semaphore pool for concurrency control.
+        Partial failures don't block other rules — all results are aggregated.
 
         Args:
-            rule_type: The rule type to process
-            user_history: The user history text
+            policy_type: The policy type to process
+            user_history: The user history text (document content)
             config: Configuration for the validation
             extraction_results: Optional extraction results to include in the prompt
 
@@ -630,38 +835,85 @@ class RuleValidationService:
         start_time = time.time()
 
         try:
-            # Get rule questions from rule_classes
-            rule_questions = self._get_rule_questions(config, rule_type)
-            if not rule_questions:
-                raise ValueError(f"No rule questions found for type: {rule_type}")
-
-            # Process all questions concurrently
-            tasks = []
-            for rule in rule_questions:
-                task = self._process_rule_question(
-                    rule=rule,
-                    user_history=user_history,
-                    rule_type=rule_type,
-                    config=config,
-                    extraction_results=extraction_results,
+            # Get rule metadata (description + engine) from policy_classes
+            rule_metadata = self._get_rule_metadata(config, policy_type)
+            if not rule_metadata:
+                raise ValueError(
+                    f"No rule questions found for policy type: {policy_type}"
                 )
+
+            # Process all rules concurrently, dispatching to the correct engine
+            tasks = []
+            for rule_meta in rule_metadata:
+                rule_description = rule_meta["description"]
+                engine = rule_meta["engine"]
+                rule_id = rule_meta.get("rule_id")
+                rule_json = rule_meta.get("rule_json")
+
+                if engine == VALIDATION_ENGINE_Z3 and rule_id:
+                    # Z3 rules: use standard fact extraction (same as LLM rules)
+                    # augmented with Z3 parameter context from the embedded RuleJSON.
+                    # The orchestration step will later use these extracted facts
+                    # to do LLM-based value extraction + Z3 solver.
+                    task = self._process_z3_fact_extraction(
+                        rule_description=rule_description,
+                        rule_id=rule_id,
+                        policy_type=policy_type,
+                        extraction_results=extraction_results,
+                        document_text=user_history,
+                        config=config,
+                        rule_json=rule_json,
+                    )
+                elif engine == VALIDATION_ENGINE_Z3 and not rule_id:
+                    # Strict mode: Z3 rule without rule_id is a configuration error
+                    logger.error(
+                        f"Z3 rule missing rule_id — cannot validate. "
+                        f"Rule: '{rule_description[:60]}...'"
+                    )
+                    # Return a hard fail — do not silently fall back to LLM
+
+                    async def _z3_config_error(rd=rule_description, pt=policy_type):
+                        return {
+                            "policy_type": pt,
+                            "rule": rd,
+                            "extracted_facts": [],
+                            "extraction_summary": (
+                                "Z3 configuration error: rule_id is missing. "
+                                "Set x-aws-idp-rule-id in the rule property."
+                            ),
+                            "z3_parameters": None,
+                        }
+
+                    task = _z3_config_error()
+                else:
+                    # Default to LLM engine (engine == "llm" or absent)
+                    task = self._process_rule_question(
+                        rule=rule_description,
+                        user_history=user_history,
+                        policy_type=policy_type,
+                        config=config,
+                        extraction_results=extraction_results,
+                    )
                 tasks.append(task)
 
-            # Wait for all tasks to complete
+            # Wait for all tasks to complete — partial failures don't block
+            # other rules since each task handles its own errors internally
             responses = await asyncio.gather(*tasks)
 
             # Track timing
             duration = time.time() - start_time
             self.timing_metrics["criteria_processing_time"].append(
-                {"rule_type": rule_type, "duration": duration}
+                {"policy_type": policy_type, "duration": duration}
             )
 
-            logger.info(f"Processed rule type {rule_type} in {duration:.2f} seconds")
+            logger.info(
+                f"Processed policy type {policy_type} in {duration:.2f} seconds"
+            )
 
             return responses
 
         except Exception as e:
-            logger.error(f"Error processing rule type {rule_type}: {str(e)}")
+            logger.error(f"Error processing policy type {policy_type}: {str(e)}")
             raise
 
     def _update_document_status(
@@ -709,12 +961,10 @@ class RuleValidationService:
         Returns:
             Document with updated rule_validation_result
         """
-        import uuid
-
         doc_validation_id = str(uuid.uuid4())[:8]
 
         logger.debug(
-            f"DEBUG:ASYNC_DOC_START doc_validation_id={doc_validation_id} document_id={document.id if document else 'None'} task_id={asyncio.current_task()} sections={len(document.sections) if document and document.sections else 0}"
+            f"Document validation start doc_id={doc_validation_id} document_id={document.id if document else 'None'} task_id={asyncio.current_task()} sections={len(document.sections) if document and document.sections else 0}"
         )
 
         self.timing_metrics["start_time"] = datetime.now()
@@ -745,6 +995,21 @@ class RuleValidationService:
                 """Process a single section - same logic as before, just wrapped in async function."""
                 section_responses = {}
                 nonlocal chunking_occurred  # Allow modification of outer scope variable
+
+                # Short-circuit: skip sections whose class is marked as
+                # excluded (e.g., static instruction pages). No rule
+                # validation is meaningful for boilerplate content.
+                from idp_common.section_exclusion import is_section_excluded
+
+                if is_section_excluded(section):
+                    logger.info(
+                        "Rule validation skipped for excluded section %s "
+                        "(class=%s, reason=%s)",
+                        section.section_id,
+                        section.classification,
+                        section.exclusion_reason or "excluded",
+                    )
+                    return section_responses, 0, False
 
                 # Read text from section pages (following summarization service pattern)
                 sorted_page_ids = sorted(section.page_ids, key=int)
@@ -790,6 +1055,16 @@ class RuleValidationService:
                         logger.warning(
                             f"Failed to load extraction results for section {section.section_id}: {e}"
                         )
+                        # #1101: falling through leaves `extraction_results` empty,
+                        # so every rule for this section is evaluated against a
+                        # prompt with no extracted data in it — and the degraded
+                        # verdicts flow onward as real answers behind one WARNING.
+                        # A missing or unparseable object is worth continuing on; a
+                        # transient S3 fault is worth re-reading the same key for.
+                        reraise_if_transient(
+                            e,
+                            where=f"rule validation extraction results {section.section_id}",
+                        )
                 else:
                     logger.debug(
                         f"No extraction_result_uri found for section {section.section_id}"
@@ -815,37 +1090,69 @@ class RuleValidationService:
                 # Create section URI for reference (removed unused variable)
 
                 for chunk_idx, chunk in enumerate(chunks):
-                    # Process each rule type concurrently
+                    # Process each policy type concurrently
+                    # Filter by matched_policy_types - skip if None or empty
+                    all_policy_types = self._get_policy_types(config)
+                    if (
+                        document.rule_validation_result
+                        and document.rule_validation_result.matched_policy_types
+                    ):
+                        policy_types_to_process = [
+                            pt
+                            for pt in all_policy_types
+                            if pt
+                            in document.rule_validation_result.matched_policy_types
+                        ]
+                        logger.info(
+                            f"Filtering policy types by matched_policy_types: {policy_types_to_process}"
+                        )
+                    elif (
+                        document.rule_validation_result
+                        and document.rule_validation_result.matched_policy_types
+                        is not None
+                    ):
+                        # matched_policy_types is empty list - skip processing
+                        logger.info(
+                            "matched_policy_types is empty - skipping rule validation"
+                        )
+                        policy_types_to_process = []
+                    else:
+                        # No rule_validation_result set - skip processing
+                        logger.info(
+                            "No matched_policy_types set - skipping rule validation"
+                        )
+                        policy_types_to_process = []
+
                     tasks = []
-                    for rule_type in self._get_rule_types(config):
-                        task = self._process_rule_type(
-                            rule_type=rule_type,
+                    for policy_type in policy_types_to_process:
+                        task = self._process_policy_type(
+                            policy_type=policy_type,
                             user_history=chunk,
                             config=config,
                             extraction_results=extraction_results,
                         )
                         tasks.append(task)
 
-                    # Wait for all rule types to complete
+                    # Wait for all policy types to complete
                     responses = await asyncio.gather(*tasks)
 
                     # Organize responses for this section
-                    for rule_idx, rule_type in enumerate(self._get_rule_types(config)):
-                        if rule_type not in section_responses:
-                            section_responses[rule_type] = (
+                    for policy_idx, policy_type in enumerate(policy_types_to_process):
+                        if policy_type not in section_responses:
+                            section_responses[policy_type] = (
                                 {} if multiple_sections else []
                             )
 
                         if multiple_sections:
                             # For multiple sections, organize by rule
-                            for response in responses[rule_idx]:
+                            for response in responses[policy_idx]:
                                 rule = response["rule"]
-                                if rule not in section_responses[rule_type]:
-                                    section_responses[rule_type][rule] = []
-                                section_responses[rule_type][rule].append(response)
+                                if rule not in section_responses[policy_type]:
+                                    section_responses[policy_type][rule] = []
+                                section_responses[policy_type][rule].append(response)
                         else:
                             # For single section, just append
-                            section_responses[rule_type].extend(responses[rule_idx])
+                            section_responses[policy_type].extend(responses[policy_idx])
 
                 return section_responses, chunks_count, chunking_occurred
 
@@ -863,19 +1170,19 @@ class RuleValidationService:
                 if section_chunking:
                     chunking_occurred = True
 
-                for rule_type, responses in section_responses.items():
-                    if rule_type not in all_responses:
-                        all_responses[rule_type] = {} if multiple_sections else []
+                for policy_type, responses in section_responses.items():
+                    if policy_type not in all_responses:
+                        all_responses[policy_type] = {} if multiple_sections else []
 
                     if multiple_sections:
                         # Merge responses from multiple sections
                         for rule, rule_responses in responses.items():
-                            if rule not in all_responses[rule_type]:
-                                all_responses[rule_type][rule] = []
-                            all_responses[rule_type][rule].extend(rule_responses)
+                            if rule not in all_responses[policy_type]:
+                                all_responses[policy_type][rule] = []
+                            all_responses[policy_type][rule].extend(rule_responses)
                     else:
                         # Extend responses for single section
-                        all_responses[rule_type].extend(responses)
+                        all_responses[policy_type].extend(responses)
 
             # Save section results to S3 with chunking metadata
             output_bucket = document.output_bucket
@@ -927,6 +1234,30 @@ class RuleValidationService:
         except Exception as e:
             error_msg = f"Error validating document {document.id}: {str(e)}"
             logger.error(error_msg)
+            # #1101: recording a TRANSIENT fault here made it permanent. This
+            # ``except`` returns normally, so the caller sees a document that is
+            # simply FAILED; ``rule-validation-function`` then raises a bare
+            # ``Exception`` built from that status, and by then the original
+            # exception — the only thing that carried the transient classification —
+            # no longer exists. Step Functions matches a Lambda failure by the
+            # exception's class NAME, ``Exception`` is in no ``Retry.ErrorEquals``
+            # list, and so the eight-attempt ladder RuleValidationStep already
+            # carries never fired for the one class of failure it was provisioned
+            # for. The document finished failed and had to be re-uploaded.
+            #
+            # Classification has to happen here, where the exception object is still
+            # in hand. Transient causes surface under ``TransientError``, the single
+            # name that state lists; deterministic failures keep today's behaviour —
+            # recorded in ``document.errors``, status FAILED, returned — because
+            # eight more attempts cannot validate a document that fails the same way
+            # every time.
+            #
+            # ``reraise_if_transient``, not ``raise_if_transient``: this block
+            # RETURNS, and the per-rule and per-section blocks above re-raise
+            # through ``asyncio.gather`` into here, so a plain
+            # ``raise_if_transient`` would return silently for an exception already
+            # surfaced under the name and swallow it — undoing their classification.
+            reraise_if_transient(e, where=f"rule validation document {document.id}")
             document.errors.append(error_msg)
             return self._update_document_status(
                 document, success=False, error_message=error_msg

@@ -38,6 +38,10 @@ https://github.com/user-attachments/assets/0bf14b62-99dc-4538-a015-d8b89fa2f1f0
 **Key Features:**
 - Built-in review portal within the GenAI-IDP Web UI
 - Role-based access control with Admin and Reviewer personas
+- `Annotator` can also reach `claimReview`, `releaseReview` and
+  `completeSectionReview`, but only for documents belonging to a test set in its
+  `allowedTestSets` — production review documents (those with no `TestSetId`) are
+  refused. `skipAllSectionsReview` stays Admin/Reviewer. See [rbac.md](rbac.md).
 - Review ownership model - reviewers claim documents before editing
 - Section-by-section review workflow
 - Visual editor for viewing and correcting extracted data
@@ -50,7 +54,7 @@ The HITL system operates independently from the document processing workflow:
 - **Built-in Review Portal**: Web interface integrated into the GenAI-IDP UI for validation and correction
 - **User Management**: Cognito-based authentication with role-based access control
 - **Section Review Tracking**: DynamoDB-based tracking of review progress per document section
-- **Decoupled Design**: HITL operations update document status directly without triggering reprocessing
+- **Decoupled Design**: Per-section review actions update tracking status directly; when the final pending section is resolved (completed or skipped), the document is finalized and downstream reprocessing (Summarization/Evaluation) is triggered automatically
 
 ### Review Flow
 
@@ -192,7 +196,7 @@ Admins have additional capabilities:
 - **Skip All Reviews**: Click **Skip All Reviews** to mark all pending sections as skipped
   - Document status changes to **Review Skipped**
   - The **Review Completed By** field records the admin who skipped
-  - No reprocessing is triggered
+  - Downstream reprocessing (Summarization/Evaluation) is triggered automatically — consistent with completing all sections — which also fires the optional post-processing Lambda hook (`PostProcessingLambdaHookFunctionArn`) on workflow completion
   
 - **Release Any Review**: Admins can release reviews owned by other users
 
@@ -204,19 +208,16 @@ When all sections are reviewed or skipped:
 - **Review Completed By** field records who completed/skipped the review
 - Review history is recorded with reviewer information and timestamps
 
-**Note:** Completing or skipping reviews does not automatically trigger document reprocessing. Use the **Reprocess** button if you need to re-run summarization or evaluation with the corrected data.
+**Note:** Finalizing reviews — either completing the last pending section or using **Skip All Reviews** — automatically triggers document reprocessing to re-run Summarization/Evaluation and fire the optional post-processing Lambda hook on workflow completion. Use the **Reprocess** button if you later edit data and need to re-run those steps again.
 
 ## Configuration
 
 ### Enabling HITL
 
-HITL can be enabled through two methods:
+HITL is a **configuration setting**, not a stack parameter. Enable it either in the
+Web UI or in the configuration YAML — there is no deploy-time flag:
 
-#### Method 1: CloudFormation Parameter (Initial Setup)
-
-Set the `EnableHITL` parameter to `true` during stack deployment or update.
-
-#### Method 2: Configuration UI (Runtime Toggle)
+#### Method 1: Configuration UI (Runtime Toggle)
 
 1. Log in as an Admin user
 2. Navigate to **Configuration** in the Web UI
@@ -224,7 +225,16 @@ Set the `EnableHITL` parameter to `true` during stack deployment or update.
 4. Toggle **Enable Human-in-the-Loop (HITL) review** to enable/disable
 5. Click **Save** to apply changes
 
-**Note:** Configuration settings take precedence over CloudFormation parameters at runtime.
+#### Method 2: Configuration YAML (Initial Setup)
+
+Set the HITL fields under `assessment` in the configuration passed as
+`CustomConfigPath` (or `idp-cli deploy --custom-config`), so a new stack comes up
+with HITL already on.
+
+> The `EnableHITL` CloudFormation parameter was removed in v0.4.11. If you are
+> upgrading from before that release and had `EnableHITL=true`, re-enable HITL
+> through one of the two methods above; the parameter no longer exists and passing
+> it is rejected.
 
 ### Confidence Threshold Configuration
 
@@ -278,6 +288,7 @@ The visual editor provides a comprehensive review experience with a modern tabbe
 #### Navigation Controls
 - **Mouse Wheel Zoom**: Zoom in/out using the mouse wheel without requiring modifier keys
 - **Click-and-Drag Panning**: Pan around zoomed images by clicking and dragging (cursor shows grab/grabbing state)
+- **Rotate**: Turn a sideways or upside-down page in 90° steps, either direction. The rotated page is re-fitted to the panel rather than cropped, bounding-box overlays rotate with it, the rotation stays applied as you move between pages, and **Reset View** clears it along with zoom and pan
 - **Section Navigation**: Use Previous/Next buttons to navigate between document sections without closing the editor
 
 #### Tabbed Interface
@@ -293,7 +304,7 @@ The visual editor provides a comprehensive review experience with a modern tabbe
 - Section filtering with multiselect dropdown to focus on specific sections
 - Full JSON validation before saving
 
-**Revision History Tab**
+**Edit history Tab**
 - Complete audit trail of all edits to the document
 - Timestamps showing when edits were made
 - Reviewer identification showing who made each change

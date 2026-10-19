@@ -1,0 +1,313 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# =============================================================================
+# Model Configuration Limits
+# =============================================================================
+# This file contains technical limits and capabilities for Bedrock models.
+# These limits are enforced by the Bedrock API and used for config validation.
+#
+# IMPORTANT: These are API limits from AWS documentation. Verify current limits at:
+# - Bedrock Models: https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
+# - Claude Models: https://docs.anthropic.com/claude/docs/models-overview
+# - Nova Models: https://docs.aws.amazon.com/nova/latest/userguide/what-is-nova.html
+# =============================================================================
+
+# Model limits are matched by pattern (case-insensitive regex)
+# Patterns are evaluated in order - first match wins
+# Each entry has a 'pattern' (regex), 'max_output_tokens' (integer), and
+# 'max_input_tokens' (integer — the model's context/input window).
+#
+# max_input_tokens drives MODEL-AWARE AUTO-SIZING (idp_common.bedrock.sizing):
+# shard token/page budgets and confidence list-batch sizes are derived from the
+# model's input+output windows minus a configurable context buffer, so a user
+# never has to hand-set these (they'd need per-model knowledge). The ':1m'
+# extended-context Claude variants have a 1,000,000-token input window and MUST
+# be matched by a dedicated pattern placed BEFORE the base pattern (first match
+# wins) — otherwise a ':1m' model would inherit the base 200K window and shard
+# far smaller than necessary.
+
+model_limits:
+  # ===========================================================================
+  # 1M extended-context ( ':1m' ) Claude variants — MUST precede base patterns.
+  # Input window = 1,000,000; output unchanged from the base model.
+  # ===========================================================================
+  # NOTE patterns use '.*:1m' (not a bare ':1m') because real inference-profile
+  # IDs carry a version segment between the family and the suffix, e.g.
+  # 'claude-opus-4-7-20250514-v1:0:1m'. First match wins, so the 128K-output
+  # families are listed before the 64K catch-all.
+  # 'opus-5' also matches 'opus-5-5' (substring), which is the intended answer:
+  # Opus 5.5 has the same 128K output and 1M extended-context window as Opus 5.
+  - pattern: "claude-(opus-4-(6|7|8)|opus-5|sonnet-5|sonnet-4-6).*:1m"
+    max_output_tokens: 128000
+    max_input_tokens: 1000000
+    description: "Claude Opus 4.6/4.7/4.8, Opus 5, Opus 5.5, Sonnet 5, Sonnet 4.6 extended-context (:1m) — 1M input"
+  - pattern: "claude-(opus|sonnet|haiku)-4.*:1m"
+    max_output_tokens: 64000
+    max_input_tokens: 1000000
+    description: "Other Claude 4.x extended-context (:1m) — 1M input"
+
+  # ---------------------------------------------------------------------------
+  # Anthropic Claude Opus 4.7 (extended output)
+  # ---------------------------------------------------------------------------
+  - pattern: "claude-opus-4-7"
+    max_output_tokens: 128000
+    max_input_tokens: 200000
+    description: "Claude Opus 4.7 with 128K max output tokens"
+    reference: "https://docs.anthropic.com/claude/docs/models-overview#model-comparison"
+
+  # ---------------------------------------------------------------------------
+  # Anthropic Claude Opus 4.8 (extended output)
+  # ---------------------------------------------------------------------------
+  - pattern: "claude-opus-4-8"
+    max_output_tokens: 128000
+    max_input_tokens: 200000
+    description: "Claude Opus 4.8 with 128K max output tokens"
+    reference: "https://docs.anthropic.com/claude/docs/models-overview#model-comparison"
+
+  # ---------------------------------------------------------------------------
+  # Anthropic Claude Opus 5 (extended output)
+  # ---------------------------------------------------------------------------
+  # The model's context window is 1M tokens; the base (non-:1m) ID is kept at
+  # 200K so auto-sizing derives conservative shard budgets by default — select the
+  # :1m variant (matched above) to derive them from the full 1M window instead.
+  # This is purely a sizing choice, not a pricing one: the 1M window is priced at
+  # the same per-token rates as the first 200K (see the long-context note in
+  # pricing.yaml). Sizing still matters on its own terms — wide shards defeat
+  # prompt caching, measured at 5x the cost of the 5-page default in
+  # docs/benchmarking/studies/advanced-extraction-refinements.md.
+  # ---------------------------------------------------------------------------
+  # Anthropic Claude Opus 5.5 (extended output) — MUST precede the Opus 5 entry
+  # ---------------------------------------------------------------------------
+  # Same windows as Opus 5 (128K output, 1M context kept at a 200K sizing budget
+  # on the base ID), so this entry changes no number. It exists because patterns
+  # are matched as substrings with first-match-wins: without it 'claude-opus-5-5'
+  # falls through to the 'claude-opus-5' entry below and reports a `description`
+  # naming the wrong model, which is what a reader and an auto-sizing log line
+  # both see. Listed first for the same reason.
+  - pattern: "claude-opus-5-5"
+    max_output_tokens: 128000
+    max_input_tokens: 200000
+    description: "Claude Opus 5.5 with 128K max output tokens (200K budget; use :1m for 1M window)"
+    reference: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html"
+
+  - pattern: "claude-opus-5"
+    max_output_tokens: 128000
+    max_input_tokens: 200000
+    description: "Claude Opus 5 with 128K max output tokens (200K budget; use :1m for 1M window)"
+    reference: "https://docs.anthropic.com/claude/docs/models-overview#model-comparison"
+
+  # ---------------------------------------------------------------------------
+  # Anthropic Claude Sonnet 5.5 — MUST precede the Sonnet 5 entry
+  # ---------------------------------------------------------------------------
+  # Placement is load-bearing, not stylistic: patterns are matched as substrings
+  # with first-match-wins, and 'claude-sonnet-5' matches 'claude-sonnet-5-5'. Below
+  # the Sonnet 5 entry this model would silently inherit a 200,000-token window.
+  #
+  # ⚠️ The window is 1,000,000 and there is no ':1m' id to opt into or out of it.
+  # 'us.anthropic.claude-sonnet-5-5:1m' is not an identifier Bedrock knows ("The
+  # provided model identifier is invalid", measured us-east-1 2026-10-14), because
+  # 1M is this model's DEFAULT window — the same shape as Haiku 5.5 below, and
+  # unlike Sonnet 5 above, whose base id is deliberately pinned at 200,000 so that
+  # auto-sizing stays conservative unless the user selects the ':1m' variant.
+  # Stating 200,000 here would therefore be false as a statement of fact (this
+  # field's documented meaning, at the top of this file, is "the model's
+  # context/input window") AND unrecoverable, since there is no wider id to choose.
+  #
+  # The consequence is a SIZING one, and it is explicitly NOT the cost warning that
+  # the Haiku 5.5 entry below carries: the AWS price list gives this model a single
+  # prompt-length band (see pricing.yaml), so no request here is under-reported.
+  # What the 1M window changes is the derived agentic shard budget — measured
+  # 578,400 tokens against Sonnet 5's 18,400 at the default 0.30 context_buffer,
+  # the same figure Sonnet 5's own ':1m' variant and Haiku 5.5 get. Wide shards
+  # defeat prompt caching, measured at 5x the cost of the 5-page default in
+  # docs/benchmarking/studies/advanced-extraction-refinements.md. In practice
+  # max_pages_per_shard stays at its 5-page default, which is what usually binds
+  # first, so the budget is a ceiling rather than a target. If predictable
+  # prompt-cache behaviour matters more than window size here, set
+  # extraction.agentic.shard_token_budget explicitly rather than lowering the number
+  # below — that number is read by every other consumer of this file as a statement
+  # about the model.
+  - pattern: "claude-sonnet-5-5"
+    max_output_tokens: 128000
+    max_input_tokens: 1000000
+    description: "Claude Sonnet 5.5 — 1M context (default, no ':1m' id), 128K max output"
+    reference: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html"
+
+  # ---------------------------------------------------------------------------
+  # Anthropic Claude Sonnet 5 (extended output, 128K)
+  # ---------------------------------------------------------------------------
+  # Sonnet 5 supports 128K max output. Base context window is 200K; the :1m
+  # variant (matched above) is 1M.
+  - pattern: "claude-sonnet-5"
+    max_output_tokens: 128000
+    max_input_tokens: 200000
+    description: "Claude Sonnet 5 with 128K max output tokens (base 200K context)"
+    reference: "https://docs.anthropic.com/claude/docs/models-overview#model-comparison"
+
+  # ---------------------------------------------------------------------------
+  # Anthropic Claude Haiku 5.5 (extended output, 128K) — needs its own entry
+  # ---------------------------------------------------------------------------
+  # It cannot inherit from the Claude 4.x entry below: that one caps output at
+  # 64,000 and Haiku 5.5's is 128,000, so falling through would halve the output
+  # budget. It also does not collide with any pattern above, because every one of
+  # those requires a literal '-4' or names opus/sonnet.
+  #
+  # The 1,000,000 window needs no ':1m' id and must not get one: unlike every other
+  # Claude here, 1M is this model's DEFAULT window, not an opt-in. So the value
+  # below is the plain model limit, and 200,000 would be wrong as a statement of
+  # fact — this field's documented meaning, at the top of this file, is "the
+  # model's context/input window".
+  #
+  # COST WARNING — Haiku 5.5 is billed in two prompt-length bands, and this is the
+  # second model in this file with that shape (see the GPT-6 Astra entry below,
+  # which is handled the same way for the same reasons). Input at or below 100,000
+  # tokens costs $0.11/1M (us., eu.) or $0.10/1M (global.); ANY request above
+  # 100,000 moves the WHOLE request into the long band at 5x on every one of the
+  # five token types — $0.55/1M input, $2.75/1M output, us. Threshold and
+  # multiplier are published on Anthropic's pricing page, which prices this model
+  # in two rows ("for prompts up to 100,000 tokens" and "for prompts over 100,000
+  # tokens") and states "Claude Haiku 5.5 is priced by prompt length"
+  # (platform.claude.com/docs/en/about-claude/pricing#long-context-pricing,
+  # retrieved 2026-10-08). The Bedrock model card does not state the threshold, but
+  # the AWS long band is exactly 5x on all five types at exactly the 1.1x geo
+  # multiplier over the first-party band, so it is the same band.
+  # config_library/pricing.yaml records only the short-band rates, so cost reports
+  # UNDER-REPORT by 5x for prompts that cross 100,000.
+  #
+  # Crossing it is the DEFAULT, not an edge case, because the auto-sizers derive
+  # their budgets from this very number:
+  #   * bedrock/sizing.py gives it a 578,400-token agentic shard budget (5.8x the
+  #     band boundary).
+  #   * summarization/service.py budgets 850,000 tokens (85% of the window) before
+  #     it truncates anything (8.5x the boundary).
+  # Lower this value if predictable cost matters more than window size — both
+  # budgets shrink with it. ⚠️ But do NOT lower it to 100000 to chase the band
+  # boundary: measured, that leaves a 2,000-token agentic shard budget, against
+  # 18,400 for Sonnet 5 and 63,200 for Haiku 4.5, which makes Advanced-mode
+  # extraction unusable on this model. There is no value that both keeps the model
+  # usable and keeps every request in the cheap band, which is why the window is
+  # stated truthfully here and the discrepancy is documented instead.
+  - pattern: "claude-haiku-5-5"
+    max_output_tokens: 128000
+    max_input_tokens: 1000000
+    description: "Claude Haiku 5.5 — 1M context (default, no ':1m' id), 128K max output; input above 100K bills at the 5x long-context rate"
+    reference: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html"
+
+  # ---------------------------------------------------------------------------
+  # Anthropic Claude Sonnet 4.6 / Opus 4.6 (extended output, 128K)
+  # ---------------------------------------------------------------------------
+  - pattern: "claude-sonnet-4-6"
+    max_output_tokens: 128000
+    max_input_tokens: 200000
+    description: "Claude Sonnet 4.6 with 128K max output tokens (base 200K context)"
+    reference: "https://docs.anthropic.com/claude/docs/models-overview#model-comparison"
+
+  - pattern: "claude-opus-4-6"
+    max_output_tokens: 128000
+    max_input_tokens: 200000
+    description: "Claude Opus 4.6 with 128K max output tokens (base 200K context)"
+    reference: "https://docs.anthropic.com/claude/docs/models-overview#model-comparison"
+
+  # ---------------------------------------------------------------------------
+  # Anthropic Claude 4.x Models (Haiku 4.5, Sonnet 4/4.5, older Opus versions)
+  # ---------------------------------------------------------------------------
+  - pattern: "claude-(opus|sonnet|haiku)-4"
+    max_output_tokens: 64000
+    max_input_tokens: 200000
+    description: "Claude 4.x models (Haiku 4.5, Sonnet 4/4.5, Opus 4.0/4.1/4.5) - base 200K context"
+    reference: "https://docs.anthropic.com/claude/docs/models-overview#model-comparison"
+
+  # ---------------------------------------------------------------------------
+  # Anthropic Claude 3.x Models
+  # ---------------------------------------------------------------------------
+  - pattern: "claude-3"
+    max_output_tokens: 8192
+    max_input_tokens: 200000
+    description: "Claude 3.x models (3.5 Sonnet, 3.7 Sonnet, 3 Opus, 3 Haiku)"
+    reference: "https://docs.anthropic.com/claude/docs/models-overview#model-comparison"
+
+  # ---------------------------------------------------------------------------
+  # OpenAI GPT-5.x (bedrock-mantle Responses API)
+  # ---------------------------------------------------------------------------
+  - pattern: "openai\\.gpt-5"
+    max_output_tokens: 128000
+    max_input_tokens: 272000
+    description: "OpenAI GPT-5.4 / GPT-5.5 / GPT-5.6 (Sol/Terra/Luna) via Bedrock Mantle Responses API (272K context)"
+    reference: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-openai.html"
+
+  # ---------------------------------------------------------------------------
+  # OpenAI GPT-6 Astra (Converse via cross-region inference profiles only)
+  # ---------------------------------------------------------------------------
+  # NOT the same route as the GPT-5.x entry above: Astra reaches bedrock-runtime
+  # Converse, so it is matched separately. The two patterns cannot collide
+  # ("openai\.gpt-5" does not occur in "openai.gpt-6-astra"), but this entry is
+  # kept adjacent so the difference is obvious to the next reader.
+  #
+  # Verified live on us.openai.gpt-6-astra (us-west-2 Converse, 2026-09-10):
+  # requesting 200000 output tokens returns "The maximum tokens you requested
+  # exceeds the model limit of 131072". 128000 is the model card's documented cap
+  # and the value used here (the 131072 in the error is the raw ceiling).
+  #
+  # COST WARNING — the 1,050,000 input window is deliberate, but Astra is billed
+  # in two context bands: input at or below 272K costs $11/1M (us) or $10/1M
+  # (global), while ANY request above 272K moves the WHOLE request into the long
+  # band at $22/$20 input and $82.50/$75 output. config_library/pricing.yaml
+  # records only the short-band rates, so cost reports UNDER-REPORT (by up to 2x
+  # on input, 1.5x on output) for prompts that cross 272K.
+  #
+  # Crossing it is the DEFAULT, not an edge case, because the auto-sizers derive
+  # their budgets from this very number:
+  #   * bedrock/sizing.py gives Astra a 613,400-token agentic shard budget — the
+  #     largest of any model offered (2.3x the band boundary).
+  #   * summarization/service.py budgets 892,500 tokens (85% of the window) before
+  #     it truncates anything (3.3x the boundary).
+  # Lower this value to 272000 if predictable cost matters more than window size:
+  # both budgets shrink with it, keeping every request in the cheap band.
+  - pattern: "openai\\.gpt-6-astra"
+    max_output_tokens: 128000
+    max_input_tokens: 1050000
+    description: "OpenAI GPT-6 Astra — 1.05M context, 128K max output (CRIS-only: us./global.); input above 272K bills at the 2x long-context rate"
+    reference: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html"
+
+  # ---------------------------------------------------------------------------
+  # xAI Grok (Converse via cross-region inference profiles only)
+  # ---------------------------------------------------------------------------
+  # Verified live on us.xai.grok-4.6 (us-west-2 Converse, 2026-09-02): requesting
+  # more than 524288 output tokens returns "The maximum tokens you requested
+  # exceeds the model limit of 524288". The 500K input window comes from the model
+  # card. This is the first model whose output cap rivals its context window —
+  # see _MAX_OUTPUT_RESERVE_FRACTION_OF_INPUT in idp_common/bedrock/sizing.py for
+  # why the auto-sizing output reserve is capped rather than this value lowered.
+  - pattern: "xai\\.grok-4\\.6"
+    max_output_tokens: 524288
+    max_input_tokens: 500000
+    description: "xAI Grok 4.6 — 500K context, 524288 max output (CRIS-only: us./global.)"
+    reference: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-6.html"
+
+  # ---------------------------------------------------------------------------
+  # Amazon Nova Models (all generations)
+  # ---------------------------------------------------------------------------
+  # Nova Pro/Lite: 300K context; Nova Micro: 128K; Nova 2: 300K. Use the
+  # conservative 300K for the family (the context buffer adds further safety).
+  # `premier` stays in this pattern even though Nova Premier is end-of-life and
+  # no longer selectable. Like pricing.yaml and the template's quota-code maps,
+  # this file is consulted for whatever model a DEPLOYED stack's stored config
+  # names, which is a superset of what is newly selectable. Dropping it would make
+  # get_model_max_output_tokens raise "Unsupported model ID ... run
+  # discover_model_limits.py" for such a config, replacing Bedrock's accurate
+  # end-of-life error with a misleading one.
+  - pattern: "nova-(premier|pro|lite|micro|2)"
+    max_output_tokens: 10000
+    max_input_tokens: 300000
+    description: "Amazon Nova models (Premier, Pro, Lite, Micro, Nova 2) - ~300K context"
+    reference: "https://docs.aws.amazon.com/nova/latest/userguide/what-is-nova.html"
+
+  # ---------------------------------------------------------------------------
+  # Unknown Models
+  # ---------------------------------------------------------------------------
+  # Models not matched above will not have max_tokens validation applied.
+  # This allows use of new/unknown models without artificial limits.
+  # Validation will log a warning and skip the check for unknown model IDs.
+  #
+  # To add a new model family, add a pattern entry above with its known limit.

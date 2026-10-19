@@ -1,15 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-/* eslint-disable react/destructuring-assignment, no-nested-ternary, no-use-before-define */
 import React, { useState, useEffect } from 'react';
 import type { SegmentedControlProps, ToggleProps } from '@cloudscape-design/components';
 import { Box, SpaceBetween, Button, Toggle, Alert, SegmentedControl } from '@cloudscape-design/components';
-import { generateClient } from 'aws-amplify/api';
+import { generateClient } from '../../api/client-shim';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import { Editor } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { getFileContents, uploadDocument } from '../../graphql/generated';
+import { FILE_ACCESS_DENIED_MESSAGE, isAuthorizationError } from '../../hooks/utils/graphql-error';
 import MarkdownViewer from './MarkdownViewer';
 
 interface TextEditorViewProps {
@@ -107,7 +107,7 @@ const TextEditorView = ({ fileContent, onChange, isReadOnly, fileType }: TextEdi
           value={
             fileType === 'json' && typeof fileContent === 'string'
               ? JSON.stringify(JSON.parse(fileContent), null, 2)
-              : fileContent ?? undefined
+              : (fileContent ?? undefined)
           }
           onChange={onChange}
           onMount={handleEditorDidMount}
@@ -292,7 +292,7 @@ const MarkdownJsonViewer = ({
       setLoadedUri(uriToFetch as string);
     } catch (err) {
       logger.error('Error fetching content:', err);
-      setError(`Failed to load ${fileType} content. Please try again.`);
+      setError(isAuthorizationError(err) ? FILE_ACCESS_DENIED_MESSAGE : `Failed to load ${fileType} content. Please try again.`);
     } finally {
       setIsLoading(false);
     }

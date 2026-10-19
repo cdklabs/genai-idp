@@ -14,12 +14,16 @@ from .models import (
     ConfigurationRecord,
     ExtractionConfig,
     ClassificationConfig,
-    AssessmentConfig,
+    ConfidenceConfig,
+    GeometryConfig,
+    HITLConfig,
     SchemaConfig,
     SummarizationConfig,
+    ChatConfig,
     OCRConfig,
     AgenticConfig,
     ImageConfig,
+    ModelConfigLimitsConfig,
     PricingConfig,
 )
 from .constants import (
@@ -35,20 +39,33 @@ logger = logging.getLogger(__name__)
 
 
 class ConfigurationReader:
-    def __init__(self, table_name=None):
+    def __init__(self, table_name=None, region=None):
         """
         Initialize the configuration reader using the table name from environment variable or parameter
 
         Args:
             table_name: Optional override for configuration table name
+            region: Optional AWS region for the underlying clients. ``None``
+                   leaves it to boto3, which is correct in Lambda. An
+                   out-of-region caller (the CLI with an explicit ``--region``)
+                   must pass it — see ConfigurationManager's region docstring.
         """
         # Use ConfigurationManager for all operations (with built-in migration)
-        self.manager = ConfigurationManager(table_name)
+        self.manager = ConfigurationManager(table_name, region=region)
         logger.info(f"Initialized ConfigurationReader with ConfigurationManager")
 
+    # `as_dict` carries its default here, matching the implementation below and the
+    # docstring's "If True (default)". Without it neither overload accepted a call
+    # that omitted `as_dict`, so the documented default form resolved to no overload
+    # at all — the same defect as `get_merged_configuration` further down, which had
+    # callers and was therefore the one that showed up as an error.
     @overload
     def get_configuration(
-        self, config_type: str, *, as_dict: Literal[True], version: Optional[str] = None
+        self,
+        config_type: str,
+        *,
+        as_dict: Literal[True] = True,
+        version: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]: ...
 
     @overload
@@ -58,7 +75,15 @@ class ConfigurationReader:
 
     def get_configuration(
         self, config_type: str, *, as_dict: bool = True, as_model: bool = False, version: Optional[str] = None
-    ) -> Optional[Union[Dict[str, Any], IDPConfig, SchemaConfig, PricingConfig]]:
+    ) -> Optional[
+        Union[
+            Dict[str, Any],
+            IDPConfig,
+            SchemaConfig,
+            PricingConfig,
+            ModelConfigLimitsConfig,
+        ]
+    ]:
         """
         Retrieve a configuration item from DynamoDB with automatic migration
 
@@ -113,15 +138,21 @@ class ConfigurationReader:
         return deep_update(merged, custom)
     
     @overload
-    def get_merged_configuration(self, *, as_model: Literal[True], version: Optional[str] = None) -> IDPConfig: ...
+    def get_merged_configuration(
+        self, *, as_model: Literal[True], version: Optional[str] = None, revision: Optional[int] = None
+    ) -> IDPConfig: ...
 
+    # `as_model` carries its default here, matching the implementation below and
+    # the `get_config` overloads further down this file. Without it, neither
+    # overload accepts a call that omits `as_model`, so every caller relying on
+    # the documented dict default resolved to no overload at all.
     @overload
     def get_merged_configuration(
-        self, *, as_model: Literal[False], version: Optional[str] = None
+        self, *, as_model: Literal[False] = False, version: Optional[str] = None, revision: Optional[int] = None
     ) -> Dict[str, Any]: ...
 
     def get_merged_configuration(
-        self, *, as_model: bool = False, version: Optional[str] = None
+        self, *, as_model: bool = False, version: Optional[str] = None, revision: Optional[int] = None
     ) -> Union[IDPConfig, Dict[str, Any]]:
         """
         Get the full configuration for a version, ready for runtime processing.
@@ -133,16 +164,19 @@ class ConfigurationReader:
 
         Args:
             as_model: If True, return IDPConfig Pydantic model. If False (default), return dict.
-            version: Optional version to load. If None, uses active version.
+            version: Optional Configuration Profile to load. If None, uses the active one.
+            revision: Optional revision of that profile to load instead of its current
+                configuration, for a document or test run pinned to a revision.
 
         Returns:
             Full configuration as IDPConfig or dictionary
         """
         try:
             # Use ConfigurationManager.get_merged_configuration which handles:
+            # - An explicitly pinned revision: read that revision's body
             # - Full config format (new): direct read
             # - Legacy sparse format: merge with default + auto-migrate
-            config = self.manager.get_merged_configuration(version=version)
+            config = self.manager.get_merged_configuration(version=version, revision=revision)
 
             if config is None:
                 raise ValueError(f"Configuration not found for version: {version}")
@@ -159,7 +193,11 @@ class ConfigurationReader:
 
 @overload
 def get_config(
-    *, table_name: Optional[str] = None, as_model: Literal[True], version: Optional[str] = None
+    *,
+    table_name: Optional[str] = None,
+    as_model: Literal[True],
+    version: Optional[str] = None,
+    revision: Optional[int] = None,
 ) -> IDPConfig:
     """
     Get configuration as Pydantic model.
@@ -173,22 +211,36 @@ def get_config(
 
 @overload
 def get_config(
-    *, table_name: Optional[str] = None, as_model: Literal[False] = False, version: Optional[str] = None
+    *,
+    table_name: Optional[str] = None,
+    as_model: Literal[False] = False,
+    version: Optional[str] = None,
+    revision: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Get configuration as mutable dictionary."""
     ...
 
 
 def get_config(
-    *, table_name: Optional[str] = None, as_model: bool = False, version: Optional[str] = None
+    *,
+    table_name: Optional[str] = None,
+    as_model: bool = False,
+    version: Optional[str] = None,
+    revision: Optional[int] = None,
+    region: Optional[str] = None,
 ) -> Union[IDPConfig, Dict[str, Any]]:
     """
     Get the merged configuration using the environment variable for table name.
 
     Args:
         table_name: Optional override for configuration table name
+        region: Optional AWS region for the underlying clients. None defers to
+            boto3, which is correct in Lambda; an out-of-region caller must pass it.
         as_model: If True, return IDPConfig Pydantic model. If False (default), return dict.
-        version: Optional version to load. If None, uses active version.
+        version: Optional Configuration Profile to load. If None, uses the active one.
+        revision: Optional revision of that profile. Pass document.config_revision so a
+            document keeps processing under the configuration it was queued with, even
+            if someone saves the profile mid-flight.
     Returns:
         Merged configuration as IDPConfig (with .to_dict() helper) or mutable dictionary.
 
@@ -201,5 +253,5 @@ def get_config(
         config = get_config(as_model=True)
         config_dict = config.to_dict(sagemaker_endpoint_name=endpoint)
     """
-    reader = ConfigurationReader(table_name)
-    return reader.get_merged_configuration(as_model=as_model, version=version)
+    reader = ConfigurationReader(table_name, region=region)
+    return reader.get_merged_configuration(as_model=as_model, version=version, revision=revision)

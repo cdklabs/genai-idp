@@ -1,0 +1,405 @@
+# Security Controls Implementation Guide
+
+## Document Information
+
+| Field | Value |
+|-------|-------|
+| **Document Version** | 3.2 |
+| **Last Updated** | 2026-09-17 |
+| **Applies to release** | v0.6.9 |
+| **Classification** | Internal |
+
+## 1. Overview
+
+This guide details the security controls implemented in the GenAI IDP Accelerator
+to mitigate the 99 identified threats. Controls are organized by security domain
+and mapped to the specific threats they address.
+
+> **A control listed here is a control that exists in the shipped templates and
+> code.** Where a control is instead the subject of an open change, it is marked
+> **pending** with its issue number and must not be read as present. As of v3.2
+> that applies to the chat streaming transport's group and ownership checks
+> (**#920**), a default-deny gate at the API dispatcher (**#928**), uniform hook
+> failure containment (**#919**), the narrowed deployment service role
+> (**#927**) and converged log-redaction denylists (**#921**).
+
+## 2. Authentication & Identity (AUTH)
+
+### 2.1 Amazon Cognito User Pool
+
+**Threats mitigated**: AUTH.T01, AUTH.T02, AUTH.T04, AUTH.T05
+
+| Control | Implementation | Configuration |
+|---------|---------------|---------------|
+| Self-signup disabled | `AllowAdminCreateUserOnly: true` | CloudFormation |
+| Strong password policy | Minimum 8 chars, mixed case, numbers, symbols | Cognito config |
+| Token lifetimes | Access: 1 hour, Refresh: configurable | Cognito config |
+| Advanced security | Compromised credential detection, adaptive auth | Optional |
+| Admin-only group management | IAM policies on `cognito-idp:Admin*` operations | IAM policies |
+
+### 2.2 RBAC (4-Tier Role System)
+
+**Threats mitigated**: AUTH.T01, AUTH.T03, PM.T06, PM.T07, KB.T01, RPT.T05
+
+| Role | Group Name | Allowed Operations |
+|------|-----------|-------------------|
+| **Admin** | `{StackName}-Admin` | All operations including user management, KB management, BDA project config |
+| **Author** | `{StackName}-Author` | Config CRUD, document upload, processing, agent access, test studio |
+| **Reviewer** | `{StackName}-Reviewer` | Document review, HITL tasks, view results |
+| **Viewer** | `{StackName}-Viewer` | Read-only access to results and dashboards |
+
+**Enforcement layers** (v0.6 — the authorization boundary is the resolver Lambda):
+1. **Resolver Lambda authorization**: every resolver checks `cognito:groups` from the
+   dispatcher-normalized identity and raises `PermissionError` (→ HTTP 403). The API
+   Gateway Cognito authorizer **only authenticates** — it performs no group evaluation.
+2. **Config-version scope**: scope-aware resolvers additionally check the caller's
+   `allowedConfigVersions` (from the UsersTable) — denials return an in-band
+   `Unauthorized` body with HTTP 200.
+3. **Object-level authorization**: owner-scoped keys / `ownerSub`-vs-caller checks on
+   user-owned resources (chat sessions, agent jobs).
+4. **UI authorization**: React components conditionally rendered based on role
+   (**presentation only — never a security control**; the API is directly callable).
+
+> `@aws_cognito_user_pools` directives in `schema.graphql` are **documentation and
+> defense-in-depth intent only** — no gateway enforces them (AUTH.T08).
+
+### 2.3 JWT Validation
+
+**Threats mitigated**: AUTH.T02, AUTH.T03, AUTH.T10, AUTH.T11
+
+- API Gateway's Cognito User Pools authorizer validates the JWT signature against Cognito JWKS
+- Token expiration enforced by the authorizer (401 on expired/invalid)
+- Group claims forwarded to the dispatcher and consumed by resolvers for authorization
+- HTTPS-only communication (TLS 1.2+); no cleartext HTTP
+- **Known gap**: a global sign-out revokes refresh tokens but a still-valid access/ID
+  token remains accepted until `exp` (**GAP-SEC-LOGOUT**, WARN — AUTH.T10)
+
+## 3. API Security (UI, SDK)
+
+### 3.1 UI REST API (`POST /op/{field}`)
+
+**Threats mitigated**: UI.T03, AUTH.T03, AUTH.T08, AUTH.T12, CHAT.T02
+
+| Control | Implementation |
+|---------|---------------|
+| **Authentication** | API Gateway Cognito User Pools authorizer (authenticate only) |
+| **Authorization** | Per-operation `cognito:groups` checks **inside each resolver Lambda** |
+| **Input-shape validation** | Dispatcher validates `arguments` against a build-time spec generated from `schema.graphql`; rejects unknown/missing/wrong-typed/out-of-enum args with HTTP 400 |
+| **Network posture** | Optional `ApiGatewayVisibility=PRIVATE` + VPCe resource policy; optional WAFv2 default-Block IP allow-list on the stage |
+| **Rate limiting** | API Gateway stage throttling + Lambda reserved concurrency + CloudWatch alarms |
+| **Security headers** | `nosniff`, HSTS, `X-Frame-Options: DENY`, `Referrer-Policy` on `/op` responses and gateway 4xx/5xx |
+| **Automated testing** | `make api-test-static` (drift/missing-check scan) + `make api-test` (live op×role, scope, IDOR, token-lifecycle, input-validation, TLS suites) |
+
+> **No GraphQL engine is in the request path.** Query-depth/complexity limits and
+> introspection controls are **not applicable** — do not cite them as controls.
+
+### 3.1a Chat Streaming Function URL
+
+**Threats mitigated**: CHAT.T03 (authentication only), CHAT.T06
+
+| Control | Implementation |
+|---------|---------------|
+| **Authentication** | `AuthType=AWS_IAM`; browser signs with SigV4 using Cognito Identity Pool credentials; `lambda:InvokeFunctionUrl` granted to `CognitoAuthorizedRole` |
+| **CORS** | `AllowCredentials: false`, SigV4 in headers, no cookies |
+| **Group authorization** | **NOT ENFORCED** — the Identity Pool role (`CognitoAuthorizedRole`) is shared by all five groups (`Admin`, `Author`, `Reviewer`, `Annotator`, `Viewer`), so the IAM gate cannot distinguish them (open gap, CHAT.T03; fix **pending in issue #920**) |
+| **Session ownership** | **NOT ENFORCED** on this transport (open gap, CHAT.T03; fix **pending in issue #920**) |
+| **Caller identity** | The value the handler derives from the request context is the assumed-role **session name**, not a verified Cognito `sub`; on `/chat/agent` a body-supplied `callerSub` takes precedence over it (CHAT.T06). That session name is also the **same for every user** of the deployment, because the Identity Pool's enhanced flow picks it and one authenticated role is shared by all groups — so the remedy is a verified subject (an ID token presented alongside the signed request), not a reordering. **Issue #920** / PR #954 addresses the precedence and leaves the verified subject outstanding |
+| **Rate limiting** | Lambda concurrency only — **not** covered by API Gateway throttling or the WAF WebACL |
+| **Automated testing** | **None** — `make api-test` drives `POST /op/{field}` only |
+
+### 3.2 CloudFront Distribution
+
+**Threats mitigated**: UI.T01, UI.T04
+
+| Control | Implementation |
+|---------|---------------|
+| **Origin Access Control** | OAC for S3 origin (replaces OAI) |
+| **HTTPS enforcement** | Redirect HTTP to HTTPS, TLS 1.2 minimum |
+| **Response headers** | CSP (see caveat), X-Frame-Options, X-Content-Type-Options, HSTS, Referrer-Policy |
+| **S3 bucket policy** | Only CloudFront OAC can read UI bucket |
+
+> **CSP caveat (UI.T01/UI.T07).** The shipped CSP retains `'unsafe-inline'` and
+> `'unsafe-eval'` in `script-src` (pending Monaco editor work), so it does **not**
+> block injected inline script — treat React escaping as the control of record for
+> XSS. The blanket `https:` script source is gone as of v0.6.x; `script-src` is now
+> `'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net/npm/`, the last entry
+> being the CDN `@monaco-editor/react` loads Monaco from at runtime. The same
+> policy is emitted in `WebUIHosting=APIGateway` mode (§3.2a), where it is a static
+> header on the two SPA methods rather than a CloudFront policy.
+
+### 3.2a API Gateway Web UI Hosting (`WebUIHosting=APIGateway`)
+
+**Threats mitigated**: UI.T04, UI.T07
+
+| Control | Implementation |
+|---------|---------------|
+| **Origin access** | S3-proxy integration assumes a dedicated `WebUIProxyRole` scoped to the Web UI bucket |
+| **Routes** | `GET /` → `index.html`, `GET /{proxy+}` → asset key; both `AuthorizationType: NONE` (SPA shell/assets are not secrets) |
+| **Network posture** | PRIVATE endpoint policy and WAF WebACL still apply to these routes |
+| **Security headers** | `Content-Security-Policy`, `nosniff`, HSTS, `X-Frame-Options: DENY`, `Referrer-Policy` set per-method. The CSP mirrors the CloudFront policy from a single `WebUiSecurity` mapping, with `frame-ancestors 'none'` to match the `DENY` above (see caveat in §3.2) |
+| **Missing keys** | S3 4xx mapped to 404; HashRouter means deep links need no server-side rewrite |
+
+### 3.3 Presigned URLs
+
+**Threats mitigated**: UI.T02
+
+| Control | Implementation |
+|---------|---------------|
+| **Short expiration** | Short expiration on upload URLs |
+| **Minting authorization** | `uploadDocument` requires the Admin/Author group (server-side) |
+| **Read allow-list** | `getFilePresignedUrl`/`getFileContents` restrict the target to this stack's buckets (`_validate_bucket`), and fail closed if the allow-list is unset |
+| **Read key scope** | `getFileContents`, `getFilePresignedUrl` and `getFilePresignedUrls` match the requested **key** against the caller's scope for the two per-user-partitioned buckets — `allowedConfigVersions` against the profile in a `config_revisions/<profile>/` key, `allowedTestSets` against the test set in a `<test_set_id>/` key — in the one function all three fields call before any S3 call (`_validate_key_scope`, reached from `_parse_and_validate_one`) |
+| **Read document scope** | On the Input and Output buckets the same choke point resolves the **document** owning the key from the tracking table and matches its `ConfigVersion` against the caller's `allowedConfigVersions` (`document_scope`). Fail-closed on an unidentifiable key and on an unstamped document; on the batch field one refusal fails the whole request, so it is not a per-key authorization oracle |
+| **No browser read path** | The Identity Pool's `authenticated` role grants no S3 and no KMS, so there is no bucket the browser can read with the signed-in user's own credentials and every document byte goes through the three operations above (`scripts/tests/test_browser_s3_grants.py`) |
+
+> **Read-scoping residual (UI.T06).** The per-document check runs on the
+> configuration-profile axis, because that is the only per-document axis the
+> product records — nothing says which user or tenant a document belongs to. For a
+> **scoped** caller it is a real refusal; for an **unscoped** one (no
+> `allowedConfigVersions`, which is a user row's default, since scoping is opt-in
+> per user) it is a deliberate no-op, so a caller holding any one of the five
+> groups still reads any document's bytes through the resolver. Closing the rest
+> needs a document ownership model — issue #1033. Partially Mitigated.
+
+## 4. Data Protection
+
+### 4.1 Encryption at Rest
+
+**Threats mitigated**: CHAT.T04, KB.T03, RPT.T01
+
+Verified against `template.yaml`, `nested/api-resolvers/template.yaml` and
+`patterns/unified/template.yaml` at v0.6.9. The stack creates its own KMS
+customer-managed key (`CustomerManagedEncryptionKey`) and most data stores are
+bound to it.
+
+| Resource | Encryption |
+|----------|-----------|
+| S3 buckets | 11 of 13 use the stack's KMS **customer-managed key**; `LoggingBucket` and `WebUIBucket` use `AES256` (they hold access logs and public static assets). All 13 additionally carry a bucket policy denying any request where `aws:SecureTransport` is false |
+| SQS queues and DLQs | All **17** (16 in `template.yaml`, 1 in `patterns/unified/template.yaml`) set `KmsMasterKeyId` to the stack CMK — **not** SSE-SQS. None falls back to SSE-SQS |
+| DynamoDB tables | All 12 set `SSESpecification` with `SSEType: KMS` and the stack CMK — **not** the AWS-owned default key |
+| OpenSearch Serverless | Encryption at rest (AWS-managed) |
+| CloudWatch Logs | **106 of the 109** log groups declared in the three templates (56 + 33 + 20) set `KmsKeyId` to the stack CMK. The three exceptions are `HttpApiDispatcherLogGroup` — the group for the component every UI API request passes through — and the `StacknameCheckFunction` and `ReadPreviousIDPPatternFunction` custom-resource groups, which handle no request data. Retention is a **separate** statistic for the same 109 resources — 108 take `RetentionInDays` from `!Ref LogRetentionDays` and one hardcodes `30`, that one being the dispatcher group again — so the two counts must not be merged. See AUTH.T15 |
+
+> **Three residual notes on the key itself.** Its key policy grants the account
+> root `kms:*` and sets no `kms:ViaService` condition, so the key is usable by any
+> principal in the account that IAM permits, not only by the services that hold
+> the stack's data. That is the common CloudFormation pattern and it keeps the key
+> recoverable, but it means the key policy is not itself a second boundary — IAM
+> is the only one. Sizing the blast radius of the CMK therefore means reading the
+> IAM policies, not the key policy.
+>
+> The third: the `Allow CloudWatch Logs to use the key` statement
+> (`template.yaml:3224-3234`) grants the five data actions to
+> `logs.${AWS::URLSuffix}` on `Resource: "*"` with **no `Condition` block**, so it
+> is not scoped by `kms:EncryptionContext:aws:logs:arn` to the stack's own log
+> group ARNs. Any log group in the account that names this key can therefore use
+> it, which matters mainly for the audit story — a `kms:Encrypt` call attributed to
+> the Logs service does not by itself identify which log group it served. Adding an
+> encryption-context condition is the scoping change, and it needs care rather than
+> a blanket edit: the adjacent CloudWatch Alarms statement carries a comment
+> explaining that it must stay unconditional, because gating it broke every alarm
+> notification on a default deployment. That comment applies to the alarms
+> statement, not to this one.
+
+### 4.2 Encryption in Transit
+
+| Resource | Protocol |
+|----------|----------|
+| All API calls | HTTPS / TLS 1.2+ |
+| Chat streaming | HTTPS SSE (`text/event-stream`) over the Lambda Function URL |
+| AWS service calls | TLS via AWS SDK |
+| CloudFront | HTTPS only |
+
+### 4.3 Data Isolation
+
+**Threats mitigated**: AGT.T05, CHAT.T02, AUTH.T06
+
+| Mechanism | Implementation |
+|-----------|---------------|
+| **Single-tenant** | One CloudFormation stack per environment |
+| **User-scoped queries** | `ChatSessionsTable` is keyed `PK=userId`; `ChatMessagesTable` is keyed `PK=sessionId` and relies on **explicit resolver ownership checks** (`_verify_session_ownership` / `ownerSub`), not the key alone |
+| **Session isolation** | UUID-based conversation session IDs |
+| **Stack isolation** | Separate Cognito pools, S3 buckets, DynamoDB tables per stack |
+
+## 5. AI/ML Security
+
+### 5.1 Prompt Injection Defense
+
+**Threats mitigated**: PM.T01, CHAT.T01, KB.T02, RPT.T05
+
+| Layer | Control |
+|-------|---------|
+| **Prompt engineering** | System prompts with clear role boundaries, input/output tags separating user content from instructions |
+| **Bedrock Guardrails** | Optional content filtering, topic denial policies, PII detection |
+| **Output validation** | JSON Schema validation of all model outputs |
+| **Context isolation** | RAG/KB context marked as reference data, not instructions |
+| **Assessment step** | Verification layer checking extraction quality |
+
+### 5.2 Model Output Validation
+
+**Threats mitigated**: PM.T03, BDA.T02, HOOK.T03
+
+| Validation | Implementation |
+|-----------|---------------|
+| **Schema validation** | JSON Schema enforcement on extraction outputs |
+| **Confidence thresholds** | Configurable minimum confidence for classification |
+| **Type checking** | Field type validation (dates, numbers, strings) |
+| **Evaluation framework** | Ground truth comparison for accuracy monitoring |
+
+### 5.3 Agent Security
+
+**Threats mitigated**: AGT.T01, AGT.T02, AGT.T03
+
+| Control | Implementation |
+|---------|---------------|
+| **Athena read-only** | IAM role with SELECT-only permissions on Glue catalog |
+| **AgentCore sandbox** | AWS-managed isolation (no network, no credentials, no persistent storage) |
+| **Tool-level auth** | Each agent tool validates caller permissions |
+| **Audit logging** | All tool invocations logged with parameters and results |
+
+## 6. Extensibility Security
+
+### 6.1 Lambda Hooks
+
+**Threats mitigated**: HOOK.T01, HOOK.T02, HOOK.T03, HOOK.T04, HOOK.T05
+
+| Control | Implementation |
+|---------|---------------|
+| **Invocation-only** | Platform IAM role has only `lambda:InvokeFunction` on hook ARN |
+| **Separate IAM** | Hook Lambdas use customer-managed IAM roles (not platform roles) |
+| **Output validation** | Platform validates hook return value schema |
+| **Timeout handling** | Step Functions state timeout on hook invocation |
+| **Error handling** | Catch states with DLQ for hook failures |
+
+**Customer recommendations**:
+- Use VPC with restrictive egress for post-processing hooks
+- Apply least-privilege IAM to hook execution roles
+- Implement input validation in hook code
+- Enable CloudWatch logging on hook Lambdas
+
+### 6.2 MCP Integration
+
+**Threats mitigated**: MCP.T01, MCP.T02, MCP.T03, MCP.T04, MCP.T05, MCP.T06
+
+| Control | Implementation |
+|---------|---------------|
+| **IaC-managed tools** | MCP tool definitions in CloudFormation (not runtime-configurable) |
+| **Separate IAM roles** | Each MCP Lambda has dedicated execution role |
+| **Response sanitization** | Tool output validated and size-limited |
+| **Parameter validation** | Input schemas enforced per tool |
+| **Authentication** | Cognito auth required for external MCP clients |
+| **Gateway monitoring** | CloudWatch alarms on AgentCore Gateway status |
+
+## 7. Infrastructure Security
+
+### 7.1 IAM Least Privilege
+
+**Threats mitigated**: Multiple (all components)
+
+| Principle | Implementation |
+|-----------|---------------|
+| **Per-function roles** | Each Lambda function has its own execution role |
+| **Resource-scoped policies** | IAM policies reference specific resource ARNs |
+| **No wildcards** | Avoid `*` in resource specifications where possible |
+| **Service-linked roles** | Use AWS-managed roles for Bedrock, Textract, BDA access |
+
+### 7.2 S3 Bucket Security
+
+**Threats mitigated**: PM.T04, BDA.T05, RPT.T01, RPT.T04
+
+| Control | Implementation |
+|---------|---------------|
+| **Block public access** | `BlockPublicAcls`, `BlockPublicPolicy`, `IgnorePublicAcls`, `RestrictPublicBuckets` all enabled |
+| **Bucket policies** | Restrict access to specific IAM roles and CloudFront OAC |
+| **Versioning** | Enabled on reporting and configuration buckets |
+| **Lifecycle policies** | Automatic cleanup of temporary files and query results |
+| **Server-side encryption** | Stack KMS customer-managed key on 11 of 13 buckets; `AES256` on the logging and Web UI buckets |
+
+### 7.3 DynamoDB Security
+
+**Threats mitigated**: CHAT.T04, AGT.T04
+
+| Control | Implementation |
+|---------|---------------|
+| **Encryption** | `SSEType: KMS` with the stack's customer-managed key on all 12 tables |
+| **Per-table IAM** | Lambda roles scoped to specific tables |
+| **Point-in-time recovery** | Optional PITR for critical tables |
+| **TTL** | Conversation records with configurable TTL |
+
+### 7.4 Monitoring & Alerting
+
+**Threats mitigated**: Multiple (detection and response)
+
+| Control | Implementation |
+|---------|---------------|
+| **CloudWatch Alarms** | 60+ alarms on Lambda errors, SQS depth, Step Functions failures |
+| **CloudWatch Logs** | All Lambda functions log to CloudWatch |
+| **CloudTrail** | API-level audit trail for AWS service calls |
+| **Custom metrics** | Processing success rates, latency, costs |
+| **Dashboard** | CloudWatch dashboard with operational metrics |
+
+## 8. Network Security
+
+### 8.1 Default Configuration
+
+| Control | Status |
+|---------|--------|
+| **Minimal public Lambda exposure** | Lambda functions are invoked via API Gateway, SQS, EventBridge, or Step Functions. **One exception**: `ChatStreamProcessorFunction` has a public Function URL for SSE chat streaming — gated by `AuthType=AWS_IAM` (SigV4), but **not** behind API Gateway, the WAF, or a VPC endpoint. See CHAT.T03. |
+| **HTTPS everywhere** | All communication over TLS 1.2+ |
+| **CloudFront as WAF endpoint** | Optional WAF integration for additional protection |
+
+### 8.2 Optional VPC Configuration
+
+For deployments requiring network-level isolation:
+
+| Control | Implementation |
+|---------|---------------|
+| **VPC Lambda** | Lambda functions deployed in customer VPC |
+| **Private subnets** | Processing Lambdas in private subnets |
+| **VPC endpoints** | PrivateLink endpoints for AWS service access |
+| **NAT gateway** | Controlled internet egress through NAT |
+| **Security groups** | Fine-grained network access control |
+
+## 9. Compliance Mapping
+
+### AWS Well-Architected Security Pillar
+
+| Principle | Controls |
+|-----------|----------|
+| **Identity and access management** | Cognito, RBAC, IAM least-privilege |
+| **Detection** | CloudWatch alarms, CloudTrail, custom metrics |
+| **Infrastructure protection** | VPC (optional), security groups, TLS |
+| **Data protection** | Encryption at rest/in transit, S3 bucket policies |
+| **Incident response** | CloudWatch alarms, DLQ monitoring, operational dashboards |
+
+## 10. Implementation Checklist
+
+### Pre-Deployment
+
+- [ ] Review and customize RBAC role permissions for your organization
+- [ ] Configure Cognito password policy and advanced security settings
+- [ ] Review the stack's KMS customer-managed key policy — it grants the account root `kms:*` and sets no `kms:ViaService` condition, so IAM is the only boundary on its use
+- [ ] Review Lambda hook security requirements
+- [ ] Plan VPC configuration if network isolation is required
+
+### Post-Deployment
+
+- [ ] Create Cognito users with appropriate group assignments
+- [ ] Run `make api-test-static` and `make api-test` — verify every operation's resolver-side group/scope check passes and no new WARN gaps appeared
+- [ ] Confirm any newly added API operation has an entry in `scripts/api_rbac_expectations.yaml` (the static scan fails on drift)
+- [ ] Test RBAC permissions across all five groups (`Admin`, `Author`, `Reviewer`, `Annotator`, `Viewer`) — and note that `Precedence` orders IAM-role selection only, so no group inherits another's permissions
+- [ ] Configure CloudWatch alarm notifications
+- [ ] Review CloudTrail logging coverage
+- [ ] Document Lambda hook deployment procedures
+- [ ] Establish evaluation baseline for accuracy monitoring
+
+### Ongoing Operations
+
+- [ ] Periodic API authorization audit (`make api-test` against a live stack; review the op×role matrix report)
+- [ ] Review the chat streaming Function URL path separately — it is **outside** the automated harness and outside the WAF WebACL (CHAT.T03, CHAT.T06)
+- [ ] Re-review the threat model each release cycle — `make check-threat-model-currency` fails the build when `security/threat-modeling/README.md`'s `Last reviewed against version` field falls more than one release behind `VERSION`
+- [ ] Review CloudWatch alarm history for security events
+- [ ] Monitor Athena query patterns for anomalies
+- [ ] Review and rotate SDK/CLI credentials
+- [ ] Update Bedrock Guardrails policies as needed
+- [ ] Maintain evaluation ground truth data integrity

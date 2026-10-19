@@ -7,9 +7,26 @@ IDP SDK Client
 Main client class for programmatic access to IDP Accelerator capabilities.
 """
 
-from typing import Dict, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Dict, Optional
 
 from .exceptions import IDPConfigurationError, IDPStackError
+
+if TYPE_CHECKING:
+    from idp_sdk.operations import (
+        AssessmentOperation,
+        BatchOperation,
+        ConfigOperation,
+        DiscoveryOperation,
+        DocumentOperation,
+        EvaluationOperation,
+        ManifestOperation,
+        PublishOperation,
+        SearchOperation,
+        StackOperation,
+        TestingOperation,
+    )
 
 
 class IDPClient:
@@ -75,7 +92,10 @@ class IDPClient:
 
         Search processed documents:
         >>> result = client.search.query("What is the total amount on invoice 12345?")
-        >>> print(f"Answer: {result.answer} (confidence: {result.confidence:.2%})")
+        >>> if result.answer:
+        ...     print(f"Answer: {result.answer} ({result.confidence:.2%})")
+        >>> for citation in result.citations:
+        ...     print(f"  from {citation.document.document_id} p{citation.document.page}")
 
     Attributes:
         stack: StackOperation - Infrastructure management
@@ -137,21 +157,25 @@ class IDPClient:
             DocumentOperation,
             EvaluationOperation,
             ManifestOperation,
+            PublishOperation,
             SearchOperation,
             StackOperation,
             TestingOperation,
         )
+        from idp_sdk.operations.chat import ChatOperation
 
-        self.stack = StackOperation(self)
-        self.batch = BatchOperation(self)
-        self.document = DocumentOperation(self)
-        self.config = ConfigOperation(self)
-        self.discovery = DiscoveryOperation(self)
-        self.manifest = ManifestOperation(self)
-        self.testing = TestingOperation(self)
-        self.search = SearchOperation(self)
-        self.evaluation = EvaluationOperation(self)
-        self.assessment = AssessmentOperation(self)
+        self.stack: StackOperation = StackOperation(self)
+        self.batch: BatchOperation = BatchOperation(self)
+        self.document: DocumentOperation = DocumentOperation(self)
+        self.config: ConfigOperation = ConfigOperation(self)
+        self.discovery: DiscoveryOperation = DiscoveryOperation(self)
+        self.manifest: ManifestOperation = ManifestOperation(self)
+        self.testing: TestingOperation = TestingOperation(self)
+        self.search: SearchOperation = SearchOperation(self)
+        self.evaluation: EvaluationOperation = EvaluationOperation(self)
+        self.assessment: AssessmentOperation = AssessmentOperation(self)
+        self.publish: PublishOperation = PublishOperation(self)
+        self.chat: ChatOperation = ChatOperation(self)
 
     @property
     def stack_name(self) -> Optional[str]:
@@ -192,7 +216,7 @@ class IDPClient:
 
     def _get_stack_resources(self, stack_name: Optional[str] = None) -> Dict[str, str]:
         """Get stack resources with caching."""
-        from idp_sdk.core.stack_info import StackInfo
+        from idp_sdk._core.stack_info import StackInfo
 
         name = self._require_stack(stack_name)
 

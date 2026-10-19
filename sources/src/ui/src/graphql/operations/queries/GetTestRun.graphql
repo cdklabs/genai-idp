@@ -9,15 +9,26 @@ query GetTestRun($testRunId: String!) {
     failedFiles
     overallAccuracy
     weightedOverallScores
+    excludedDocumentCount
     averageConfidence
+    confidenceMetrics
     accuracyBreakdown
+    confusionMatrix
+    fieldMetrics
     splitClassificationMetrics
+    gradedPacketMetrics
+    classificationErrors
     totalCost
     costBreakdown
     createdAt
     completedAt
     context
+    isDraftLabeling
+    evaluationDisabled
     configVersion
+    configRevision
+    testSetVersion
+    testSetDraftVersion
     config
   }
 }

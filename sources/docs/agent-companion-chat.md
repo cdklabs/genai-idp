@@ -24,6 +24,7 @@ The Agent Companion Chat provides an intelligent conversational interface throug
 - **Session Persistence**: Conversations are saved and resume where you left off
 - **Sample Prompts**: Pre-defined queries to help you get started quickly
 - **Privacy Controls**: Optional Code Intelligence with user consent for external services
+- **CLI & SDK Access**: Use the same agents from the terminal via `idp-cli chat` or programmatically via `IDPClient.chat` — see [IDP CLI chat command](./idp-cli.md#chat)
 
 Updated Demo Video: 
 https://github.com/user-attachments/assets/c48b9e48-e0d4-457c-8c95-8cdb7a9d332b
@@ -109,9 +110,9 @@ The Agent Companion Chat uses a session-based architecture that differs fundamen
 ### System Components
 
 ```
-User → Web UI → AppSync GraphQL API → Lambda Functions:
-                                      ├── agent_chat_resolver (Entry point)
-                                      └── agent_chat_processor (Agent execution)
+User → Web UI → API Gateway REST API → dispatcher Lambda → Lambda Functions:
+                (POST /op/{field},     (idp_common          ├── agent_chat_resolver (Entry point)
+                 Cognito authorizer)    .api_adapter)       └── agent_chat_processor (Agent execution)
                                                 ↓
                                       Agent System:
                                       ├── Orchestrator Agent (Router)
@@ -124,7 +125,7 @@ User → Web UI → AppSync GraphQL API → Lambda Functions:
                                       ├── ChatMessagesTable (Message storage)
                                       └── ChatMemoryTable (Conversation history)
                                                 ↓
-Results ← Web UI ← AppSync Subscription ← Real-time Updates
+Tokens ← Web UI ← Lambda Function URL (RESPONSE_STREAM, SigV4, read directly by the browser)
 ```
 
 ### Architecture Transformation
@@ -171,17 +172,27 @@ The Agent Companion Chat uses a multi-agent architecture with:
 
 ### Real-Time Streaming
 
-Messages stream in real-time using AWS AppSync GraphQL subscriptions:
+Messages stream in real time over a **Lambda Function URL** with
+`InvokeMode=RESPONSE_STREAM`, which the browser reads directly as
+Server-Sent Events. This is the one flow in the solution that keeps true
+sub-second push rather than polling — see
+[AppSync → REST API Migration](./migration-appsync-to-rest.md) §3.
 
 **Streaming Flow**:
-1. User sends message via GraphQL mutation
+1. User sends message through the REST API (`POST /op/sendAgentChatMessage`)
 2. Message stored in ChatMessagesTable
 3. agent_chat_processor invoked asynchronously
 4. Agent loads conversation history from ChatMemoryTable
 5. Agent processes query and streams response chunks
-6. Chunks published via AppSync subscription
+6. Chunks written to the streaming response body, which the browser is already reading
 7. UI displays chunks progressively
 8. Complete turn saved to ChatMemoryTable
+
+The Function URL is `AuthType=AWS_IAM`: the browser SigV4-signs the request with
+its authenticated Cognito Identity Pool credentials, so AWS rejects an
+unauthenticated reader at the function edge. Because the browser addresses the
+Function URL directly, streaming behaves identically under CloudFront and under
+the API Gateway hosting option (API Gateway buffers responses and cannot stream).
 
 **Benefits**:
 - Users see responses immediately as they're generated
@@ -635,9 +646,9 @@ Agent: "You can add validation by including criteria in your config..."
 ## Configuration
 
 **Supported Models**:
-- `us.anthropic.claude-3-7-sonnet-20250219-v1:0` 
-- `us.anthropic.claude-sonnet-4-20250514-v1:0` (Default - Best for complex reasoning)
-- `us.anthropic.claude-3-5-sonnet-20241022-v2:0` 
+- `us.anthropic.claude-haiku-4-5-20251001-v1:0` (Default - fast and inexpensive for conversational use)
+- `us.anthropic.claude-sonnet-4-6` (Best for complex reasoning)
+- `us.anthropic.claude-sonnet-4-5-20250929-v1:0` (legacy from 2026-10-08, end of life 2027-04-08)
 - `us.amazon.nova-pro-v1:0` (AWS native option)
 - `us.amazon.nova-lite-v1:0` (Lightweight option)
 
@@ -651,7 +662,8 @@ The feature automatically creates:
 - **Lambda Functions**: 
   - `agent_chat_resolver`: Entry point for messages
   - `agent_chat_processor`: Agent execution and streaming
-- **AppSync Resolvers**: GraphQL API endpoints for web UI integration
+- **API Resolvers**: the chat operations the REST API dispatcher routes to (`nested/api-resolvers/`)
+- **Chat Stream Processor**: `src/lambda/chat_stream_processor`, exposed as a Lambda Function URL for token streaming
 - **IAM Roles**: Minimal permissions for secure operation
 
 ### Environment Variables
@@ -735,7 +747,7 @@ Key configuration settings:
   - `/aws/lambda/agent_chat_resolver`
   - `/aws/lambda/agent_chat_processor`
 - **DynamoDB Console**: View messages and conversation history directly
-- **AppSync Console**: Monitor GraphQL API requests and subscriptions
+- **API Gateway Console**: Monitor REST API requests, and the dispatcher Lambda's log group for per-operation detail
 - **Agent Messages**: Real-time display of agent reasoning in web UI
 
 ### Performance Optimization
@@ -758,7 +770,7 @@ The Agent Companion Chat feature uses several AWS services that incur costs:
 - **Amazon Bedrock**: Model inference costs for agent processing (varies by model and token usage)
 - **AWS Lambda**: Function execution costs for resolver and processor functions
 - **Amazon DynamoDB**: Storage and request costs for messages and conversation history
-- **AWS AppSync**: GraphQL API request and subscription costs
+- **Amazon API Gateway**: REST API request costs for chat operations and status polls
 - **Amazon CloudWatch**: Log storage and monitoring costs
 - **Amazon Athena**: Query execution costs (when Analytics Agent is used)
 - **AWS Bedrock AgentCore**: Code interpreter session costs (when Analytics Agent generates visualizations)

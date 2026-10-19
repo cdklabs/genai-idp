@@ -7,9 +7,14 @@ use_bda: false
 
 notes: "DocSplit document classification benchmark based on RVL-CDIP - 16 document classes - for pipeline mode (Bedrock LLM). Set use_bda: true for BDA mode. Assessment and summarization disabled by default."
 
-assessment:
-  enabled: false
+extraction:
+  confidence:
+    mode: 'off'   # v0.6: confidence scoring disabled (was assessment.enabled: false)
 summarization:
+  enabled: false
+
+chat:
+  # docsplit is a section-splitting pipeline, not doc Q&A — disable chat.
   enabled: false
 
 classes:

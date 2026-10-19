@@ -1,0 +1,1744 @@
+# CI/CD Automated Test Coverage
+
+## Overview
+
+The CI/CD pipeline runs a comprehensive smoke test suite that validates all major IDP Accelerator features. Tests run in **parallel** with **fail-fast** behavior for rapid feedback.
+
+## Running these tests manually (make target → skill)
+
+Every test below can be run **outside** the pipeline against a live stack (dev
+box, `AWS_PROFILE=default` or `idp-ci`). The deploy-variant probes run manually
+by default (they are no longer automatic in CI — see the ⚠️ note under
+"deployment-variant probe framework"). This table is the map from each test to
+its `make` target and the skill that documents how to run it.
+
+| Test / suite | Make target | Skill |
+|---|---|---|
+| Primary functional suite (Steps 3–14) | *(runs in CI; deploy a stack then use the individual targets below)* | — |
+| API RBAC / authorization (Step 12) | `make api-test STACK_NAME=…` (alias `make stacktest-rbac`) · static-only: `make api-test-static` | `.claude/skills/api-rbac-test.md` |
+| ZAP DAST scan | `make stacktest-zap STACK_NAME=…` | `.claude/skills/run-stack-tests.md` |
+| UX review in a real browser (functional pass/fail per flow **plus** usability findings; optionally recorded as a narrated mp4 via `scripts/ux_recorder.py`) | `make ux-test STACK_NAME=…` | `.claude/skills/ux-test.md` |
+| APIGateway GLOBAL hosting | `make stacktest-hosting-global` | `.claude/skills/run-stack-tests.md` |
+| WAF-enabled hosting | `make stacktest-waf` | `.claude/skills/run-stack-tests.md` |
+| APIGateway PRIVATE (VPC) hosting | `make stacktest-hosting-private VPC_ID=…` | `.claude/skills/run-stack-tests.md` |
+| Jobs API (VPC) | `make stacktest-jobsapi VPC_ID=…` | `.claude/skills/run-stack-tests.md` |
+| List deploy-variant stack-tests | `make stacktest-list` | `.claude/skills/run-stack-tests.md` |
+| Release-vs-release benchmark | `make benchmark-release …` (alias `make stacktest-benchmark`) | `.claude/skills/run-benchmarks.md` |
+| In-place upgrade (X→Y) test | `make stacktest-upgrade` (pointer) | `.claude/skills/test-upgrade.md` |
+| Full offline test battery (no AWS) | `make test` | `.claude/skills/full-test-battery.md` |
+| Package/Lambda offline suites (idp_cli, idp_sdk, idp_feature_sdk, feature-platform, seller-entitlement-service) | `make test-packages-cicd` | — *(runs per commit in the GitHub `developer-tests` workflow)* |
+| Seller-service ownership preflight (read-only) | `make seller-entitlement-service-preflight PRODUCT_REGISTRY='{…}'` | `feature-platform/seller-entitlement-service/README.md` |
+| Seller-service **e2e** (deploy → live probe → teardown) | `make stacktest-seller` | `.claude/skills/run-stack-tests.md` |
+| Seller-service live activation + payload probe | `python feature-platform/seller-entitlement-service/tests/dynamic_activation_test.py --endpoint … --product-id …` | `feature-platform/seller-entitlement-service/README.md` |
+| Seller-service test-stack teardown (incl. retained KMS key + table) | `feature-platform/seller-entitlement-service/tests/teardown_test_stack.sh --stack-name …-citest` | `feature-platform/seller-entitlement-service/README.md` |
+| Run security tests + curate a public-safe snapshot | `make security-results [STACK_NAME=… REGION=…]` (offline-only if no stack) | `.claude/skills/curate-security-results.md` |
+
+The user-facing version of this map — every layer, including the ones that *do* run
+in CI — is [`docs/testing.md`](../../../docs/testing.md). This file stays the
+pipeline-internal reference: per-step detail, probe framework, cleanup.
+
+Once a release has been validated with these tiers, the outcome is recorded — one
+file per release, never overwritten — in
+[`docs/release-validation/`](../../../docs/release-validation/README.md). That is
+the answer to "what was actually run against a live stack for release X, and what
+did it find?", since none of these tiers appear in a pipeline log.
+
+VPC stack-tests auto-discover a suitable VPC via the `run-stack-tests` skill
+(it lists candidates, confirms with you, then passes `VPC_ID`/`SUBNET_IDS`/
+`LAMBDA_SG_ID`/`APIGW_VPCE_ID` as make params).
+
+## Security tests: coverage & auditable results
+
+The four security tests — **SRT** (SAST/deps), **ZAP DAST** (dynamic API scan),
+and **RBAC static + dynamic** (authorization) — are documented as a set, with
+their goals and threat-model cross-references, in
+[`security/README.md`](../../../security/README.md). For a release, run them and
+curate a **public-safe, redacted** snapshot into `security/test-results/<version>/`
+(one file per test + a `MANIFEST.md` tying the results to a version, git SHA,
+and date) with a single command:
+
+```bash
+make security-results STACK_NAME=<stack> REGION=<region>   # full (incl. live ZAP + RBAC)
+make security-results                                      # offline-only (SRT + RBAC static)
+```
+
+(Or ask Claude Code: *"run security tests and update results"*. To curate from
+already-run reports without re-running:
+`python3 scripts/security/curate_results.py --date <YYYY-MM-DD> [--version <label>]`.)
+
+Raw reports carry environment-specific identifiers (account IDs, Cognito pool
+IDs, API hostnames) and stay in gitignored `scratch/`/`.srt/` — only the curated
+summaries are committed. See
+[`.claude/skills/curate-security-results.md`](../../../.claude/skills/curate-security-results.md)
+for the runbook and [`security/test-results/README.md`](../../../security/test-results/README.md)
+for the process.
+
+### Additionally: Seller Entitlement Service tests
+
+The **Seller Entitlement Service** carries a fifth, separate set — template-security
+assertions, a payload-robustness fuzz corpus, and a live activation probe — because
+it deploys into an AWS Marketplace *seller* account rather than a customer's, and its
+protected assets belong to the seller. Threats `SELL.T01–T10`.
+
+The first two run **offline per commit** via `make test-packages-cicd` (called by the
+GitHub `developer-tests` workflow); the live probe is manual, because issuing a real
+token needs product ownership *and* a subscribed buyer account, neither of which a
+build account has. They are **not** in the curated `test-results/` snapshot.
+
+**ZAP DAST deliberately does not apply to this service.** ZAP cannot SigV4-sign, so
+the `AWS_IAM` authorizer refuses every request *before the Lambda is invoked* — an
+active scan would report a clean 403 wall and prove nothing about the parser. The
+payload-robustness corpus covers that goal directly. See
+[`security/README.md`](../../../security/README.md) and
+[the service README](../../../feature-platform/seller-entitlement-service/README.md).
+
+## Pipeline stages & triggers
+
+The GitLab pipeline has three stages. Everything a merge request runs is in the
+first one; the two AWS stages are **nightly plus a manual button**.
+
+| Stage | Jobs | AWS? | Cost |
+|-------|------|------|------|
+| **fast_checks** | Seven **parallel** jobs, every one `needs: []`: `static_checks` (lint, typecheck, buildspec + CloudFormation template validation, static RBAC scan, service-role permission check, first-party dependency-confusion check), `unit_tests` (`idp_common_pkg`, ~10,500 tests, + the coverage ratchet), `package_tests` (`test-packages-cicd`), `ui_tests` (vitest), `srt_security_review`, `dep_audit` (SCA vs OSV), `ai_mr_review` (advisory) | No | critical path ≈ the slowest job |
+| **deployment_validation** | IAM service-role permission pre-check | Yes (read-only) | seconds |
+| **integration_tests** | Full stack deploy + primary suite (the numbered steps) on the **primary shared stack only**. The five deployment-variant probes do **not** run here — see below. | Yes (deploys) | ~1 hour |
+
+⚠️ **The deployment-variant probes (ZAP DAST, WAF, API Gateway GLOBAL and PRIVATE
+hosting, Jobs API) do not run in this job**, and moving it to a nightly schedule
+did not change that. They are gated by `IDP_RUN_PROBES`, which
+`scripts/sdlc/codebuild_deployment.py` defaults to `false`; `IDP_TEST_ZAP` defaults
+to `true` but only filters *within* `run_variant_probes`, which is never called
+unless the outer gate is on. Reading the inner default as the answer is the easy
+mistake here. Run them with `make stacktest-*` (see
+`.claude/skills/run-stack-tests.md`), or set `IDP_RUN_PROBES=true` for a pipeline
+run.
+
+They were disabled because five concurrent extra stacks burst account-wide control
+planes (CloudWatch Logs log-group create consistency, CodeBuild role-trust
+propagation, the IAM CreatePolicy rate limit) and caused flaky failures unrelated
+to the code under test. **That reason is weaker now than when it was written**: the
+deploy no longer runs once per merge request, and a single shared `resource_group`
+means at most one deploy at a time — so turning the probes on for the scheduled run
+is the obvious way to buy back the coverage, and the thing to weigh is their
+flakiness history against a nightly nobody can attribute.
+
+### Why fast_checks is seven jobs
+
+It was one `static_checks` job that ran lint, typecheck and every pytest suite in
+sequence, and it took **45 minutes** — of which 80% was pytest. Two independent
+things were wrong and both are fixed, because neither fix subsumes the other:
+
+- **`test-packages-cicd` ran every one of its pytest invocations serial,
+  single-process, on a 16-vCPU runner** — 25 minutes, with `scripts/tests` alone at
+  640s for 3,858 tests and `lib/idp_sdk` at 441s for 2,663. The nine measured above
+  20s now run `-n auto`; the rest stay serial because a majority of them finish in
+  under a second, where xdist's worker startup makes a suite *slower*.
+  `PYTEST_XDIST` in the `Makefile` carries the selection rule and how to re-derive
+  it — by timing in CI, not by counting tests, which is a poor proxy here.
+- **The lint half waited on the test half** for no reason — they share no inputs.
+  Splitting the job means the stage costs its slowest member rather than the sum.
+
+`unit_tests` is now the critical path at ~11 min, and ⚠️ **more workers will not
+shorten it.** Profiled over the whole suite the slowest single test is 2.2s and
+the top 20 together are ~35s of a 10-minute run: the cost is ~10,000 × per-test
+fixture setup, spread flat, at 62% CPU on 14 cores. It is neither CPU-bound nor
+hostage to a few slow tests. Cutting it further means sharding it across several
+*jobs*, which needs a splitter plugin and a `coverage combine` before
+`make check-coverage-debt-cicd` can read a complete report — deliberately not done
+here, since the measured gain over the current shape is ~5 minutes.
+
+⚠️ **The coverage producer costs this job a second block of time, and that is the
+price of the gate reading more than one tree.** `make coverage-all-cicd` runs before
+the ratchet in the same job, because the reports pass between the two steps through
+the workspace — splitting them would need artifacts, which is the same obstacle as
+sharding above. The trees are measured concurrently and the wall clock is **not**
+their sum: it is the slowest tree plus scheduling, so the figure to know is which
+tree that is, and it moves — re-measure rather than quoting one here. No tree
+declares `Tree.serial` any more; `scripts` did, on a belief about xdist and
+subprocesses that was measured down, and the Lambda handler fan-outs were tried with
+it and measured faster without. `COVERAGE_CICD_JOBS` is the dial, bounded in the
+script by `cpus // 2`, so a 4-CPU runner takes 2 at a time rather than obeying the 4
+the Makefile asks for. `--workers` is how to reproduce one tree's share by hand,
+since selecting a single tree otherwise hands it the whole machine.
+
+Read against the alternative rather than against the old number: the step this
+replaces compared **one** of nine trees and exited 0 over the other eight, so the
+~11 minutes it used to cost bought a gate that could not see a loss anywhere outside
+`lib/idp_common_pkg`.
+
+The split's cost, stated plainly: the Python environment is built in four jobs
+instead of one, so the pipeline **burns more runner minutes to finish in less
+wall-clock time**. Each job installs only what it needs — only `unit_tests` gets
+away without Node, and `ui_tests` skips the Python packages — which keeps that bill
+down, but it is a real trade.
+
+⚠️ **Trimming a toolchain out of a job is not the free saving it looks like, and
+the way to check is to read the suites rather than the `script:` line.**
+`package_tests` was first written without Node, on the reasoning that pytest does
+not need it, and went red: `scripts/tests/test_pyright_config.py` runs basedpyright
+**live** — the probe that confirms `pyrightconfig.json`'s five `extraPaths` really
+resolve the first-party packages instead of merely looking right — so a suite whose
+name says nothing about types reaches an npm package. The fix is to give the job
+the tool, not to let the probe skip when it is missing, which is the whole reason
+that check is a live probe. `scripts/tests/test_ux_recorder.py` needs Node in the
+same job on its own account: it runs the recorder's cursor-overlay JavaScript under
+`node`, and fails in CI rather than skipping when `node` is missing.
+
+### The GitHub side runs the same two security gates
+
+The repo is mirrored to GitHub and PRs are merged there, so a GitLab-only gate is
+not a gate. `.github/workflows/security-checks.yml` runs `srt_security_review` and
+`dep_audit` on every pull request with the same commands as their GitLab
+counterparts; `.github/workflows/developer-tests.yml` covers lint, typecheck and
+the unit suites.
+
+This was added after twelve HIGH SRT findings reached `develop` through a GitHub
+merge with every visible check green — the SRT and `dep_audit` gates simply never
+ran on that change.
+
+⚠️ **A workflow makes a check visible, not blocking.** Both check names have to be
+added to the branch-protection rule for `develop` as *required status checks*, or a
+PR can still be merged while they are red or pending. **Today they are not**, and
+**neither `develop` nor `main` has any branch protection** — `main` being the default
+branch and the one releases are cut from — so every gate on this page is advisory.
+
+Run `make check-branch-protection` to measure it rather than trust this paragraph.
+It parses `.github/workflows/*.yml` for the job names GitHub turns into check
+contexts and compares them with the live required-check list, reporting anything
+required-but-never-reported (a renamed job) or reported-but-not-required (a new
+gate).
+
+GitHub can only require job-level contexts — never individual steps — so the
+mapping from gates to contexts is decided by how the jobs are arranged. Ten of
+the twelve shared gates live in `developer-tests.yml` (four jobs) and the other two in
+`security-checks.yml` (two jobs), which is how twelve gates produce
+six requireable contexts.
+
+Splitting `developer-tests.yml` into four parallel jobs **improved** this. It used
+to be one job holding ten of the twelve shared gates, which collapsed those ten
+into a single requireable context: they shared one red mark, so a required-check
+failure did not say which of them had failed. They are now four contexts, so a red
+mark names the half of the work that broke.
+
+⚠️ **One consequence to act on if branch protection is ever enabled:** requiring
+only the lint context is now strictly weaker than requiring the old single job was,
+because the test suites are no longer inside it. All six contexts below have to be
+required. `scripts/tests/test_check_branch_protection.py`'s `MUST_BE_REQUIRED`
+names all six for that reason.
+
+| Check context | Workflow / job | Covers |
+|---|---|---|
+| `Lint, Type Check, and Static Scans` | `developer-tests.yml` / `developer_tests` | `lint-cicd`, `typecheck`, `api-test-static`, first-party dep check, service-role permissions |
+| `Unit Tests (idp_common)` | `developer-tests.yml` / `unit_tests` | `test-cicd -C lib/idp_common_pkg`, `coverage-all-cicd`, `check-coverage-debt-cicd` |
+| `Package and Lambda Test Suites` | `developer-tests.yml` / `package_tests` | `test-packages-cicd` |
+| `UI Unit Tests` | `developer-tests.yml` / `ui_tests` | `npx vitest run` |
+| `SRT Security Review` | `security-checks.yml` / `srt_security_review` | `srt-setup`, `srt-scan` |
+| `Dependency Audit (SCA)` | `security-checks.yml` / `dep_audit` | `scripts/security/dep_audit.py` |
+
+Three further contexts must **not** be required, because none of them reports on
+every pull request and a required check that does not report sits pending forever
+and blocks every merge: `build` (`build-docs.yml`) and `Generate Dependency
+Manifests` (`generate-dep-manifest.yml`) have path-filtered `pull_request`
+triggers, and `Test Results` is a check run the
+`publish-unit-test-result-action` step creates via `check_name:` behind an `if:`.
+That last one is not a job at all, so job-level YAML parsing cannot see it; the
+checker reads `check_name:` inputs specifically to find it.
+
+The command reads **both** enforcement mechanisms — classic branch protection
+(`.../branches/develop/protection`) and rulesets
+(`.../rules/branches/develop`) — because a branch can be fully governed by a
+ruleset while the classic endpoint reports nothing. It also distinguishes "not
+protected" from "cannot see": the classic endpoint needs repository **admin** and
+returns 404 without it, so it cross-checks `.../branches/develop`, which carries a
+`protected` boolean and is readable with plain `pull` access. As measured in
+2026-09, `develop` reports `"protected": false` there and no ruleset rule governs
+the branch (the repository's five active rulesets are inherited from the
+enterprise: four `target=repository`, one `target=tag`), so the tool reaches a
+**verified** "not protected" rather than an ambiguous one. `--json` reports
+`protected: null` when even that read fails, which is not the same as `false`.
+
+The command is opt-in and is in neither `lint-cicd` nor `SHARED_GATES`, because
+enabling protection needs repository **admin**, which no contributor and no CI token
+here has. That is a known, accepted residual rather than open work, and the decision
+is recorded in closed
+[issue #933](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/933);
+cite it as the decision record, not as a pending task.
+A `pull`-scoped token is enough to run it, and enough to check one of the six
+assertions after protection is enabled: `.../branches/develop` carries a nested
+`protection.required_status_checks` object at that scope, so the required-check
+comparison is made from it rather than being abandoned as unverifiable.
+`administration:read` is what the other five need — required approvals, stale-review
+dismissal, the force-push and deletion blocks, and `enforce_admins` — and a run
+without it emits a `protection_detail_unreadable` finding saying those five are
+unverified rather than verified-good, so such a run still exits non-zero.
+
+It becomes a required, blocking check, run with `--fail-on-skip`, when a repository
+**setting** changes — either somebody with repository admin enables protection, or an
+organization or enterprise owner publishes a **branch ruleset** targeting these
+branches, which needs no repository admin at all. Nothing in the repository can
+substitute in the meantime: enforcement is server-side, so a merge taken through
+GitHub's own Merge button runs no code from this tree.
+
+**Trigger matrix** — what runs, when:
+
+| Event | fast_checks (7 parallel jobs) | ai_mr_review² | deployment_validation | integration_tests |
+|-------|:---:|:---:|:---:|:---:|
+| Push to any branch, **no MR** | ✅ | — | — | — |
+| Push to branch with a **Draft** MR → `develop` | ✅ | — | ▶️ **manual** | ▶️ **manual** (button on MR) |
+| Push to branch with a **non-Draft** MR → `develop` | ✅ | ✅ auto | ▶️ **manual** | ▶️ **manual** (button on MR) |
+| Push to **`develop`** | ✅ | — | ▶️ **manual** | ▶️ **manual** |
+| **Nightly schedule** | ✅ | — | ✅ auto | ✅ auto¹ |
+
+¹ ⚠️ **THE DEPLOY IS NO LONGER A MERGE GATE.** This is the central trade in the
+current pipeline shape and it has to be read before a green MR pipeline is relied
+on.
+
+*What it buys.* An MR pipeline is `fast_checks` alone. The deploy used to add
+62–113 min to every MR and every push to `develop`, serialized **after** a 45-min
+check stage — which is how a merge request pipeline reached 111 minutes and a
+`develop` pipeline 160. It also removes the concurrent-deploy load that has
+exhausted account quotas in this project before.
+
+*What it costs.* A change that breaks the deploy, or any of the twelve suite steps
+or five variant probes the deploy runs, can now **merge** and stay undetected
+until the next nightly run — by which time other merges may sit on top of it, so
+the nightly failure does not name the commit that caused it. There is no required
+status check on this repository to fall back on (issue #933), so nothing else
+catches it.
+
+*Three consequences, all load-bearing:*
+
+- **Somebody has to watch the nightly result.** A scheduled pipeline nobody reads
+  is strictly worse than no pipeline, because it looks like coverage. Three
+  channels carry it, and each has a different blind spot:
+  - **Slack** — the `integration_tests` job posts the result and the deploy
+    summary to the team channel, but only on the **scheduled** run. Needs the
+    masked `SLACK_WEBHOOK_URL` CI variable; absent, it logs one line and skips.
+    Three verdicts, not two: ✅ PASSED, ❌ FAILED, and **⚠️ UNVERIFIED** when the
+    monitor handed off before the pipeline reached a terminal state — the job
+    exits 0 in that case as well, so a green job is two different claims.
+
+    ⚠️ A post from `integration_tests` can only describe a run that **reached**
+    `integration_tests`. A nightly that fails in `fast_checks` has that job
+    *skipped*, so the `after_script` never runs and the channel gets nothing —
+    and a silent nightly is indistinguishable from one nobody scheduled. The
+    `nightly_notification` job in the `notify` stage covers that: it runs
+    `when: always` on a scheduled pipeline, stays quiet when
+    `integration_tests` already posted (it keys on a `slack_posted.txt` artifact
+    written only on a *successful* post), and otherwise sends
+    **❌ FAILED BEFORE THE DEPLOY**, which states plainly that nothing was
+    deployed and no integration test ran. If the deploy ran but its own post
+    failed, the fallback sends the summary instead as
+    **⚠️ RESULT NOT DELIVERED**. It declares **no `needs`** on purpose — GitLab
+    skips a job whose needed job was skipped, which would reproduce the silence
+    — and posts with `urllib`, because `curl` is not in the job's image.
+    Pinned by `scripts/sdlc/tests/test_nightly_notification.py`.
+
+    This was the shape of the 2026-10-14 20:03 run: `package_tests` failed
+    because Claude Sonnet 4 reached the end-of-life date AWS published for it and
+    the LEGACY expiry alarm in `scripts/tests/test_model_surface_consistency.py`
+    fired **with no code change at all**. A dated alarm can take the nightly out
+    on a tree nobody touched, so "the pipeline was silent" must never be
+    readable as "nothing happened".
+  - **Email** — the *Pipeline status emails* integration sends pipeline failures
+    on the default branch to the team distribution list. ⚠️ It fires for **any**
+    failed `develop` pipeline, not just the nightly: GitLab cannot filter
+    notifications by pipeline source, which is the same limitation the badge has.
+  - **The SNS topic** `<pipeline>-failures` carries the agentic root-cause
+    analysis (`IDP_FAILURE_AGENT=1`) on a failed deploy, to whatever address the
+    `FailureNotificationEmail` stack parameter was set to.
+
+  ⚠️ **None of them is a heartbeat.** All three are failure- or event-driven, so a
+  schedule that silently stops firing produces exactly the same silence as a
+  month of passing runs. **Build → Pipeline schedules** shows last-run status per
+  schedule and is the only view that answers "did it run at all".
+- **Click the button before merging anything on the deploy path** —
+  `template.yaml`, `publish.py`, `patterns/`, `nested/`, `src/`, `lib/`,
+  `config_library/`, `feature-platform/`, `iam-roles/`, `scripts/`. That list is
+  still maintained as `.deploy_affecting_changes` in `.gitlab-ci.yml`, but it is
+  now **documentation rather than configuration**: it gates nothing, because a
+  manual button you click deliberately should always be available. It is the
+  definition of "touches the deploy path" to apply by hand.
+- **Triage a nightly failure by bisecting the day's merges**, not by reading the
+  pipeline's own commit.
+
+² **`ai_mr_review` is advisory, is not a gate, and does not run on its own.** It
+runs Claude Code (via Bedrock) over the MR diff with
+`.claude/skills/pr-review.md` and posts the review as an MR note; it is
+`allow_failure: true`, has `needs: []` so it does not wait for `static_checks`, and
+it is deliberately absent from `test_ci_gate_parity.py`'s `SHARED_GATES` — a
+model's opinion must not decide whether code merges, and a Bedrock throttle must
+not red-line an MR.
+
+**The same reviewer also runs on GitHub**, as `ai_pr_review` in
+`.github/workflows/ai-pr-review.yml` (`scripts/sdlc/ai_mr_review.py --forge
+github`). It is advisory there too, by a different mechanism: GitHub has no
+`allow_failure`, so what keeps it advisory is that its status-check context is
+pinned in `MUST_STAY_ADVISORY` in
+`scripts/tests/test_check_branch_protection.py` and absent from `SHARED_GATES`.
+Three differences are worth reading before relying on either side:
+
+| | GitLab | GitHub |
+|---|---|---|
+| AWS credential | the integration-test role `idp-sdlc-GitLab`, assumed by the runner fleet's `gitlab-runners-prod` role and gated on `GitLab:Group`/`GitLab:Project` session tags (`scripts/sdlc/cfn/credential-vendor.yml`) | a **Bedrock-only** role assumed via GitHub OIDC (`scripts/sdlc/cfn/github-oidc-review-role.yml`); ARN in the `AI_REVIEW_ROLE_ARN` repository variable |
+| Posting token | `GITLAB_REVIEW_TOKEN`, a project access token that has to be provisioned — `CI_JOB_TOKEN` cannot create notes | the built-in `GITHUB_TOKEN` with `pull-requests: write`; nothing to provision |
+| Fork contributions | not reviewed — masked variables are absent from a fork pipeline | reviewed by the **hourly `schedule`**, which is triggered by the repository rather than by the contribution and so holds the credentials regardless of origin |
+
+⚠️ **GitHub reads `on: schedule` from the workflow file on the *default* branch,
+which is `main`.** Until `ai-pr-review.yml` reaches `main` the cron never fires
+and says nothing, so fork coverage is silently absent. The `pull_request`
+trigger is unaffected and works from `develop`.
+
+⚠️ **It runs automatically, and it costs real money per run.** A 5,400-line MR
+measured **$3.42** in CI ($6.12 locally), and reviews are idempotent per head SHA,
+so a new push means a new paid review. Three things bound that and all three must
+stay. The first is the per-push multiplier and is spelled differently on each
+platform: `interruptible: true` on GitLab, `concurrency: cancel-in-progress` on
+GitHub — a push mid-review cancels it, so a burst costs about one review rather
+than one per push. This is the main protection and it is one line on either side.
+The second is that drafts are excluded, so the WIP phase, where pushes are
+frequent, is free. The third differs in substance: GitLab has exactly one
+triggering rule and **no scheduled sweep**, because a sweep there would apply the
+per-push multiplier to the whole open queue; GitHub does run one, bounded to
+`--max-mrs 3` per tick, and it is affordable only because the per-head-SHA marker
+makes a tick with no new head cost nothing. The unbounded residual on both is
+pushes spaced further apart than a review takes (~9 min in CI); if that dominates,
+add a cooldown in `ai_mr_review.py` rather than reverting to a manual button.
+Pinned by `test_the_automatic_trigger_keeps_its_cost_bounds` and
+`test_the_github_trigger_keeps_its_cost_bounds`.
+
+Automatic also means no human is in the loop before a model reads
+author-controlled text, which is why the sandbox note below matters.
+
+⚠️ **The tool sandbox is enforced by `--permission-mode manual` in the argv, not
+by a settings file.** `--allowedTools` is *additive*, so a machine whose
+`~/.claude/settings.json` sets `"defaultMode": "bypassPermissions"` grants the
+review every tool regardless of the lists. That is not hypothetical: the first
+live run executed `make cfn-lint`, several `make check-*` targets and the MR's own
+pytest suite on the operator's machine — arbitrary code execution from an MR diff,
+beside an AWS credential. `scripts/tests/test_ai_mr_review.py` pins the flag, and
+`AI_REVIEW_LIVE_PROBE=1` runs an opt-in probe that measures the refusal.
+
+⚠️ **The model's output is escaped before it is posted, because GitLab executes
+quick actions in a note body.** A line whose first non-whitespace character is `/`
+— `/approve`, `/merge`, `/close` — is run as a command with the posting token's
+permissions, so every line of the review gets a leading backslash (`/` is ASCII
+punctuation, so CommonMark renders `\/merge` as `/merge` while the raw line no
+longer starts a command). This is the one control that is about the **parent**
+rather than the child: the reviewing process holds no credential, and that says
+nothing about the process which submits its output holding one. The path needs no
+malicious model — the prompt asks the review to quote suspicious text when
+reporting an injection attempt. Give the token the least role that can create a
+note, so a quick action that did get through could not merge or approve.
+
+It needs a `GITLAB_REVIEW_TOKEN` CI variable (project access token, `api` scope,
+**masked and NOT protected** — a protected variable is absent from the MR-branch
+pipelines this job runs in) — without it the job prints `SKIPPED:` and exits 0.
+Run it by hand with `make ai-mr-review`, `make ai-mr-review-dry MR=<iid>` to see a
+review without posting it, or `make ai-mr-review-local MR=<iid>` from a laptop,
+which takes the MR head from git over SSH because this instance's REST API sits
+behind federated sign-in and a token alone cannot reach it. The unattended
+contract is `.claude/skills/pr-review-ci.md`.
+
+Notes:
+- **Every push runs fast_checks** (all seven jobs), so lint/typecheck/unit and
+  security feedback is immediate on any branch — **including doc-only commits**
+  (fast_checks has no changes: filter). GitLab emails the committer on failure.
+- The **~1h integration deploy runs on the nightly schedule**, plus a manual play
+  button on any MR targeting `develop` and on a `develop` pipeline. See ¹ for what
+  that means for merge safety.
+- **The service-role permission check still runs on every MR**, even though the
+  `deployment_validation` *job* is nightly-only: the same
+  `scripts/sdlc/validate_service_role_permissions.py` is the last step of
+  `static_checks`, where it costs seconds and needs no credentials. The nightly job
+  is the AWS-CLI-installing form, kept so the nightly deploy path validates the
+  role in the environment about to use it rather than trusting the offline read.
+- A `workflow:` rule prevents **duplicate** branch+MR pipelines (a branch with an
+  open MR runs only the MR pipeline).
+- integration_tests uses a **single shared** `resource_group:
+  integration_deploy` — a size-1 mutex account-wide. Per-branch scoping
+  (`integration_deploy_$CI_COMMIT_REF_SLUG`) existed to let different MRs deploy
+  concurrently; with the trigger now a nightly schedule plus occasional manual
+  clicks, the collision to prevent is a manual run against the scheduled one, and
+  those are on **different refs** — which a per-branch group would not see at all.
+- **Auto-cancel is disabled on `develop`** (`workflow` rule with
+  `auto_cancel: on_new_commit: none`). GitLab cancels the previous pipeline on a
+  ref whenever any new pipeline is created there, and cannot condition that on
+  what the new commit touched.
+
+  The reason it stays disabled is **not** the one it was added for. Originally a
+  doc-only commit to develop would auto-cancel the in-flight ~1h deploy of the
+  prior code commit, which was then never re-run, leaving that merge permanently
+  untested — and no deploy runs automatically on develop any more, so that exact
+  sequence cannot recur. What can is the manual button: somebody clicks the deploy
+  on a develop pipeline, a doc commit lands while it runs, and default auto-cancel
+  kills a ~1h run a person deliberately started. Re-enabling the cancel would make
+  the only remaining pre-merge deploy signal unreliable in order to save a few
+  minutes of fast_checks time. MR pipelines keep the default supersede-on-push
+  behavior.
+
+## Test Execution Strategy
+
+### Parallel Execution (Steps 3-11, 13, 14, 15)
+- **12 tests run concurrently** to minimize pipeline runtime (Step 13, the
+  read-only permissions-boundary check, Step 14, the pipeline-hook test, and
+  Step 15, the config-prefix-mapping routing check, join the parallel pool)
+- **Fail-fast enabled**: If any test fails, remaining tests are cancelled and cleanup begins
+- **Expected runtime**: ~25-35 minutes (vs 60+ minutes sequential)
+
+### On failure: evidence is copied out, and the stack is kept
+
+A failed run's stack is **retained** rather than torn down, and its evidence is
+copied somewhere that outlives it. Both exist because teardown destroys the Step
+Functions histories, the tracking table and every log group within minutes of
+the failure, which for a nightly run is long before anyone reads it.
+
+| What | Where | Lifetime |
+|---|---|---|
+| Suite transcript (this script's own stdout/stderr, in emission order) | `s3://$SOURCE_BUCKET/ci-diagnostics/<build-id>/<stack>/suite-transcript.log` | 30 days |
+| Evidence bundle (error, workflow failures, execution inventory by status, tracking-table rows) | `s3://$SOURCE_BUCKET/ci-diagnostics/<build-id>/<stack>/evidence.json` | 30 days |
+| The stack itself | retained in the account; marker at `s3://$SOURCE_BUCKET/ci-retained/<stack>.json` | 12h, clamped to 24h |
+
+⚠️ **Do not use the CodeBuild log stream as the analysis's source.** CodeBuild
+batches stdout to CloudWatch and the parallel steps interleave, so a
+`get_log_events` walk performed while the build is still running can return a
+prefix that is missing lines already written. Measured: one nightly run's
+analysis captured 1942 lines, stopped ~50 lines short of the three that
+identified the failure, concluded "root cause not fully determined", and
+hypothesised a 3600s timeout that had not happened. The same stream read after
+the build held all of it. `failure_agent.fetch_full_build_log` therefore prefers
+the local transcript and keeps the CloudWatch walk only as a fallback, for a
+failure that happens before the tee is installed.
+
+⚠️ **The execution inventory is not the same thing as the workflow failures.**
+`get_workflow_failure_details` lists `statusFilter="FAILED"` only, so a run where
+nothing crashed yields an empty list — and an empty list cannot distinguish
+"executions ran and succeeded, so the test's own assertion is wrong" from "no
+execution exists, so the document never entered the pipeline". The second is
+what a monitor race looks like, and reading `[]` as "no product crash" then
+stopping is how issue #1338 went undiagnosed for several nights.
+`snapshot_execution_inventory` counts executions in every status, and
+`snapshot_tracking_rows` copies out the rows that say where each document got to.
+
+**Retention is bounded by IAM role headroom, not by cost.** One IDP stack carries
+~122 roles against an account quota of 5000, and role exhaustion fails *every*
+deploy in the account — the condition `cleanup_stale_idp_stacks` was written for
+after ~600 leaked roles did exactly that. Hence:
+
+- `IDP_KEEP_FAILED_STACK_HOURS` (12) is clamped to `KEEP_FAILED_STACK_MAX_HOURS`
+  (24), so an env var typo cannot hold a stack for a month.
+- `IDP_MAX_RETAINED_STACKS` (6) caps how many are held at once. On reaching it a
+  failing run tears down as it always did and logs which markers hold the slots.
+- The startup reaper takes a retained stack as soon as its marker expires,
+  **overriding the usual age gate** — so a short TTL is honoured rather than
+  ignored for three hours.
+- Protection is matched on the **run prefix**, so a retained `idp-MMDD-HHMMSS`
+  also protects its `-iam` stack. Without that the reaper would delete the
+  service role and permissions boundary out from under the stack being
+  preserved, leaving something that can no longer be deleted cleanly.
+- Every way a marker can be unreadable — absent, empty, unparseable, or a
+  `GetObject` that raises — reads as **expired**, so a bad write leaks nothing.
+- A marker whose stack is already gone is deleted, so it cannot hold a slot
+  forever and quietly switch retention off for every later run.
+
+A marker object rather than a CloudFormation stack tag, because tagging an
+existing stack means `update-stack`, which would redeploy the very stack being
+preserved for inspection.
+
+`IDP_KEEP_FAILED_STACK=0` restores unconditional teardown. To reclaim a slot
+early, delete the stack by hand and then its marker — the run's log prints both
+commands.
+
+### Sequential Execution (Step 12)
+- **Step 12 (API RBAC + security-focused suites) runs alone after the parallel
+  pool drains**
+  - **Reason**: Its dynamic harness temporarily flips `ADMIN_USER_PASSWORD_AUTH`
+    on the shared UI app client (a stack-wide auth mutation) and restores it, and
+    its logout suite performs a global sign-out — interleaving with API-hitting
+    parallel tests would corrupt them.
+  - **Coverage**: beyond the role permission matrix, Step 12 runs the mandatory
+    AppSec API security checklist — IDOR (2.1), token expiry/logout (2.3/2.4),
+    deleted-resource (2.5), input validation (3), and TLS (4). See the mapping
+    table in `.claude/skills/api-rbac-test.md`. Input validation runs in
+    **tolerant** mode here (a 5xx on malformed input is WARNed, not failed) until
+    central schema validation lands; set `IDP_SECTEST_STRICT_INPUT=true` to gate
+    on a clean 4xx.
+
+### Concurrent deployment-variant probes (own stacks)
+- The **deployment-variant probe framework** (below) deploys SECOND,
+  independent stacks — one per probe. Five probes run by default (GLOBAL APIGW,
+  WAF, PRIVATE APIGW, Jobs API, ZAP DAST), **concurrently with the primary suite
+  AND with each other** on their own threads, so their ~30-min deploys overlap the
+  primary deploy instead of running back-to-back. Each opts out of the primary
+  suite's fail-fast abort machinery, so a primary failure never kills a probe's
+  in-flight deploy. VPC-requiring probes share one persistent pipeline-owned
+  test VPC (so VPCs don't bound concurrency); fan-out is capped by
+  `IDP_PROBE_MAX_CONCURRENCY` (default 8) to bound simultaneous stack/IAM usage.
+- **Launch stagger + transient-race retry (AWS eventual-consistency resilience).**
+  Standing up the primary + N probe stacks at once bursts hundreds of
+  `CreateLogGroup`/`CreateProject` calls; two AWS control-plane races can then
+  surface as `CREATE_FAILED` and roll a stack back: CloudWatch Logs
+  "The specified log group does not exist" (CreateLogGroup→PutRetentionPolicy
+  consistency gap) and CodeBuild "not authorized to perform: sts:AssumeRole on
+  service role" (IAM trust-policy propagation lagging the role's `CREATE_COMPLETE`
+  — not fixable by `DependsOn`, the ordering is already correct). Two mitigations:
+  (1) probe launches are **staggered** `IDP_PROBE_LAUNCH_STAGGER_SECS` (default
+  10s) × index to flatten the burst and avoid the race up front (cheaper than a
+  rollback); (2) a **one-shot fresh-stack retry** (`_is_transient_deploy_race`,
+  scoped tightly to those two resource+message signatures so genuine config
+  errors still surface) backstops both the primary deploy and each probe. A
+  THIRD burst symptom is IAM throttling at Step 0 — `iam:CreatePolicy`
+  "Throttling: Rate exceeded (reached max retries: 4)" while creating each
+  stack's permissions boundary — which fails BEFORE any deploy (so the
+  fresh-stack retry can't catch it); the IAM/CFN clients in
+  `create_iam_resources`/`cleanup_iam_resources` therefore use **boto3 adaptive
+  retry** (`max_attempts: 10`) to ride through the account-wide IAM rate limit.
+  See `scratch/aws-service-issue-cfn-eventual-consistency.md` for the AWS
+  service-issue evidence package.
+
+## Test Coverage
+
+### Step 1: Stack Deployment
+**What it tests**: CloudFormation stack deployment
+- Template validation
+- Nested stack creation (`APIRESOLVERSTACK`, `PATTERNSTACK`, `DOCUMENTKB`,
+  `MULTIDOCDISCOVERYSTACK`)
+- Resource creation and initialization
+- Stack outputs verification
+
+**Duration**: ~15-20 minutes
+
+---
+
+### Step 2: Stack Health Check
+**What it tests**: Stack readiness
+- All nested stacks in `CREATE_COMPLETE` or `UPDATE_COMPLETE` status
+- Critical resources accessible
+- No rollback or failed states
+
+**Duration**: <1 minute
+
+---
+
+### Step 3: Default Config Test (Pipeline Mode) ⚡ *Parallel*
+**What it tests**: Default pipeline configuration
+- Document processing with default config
+- Amazon Textract OCR
+- Bedrock classification (page-level)
+- Bedrock extraction (traditional LLM-based)
+- **Verification**:
+  - Extraction fields present in output
+  - Classification results exist
+  - Document status = `COMPLETED`
+
+**Test Document**: `samples/lending_package.pdf`  
+**Duration**: ~5-7 minutes
+
+---
+
+### Step 4: BDA Mode Test ⚡ *Parallel*
+**What it tests**: Bedrock Data Automation end-to-end processing
+- BDA config upload and sync (without activation)
+- BDA blueprint creation via `config-sync-bda`
+- Packet/media document processing using `--config-version`
+- Integrated OCR + classification + extraction via BDA
+- **Verification**:
+  - BDA output structure
+  - Document processing completion
+  - Results match expected format
+
+**Test Document**: `samples/lending_package.pdf`  
+**Duration**: ~6-8 minutes  
+**Implementation**: Uses `idp-cli config-sync-bda` to create BDA project/blueprints, then runs inference with `--config-version` parameter (no activation needed)
+
+---
+
+### Step 5: Rule Validation Test ⚡ *Parallel*
+**What it tests**: Business rule validation engine
+- Rule execution on extracted data
+- Rule statistics (passed/failed/skipped counts)
+- **Verification**:
+  - Rule validation results present
+  - Statistics calculated correctly
+  - Rules applied to extracted fields
+
+**Test Document**: `samples/lending_package.pdf`  
+**Duration**: ~5-7 minutes
+
+---
+
+### Step 6: Multi-Document Concurrent Batch Processing ⚡ *Parallel*
+**What it tests**: Concurrent document processing at scale
+- Multiple documents processed simultaneously
+- Concurrency management (DynamoDB counter)
+- Batch tracking
+- **Verification**:
+  - All documents complete successfully
+  - No concurrency conflicts
+  - Tracking table updated correctly
+
+**Test Documents**: Multiple files from `samples/` directory  
+**Duration**: ~6-8 minutes
+
+---
+
+### Step 7: Test Studio Evaluation ⚡ *Parallel*
+**What it tests**: Test Studio evaluation workflow
+- Test set processing (limited to 3 documents)
+- Evaluation trigger via `idp-cli test-result`
+- Metrics calculation (accuracy, precision, recall, F1)
+- Cost tracking
+- **Verification**:
+  - Test run completes successfully
+  - Evaluation metrics calculated
+  - Overall accuracy > 30% threshold
+  - Results retrievable via CLI
+
+**Test Set**: `fake-w2` or `realkie-fcc-verified`  
+**Duration**: ~8-10 minutes  
+**Implementation**: Uses `idp-cli test-result --wait` command to trigger evaluation
+
+**Architecture**: 
+- Calls `getTestRunStatus` Lambda repeatedly (triggers SQS evaluation on first call)
+- Polls until status changes from `EVALUATING` to `COMPLETE`
+- Retrieves full results with `getTestRun` Lambda
+- See [Test Studio Architecture](#test-studio-architecture) below
+
+---
+
+### Step 8: Agentic Extraction with Large Table ⚡ *Parallel*
+**What it tests**: Agentic extraction with deterministic table parsing
+- Agent-based extraction (Strands framework)
+- Deterministic Markdown table parser
+- Large table handling (532 fund items)
+- OCR artifact recovery (empty lines, missing pipes)
+- **Verification**:
+  - All 532 fund items extracted
+  - Table structure preserved
+  - No data loss from OCR artifacts
+  - Agent tool usage logged
+
+**Test Document**: `samples/Nuveen.pdf`  
+**Config**: `agentic-nuveen` (enables agentic mode + table parsing)  
+**Duration**: ~9-11 minutes
+
+---
+
+### Step 9: Single-Document Discovery ⚡ *Parallel*
+**What it tests**: Single-document schema discovery
+- Dynamic schema generation
+- Knowledge Base creation and ingestion
+- Bedrock agent invocation
+- **Verification**:
+  - Discovery workflow completes
+  - Knowledge Base ingestion triggered
+  - Schema generated successfully
+
+**Test Document**: Single sample document  
+**Duration**: ~5-7 minutes  
+**Cleanup**: Ingestion jobs cancelled before stack deletion
+
+---
+
+### Step 10: Multi-Document Discovery ⚡ *Parallel*
+**What it tests**: Multi-document schema discovery
+- Batch schema discovery
+- Knowledge Base multi-file ingestion
+- Consolidated schema generation
+- **Verification**:
+  - All documents processed
+  - Knowledge Base ingestion triggered
+  - Consolidated schema accurate
+
+**Test Documents**: Multiple sample documents  
+**Duration**: ~6-8 minutes  
+**Cleanup**: Ingestion jobs cancelled before stack deletion
+
+---
+
+### Step 11: Test Compare ⚡ *Parallel*
+**What it tests**: Test comparison CLI command
+- Multiple test run execution
+- Test result comparison via `idp-cli test-compare`
+- Comparison output formatting
+- **Verification**:
+  - Two test runs complete successfully
+  - Comparison output contains expected fields (Test Run ID, Accuracy, Precision, Recall, F1 Score)
+  - Side-by-side metrics display works
+
+**Test Set**: `fake-w2` or `realkie-fcc-verified`  
+**Duration**: ~10-12 minutes (2 test runs + comparison)  
+**Execution**: Runs in the parallel pool (only runs inferences, no shared-stack
+mutation — safe to interleave).  
+**Implementation**: 
+- Runs 2 test inferences (2 documents each)
+- Waits for both to complete and evaluate
+- Calls `idp-cli test-compare` to compare results
+
+---
+
+### Step 13: IAM Permissions Boundary Attachment ⚡ *Parallel*
+**What it tests**: that the deployed IAM roles actually carry the permissions
+boundary the stack was deployed with. The primary suite deploys with a non-empty
+`PermissionsBoundaryArn`, so the template's `HasPermissionsBoundary` condition
+should attach that boundary to every `AWS::IAM::Role` it creates.
+- **Why it exists**: this is the only place boundary attachment is verified
+  end-to-end. The deploy-variant stack-tests now deploy *without* a boundary
+  (to avoid a per-stack `iam:CreatePolicy`/`DeletePolicy` in any concurrent
+  burst), so if the primary suite didn't check it, a template change that dropped
+  the boundary from a role would ship silently.
+- **Verification**:
+  - Collects `AWS::IAM::Role` physical ids from the stack + its nested stacks
+  - Samples up to 25 roles and asserts each has a `PermissionsBoundary` attached
+  - Fails if any sampled role is missing its boundary
+
+**Duration**: seconds (read-only `cloudformation:ListStackResources` + `iam:GetRole`)  
+**Execution**: Runs in the parallel pool (read-only — no shared-stack mutation).  
+**Implementation**: `test_step13_permission_boundaries` in
+`scripts/sdlc/codebuild_deployment.py`.
+
+---
+
+### Step 14: Pipeline Hooks End-to-End ⚡ *Parallel*
+**What it tests**: the [pipeline-hook](../../../docs/feature-platform.md#pipeline-hooks)
+mechanism — the platform's supported way for a feature or an admin to inject
+business logic into document processing — at both standalone hook points
+(`preprocessing` and `postprocessing`), plus the `onError: fail` gating policy at
+a post-step point (`ocr.postHook`).
+- **Why it exists**: before this step, **none of the seven hook points had any
+  end-to-end coverage.** Unit tests exercise the dispatcher with fakes, but four
+  things only exist on a real stack: the dispatcher reading a hook out of a real
+  config version, `UpdateSchemaConfig` publishing the hook config sections (so
+  the fields an admin edits exist on the deployed stack), a hook Lambda clearing
+  the dispatcher's tag/name IAM condition, and a hook's `updatedDocument`
+  surviving into the **persisted** document. The gap mattered because a hook that
+  silently never fires is indistinguishable from one that ran and did nothing —
+  the workflow still succeeds and the document still reaches `COMPLETED`. That
+  exact failure mode shipped once already (#599).
+- **Verification**:
+  - The hook sections survive the config write/read round-trip (they are dropped
+    if a config-model field is missing — the regression the offline config-model
+    tests guard)
+  - `HookResults.<point>.Payload.invoked >= 1` for **both** points, read from the
+    Step Functions execution history, plus the `configVersion` the dispatcher
+    resolved — the only assertion that distinguishes "ran and decided nothing"
+    from "never invoked"
+  - `documentUpdatedBy` is non-empty, i.e. the hook's `updatedDocument` was
+    **accepted** rather than refused by the dispatcher's guardrails
+  - the hook's marker is present in the **persisted** document (tracking row),
+    proving the mutation survived past the workflow
+  - a hook declaring `onError: fail` and failing on purpose **aborts** the
+    document: the execution reaches `FAILED`, its `executionFailedEventDetails.error`
+    is `HookFatalError`, and `ClassificationStep` was never entered. This is the
+    live half of the fix for #919, where six of the seven hook states caught
+    `States.ALL` ahead of any fatal-error catcher and routed the document forward,
+    making the policy inert. Only a real execution proves the catcher ordering in
+    the deployed state machine; the offline test
+    (`patterns/unified/tests/test_workflow_hook_fatal_catch.py`) proves it in the
+    source ASL
+
+**Test Document**: `samples/lending_package.pdf` — **twice**: once for the
+happy-path phase and once, under a uniquely named copy, for the `onError: fail`
+phase.
+**Duration**: ~10-14 minutes typical, up to ~18 in the worst case. The
+happy-path phase is the ~5-7 minutes this step used to take on its own; the
+`onError: fail` phase adds a second `run-inference` on its own copy of the
+document plus a poll for the FAILED execution that gives up only at
+`_TARGET_WAIT_SECS = 600` seconds in `scripts/sdlc/codebuild_deployment.py`. The
+poll normally resolves in well under a minute — the abort happens right after
+OCR — so the 600-second ceiling is the timeout, not the expected cost.
+**Execution**: Runs in the parallel pool. It registers its hook in its **own**
+config version (`test-pipeline-hooks`) and never activates it, so the other steps
+sharing this stack are unaffected. The `onError: fail` phase likewise uses its own
+config version (`test-pipeline-hooks-fail`) and its own uniquely named copy of the
+sample document, so the deliberately FAILED execution it produces cannot be
+confused with — or overwrite — another step's assertions. It gates at
+`ocr.postHook` rather than a later point so aborting costs one OCR call and no
+Bedrock spend.
+**Implementation**: `test_step14_pipeline_hooks` in
+`scripts/sdlc/codebuild_deployment.py`. Deploys a real `idp-citest-hook-*` Lambda
+built from `idp_common.hooks` — the documented helper pair — so the test also
+exercises the contract we publish to feature authors. **Teardown runs in a
+`finally` and is not optional**: a leftover hook ARN pointing at a deleted Lambda
+is the stale-ARN state that fails every subsequent document at a flat hook point.
+
+**Resource naming satisfies two IAM policies at once**, which is why it is not
+simply `GENAIIDP-*`: the CI CodeBuild role scopes `iam:*` to `role/idp-*` and
+`lambda:*` to `function:idp-*` (so a `GENAIIDP-` prefixed role or function is
+AccessDenied — the step's first pipeline failure), while the host dispatcher only
+invokes a hook that is *either* named `GENAIIDP-*` *or* carries the
+`idp:feature-id` tag. The resources are therefore named `idp-*` and the
+dispatcher is satisfied via the **tag** path. That is also the more
+representative test: tagging is how installed Feature Platform features clear the
+check, while the `GENAIIDP-*` name is the admin escape hatch. The step applies
+the tag unconditionally (not just via `create_function`, whose `Tags` are skipped
+on the reuse-an-existing-function path) and verifies it before proceeding.
+
+**Known asymmetry**: at `preprocessing` the document has no sections yet (OCR and
+classification have not run), so that point's marker can only land in the
+document-level backstop field — which `postprocessing`, running later, overwrites.
+The persisted-marker assertion therefore checks the **postprocessing** marker,
+which is correctly the final value; `preprocessing` is proven to have run by its
+own `invoked` count.
+
+### Step 15: Config Prefix Mapping Routing ⚡ *Parallel*
+**What it tests**: that a [config prefix mapping](../../../docs/configuration-profiles.md#prefix-mappings-assigning-a-profile-by-where-a-document-lands)
+actually routes a document at ingest, across all three conflict modes, with and
+without an upload tag.
+- **Why it exists**: this is the one layer the offline suites structurally cannot
+  reach. The precedence rules are exhaustively covered as a pure function with no
+  AWS, and each Lambda's wiring is covered with the resolver stubbed out — but what
+  failed in practice was the **composition**: a mapping as the API stores it,
+  against the key an upload actually creates, resolved by the real ingest Lambda.
+  A deployment whose three mappings were saved without a trailing slash resolved
+  every upload by its own tag with no mapping applied, and every layer was
+  individually correct. On the document list that is indistinguishable from "the
+  mapping deferred to the upload", so the conflict mode looked broken when it had
+  never been reached.
+- **Verification** (six combinations, three mappings):
+  - `mapping` precedence: an untagged upload **and** a tagged one both resolve to
+    the mapping's profile, with `ConfigSource: prefix-mapping`
+  - `metadata` precedence: a tagged upload resolves to the tag's profile with
+    `ConfigSource: metadata`, and the mapping prefix is **still recorded** — the
+    field that distinguishes "a mapping deferred" from "no mapping matched"
+  - `reject`: a tagged upload is written `FAILED` with a reason on the row, and no
+    workflow starts
+- **Cost**: reads the tracking row rather than waiting for extraction, since
+  resolution happens in `queue_sender` when the object lands. That is what keeps
+  it cheap enough for the parallel pool.
+- **Isolation**: creates its own run-scoped Configuration Profile and three
+  run-scoped prefixes, and removes the mappings **before** the profile in its
+  `finally` — `deleteConfigVersion` refuses while a mapping still names the
+  profile, which is a guard the feature adds and this cleanup respects rather than
+  fights. Dropping the mappings first also stops a `reject` rule catching an
+  unrelated upload while the rest of the cleanup runs.
+
+---
+
+#### Validating Step 14 without a pipeline round-trip
+
+A pipeline round-trip is ~70 minutes, so debug the hook **outside** it. Deploy the
+zip the step builds to a throwaway Lambda and invoke it with a synthetic
+dispatcher event pointing at a **real** compressed document from a live stack's
+working bucket:
+
+```python
+# build the exact zip the step would upload
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("cb", "scripts/sdlc/codebuild_deployment.py")
+cb = importlib.util.module_from_spec(spec); spec.loader.exec_module(cb)
+cb._build_hook_zip("/tmp/hook.zip")
+```
+
+Then `aws lambda create-function` it with `MARKER_KEY` + `WORKING_BUCKET`, tagged
+`idp:feature-id=<anything>`, and invoke with:
+
+```json
+{"hookPoint": "postprocessing", "document": {"compressed": true,
+ "s3_uri": "s3://<working-bucket>/compressed_documents/<doc>/<...>_evaluation_state.json",
+ "document_id": "<doc>", "num_pages": 1, "sections": ["1"]},
+ "args": [{"key": "note", "value": "manual"}]}
+```
+
+This is how the missing **PyYAML** dependency was found: the zip imported fine
+locally but died at Lambda cold start with `ModuleNotFoundError: No module named
+'yaml'`, because `load_hook_document -> Document.decompress ->
+idp_common.utils -> idp_common.config.models -> configuration_manager` imports it.
+Iterating this way is ~1 minute per attempt instead of ~70. Remember to delete
+the function and role afterwards.
+
+Two gotchas the same technique surfaced, worth knowing before writing any hook:
+
+- `Document.metadata` is dropped by `to_dict()`, and the tracking row stores only
+  a reduced section view (`Id`/`Class`/`PageIds`/`OutputJSONUri`) — so a mutation
+  written to either is invisible to a persistence assertion. `summary_report_uri`
+  IS persisted (as `SummaryReportUri`).
+- `boto3`/`botocore` must NOT be vendored into a hook zip: the Lambda runtime
+  supplies them, and including them pushed the package from 4.4MB to 62MB, past
+  the 50MB direct-upload limit.
+
+---
+
+### Step 15: Malware-Scanning Ingest Gate 🔒 *Sequential*
+**What it tests**: that the optional [malware-scanning ingest
+gate](../../../docs/malware-scanning.md) refuses a known-bad upload — and, more
+importantly, that it refuses it *before* the pipeline reads it.
+- **Why it exists, and why it is on the primary stack rather than a variant
+  probe**: the primary stack now deploys with `MalwareScanning=CREATE_PLAN`, so
+  **every document every other step processes passes through the gate**. That is
+  the coverage that matters: the gate withholds the SQS message for every upload,
+  so a defect in it does not degrade one feature, it stalls ingest — and a
+  variant probe that deploys and smoke-tests could only prove the GuardDuty plan
+  and the EventBridge rule exist. The whole functional suite reaching `COMPLETED`
+  is the assertion that the gate admits correctly; this step is the assertion that
+  it also *refuses*.
+- **Verification**:
+  - the document reaches **`QUARANTINED`**
+  - **no Step Functions execution exists for it** — checked both on the tracking
+    row's `WorkflowExecutionArn` and against `list_executions`. This is the
+    property a status check alone cannot give: a document could be marked
+    QUARANTINED *after* being processed and the status would look identical
+  - the verdict is on the row (`MalwareScanResult=THREATS_FOUND` plus a threat
+    name), because the UI reads it from there and a quarantine nobody can explain
+    is not usable
+  - the object is **still in the input bucket**, tagged
+    `GuardDutyMalwareScanStatus=THREATS_FOUND` — the documented disposition, so
+    this pins it rather than a silent delete
+
+**Test Document**: an EICAR probe uploaded by the step. EICAR is the
+industry-standard harmless test signature every scanner recognises, and the one
+GuardDuty's own documentation uses in its `THREATS_FOUND` example; nothing
+malicious is involved. ⚠️ The signature is **assembled from two string fragments**
+in `codebuild_deployment.py` so this repository does not contain it intact —
+endpoint tooling on a developer machine or a CI worker quarantines a file that
+does, which would break the checkout rather than test anything.
+`scripts/sdlc/tests/test_malware_gate_step.py` asserts both that the probe is the
+real signature and that no source file holds it whole.
+
+**Duration**: typically under two minutes; budgeted at 15.
+⚠️ **This step can report success with a WARNING, and that is deliberate.**
+GuardDuty's scan latency has no SLA and is not ours to control, so a verdict that
+has not arrived inside the budget is reported as inconclusive rather than failed —
+the alternative is a suite that goes red on somebody else's queue depth, which
+gets ignored, which costs more than the coverage. A verdict that arrives and says
+the wrong thing IS a failure. When it warns, read the malware-verdict dead-letter
+queue and the QueueSender log.
+
+**Execution**: sequential, for a different reason from Step 12. Step 12 is
+sequential because it mutates stack-wide auth; this one is simply slow and bursty,
+and adding its wait to the fail-fast parallel pool's wall clock buys nothing —
+a document held at the gate is not a failure.
+
+**Implementation**: `test_step15_malware_gate` in
+`scripts/sdlc/codebuild_deployment.py`. Its own verdict logic — which is the part
+that could pass vacuously, since "no verdict yet" is a success — is unit-tested
+offline in `scripts/sdlc/tests/test_malware_gate_step.py` against a faked AWS.
+
+**Not covered here**: throughput. The gate's failure mode under concurrency is
+documents accumulating in `MALWARE_SCANNING`, which one upload cannot show.
+`scripts/malware_gate_burst.py` pushes a few hundred documents through at once
+and asserts that nothing is stuck, no benign document was quarantined and
+admission is not serialised. It is kept **out** of the nightly deliberately:
+admitting a few hundred documents starts a few hundred Step Functions executions
+and the Bedrock calls behind them, which is real money for a property that does
+not change nightly. Run it for a release check or after changing the gate.
+
+## Additional Deployment Tests: the deployment-variant probe framework
+
+> **⚠️ Default OFF in CI (changed 2026-07).** These probes no longer run
+> automatically in the integration pipeline. Standing up the primary + 5 probe
+> stacks *at once* burst the account-wide AWS control planes — CloudWatch Logs
+> create-consistency, CodeBuild role-trust propagation, and the IAM
+> `CreatePolicy` rate limit — producing flaky pipeline failures unrelated to the
+> code under test. Since these are infra-variant *deploy smoke tests* that rarely
+> change, they now run **manually, one stack at a time**, via
+> `make stacktest-*` (see `.claude/skills/run-stack-tests.md` and
+> `scripts/sdlc/run_stacktest.py`). The CI pipeline runs the **primary shared
+> stack only** (Steps 3–14). Set `IDP_RUN_PROBES=true` to re-enable them in a pipeline
+> run. When they DO run (manual sweep or opt-in), launches are staggered
+> (`IDP_PROBE_LAUNCH_STAGGER_SECS`, default 120s) and each deploys **without** a
+> permissions boundary (only the primary suite creates + tests one — Step 13).
+
+Separate from the shared-stack suite above (Steps 3–14, which run against ONE
+stack deployed with default hosting — CloudFront), a **deployment-variant probe
+framework** validates alternative deployment permutations, each on its **own
+throwaway IDP stack**. When enabled the probes run **concurrently** with the
+shared-stack suite *and with each other* (overlapping the ~30-min deploys) and
+each tears its stack down afterward.
+
+Each probe is a self-contained *deploy-a-config-variant + smoke-check-its-
+distinguishing-feature* unit. The framework is a table of
+`Probe(name, stack_suffix, deploy_params, validate_fn, requires_vpc)` rows that
+a concurrent launcher iterates — adding a new permutation is **one table row +
+a validator**, not a copy-pasted deploy/validate/cleanup function.
+
+> **Scope (important):** probes are **deploy + feature-smoke only, NOT full
+> functional coverage.** A variant can deploy clean yet still have a
+> doc-processing regression that only the shared-stack suite (Steps 3–14) would
+> catch. Don't read a green probe as "this variant processes documents
+> correctly" — only as "this variant deploys and its distinguishing feature
+> responds."
+
+### The default probes (all run every pipeline)
+
+| Probe | `stack_suffix` | Distinguishing params | VPC? | Validator asserts |
+|-------|----------------|-----------------------|------|-------------------|
+| **APIGateway hosting (GLOBAL)** | `apigw` | `WebUIHosting=APIGateway`, `ApiGatewayVisibility=GLOBAL` | no | REST API is **REGIONAL**, `ApplicationWebURL` is the execute-api `/api` URL, **HTTP GET → 200** (internet-reachable, so a real end-to-end UI fetch) |
+| **WAF-enabled (IP allow-list)** | `waf` | `WAFAllowedIPv4Ranges` set (+ APIGateway/GLOBAL hosting to have a stage) | no | REGIONAL WebACL `{stack}-api-acl` **exists and is associated** with an API-Gateway stage |
+| **APIGateway hosting (PRIVATE)** | `apigwpriv` | `WebUIHosting=APIGateway`, `ApiGatewayVisibility=PRIVATE` | yes | REST API endpoint type is **PRIVATE** and carries a **resource policy** (VPC-only → structural check; CodeBuild can't fetch a private endpoint) |
+| **Jobs API** | `jobsapi` | `EnableJobsApi=true` | yes | stack exposes the **`ApiGatewayEndpoint`** output and its REST API exists (private → structural check) |
+| **ZAP DAST scan** | `zapdast` | *(default hosting)* | no | authenticated **OWASP ZAP** dynamic scan of the deployed UI API — injection/headers/TLS/info-leak classes; **WARN-only** (reports, does not gate yet) |
+
+> **Note:** the Jobs API probe exercises the *additive* `EnableJobsApi` CFN
+> parameter on the STANDARD published template — it does **not** exercise the
+> `idp-cli deploy --headless` template transform (which removes the UI). (It was
+> itself once *named* the "headless" probe, which is why leftover `-headless`
+> stack names appear in the reaper fixtures; it was renamed `jobsapi` precisely
+> to stop implying transform coverage.) The `--headless` transform is now gated
+> at two tiers: **offline** unit tests in `lib/idp_sdk/tests/unit/`
+> (dangling-parameter + zero-`Error` `cfn-lint`), and **`validate_headless_
+> template`** in the integration tier, which transforms the *packaged*
+> `.aws-sam/idp-main.yaml` and validates it through real CloudFormation
+> `ValidateTemplate` (one S3 put + one API call — no second SAM build, no
+> deploy). A `--headless` *deploy* probe remains a follow-up: these gates prove
+> the template is well-formed, not that a headless stack stands up.
+
+Validators live in `scripts/sdlc/codebuild_deployment.py`:
+`validate_apigw_global_hosting`, `validate_waf_enabled`,
+`validate_apigw_private_hosting`, `validate_jobs_api`,
+`validate_zap_dast`.
+
+#### ZAP DAST probe (dynamic security testing)
+
+The `zapdast` probe adds the one class of coverage neither SRT (static code) nor
+the RBAC harness (authorization semantics) provides: **dynamic** application
+security testing of the *running* UI REST API — reflected/persistent XSS, SQL/OS/
+code injection, missing security headers (CSP, HSTS, X-Frame-Options,
+X-Content-Type-Options), cookie flags, TLS issues, and information disclosure.
+
+It runs the official **OWASP ZAP** Docker image (`ghcr.io/zaproxy/zaproxy`)
+via `zap-api-scan.py` — which requires **`PrivilegedMode: true`** on the
+`app-sdlc` CodeBuild project (`scripts/sdlc/cfn/codepipeline-s3.yml`; live once
+that SDLC pipeline stack is deployed). **Docker-in-CodeBuild note:** the bind
+mount (`docker run -v {workdir}:/zap/wrk`) works fine from `/tmp`, but CodeBuild
+runs the build as **root** while the ZAP image runs `zap-api-scan.py` as the
+non-root **`zap`** user — which can read the seeded spec but **cannot write the
+report** into a root-owned workdir (`PermissionError: /zap/wrk/zap-report.html`,
+which surfaces as no report). The probe therefore **`chmod 0o777`s the workdir**
+so the container can write its report (proven end-to-end in a real CodeBuild
+project). The probe is also defensive: a `docker info` preflight runs first, and
+if the daemon is genuinely unavailable (or the scan produces no report) it
+records a **SKIP (pass)** rather than failing the build — mirroring how
+VPC-requiring probes skip
+when their infra is absent. Because
+the UI API is a single Cognito-gated route `POST /op/{field}` with **no OpenAPI
+spec**, ZAP's spider finds nothing to crawl, so the probe **seeds** the scan
+with a minimal OpenAPI doc generated from `scripts/api_rbac_expectations.yaml`
+(the same op source-of-truth the RBAC tests use — one authenticated request per
+operation). Authentication reuses `scripts/rbac_common.py` (shared with
+`test_api_rbac.py`): it mints a Cognito **ID token** and injects it on every
+request via ZAP's `replacer`; the temporary `ADMIN_USER_PASSWORD_AUTH` app-client
+flip is safe here because it happens on the probe's **own** throwaway stack, and
+is always restored.
+
+- **Passive baseline** (spider + passive rules, no attack payloads) runs every
+  time. The **active scan** (real injection payloads) is opt-in via
+  **`IDP_ZAP_ACTIVE=true`** — run it on demand/nightly, not on every MR, and only
+  ever against these throwaway probe stacks.
+- **WARN-only today:** `validate_zap_dast` reports alert counts (in the
+  consolidated summary) and uploads the full HTML/JSON report to
+  `s3://<sourcecode-bucket>/deploy/zap/…`, but never fails the build. Rule
+  actions live in `scripts/sdlc/zap-rules.conf` (IGNORE/WARN/FAIL). Promote
+  high-confidence rules to FAIL and flip the `# TODO promote` gate in
+  `validate_zap_dast` once the baseline is triaged — the same maturity path SRT
+  took.
+- **Gating flag:** set **`IDP_TEST_ZAP=false`** to skip only this probe (the
+  other probes still run).
+
+**Lifecycle** (every probe): creates per-stack IAM/boundary → (for `requires_vpc`
+probes) injects the persistent-test-VPC params → deploys with the probe's extra
+CFN params → validates → captures CF failure events before teardown →
+**always** tears down the IDP stack (in a `finally`). Each probe runs on its own
+thread and opts that thread out of the shared suite's fail-fast abort machinery
+(`_thread_local.never_abort`), so a shared-suite failure's kill sweep can never
+terminate a probe's in-flight deploy, and one probe failing never affects the
+others or the already-completed shared-suite result.
+
+### The persistent test VPC (why VPC probes are now quota-safe)
+
+VPC-requiring probes (PRIVATE hosting, Jobs API) no longer stand up a throwaway
+VPC per run. A **single persistent test VPC is owned by the pipeline
+CloudFormation stack** (`scripts/sdlc/cfn/codepipeline-s3.yml`, parameter
+`CreateTestVpc`, default `true`) and reused by every run. Its ids are handed to
+CodeBuild as env vars (`IDP_TEST_VPC_ID`, `IDP_TEST_PRIVATE_SUBNET_IDS`,
+`IDP_TEST_LAMBDA_SG_ID`, `IDP_TEST_APIGW_VPCE_ID`); `_test_vpc_params()` maps
+them to the CFN params (`DeployInVPC`, `VpcId`, `PrivateSubnetIds` /
+`LambdaSubnetIds`, `LambdaSecurityGroupId`, `ApiGatewayVpcEndpointId`) that a
+`requires_vpc` probe injects at deploy time.
+
+Because probes **reference** the VPC (never create/destroy/mutate it):
+- **No VPC quota pressure** — the account's 5-VPC limit is never approached no
+  matter how many VPC variants or concurrent pipelines run.
+- **No per-run VPC churn or ENI-leak teardown failures** — the incident that
+  removed the PRIVATE/VPC variant from CI simply can't recur.
+- **Fully parallel** — VPCs no longer bound concurrency, so all probes run
+  at once.
+
+If the pipeline is deployed with `CreateTestVpc=false`, the VPC env vars are
+empty and each `requires_vpc` probe **skips itself** (recorded as *skipped*, not
+*failed*) — the no-VPC probes (GLOBAL, WAF) still run.
+
+The NAT gateway in the persistent VPC carries a small standing cost
+(~US$32/mo + data) — the deliberate trade for quota-safe, fully-parallel VPC
+probes. The retired per-run VPC template
+(`scripts/sdlc/apigw-hosting-test-vpc.yaml`) and the
+`delete_apigw_test_vpc` / `cleanup_stale_apigw_test_vpcs` age-gated reaper are
+retained for out-of-band/manual VPC testing.
+
+### Concurrency budget
+
+The launcher fans out to at most `IDP_PROBE_MAX_CONCURRENCY` probes at once
+(default `DEFAULT_PROBE_MAX_CONCURRENCY = 8`, clamped to `[1, num_probes]`; a
+malformed/≤0 override falls back to the default). Each probe deploys a full IDP
+stack (+ IAM role/boundary) concurrently with the shared-stack deploy and any
+other in-flight pipeline, so the cap still guards **bounded stack/IAM quota** —
+but **VPCs no longer bound it** (one shared persistent VPC). The default is set
+high enough to run the whole default table in parallel.
+
+### Gating & implementation
+
+**Gating**: the probes run by default; set `IDP_TEST_APIGW_HOSTING=false` to
+skip them all (the env name is kept for backward compatibility).
+**Implementation** in `scripts/sdlc/codebuild_deployment.py`: `PROBE_VARIANTS`
+(the table), `deploy_and_test_probe()` (one probe's lifecycle, incl. VPC-param
+injection + skip), `run_variant_probes()` (the concurrent launcher),
+`resolve_probe_concurrency()` (the budget), and `_test_vpc_params()` (env → CFN
+params). Launched from `main()` on its own supervisor thread concurrently with
+the shared-stack suite. Mock-based unit coverage:
+`scripts/sdlc/tests/test_variant_probes.py` (quota cap, single-probe
+lifecycle, fail-fast isolation, VPC-param injection + skip, the hosting-variant
+validators, consolidated summary) and `scripts/sdlc/tests/test_zap_dast_probe.py`
+(ZAP probe registration, IDP_TEST_ZAP gate, OpenAPI seed, alert parsing,
+WARN-only + always-restore).
+**Duration**: ~20–30 minutes per probe (full nested-stack create + teardown);
+all run in parallel by default.
+
+### Adding a future variant
+
+Add a `Probe(...)` row to `PROBE_VARIANTS` and supply a
+`validate_fn(stack_name) -> {"success": bool, ...}`. Set `requires_vpc=True` to
+get the persistent-test-VPC params injected automatically. Keep the
+deploy+feature-smoke scope in mind (see above).
+
+**Candidate future variants**: BYO S3 VPC endpoint
+(`S3VpcEndpointIdOverride`/`…DnsNameOverride`), custom domain, `--govcloud`
+(deploy-only where the account allows — an offline transform + region-aware
+`cfn-lint` gate already exists as a fast-gate unit test; see the Gap Backlog).
+
+---
+
+## End-of-run summary (every pipeline, pass or fail)
+
+Every run produces a report in the GitLab job log, uploaded to S3 and emailed via
+SNS on failure. It has two layers:
+
+- **A deterministic status table** listing every test — the build/publish step,
+  each primary-suite step, and each deployment-variant probe — as passed / failed
+  / cancelled / skipped, with an **OVERALL: PASS/FAIL** verdict. It always
+  renders, even if the AI layer is unavailable.
+- **An AI (Bedrock) narrative** on both pass and fail — a short PASS report, or a
+  grounded root-cause analysis for an infrastructure or test failure.
+
+The summary is uploaded **progressively** as steps complete (not just at the
+end), so the result is available even when a run is long.
+
+**Watching long runs.** The CodeBuild pipeline runs ~60–70 min and is not
+time-capped. The GitLab monitor that watches it has credentials capped at 1 hour
+(a hard AWS limit on role-chained sessions), so it **refreshes them mid-run** to
+keep watching to ~110 min. If a run outlives that, the monitor hands off
+gracefully — the pipeline finishes on its own and the authoritative result still
+arrives via the S3 summary + SNS email. A failure detected at handoff fails the
+GitLab job (it isn't masked by a green handoff), and a handoff with no verdict
+yet posts to Slack as **⚠️ UNVERIFIED** rather than ✅ PASSED, because the job
+exits 0 either way and "12/12 green" and "nobody watched the end" must not read
+the same.
+
+⚠️ **The 1h cap governs `after_script` too, and it cannot refresh.** The
+runner's credential vendor mints the job's credentials *before* the job starts,
+and `after_script` — which fetches the CodeBuild logs, pulls the S3 summary and
+copies out the ZAP report — runs on those, not on the monitor's refreshed
+session: that refresh rebinds this process's boto3 clients only. `after_script`
+cannot re-assume the role itself either, since `sts:AssumeRole` needs live
+credentials to call and by then it has none. So the **monitor** writes each
+session it mints to `aws_after_script_creds.env` (at startup and on every
+50-minute refresh, so the file always has ≥10 min of life left) and
+`after_script` sources it before its first `aws` call. The file is `0600`, is
+excluded from the deployment zip, is not an artifact, is gitignored, and is
+removed as the job's last step.
+
+Without that handover, whether the logs were captured at all was decided by how
+long the deploy took, and the failure was mislabelled. The 2026-10-11 nightly
+(job 30872567) went terminal `Succeeded` at 59 min with 12/12 tests passing, ran
+62.6 min wall clock, and spent all 12 `list-action-executions` attempts
+re-sending an expired token; the three nights before it ran 58.4–58.5 min and
+resolved on the first attempt. Because the loop sent stderr to `/dev/null`, both
+the artifact and the Slack post said "after 12 attempts (~60s)", which reads as
+the eventual-consistency race the retry loop exists for. The loop now keeps its
+stderr, stops immediately on a credential error instead of retrying one, and
+names which of the two failures occurred.
+
+---
+
+## Test Studio Architecture
+
+### Lazy Evaluation Design
+
+Test Studio uses **lazy/on-demand evaluation** rather than automatic evaluation. This means metrics are only calculated when explicitly requested.
+
+**Flow**:
+
+1. **Test Run Creation**:
+   ```bash
+   idp-cli run-inference --test-set fake-w2
+   ```
+   - Creates DynamoDB record: `PK=testrun#{test_run_id}`, `SK=metadata`
+   - Status: `QUEUED` → `RUNNING`
+
+2. **Document Processing**:
+   - Files processed through IDP pipeline
+   - Each document: `ObjectStatus=COMPLETED`, `EvaluationStatus=COMPLETED`
+   - Test run metadata: `Status=COMPLETE`, `CompletedFiles=N`
+   - **Note**: `testRunResult` field does NOT exist yet
+
+3. **Evaluation Trigger** (via CLI):
+   ```bash
+   idp-cli test-result --test-run-id <id> --wait
+   ```
+   - Invokes `TestResultsResolverFunction` Lambda with `getTestRunStatus`
+   - Lambda detects `Status=COMPLETE` but no `testRunResult`
+   - Sends SQS message to trigger evaluation
+   - Returns `display_status=EVALUATING`
+
+4. **Async Evaluation** (SQS worker):
+   - SQS triggers same Lambda with `handle_cache_update_request()`
+   - Calls `_aggregate_test_run_metrics()`:
+     - Queries Athena for evaluation data
+     - Calculates accuracy, precision, recall, F1, cost
+   - Writes `testRunResult` to DynamoDB
+
+5. **Polling for Completion**:
+   - CLI polls `getTestRunStatus` every 10 seconds
+   - When `testRunResult` exists, status changes to `COMPLETE`
+   - CLI calls `getTestRun` to retrieve full results
+
+**Why This Design**:
+- Avoids expensive Athena queries on every batch completion
+- Allows UI to show "EVALUATING" status while metrics calculate
+- Evaluation only runs when results are actually needed
+
+**CI/CD Implementation**:
+```python
+# Old approach (BROKEN): Direct DynamoDB polling
+# This never triggered evaluation!
+dynamodb.query(TableName=tracking_table, Key=...)
+
+# New approach (WORKING): Use idp-cli test-result
+run_command("idp-cli test-result --stack-name {stack} --test-run-id {id} --wait")
+```
+
+---
+
+## Test Cleanup
+
+### Bedrock Ingestion Job Cleanup
+**Problem**: Discovery tests (Steps 9, 10) start Bedrock Knowledge Base ingestion jobs that take 30+ minutes. If fail-fast triggers early, cleanup runs while jobs are `IN_PROGRESS`, blocking stack deletion.
+
+**Solution**: `cancel_bedrock_ingestion_jobs()` function:
+1. Scans all stack resources for `AWS::Bedrock::DataSource`
+2. Lists ingestion jobs for each data source
+3. Stops any `IN_PROGRESS` jobs
+4. Then proceeds with stack deletion
+
+**IAM Permissions**: `bedrock:ListIngestionJobs`, `bedrock:StopIngestionJob`
+
+### Stack Deletion
+- Cancels all Bedrock ingestion jobs
+- Deletes nested stacks first (`APIRESOLVERSTACK`, `PATTERNSTACK`, `DOCUMENTKB`,
+  `MULTIDOCDISCOVERYSTACK`)
+- Deletes main stack
+- Cleans up S3 buckets, DynamoDB tables, Lambda functions
+
+### Startup reapers (converge leaks from interrupted prior runs)
+
+Each run tears down its own stacks and buckets, but an interrupted teardown (e.g.
+credentials expiring mid-cleanup) can leak them — and leaked test resources had
+previously exhausted the account's IAM-role quota and piled up thousands of
+buckets. To stay self-healing, every run first reaps **stale** leftovers from
+prior runs: test VPCs, IDP stacks (and their IAM helper stacks), and orphaned S3
+buckets. All reapers are **age-gated and skip anything a concurrent pipeline is
+still using**, so they never touch a live run.
+
+## Success Criteria
+
+### Test Pass Criteria
+- All tests return `{"success": True}`
+- No exceptions or errors
+- Verification checks pass
+- Expected outputs present
+
+### Accuracy Thresholds
+- **Test Studio (Step 7)**: Overall accuracy > 30%
+- **Agentic Extraction (Step 8)**: All 532 fund items extracted (100% completeness)
+
+### Performance Thresholds
+- **Total pipeline runtime**: < 60 minutes (with parallel execution)
+- **Stack deployment**: < 25 minutes
+- **Test execution**: < 35 minutes
+- **Cleanup**: < 5 minutes
+
+## Verification Methods
+
+### Output Verification
+- **Extraction**: Checks for specific extracted fields (e.g., `applicant_name`, `loan_amount`)
+- **Classification**: Verifies classification results exist
+- **Rule Validation**: Validates rule statistics (passed, failed, skipped counts)
+- **Agentic Extraction**: Counts extracted items (e.g., 532 fund items)
+
+### Status Verification
+- **Document Status**: Confirms `ObjectStatus=COMPLETED`
+- **Batch Status**: Verifies all documents in batch complete
+- **Test Run Status**: Checks test evaluation status via Lambda invocation
+- **Stack Status**: Ensures `CREATE_COMPLETE` or `UPDATE_COMPLETE`
+
+### CLI Command Verification
+- **Test Studio**: Uses `idp-cli test-result` to trigger evaluation and retrieve metrics
+- **Discovery**: Monitors workflow execution via tracking table
+- **Config Management**: Validates config upload, activation, and retrieval
+
+## CLI Commands Reference
+
+### Key Commands Used
+
+```bash
+# Deploy stack
+idp-cli deploy --stack-name <stack> --pattern pattern-2 --admin-email <email> --wait
+
+# Run inference tests
+idp-cli run-inference --stack-name <stack> --dir samples/ --file-pattern <pattern>
+
+# Test Studio workflow
+idp-cli run-inference --stack-name <stack> --test-set <test-set> --number-of-files 3
+idp-cli test-result --stack-name <stack> --test-run-id <id> --wait --timeout 600
+
+# Test comparison (future)
+idp-cli test-compare --stack-name <stack> --test-run-ids "id1,id2" --output-dir ./results
+
+# Config management
+idp-cli config-upload --stack-name <stack> --config-file <file> --config-version <version>
+idp-cli config-activate --stack-name <stack> --config-version <version>
+idp-cli config-sync-bda --stack-name <stack> --config-version <version>
+
+# Discovery workflows
+idp-cli discover --stack-name <stack> --dir samples/ --file-pattern <pattern>
+idp-cli discover-multidoc --stack-name <stack> --dir samples/
+```
+
+### New CLI Commands (v0.5.6)
+
+#### `idp-cli test-result`
+Get test results for a specific test run. Triggers evaluation if needed.
+
+```bash
+# Get results immediately (may show evaluating status)
+idp-cli test-result --stack-name my-stack --test-run-id fake-w2-20260409-123456
+
+# Wait for evaluation to complete (recommended for CI/CD)
+idp-cli test-result --stack-name my-stack --test-run-id fake-w2-20260409-123456 --wait --timeout 900
+
+# Save results to JSON file
+idp-cli test-result --stack-name my-stack --test-run-id fake-w2-20260409-123456 --wait --output-dir ./results
+```
+
+**Output**:
+- Overall Accuracy, Precision, Recall, F1 Score
+- Total Cost
+- File completion statistics
+- Test run metadata
+
+**Output File** (when `--output-dir` specified):
+- `<test-run-id>-result.json` - Full test results including all metrics
+
+#### `idp-cli test-compare`
+Compare metrics and configurations from multiple test runs.
+
+```bash
+# Compare two test runs
+idp-cli test-compare --stack-name my-stack \
+  --test-run-ids "fake-w2-20260409-123456,fake-w2-20260409-234567"
+
+# Compare and save to files
+idp-cli test-compare --stack-name my-stack \
+  --test-run-ids "run1,run2,run3" --output-dir ./comparisons
+```
+
+**Output**:
+- Side-by-side metrics comparison table
+- Configuration differences between runs
+- Cost comparison
+
+**Output Files** (when `--output-dir` specified):
+- `comparison-<timestamp>.json` - Full comparison data
+- `comparison-<timestamp>.csv` - Metrics table (for spreadsheets)
+
+---
+
+## Monitoring and Debugging
+
+### CloudWatch Logs
+- **CodeBuild Logs**: `/aws/codebuild/<project-name>`
+- **Lambda Logs**: `/aws/lambda/<function-name>`
+- **Step Functions**: View execution history in console
+- **Test Results Resolver**: `/aws/lambda/TestResultsResolverFunction`
+
+### Tracking Table
+- **Location**: DynamoDB table from stack output `DynamoDBTrackingTableConsoleURL`
+- **Records**:
+  - Documents: `PK=doc#{document_id}`, `SK=none`
+  - Test Runs: `PK=testrun#{test_run_id}`, `SK=metadata`
+  - Batches: `PK=batch#{batch_id}`, `SK=metadata`
+
+### Common Failure Points
+1. **Step 7 (Test Studio)**: Evaluation timeout - ensure `idp-cli test-result --wait` is used
+2. **Step 8 (Agentic)**: Table parsing failures if OCR quality poor
+3. **Steps 9-10 (Discovery)**: Ingestion job cleanup failures if permissions missing
+4. **Step 4 (BDA)**: BDA sync failures or blueprint creation errors
+5. **Step 11 (test-compare)**: Requires TestResultsResolverFunctionArn in stack outputs
+6. **Parallel Tests**: Fail-fast cancellation if any test fails
+
+### Debugging Test Studio Issues
+
+If Test Studio test fails:
+
+1. **Check test run exists**:
+   ```bash
+   aws dynamodb query --table-name <tracking-table> \
+     --key-condition-expression "PK = :pk AND SK = :sk" \
+     --expression-attribute-values '{":pk":{"S":"testrun#<test-run-id>"},":sk":{"S":"metadata"}}'
+   ```
+
+2. **Manually trigger evaluation**:
+   ```bash
+   idp-cli test-result --stack-name <stack> --test-run-id <id> --wait --timeout 900
+   ```
+
+3. **Check Lambda logs**:
+   - CloudWatch Logs: `/aws/lambda/<stack>-TestResultsResolverFunction-*`
+   - Look for SQS message sending and metric aggregation
+
+4. **Check SQS queue**:
+   ```bash
+   aws sqs get-queue-attributes --queue-url <TEST_RESULT_CACHE_UPDATE_QUEUE_URL> \
+     --attribute-names ApproximateNumberOfMessages
+   ```
+
+---
+
+## TODO / Gap Backlog
+
+Remaining CI test-coverage gaps, ranked. Nothing here is blocking; these are
+follow-ups to harden the pipeline against regressions on `develop`. Several
+earlier gaps are **already closed** — see "Done (this cycle)" at the end.
+
+The full unit/package gate (`make test`, 34 auto-discovered roots) is green.
+What's left below is mostly integration/e2e depth plus a few cheap fast-gate
+additions.
+
+### Fast-gate additions (cheap, no live AWS account needed)
+
+- [x] **`--govcloud` transform + cfn-lint gate (unit-level).** `GovCloudTemplate
+      Transformer` runs against the committed `template.yaml` and the result is
+      linted with real `cfn-lint --region us-gov-west-1`, asserting zero **E3006**
+      ("resource type does not exist in region"). Fails the gate if a
+      GovCloud-unsupported resource (CloudFront, Lambda Function URL, etc.) is
+      reintroduced — strictly stronger than the transformer's own hardcoded
+      resource check. Offline/no-credentials. See
+      `lib/idp_sdk/tests/unit/test_govcloud_template_transform.py::test_real_
+      template_passes_govcloud_region_cfn_lint`. *(Note: the raw repo template
+      carries SAM short-form tags, so a full lint of the **published/SAM-baked**
+      template still needs the publish pipeline — deferred to the integration
+      tier.)*
+- [x] **`--headless` template-transform smoke.** Closed at two tiers after this
+      gap shipped a headless template CloudFormation rejects outright — the
+      `SuppressAdminInvite` condition referenced the `AdminEmail` parameter the
+      transform removes, so for six weeks every headless deploy died at
+      validation (`Unresolved dependencies [AdminEmail]`) before creating a
+      single resource. **Fast gate (offline, no AWS):**
+      `test_headless_transform_leaves_no_unresolved_parameter_reference`
+      (structural — no surviving `Ref`/`Fn::Sub` in Conditions/Rules/Outputs may
+      point at a removed parameter) and
+      `test_real_template_headless_has_no_cfn_lint_errors` (zero `Error`-level
+      findings; warnings stay ungated since headless legitimately leaves unused
+      conditions and unreachable `Fn::If` branches). Note the pre-existing
+      headless lint probe gates only `E3006`, which is exactly why an `E1020`
+      slipped through. **Integration tier:** `validate_headless_template`
+      transforms the *packaged* `.aws-sam/idp-main.yaml` and validates it via
+      real CloudFormation `ValidateTemplate`, closing the source-vs-packaged gap
+      the offline tests cannot (SAM expansion, nested-stack URLs). Costs one S3
+      put + one API call — it reuses the template the publish step already built.
+      A full headless *deploy* e2e now exists as an ON-DEMAND runner rather
+      than a CI job: `make transform-deploy-test-headless` /
+      `-govcloud` (`scripts/sdlc/transform_deploy_test.py`) deploy the
+      TRANSFORMED template via the documented `idp-cli deploy
+      --headless|--govcloud --from-code .` path, assert each transform's
+      structural promises, and process a real sample document. Deliberately
+      not wired into CI (~1h+ per variant); the validators and result shape
+      already match the probe framework so wiring in is additive. See
+      `.claude/skills/transform-deploy-test.md`. ⚠️ A COMMERCIAL `govcloud`
+      run does NOT prove GovCloud behaviour (partition ARNs, model
+      availability, the BDA project rejection) — that needs
+      `REGION=us-gov-west-1` against a GovCloud account, which the runner
+      supports unchanged.
+- [x] **Register the `pytest.mark.unit` marker repo-wide.** A minimal repo-root
+      `pytest.ini` registers the `unit` / `integration` markers, so the ~12
+      per-Lambda/resolver dirs without their own config no longer emit
+      `PytestUnknownMarkWarning`. Suites with their own `pytest.ini` are
+      unaffected (closer config wins).
+
+### Integration / e2e depth (need the CI account; run in the CodeBuild suite)
+
+- [x] **Jobs API deploy e2e (deploy + feature-smoke).** A deployment-variant
+      probe (`jobsapi`): deploys the STANDARD template with `EnableJobsApi=true`
+      against the persistent test VPC and asserts the Jobs API deployed
+      (`validate_jobs_api`). *Deploy + smoke only* — the private Jobs API isn't
+      call-tested from CodeBuild (not in-VPC), and full doc-processing through
+      the Jobs API path is still not exercised, so the deeper
+      `scripts/e2e_test_headless.py` flow remains a follow-up. NOTE: this probe
+      exercises the additive `EnableJobsApi` CFN parameter, **not** the
+      `idp-cli deploy --headless` template transform — a `--headless` *deploy*
+      probe is a separate follow-up (see below).
+- [x] **APIGW hosting: GLOBAL variant + HTTP smoke + the CSP on the wire.** The
+      GLOBAL/no-VPC APIGW hosting probe deploys `WebUIHosting=APIGateway` +
+      `ApiGatewayVisibility=GLOBAL` and does a real HTTP `GET` of the served UI
+      (`validate_apigw_global_hosting` asserts HTTP 200 from the execute-api
+      `/api` URL, proving the S3-proxy path returns bytes). It is also the **only
+      wire-level check of the Web UI's Content-Security-Policy in this hosting
+      mode**: that policy is a static API Gateway response-parameter value whose
+      interior contains single quotes, and no offline check can prove the service
+      strips only the outer pair. The probe therefore asserts the response carries
+      a CSP, that `'self'` survived quoted among the `script-src` sources, that
+      the header does not still begin with a leftover static-value quote (which
+      would make the first directive invalid and, with no `default-src`, void the
+      policy), and that `script-src` has not regained a blanket `https:`. Both
+      mis-parse shapes return HTTP 200 with a header present, so the earlier
+      status-code-only assertion could not see them. The template-side companion
+      is `scripts/tests/test_csp_policies_in_sync.py`, which keeps this mode's
+      policy equal to the CloudFront one.
+- [ ] **Upgrade-in-place test. (HIGH VALUE.)** Deploy the previous released
+      version, then update the stack to the current build, then smoke. This is the
+      gap that would have caught the pricing-units rollback deadlock and the
+      GSI-projection-immutable issues. No current test exercises an update path.
+- [ ] **Deepen e2e assertions.** Most steps assert `status==COMPLETE` /
+      sections-exist. Broaden to assert expected field *values* from the known
+      sample docs (e.g. `samples/lending_package.pdf`) — near-zero added runtime,
+      catches silent accuracy regressions.
+- [ ] **`save_reporting_data` reporting-path e2e.** Unit tests were mocked off real
+      AWS; there is no e2e that actually exercises the Glue/Athena reporting write
+      path end-to-end.
+- [ ] **CloudFront (default) hosting HTTP smoke.** The shared-stack suite deploys
+      with CloudFront hosting but never HTTP-smokes the CloudFront URL.
+
+### UI
+
+- [ ] **Browser/e2e UI test (Playwright) against a deployed stack.** Today only
+      vitest units run (jsdom, no browser). A thin smoke (login → list docs → open
+      a doc) would catch integration/auth regressions the units can't.
+
+### Quarantined test roots — promote when unblocked
+
+Tracked in `scripts/run_all_tests.py` (`QUARANTINE`). Correctly excluded today,
+but revisit:
+
+- [ ] `src/lambda/ocr_benchmark_deployer` — needs `huggingface_hub` as a test dep.
+- [ ] `nested/bedrockkb/src/s3_vectors_manager` — needs the Lambda-runtime-only
+      `cfnresponse` module available under test.
+- [ ] `scripts/test_api_rbac.py` — the live RBAC harness (not a pytest suite);
+      leave excluded unless refactored.
+- [ ] `samples/lambda-hook-inference/GENAIIDP-chandra-ocr-hook` — `test_local.py`
+      is a manual run script; leave excluded or convert to real tests.
+- [ ] `lib/idp_sdk/idp_sdk/_core` — source tree with helper modules named
+      `test_*`; leave excluded (not tests).
+
+### Done (this cycle — no longer gaps)
+
+- [x] **Pipeline hooks end-to-end.** Added as Step 14: deploys a real hook
+      Lambda, registers it at `preprocessing` + `postprocessing` in a dedicated
+      config version, and asserts the dispatcher invoked it AND that its
+      `updatedDocument` reached the persisted document. Previously **no** hook
+      point had live coverage.
+
+- [x] **Dynamic security testing (DAST).** OWASP ZAP scan of the deployed UI API
+      added as the `zapdast` deployment-variant probe — authenticated scan seeded
+      from `api_rbac_expectations.yaml`, WARN-only, report to
+      `s3://…/deploy/zap/…`. Requires `PrivilegedMode: true` on `app-sdlc`.
+      Complements SRT (static) + RBAC (authorization) with injection/headers/TLS
+      coverage. *(feature/zap-dast-ci-probe)*
+- [x] **Mandatory AppSec API security test cases.** Extended the live API harness
+      (`make api-test`, CodeBuild Step 12) with the AppSec checklist suites:
+      IDOR/BOLA (2.1), token expiry + logout revocation (2.3/2.4), deleted-resource
+      inaccessibility (2.5), input validation (3, tolerant→strict), and TLS
+      downgrade/cleartext (4). Implemented in `scripts/api_security_cases.py` with
+      unit tests; threat entries AUTH.T09–T11. The stateless-JWT post-logout reuse
+      is surfaced as a documented gap (GAP-SEC-LOGOUT). *(feature/zap-dast-ci-probe)*
+- [x] `idp_common` `-m "unit"` filter → `-m "not integration"` (recovered ~810
+      silently-skipped tests; fixed 28 rotted tests). *(PR #493)*
+- [x] Missing package/Lambda suites added to `developer_tests` via
+      `make test-packages-cicd` (~665 tests). *(PR #494)*
+- [x] `check-arn-partitions` (GovCloud ARN guard) wired into `lint-cicd`. *(PR #494)*
+- [x] API RBAC: static scan in the MR gate + live harness as CodeBuild Step 12.
+      *(PR #494)*
+- [x] SRT security scan runs fail-fast (before the ~2h integration stage) on
+      branch pipelines. *(PR #494)*
+- [x] Deployment-failure AI root-cause summary (incl. Step 4b) + failure email
+      (`FailureNotificationEmail` SNS). *(PR #494)*
+- [x] `make test` auto-discovers all test roots; a new/unregistered test dir
+      hard-fails so suites can't be silently skipped. *(PR #495)*
+- [x] Fixed the Step Functions execution-view "Running vs Failed" resolver bug and
+      `save_reporting_data` stale/real-AWS tests; both promoted into the gate.
+      *(PR #495)*
+- [x] CodeBuild role granted EC2/VPC permissions for the Step 4b hosting test.
+      *(PR #497)*
+- [x] Stopped `idp_sdk` `test_create_config` writing a stray `config.yaml` to the
+      repo root. *(PR #498)*
+- [x] Generalized the single APIGW hosting test into the **deployment-variant
+      probe framework** (`PROBE_VARIANTS` table + `run_variant_probes` launcher +
+      `resolve_probe_concurrency` quota budget), with mock-based unit tests in
+      `scripts/sdlc/tests/`. *(fix/ci-variant-probe-framework)*
+- [x] Repo-root `pytest.ini` registering the shared `unit`/`integration` markers
+      (silences `PytestUnknownMarkWarning` in ~12 per-Lambda dirs).
+      *(fix/ci-variant-probe-framework)*
+- [x] Real `cfn-lint --region us-gov-west-1` E3006 gate on the transformed
+      committed template (offline fast-gate unit test).
+      *(fix/ci-variant-probe-framework)*
+- [x] **Persistent pipeline-owned test VPC** (`codepipeline-s3.yml`,
+      `CreateTestVpc`) reused by every run → VPC-requiring probes are quota-safe
+      and fully parallel; no per-run VPC create/destroy or ENI leaks.
+      *(fix/ci-variant-probe-framework)*
+- [x] **Three new probes** — WAF-enabled (IP allow-list), PRIVATE APIGW hosting,
+      and the Jobs API (`EnableJobsApi=true`) — added to `PROBE_VARIANTS` (all default-on), plus
+      `DEFAULT_PROBE_MAX_CONCURRENCY` raised so the whole table runs in parallel.
+      *(fix/ci-variant-probe-framework)*
+- [x] **Every-run consolidated summary** (`build_consolidated_summary`) listing
+      publish + every primary step + every probe with status + OVERALL PASS/FAIL,
+      always rendered to the GitLab log and uploaded to S3/SNS; Bedrock now writes
+      a grounded report on **pass as well as fail**.
+      *(fix/ci-variant-probe-framework)*
+- [x] **Startup reapers for leaked test stacks, IAM roles, and buckets** —
+      age-gated and concurrent-run-safe, so an interrupted cleanup can't exhaust
+      the account's IAM-role quota or pile up buckets again.
+- [x] **Handoff FAIL verdict** — the monitor fails the GitLab job when the
+      summary shows OVERALL: FAIL, instead of exiting green.
+- [x] **Progressive summary upload** — a current result reaches S3 before the
+      monitor handoff even when a run is long (fixed a finished run showing "No
+      summary found").
+- [x] **Mid-run monitor credential refresh** — the monitor refreshes its
+      1h-capped credentials to watch long runs to ~110 min. *(Needs a live >1h
+      run to fully validate.)*
+- [x] **`after_script` credential handover** — the monitor persists each session
+      it mints so the log/summary capture no longer depends on the job
+      finishing inside its own 1h credential window. Pinned by
+      `scripts/sdlc/tests/test_after_script_log_capture.py` and
+      `test_credential_refresh.py`. *(Needs a live >1h run to fully validate.)*
+- [x] **Credential failures are not reported as eventual consistency** — the
+      CodeBuild-id resolve loop keeps its stderr, stops rather than retrying an
+      expired token, and the artifact names which failure it was.
+
+---
+
+## Related Documentation
+
+- [CHANGELOG.md](../../../CHANGELOG.md) - Feature changes and test additions
+- [CLAUDE.md](../../../CLAUDE.md) - Project architecture and build commands
+- [docs/test-studio.md](../../../docs/test-studio.md) - Test Studio user guide
+- [scripts/sdlc/cfn/README.md](../cfn/README.md) - SDLC infrastructure setup
+- [scripts/sdlc/cfn/codepipeline-s3.yml](../cfn/codepipeline-s3.yml) - CodeBuild IAM permissions
+

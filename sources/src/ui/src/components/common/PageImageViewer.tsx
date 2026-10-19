@@ -1,21 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, memo, useCallback, useImperativeHandle } from 'react';
 import { Box, Spinner, Button } from '@cloudscape-design/components';
 import { ConsoleLogger } from 'aws-amplify/utils';
-import generateS3PresignedUrl from './generate-s3-presigned-url';
-import useAppContext from '../../contexts/app';
+import { presignBatch, presignedUrlsNeedRefresh, type PresignBatchResult } from '../../api/presign-batch';
+import { FILE_ACCESS_DENIED_MESSAGE } from '../../hooks/utils/graphql-error';
+import { rotateBoundingBox, rotateOffset, rotationFitScale } from './page-rotation-utils';
+import type { NormalisedBox } from './page-rotation-utils';
+import { useDocumentVersion } from '../../contexts/document-version';
 
 const logger = new ConsoleLogger('PageImageViewer');
 
 interface BoundingBoxGeometry {
-  boundingBox?: {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  };
+  boundingBox?: NormalisedBox;
   page?: number;
 }
 
@@ -27,6 +25,8 @@ interface BoundingBoxProps {
   containerRef?: React.RefObject<HTMLDivElement | null>;
   zoomLevel?: number;
   panOffset?: { x: number; y: number };
+  /** Clockwise page rotation in degrees; see {@link rotateBoundingBox}. */
+  rotation?: number;
   color?: string;
   label?: string | null;
 }
@@ -40,6 +40,7 @@ export const BoundingBox = memo(
     containerRef,
     zoomLevel = 1,
     panOffset = { x: 0, y: 0 },
+    rotation = 0,
     color = 'red',
     label = null,
   }: BoundingBoxProps): React.JSX.Element | null => {
@@ -130,7 +131,9 @@ export const BoundingBox = memo(
         };
       }
       return undefined;
-    }, [zoomLevel, panOffset, imageRef, containerRef, page, currentPage]);
+      // `rotation` belongs here for the same reason zoom and pan do: it changes
+      // the rect this reads, including swapping its width and height.
+    }, [zoomLevel, panOffset, rotation, imageRef, containerRef, page, currentPage]);
 
     if (page !== currentPage || !box || !dimensions.transformedWidth) {
       return null;
@@ -141,7 +144,7 @@ export const BoundingBox = memo(
     }
 
     const padding = 5;
-    const bbox = box.boundingBox;
+    const bbox = rotateBoundingBox(box.boundingBox, rotation);
 
     // Calculate position and size directly on the transformed image
     const finalLeft = bbox.left * dimensions.transformedWidth + dimensions.transformedOffsetX - padding;
@@ -208,6 +211,10 @@ interface BoundingBoxOverlay {
   label?: string;
 }
 
+export interface PageImageViewerHandle {
+  zoomToField: (geometry: BoundingBoxGeometry) => void;
+}
+
 interface PageImageViewerProps {
   pageIds?: string[];
   documentPages?: DocumentPage[];
@@ -217,6 +224,11 @@ interface PageImageViewerProps {
   height?: string;
   showControls?: boolean;
   boundingBoxes?: BoundingBoxOverlay[];
+  /**
+   * Optional handle exposing `zoomToField`, so a caller can bind zooming to its
+   * own gesture (human review uses double-click) instead of to every highlight.
+   */
+  zoomHandle?: React.Ref<PageImageViewerHandle>;
 }
 
 const PageImageViewer = ({
@@ -228,15 +240,64 @@ const PageImageViewer = ({
   height = '700px',
   showControls = true,
   boundingBoxes = [],
+  zoomHandle,
 }: PageImageViewerProps): React.JSX.Element => {
-  const { currentCredentials } = useAppContext();
+  // Pin page images to the selected run's object versions when viewing history.
+  const { versionIdForUri, runId: viewingRunId } = useDocumentVersion();
   const [pageImages, setPageImages] = useState<Record<string, string>>({});
   const [loadingImages, setLoadingImages] = useState(true);
+  /**
+   * Why a page has no URL, when that is the server's answer rather than the page
+   * simply having no image. Without it a refused document showed a spinner for
+   * ever: the resolver's per-document scope check fails the WHOLE batch with a
+   * 403, so every page is missing at once and "still loading" is indistinguishable
+   * from "never allowed" (issue #1033).
+   */
+  const [imageErrorMessage, setImageErrorMessage] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState<string | null>(initialPage || (pageIds.length > 0 ? pageIds[0] : null));
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [rotationFit, setRotationFit] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const imageRef = useRef<HTMLImageElement | null>(null);
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Re-signing, and why it is driven from page navigation rather than from a clock.
+   *
+   * The URLs in `pageImages` are bearer capabilities minted by the resolver with a
+   * 300 s life (`_PRESIGNED_URL_EXPIRY_SECONDS`, see `api/presign-batch` for the
+   * whole trade). The signing effect below depends on `[pageIds, documentPages,
+   * viewingRunId]`, and for a **completed** document none of those ever changes
+   * again — detail polling has stopped — so nothing re-fires it. Open such a
+   * document, leave it five minutes and page forward, and the new page's `<img>`
+   * fetches an expired URL: S3 answers 403 and the viewer shows its fallback, which
+   * reads as flakiness rather than as an expiry.
+   *
+   * An expired URL only matters at the moment a **new** image is fetched — bytes
+   * already displayed are not re-fetched — so checking staleness exactly there
+   * covers every case where one would be used, at no cost on an idle tab. `signedRef`
+   * holds the last signing's outcome so the check needs no state, and bumping
+   * `refreshToken` is what re-fires the effect.
+   */
+  const [refreshToken, setRefreshToken] = useState(0);
+  const signedRef = useRef<PresignBatchResult | null>(null);
+
+  /**
+   * Called just before a page the user has not been shown yet becomes current.
+   * Not from render and not from an effect keyed on `currentPage`: a render-time
+   * side effect risks a signing loop, and the two navigation paths are the only
+   * places a new image is needed.
+   */
+  const refreshSignedUrlsIfStale = useCallback(() => {
+    if (!presignedUrlsNeedRefresh(signedRef.current)) return;
+    // Cleared before bumping so that two quick navigations while the re-sign is
+    // still in flight raise the token once, not once each.
+    signedRef.current = null;
+    setRefreshToken((prev) => prev + 1);
+  }, []);
 
   // Load page images
   useEffect(() => {
@@ -252,26 +313,56 @@ const PageImageViewer = ({
         logger.debug('PageImageViewer - Loading images for pageIds:', pageIds);
         const images: Record<string, string> = {};
 
-        await Promise.all(
-          pageIds.map(async (pageId) => {
-            const page = documentPages.find((p) => p.Id === pageId);
+        // One resolver call for every s3:// page rather than one per page — see
+        // `api/presign-batch` for why the browser no longer signs these itself.
+        const toSign: Array<{ pageId: string; s3Uri: string }> = [];
+        for (const pageId of pageIds) {
+          const uri = documentPages.find((p) => p.Id === pageId)?.ImageUri;
+          if (!uri) continue;
+          // Only s3:// URIs need presigning; blob:/data:/https: URIs
+          // (e.g. pages rendered client-side from a PDF) are usable as-is.
+          if (!uri.startsWith('s3://')) {
+            images[pageId] = uri;
+            continue;
+          }
+          toSign.push({ pageId, s3Uri: uri });
+        }
 
-            if (page?.ImageUri) {
-              try {
-                logger.debug(`PageImageViewer - generating presigned URL for page ${pageId}`);
-                const url = await generateS3PresignedUrl(page.ImageUri, currentCredentials as Record<string, unknown>);
-                images[pageId] = url;
-              } catch (err) {
-                logger.error(`Error generating presigned URL for page ${pageId}:`, err);
-              }
+        let failureMessage: string | null = null;
+        // Nothing signed yet for this run of the effect. A view whose pages are all
+        // `blob:`/`data:`/`https:` leaves it null and so never re-signs — there is
+        // no capability to expire.
+        signedRef.current = null;
+        if (toSign.length > 0) {
+          logger.debug(`PageImageViewer - presigning ${toSign.length} page image(s) in one batch`);
+          const signed = await presignBatch(toSign.map(({ s3Uri }) => ({ s3Uri, versionId: versionIdForUri(s3Uri) })));
+          // Kept so a later navigation can ask how old these URLs are.
+          signedRef.current = signed;
+          let missing = 0;
+          for (const { pageId, s3Uri } of toSign) {
+            const url = signed.get(s3Uri, versionIdForUri(s3Uri));
+            if (url) images[pageId] = url;
+            else {
+              missing += 1;
+              logger.error(`No presigned URL returned for page ${pageId}`);
             }
-          }),
-        );
+          }
+          // The reason comes from the call, not from counting absences: the whole
+          // batch is refused together, so a 403 and "this document has no page
+          // images" produce the same empty record.
+          if (signed.accessDenied) failureMessage = FILE_ACCESS_DENIED_MESSAGE;
+          else if (signed.failed || missing > 0) failureMessage = 'The page images for this document could not be loaded.';
+        }
+        setImageErrorMessage(failureMessage);
 
         logger.debug('PageImageViewer - Successfully loaded images for', Object.keys(images).length, 'pages');
         setPageImages(images);
 
-        if (!currentPage && pageIds.length > 0) {
+        // Also reset when the page list changed and no longer contains the
+        // current page (e.g. the ground-truth editor switching to a section
+        // whose split_document.page_indices are a different page set) —
+        // otherwise the viewer waits forever on an image that will never load.
+        if (pageIds.length > 0 && (!currentPage || !pageIds.includes(currentPage))) {
           setCurrentPage(pageIds[0]);
         }
       } catch (err) {
@@ -282,7 +373,11 @@ const PageImageViewer = ({
     };
 
     loadImages();
-  }, [pageIds, documentPages, currentCredentials]);
+    // `refreshToken` is the re-sign trigger; see `refreshSignedUrlsIfStale`. The
+    // effect's `setLoadingImages(true)` therefore shows the spinner for the length
+    // of a re-sign, which is the honest surface: the page being navigated to has no
+    // usable URL until the new batch arrives.
+  }, [pageIds, documentPages, viewingRunId, refreshToken]);
 
   // Handle geometry-based page switching
   useEffect(() => {
@@ -291,6 +386,9 @@ const PageImageViewer = ({
       if (pageIndex >= 0 && pageIndex < pageIds.length) {
         const targetPageId = pageIds[pageIndex];
         if (targetPageId !== currentPage) {
+          // A programmatic page move needs a new image just as much as the
+          // control does, so it is a re-sign trigger too.
+          refreshSignedUrlsIfStale();
           setCurrentPage(targetPageId);
           if (onPageChange) {
             onPageChange(targetPageId);
@@ -298,7 +396,7 @@ const PageImageViewer = ({
         }
       }
     }
-  }, [activeFieldGeometry, pageIds, currentPage, onPageChange]);
+  }, [activeFieldGeometry, pageIds, currentPage, onPageChange, refreshSignedUrlsIfStale]);
 
   // Zoom controls
   const handleZoomIn = useCallback(() => {
@@ -309,6 +407,56 @@ const PageImageViewer = ({
     setZoomLevel((prev) => Math.max(prev / 1.25, 0.25));
   }, []);
 
+  // Rotation controls. Kept in 0–359 rather than going negative so the readout
+  // never reads "-90°", and sticky across page navigation like zoom and pan —
+  // a scanned document is usually misoriented the same way on every page.
+  const handleRotateLeft = useCallback(() => setRotation((prev) => (prev + 270) % 360), []);
+  const handleRotateRight = useCallback(() => setRotation((prev) => (prev + 90) % 360), []);
+
+  /**
+   * Re-fit the page after a quarter turn — see `rotationFitScale`, which holds
+   * the reasoning and the arithmetic.
+   *
+   * Reads the image's *layout* box, not getBoundingClientRect(): the rect is
+   * already transformed, so feeding it back in would compound the scale on
+   * every measurement.
+   */
+  const measureRotationFit = useCallback(() => {
+    const img = imageRef.current;
+    const container = imageContainerRef.current;
+    const fit = rotationFitScale({
+      imageWidth: img?.offsetWidth ?? 0,
+      imageHeight: img?.offsetHeight ?? 0,
+      containerWidth: container?.clientWidth ?? 0,
+      containerHeight: container?.clientHeight ?? 0,
+      rotation,
+    });
+    // null means nothing was measurable yet; keep the last good value.
+    if (fit !== null) setRotationFit(fit);
+  }, [rotation]);
+
+  // Re-fit on rotation and on page change (pages need not share a shape).
+  // Before paint, not after: the measurement reads the *layout* box, which the
+  // transform does not affect, so it is already correct here — and taking it
+  // after paint would show one frame of the rotated page at its unfitted size,
+  // clipped by the container, before it settled.
+  useLayoutEffect(() => {
+    measureRotationFit();
+  }, [measureRotationFit, currentPage, pageImages]);
+  // Container resizes are a separate, post-layout concern (the editor's columns
+  // are fluid).
+
+  useEffect(() => {
+    const container = imageContainerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => measureRotationFit());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [measureRotationFit]);
+
+  // The scale actually applied: the user's zoom times the rotation re-fit.
+  const effectiveScale = zoomLevel * rotationFit;
+
   // Pan controls
   const panStep = 50;
   const handlePanLeft = useCallback(() => setPanOffset((prev) => ({ ...prev, x: prev.x + panStep })), []);
@@ -318,16 +466,38 @@ const PageImageViewer = ({
   const handleResetView = useCallback(() => {
     setZoomLevel(1);
     setPanOffset({ x: 0, y: 0 });
+    setRotation(0);
   }, []);
 
-  // Handle mouse wheel for zoom
+  // Handle mouse wheel for zoom (matches the section Visual Editor: plain wheel zooms)
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY < 0 ? 1.1 : 0.9;
-      setZoomLevel((prev) => Math.min(Math.max(prev * delta, 0.25), 4));
-    }
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1.1 : 0.9;
+    setZoomLevel((prev) => Math.min(Math.max(prev * delta, 0.25), 4));
   }, []);
+
+  // Drag-to-pan (only meaningful when zoomed in), mirroring the section editor.
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (zoomLevel <= 1) return;
+      e.preventDefault();
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    },
+    [zoomLevel, panOffset],
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      setPanOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+    },
+    [isDragging, dragStart],
+  );
+
+  const handleMouseUp = useCallback(() => setIsDragging(false), []);
+  const handleMouseLeave = useCallback(() => setIsDragging(false), []);
 
   // Handle page navigation
   const goToPreviousPage = useCallback(() => {
@@ -335,73 +505,89 @@ const PageImageViewer = ({
     const currentIndex = pageIds.indexOf(currentPage);
     if (currentIndex > 0) {
       const newPage = pageIds[currentIndex - 1];
+      // The moment a new image is needed: re-sign first if the URLs are stale.
+      refreshSignedUrlsIfStale();
       setCurrentPage(newPage);
       if (onPageChange) {
         onPageChange(newPage);
       }
     }
-  }, [currentPage, pageIds, onPageChange]);
+  }, [currentPage, pageIds, onPageChange, refreshSignedUrlsIfStale]);
 
   const goToNextPage = useCallback(() => {
     if (currentPage === null) return;
     const currentIndex = pageIds.indexOf(currentPage);
     if (currentIndex < pageIds.length - 1) {
       const newPage = pageIds[currentIndex + 1];
+      // The moment a new image is needed: re-sign first if the URLs are stale.
+      refreshSignedUrlsIfStale();
       setCurrentPage(newPage);
       if (onPageChange) {
         onPageChange(newPage);
       }
     }
-  }, [currentPage, pageIds, onPageChange]);
+  }, [currentPage, pageIds, onPageChange, refreshSignedUrlsIfStale]);
 
-  // Public method to zoom to a specific field
-  const zoomToField = useCallback((geometry: BoundingBoxGeometry) => {
-    if (geometry && imageRef.current && imageContainerRef.current) {
+  /**
+   * Zoom to a field and centre it.
+   *
+   * Measured from the element's LAYOUT box (offsetWidth/offsetLeft), not
+   * getBoundingClientRect(): the rect reports the already-transformed box, so
+   * feeding it back in folds the current zoom and pan into the next calculation
+   * and the image walks off toward a corner on each call.
+   *
+   * The image is scaled about its centre, so a point sitting `d` px from that
+   * centre unzoomed sits `d * scale` px from it once scaled — hence the single
+   * multiplication by the target scale below. `panOffset` is in screen px (the
+   * render divides it back out by the scale inside translate()).
+   *
+   * Rotation is applied to `d` before scaling, mirroring the transform's own
+   * order: the field's offset from the page centre turns with the page, so
+   * without this the view centres on wherever that offset happens to point on
+   * an unrotated page.
+   */
+  const zoomToField = useCallback(
+    (geometry: BoundingBoxGeometry) => {
+      const bbox = geometry?.boundingBox;
+      if (!bbox || !imageRef.current || !imageContainerRef.current) return;
+
       const targetZoom = 2.0;
       setZoomLevel(targetZoom);
 
-      setTimeout(() => {
-        if (imageRef.current && imageContainerRef.current) {
-          const img = imageRef.current;
-          const container = imageContainerRef.current;
-          const imgRect = img.getBoundingClientRect();
-          const containerRect = container.getBoundingClientRect();
+      // Deferred one frame: the layout box is stable, but the browser has not yet
+      // applied the new zoom, and reading mid-transition yields a torn value.
+      requestAnimationFrame(() => {
+        const img = imageRef.current;
+        const container = imageContainerRef.current;
+        if (!img || !container) return;
 
-          const imageWidth = img.width || img.naturalWidth;
-          const imageHeight = img.height || img.naturalHeight;
-          const offsetX = imgRect.left - containerRect.left;
-          const offsetY = imgRect.top - containerRect.top;
+        const w = img.offsetWidth;
+        const h = img.offsetHeight;
+        if (!w || !h) return;
 
-          const bbox = geometry.boundingBox;
+        const centreX = img.offsetLeft + w / 2;
+        const centreY = img.offsetTop + h / 2;
+        const fieldU = bbox.left + bbox.width / 2;
+        const fieldV = bbox.top + bbox.height / 2;
 
-          if (bbox) {
-            const { left, top, width, height: bboxHeight } = bbox;
-            const fieldCenterX = (left + width / 2) * imageWidth + offsetX;
-            const fieldCenterY = (top + bboxHeight / 2) * imageHeight + offsetY;
-            const viewportCenterX = containerRect.width / 2;
-            const viewportCenterY = containerRect.height / 2;
-            const imageCenterX = offsetX + imageWidth / 2;
-            const imageCenterY = offsetY + imageHeight / 2;
-            const relativeX = fieldCenterX - imageCenterX;
-            const relativeY = fieldCenterY - imageCenterY;
-            const scaledRelativeX = relativeX * targetZoom;
-            const scaledRelativeY = relativeY * targetZoom;
-            const requiredPanX = viewportCenterX - (imageCenterX + scaledRelativeX);
-            const requiredPanY = viewportCenterY - (imageCenterY + scaledRelativeY);
+        // Offset of the field from the page centre, in unscaled layout px,
+        // turned clockwise by the current rotation.
+        const offset = rotateOffset((fieldU - 0.5) * w, (fieldV - 0.5) * h, rotation);
+        const targetScale = targetZoom * rotationFit;
 
-            setPanOffset({ x: requiredPanX, y: requiredPanY });
-          }
-        }
-      }, 100);
-    }
-  }, []);
+        setPanOffset({
+          x: container.clientWidth / 2 - centreX - offset.x * targetScale,
+          y: container.clientHeight / 2 - centreY - offset.y * targetScale,
+        });
+      });
+    },
+    [rotation, rotationFit],
+  );
 
-  // Expose zoomToField method
-  useEffect(() => {
-    if (imageContainerRef.current) {
-      (imageContainerRef.current as unknown as Record<string, unknown>).zoomToField = zoomToField;
-    }
-  }, [zoomToField]);
+  // Exposed imperatively rather than fired from an effect on activeFieldGeometry:
+  // highlighting a field and zooming to it are separate gestures (single- vs
+  // double-click), and an effect keyed on the geometry cannot tell them apart.
+  useImperativeHandle(zoomHandle, () => ({ zoomToField }), [zoomToField]);
 
   const fallbackImage =
     'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6' +
@@ -436,6 +622,7 @@ const PageImageViewer = ({
     <div style={{ position: 'relative', height, overflow: 'hidden' }}>
       {/* Image container - must exactly match VisualEditorModal structure for bounding box positioning
           The BoundingBox calculates position relative to this container */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
         ref={imageContainerRef}
         style={{
@@ -445,9 +632,14 @@ const PageImageViewer = ({
           display: 'flex',
           justifyContent: 'center',
           overflow: 'hidden',
-          cursor: zoomLevel > 1 ? 'grab' : 'default',
+          cursor: isDragging ? 'grabbing' : zoomLevel > 1 ? 'grab' : 'default',
+          userSelect: 'none',
         }}
         onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
       >
         {currentPage !== null && pageImages[currentPage] ? (
           <>
@@ -461,10 +653,20 @@ const PageImageViewer = ({
                 width: 'auto',
                 height: 'auto',
                 objectFit: 'contain',
-                transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+                // Read right to left: rotate about the centre, then translate,
+                // then scale. Rotating last (i.e. innermost) is what keeps pan
+                // aligned to the screen rather than to the page — otherwise
+                // "pan left" moves a 90°-rotated page upwards. Dividing the
+                // offset by the scale leaves pan in screen pixels, since the
+                // outer scale multiplies it straight back.
+                transform:
+                  `scale(${effectiveScale}) ` +
+                  `translate(${panOffset.x / effectiveScale}px, ${panOffset.y / effectiveScale}px) ` +
+                  `rotate(${rotation}deg)`,
                 transformOrigin: 'center center',
                 transition: 'transform 0.1s ease-out',
               }}
+              onLoad={measureRotationFit}
               onError={(e) => {
                 logger.error(`Error loading image for page ${currentPage}:`, e);
                 (e.target as HTMLImageElement).src = fallbackImage;
@@ -481,6 +683,7 @@ const PageImageViewer = ({
                 containerRef={imageContainerRef}
                 zoomLevel={zoomLevel}
                 panOffset={panOffset}
+                rotation={rotation}
               />
             )}
             {/* Additional bounding boxes */}
@@ -494,15 +697,18 @@ const PageImageViewer = ({
                 containerRef={imageContainerRef}
                 zoomLevel={zoomLevel}
                 panOffset={panOffset}
+                rotation={rotation}
                 color={bbox.color || 'blue'}
                 label={bbox.label}
               />
             ))}
           </>
         ) : (
-          <Box padding="xl" textAlign="center">
-            <Spinner />
-            <div>Loading image...</div>
+          /* Never a spinner here. Signing has finished by this point, so a page
+             with no URL is a settled outcome — a refusal, a failure, or a page
+             that carries no image — and each of those says so. */
+          <Box padding="xl" textAlign="center" color={imageErrorMessage ? 'text-status-error' : 'inherit'}>
+            {imageErrorMessage ?? 'No image is available for this page.'}
           </Box>
         )}
       </div>
@@ -522,10 +728,22 @@ const PageImageViewer = ({
         }}
       >
         <div style={{ pointerEvents: 'auto' }}>
-          <Button iconName="angle-left" variant="icon" onClick={goToPreviousPage} disabled={currentPageIndex === 0} />
+          <Button
+            iconName="angle-left"
+            variant="icon"
+            ariaLabel="Previous page"
+            onClick={goToPreviousPage}
+            disabled={currentPageIndex === 0}
+          />
         </div>
         <div style={{ pointerEvents: 'auto' }}>
-          <Button iconName="angle-right" variant="icon" onClick={goToNextPage} disabled={currentPageIndex === pageIds.length - 1} />
+          <Button
+            iconName="angle-right"
+            variant="icon"
+            ariaLabel="Next page"
+            onClick={goToNextPage}
+            disabled={currentPageIndex === pageIds.length - 1}
+          />
         </div>
       </div>
 
@@ -562,6 +780,11 @@ const PageImageViewer = ({
               boxShadow: '0 1px 4px rgba(0, 0, 0, 0.1)',
               display: 'flex',
               alignItems: 'center',
+              // Wraps rather than overflowing: the row is centred and absolutely
+              // positioned, so overflow would clip both ends and take the reset
+              // control with it.
+              flexWrap: 'wrap',
+              justifyContent: 'center',
               gap: '6px',
               fontSize: '12px',
             }}
@@ -666,6 +889,43 @@ const PageImageViewer = ({
               title="Pan Down"
             >
               ↓
+            </span>
+            <span style={{ fontWeight: 'bold', marginLeft: '4px' }}>Rotate:</span>
+            <span
+              onClick={handleRotateLeft}
+              onKeyDown={(e) => e.key === 'Enter' && handleRotateLeft()}
+              role="button"
+              tabIndex={0}
+              style={{
+                cursor: 'pointer',
+                fontSize: '14px',
+                userSelect: 'none',
+                padding: '2px 3px',
+              }}
+              title="Rotate Left 90°"
+              // The content is a glyph, so without this the accessible name is
+              // "anticlockwise open circle arrow". `title` is only a fallback
+              // and is not announced dependably.
+              aria-label="Rotate left 90 degrees"
+            >
+              ↺
+            </span>
+            <span style={{ fontSize: '12px', minWidth: '30px', textAlign: 'center' }}>{rotation}°</span>
+            <span
+              onClick={handleRotateRight}
+              onKeyDown={(e) => e.key === 'Enter' && handleRotateRight()}
+              role="button"
+              tabIndex={0}
+              style={{
+                cursor: 'pointer',
+                fontSize: '14px',
+                userSelect: 'none',
+                padding: '2px 3px',
+              }}
+              title="Rotate Right 90°"
+              aria-label="Rotate right 90 degrees"
+            >
+              ↻
             </span>
             <span
               onClick={handleResetView}

@@ -16,6 +16,8 @@ import boto3
 import strands
 from strands import tool
 
+from ..common.config import DEFAULT_AGENT_MODEL_ID
+from ..common.cost_metrics import with_cost_hook
 from ..common.strands_bedrock_model import create_strands_bedrock_model
 from .config import get_chat_companion_model_id
 
@@ -63,23 +65,47 @@ def create_orchestrator_agent(
                     # This prevents connection pool conflicts between concurrent sub-agents
                     sub_session = boto3.Session()
 
-                    sub_kwargs = {k: v for k, v in kwargs.items() if k != "session_id"}
-                    specialized_agent = agent_factory.create_agent(
-                        agent_id=aid,
-                        config=config,
-                        session=sub_session,  # Use fresh session per sub-agent
-                        **sub_kwargs,
-                    )
-
+                    # Strip `hooks` and `session_id` — subagents don't
+                    # inherit the orchestrator's hooks. The motivating case
+                    # is the `DynamoDBMemoryHookProvider`: if forwarded, every
+                    # subagent Bedrock invocation would write its internal tool
+                    # chatter to the SAME session_id row that persists the
+                    # top-level user↔assistant turns, contaminating the
+                    # conversation history the orchestrator loads next turn.
+                    # This filter is intentionally BROAD (drops any hook the
+                    # caller passed) rather than narrow (only drop memory hooks)
+                    # because (a) the ControlPlaneCostHook that subagents want
+                    # lives in their own creator functions, not caller kwargs, and (b)
+                    # inspecting hook types to decide would couple the
+                    # orchestrator to specific hook classes. If a future caller
+                    # legitimately wants a hook on both orchestrator AND
+                    # subagents, it must register it in both places explicitly.
+                    # Subagent tool results still flow into the orchestrator's
+                    # message list as `tool_result` content blocks — that's the
+                    # intended memory path across the boundary.
+                    sub_kwargs = {
+                        k: v
+                        for k, v in kwargs.items()
+                        if k not in ("session_id", "hooks")
+                    }
                     # Stream sub-agent events with timeout per event
                     timeout_seconds = int(
                         os.environ.get("SUBAGENT_TIMEOUT_SECONDS", "120")
                     )
-                    logger.info(
-                        f"Starting sub-agent {aid} with {timeout_seconds}s timeout"
-                    )
 
-                    with specialized_agent:
+                    # Entered on the same statement that creates it. `create_agent`
+                    # builds a transcript-write thread pool that `__exit__` drains and
+                    # closes, so any work between construction and `with` is work
+                    # during which a raise leaks an undrained pool and a live thread.
+                    with agent_factory.create_agent(
+                        agent_id=aid,
+                        config=config,
+                        session=sub_session,  # Use fresh session per sub-agent
+                        **sub_kwargs,
+                    ) as specialized_agent:
+                        logger.info(
+                            f"Starting sub-agent {aid} with {timeout_seconds}s timeout"
+                        )
                         stream = specialized_agent.stream_async(query)
                         last_event_time = asyncio.get_event_loop().time()
 
@@ -295,12 +321,16 @@ Example:
 - Only call multiple agents if the first response is incomplete or you need different types of information
 - Trust the agent responses - they are designed to be comprehensive
 
+# Scope (you are the "Agent Companion Chat")
+- You handle general Q&A about the user's documents, analytics, errors, and the codebase. Do NOT describe schema authoring, config-version creation, or synthetic-data generation as your own capabilities.
+- If the user wants to SET UP or CONFIGURE the system - create/bootstrap a configuration, author a document schema from a description or example - tell them briefly that this is handled by the separate "Quick Start" assistant, which they can open with the "Quick Start" button at the top of the left navigation. Do not attempt to author schemas or create config versions yourself.
+
 # Key Rules
 - For text responses: Be conversational and helpful - return natural language, NOT JSON
 - For table/plot responses: Return ONLY the JSON with zero additional text
 - Synthesize information from multiple agents when needed
 - Keep responses clear and user-friendly
-- If a subagent or several subagents result in error after 2 times of retry, reply gracefully by mentioning the error that has occurred and STOP retrying the agents. 
+- If a subagent or several subagents result in error after 2 times of retry, reply gracefully by mentioning the error that has occurred and STOP retrying the agents.
 
 """
 
@@ -309,9 +339,7 @@ Example:
         model_id = get_chat_companion_model_id()
     except Exception as e:
         logger.warning(f"Failed to get chat companion model ID, using default: {e}")
-        model_id = config.get(
-            "default_model_id", "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-        )
+        model_id = config.get("default_model_id", DEFAULT_AGENT_MODEL_ID)
 
     # Create the orchestrator agent
     model = create_strands_bedrock_model(
@@ -319,14 +347,14 @@ Example:
         boto_session=session,
     )
 
-    # Get hooks from kwargs if provided
-    hooks = kwargs.get("hooks", [])
-
+    # Append control-plane cost hook to caller-supplied hooks so the
+    # orchestrator's own routing/decision Bedrock calls land in
+    # control_plane_hourly under component="chat-orchestrator".
     orchestrator = strands.Agent(
         system_prompt=system_prompt,
         model=model,
         tools=tools,
-        hooks=hooks,  # Pass hooks during agent creation
+        hooks=with_cost_hook(kwargs.get("hooks"), "chat-orchestrator", model_id),
         callback_handler=None,
     )
 

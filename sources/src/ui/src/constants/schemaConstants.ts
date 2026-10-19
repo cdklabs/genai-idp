@@ -25,6 +25,140 @@ export const SCHEMA_REQUIRED = 'required';
 export const SCHEMA_DESCRIPTION = 'description';
 export const SCHEMA_EXAMPLES = 'examples';
 
+/**
+ * Every keyword whose value is itself a subschema, or a list of subschemas.
+ *
+ * Anything that walks a property node has to descend through these, not just through
+ * `items` and `properties`. A class referenced from any of them is as much part of the
+ * schema's `$defs` as one referenced from a property, and a `$ref` that reaches `$defs`
+ * without its target publishes a pointer resolving to nothing.
+ *
+ * The reachable writer today is the `contains` builder, via `ArrayConstraints`, which
+ * points `contains` at a shared class. `SchemaCompositionEditor` and
+ * `SchemaConditionalEditor` write into `oneOf`/`anyOf`/`allOf`/`not` and
+ * `if`/`then`/`else`, but neither component is imported anywhere, so nothing they write can
+ * be in a user's configuration; they are covered because the walk should not depend on
+ * which editors happen to be wired up.
+ */
+export const SUBSCHEMA_KEYWORDS = [
+  'items',
+  'oneOf',
+  'anyOf',
+  'allOf',
+  'not',
+  'contains',
+  'if',
+  'then',
+  'else',
+  'prefixItems',
+  'propertyNames',
+  'additionalItems',
+  'additionalProperties',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+] as const;
+
+/**
+ * Keywords whose value is a **map** of subschemas keyed by a name the author chose.
+ *
+ * They are listed apart from `SUBSCHEMA_KEYWORDS` because the walk must descend into the
+ * map's *values*: treating the map itself as a subschema would read an author's property
+ * name as a JSON Schema keyword, and would let `DESIGNER_ONLY_KEYS` delete a property
+ * legitimately called `id` or `name`.
+ */
+export const SUBSCHEMA_MAP_KEYWORDS = ['properties', 'patternProperties', 'dependentSchemas'] as const;
+
+/**
+ * The designer's own bookkeeping fields. None is a JSON Schema keyword, so none belongs in
+ * an exported schema.
+ *
+ * `id` and `name` are how the designer labels a node it holds in memory, and a `$defs`
+ * body loaded from a saved schema can carry either — that one is reachable and tested.
+ * `schemaId` is a React list key `SchemaCompositionEditor` allocates from a render-scoped
+ * counter; that component has no importers, so no user's configuration can contain one.
+ * It is stripped because the boundary should not depend on which editors are wired up.
+ */
+export const DESIGNER_ONLY_KEYS = ['id', 'name', 'schemaId'] as const;
+
+/**
+ * The keywords an **object** definition can carry. Anything else in a body implies some
+ * other shape, so `type: "object"` must not be invented for it.
+ *
+ * Stated as an allow-list on purpose. A deny-list of "keywords that mean something other
+ * than object" cannot be completed — `enum`, `const`, `items`, `contains`, `prefixItems`,
+ * `pattern`, `format`, `minLength`, `multipleOf`, `minimum`, `uniqueItems` and more all
+ * qualify — and every one it misses is a definition published with a type it contradicts:
+ * an array or a string can never validate against `type: "object"`.
+ *
+ * Every keyword listed is object-applicable and cannot imply another type, so a typeless
+ * body carrying only these still gets `object`, which is what keeps 113 of the 232 shipped
+ * `$defs` entries — typeless, with properties — exporting exactly as they do today. `x-`
+ * extensions are allowed by prefix for the same reason: they are type-agnostic.
+ *
+ * The list deliberately runs past `properties`/`required`/`description` to two further
+ * groups: the object-only *constraints* (`minProperties`, `additionalProperties`,
+ * `patternProperties` …) and the type-agnostic *annotations* (`title`, `default`, `$comment`
+ * …). Stopping earlier would also be sound, but it would withdraw the `object` from a
+ * typeless body like `{additionalProperties: false, properties: {…}}` or `{title: 'T',
+ * properties: {…}}`, both of which have always been written out with one, and neither of
+ * which says anything that contradicts it. Including them keeps the rule exactly as narrow as
+ * its purpose: the only bodies that lose an invented type are the ones that were being given
+ * a contradictory one.
+ *
+ * `useSchemaDesigner.shippedSchemas.test.ts` is what holds that balance in place, over the
+ * real files rather than over reasoning about them.
+ */
+export const OBJECT_BODY_KEYWORDS = [
+  'type',
+  'properties',
+  'required',
+  // Object-only constraints: applicable to an object and meaningless on anything else, so
+  // their presence is consistent with `object` rather than evidence against it.
+  'minProperties',
+  'maxProperties',
+  'additionalProperties',
+  'patternProperties',
+  'propertyNames',
+  'dependentSchemas',
+  'dependentRequired',
+  'unevaluatedProperties',
+  // Type-agnostic annotations. Allowed for the same reason `x-` extensions are: they say
+  // nothing about the type, so a body carrying one alongside `properties` is still an object
+  // and must keep the `object` it has always been written out with.
+  'description',
+  'title',
+  '$comment',
+  '$id',
+  'default',
+  'examples',
+  'deprecated',
+] as const;
+
+/**
+ * Keywords that must not sit beside a `$ref` in a node the designer **writes**.
+ *
+ * `type` is here because `resolveAttributeType` prefers a sibling `type` over following the
+ * pointer, so the same attribute would read back differently depending on which route
+ * created it; `properties` and `required` because they described the inline object the
+ * reference replaces, and `updateAttribute` treats an absent key as "leave it alone", so
+ * they have to be cleared explicitly or they stay underneath as orphans.
+ *
+ * ⚠️ This is a **write** list, not a sanitizer list. `refAttributeUpdates` uses it when a
+ * user turns a property into a reference, where clearing stale inline-object state is the
+ * whole point. Sanitization runs over every node of every export, including hand-authored
+ * ones, where `minProperties`, `maxProperties` and `additionalProperties` beside a `$ref`
+ * are the documented draft-2020-12 way to constrain a reference — nothing reads them, they
+ * contradict nothing, and deleting them loses authored intent. `REF_INCOMPATIBLE_KEYWORDS`
+ * below is what the sanitizer uses.
+ */
+export const INLINE_OBJECT_KEYWORDS = ['type', 'properties', 'required', 'minProperties', 'maxProperties', 'additionalProperties'] as const;
+
+/**
+ * Keywords a sanitizer removes from a node that carries a `$ref`: only the ones that
+ * genuinely conflict with delegating the type designation to the referenced entry.
+ */
+export const REF_INCOMPATIBLE_KEYWORDS = ['type', 'properties', 'required'] as const;
+
 // ============================================================================
 // JSON Schema Type Values
 // ============================================================================
@@ -64,8 +198,8 @@ export const TYPE_COLORS = {
 /** Marks a schema as a document type (top-level class) */
 export const X_AWS_IDP_DOCUMENT_TYPE = 'x-aws-idp-document-type';
 
-/** Marks a schema as a rule type (for rule validation) */
-export const X_AWS_IDP_RULE_TYPE = 'x-aws-idp-rule-type';
+/** Marks a schema as a policy type (for rule validation) */
+export const X_AWS_IDP_POLICY_TYPE = 'x-aws-idp-policy-type';
 
 /** Classification metadata for document type */
 export const X_AWS_IDP_CLASSIFICATION = 'x-aws-idp-classification';
@@ -73,6 +207,199 @@ export const X_AWS_IDP_CLASSIFICATION = 'x-aws-idp-classification';
 /** Regex patterns for classification optimization */
 export const X_AWS_IDP_DOCUMENT_NAME_REGEX = 'x-aws-idp-document-name-regex';
 export const X_AWS_IDP_PAGE_CONTENT_REGEX = 'x-aws-idp-document-page-content-regex';
+
+// Per-class extraction model override (overrides extraction.model)
+export const X_AWS_IDP_EXTRACTION_MODEL = 'x-aws-idp-extraction-model';
+
+// Per-class escalation model override. When extraction.agentic.validation
+// fail_action is "escalate", failing fields for this class are re-extracted
+// with this model (overrides extraction.agentic.validation.escalation_model).
+export const X_AWS_IDP_EXTRACTION_ESCALATION_MODEL = 'x-aws-idp-extraction-escalation-model';
+
+/**
+ * Bedrock model options for per-class model-override dropdowns in the schema
+ * editor (extraction model and escalation model). The leading empty option
+ * means "use the global default". Keep in sync with the model enum in
+ * patterns/unified/template.yaml.
+ */
+export const EXTRACTION_MODEL_OVERRIDE_OPTIONS = [
+  { label: '(Use global default)', value: '' },
+  { label: 'us.amazon.nova-lite-v1:0', value: 'us.amazon.nova-lite-v1:0' },
+  { label: 'us.amazon.nova-pro-v1:0', value: 'us.amazon.nova-pro-v1:0' },
+  { label: 'us.amazon.nova-2-lite-v1:0', value: 'us.amazon.nova-2-lite-v1:0' },
+  { label: 'us.anthropic.claude-haiku-4-5-20251001-v1:0', value: 'us.anthropic.claude-haiku-4-5-20251001-v1:0' },
+  { label: 'us.anthropic.claude-haiku-5-5', value: 'us.anthropic.claude-haiku-5-5' },
+  { label: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', value: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0' },
+  { label: 'us.anthropic.claude-sonnet-4-6', value: 'us.anthropic.claude-sonnet-4-6' },
+  { label: 'us.anthropic.claude-sonnet-4-6:1m', value: 'us.anthropic.claude-sonnet-4-6:1m' },
+  { label: 'us.anthropic.claude-sonnet-5', value: 'us.anthropic.claude-sonnet-5' },
+  { label: 'us.anthropic.claude-sonnet-5:1m', value: 'us.anthropic.claude-sonnet-5:1m' },
+  // No ':1m' twin: 1M is Sonnet 5.5's default window and
+  // 'us.anthropic.claude-sonnet-5-5:1m' is not an id Bedrock accepts.
+  { label: 'us.anthropic.claude-sonnet-5-5', value: 'us.anthropic.claude-sonnet-5-5' },
+  { label: 'us.anthropic.claude-opus-4-5-20251101-v1:0', value: 'us.anthropic.claude-opus-4-5-20251101-v1:0' },
+  { label: 'us.anthropic.claude-opus-4-6-v1', value: 'us.anthropic.claude-opus-4-6-v1' },
+  { label: 'us.anthropic.claude-opus-4-6-v1:1m', value: 'us.anthropic.claude-opus-4-6-v1:1m' },
+  { label: 'us.anthropic.claude-opus-4-7', value: 'us.anthropic.claude-opus-4-7' },
+  { label: 'us.anthropic.claude-opus-4-7:1m', value: 'us.anthropic.claude-opus-4-7:1m' },
+  { label: 'us.anthropic.claude-opus-4-8', value: 'us.anthropic.claude-opus-4-8' },
+  { label: 'us.anthropic.claude-opus-4-8:1m', value: 'us.anthropic.claude-opus-4-8:1m' },
+  { label: 'us.anthropic.claude-opus-5', value: 'us.anthropic.claude-opus-5' },
+  { label: 'us.anthropic.claude-opus-5:1m', value: 'us.anthropic.claude-opus-5:1m' },
+  { label: 'us.anthropic.claude-opus-5-5', value: 'us.anthropic.claude-opus-5-5' },
+  { label: 'us.anthropic.claude-opus-5-5:1m', value: 'us.anthropic.claude-opus-5-5:1m' },
+  // xAI Grok (Converse). Cross-region inference profiles only — there is no
+  // in-region or eu. form, so EU deployments use the global. entry below.
+  { label: 'us.xai.grok-4.6', value: 'us.xai.grok-4.6' },
+  // OpenAI GPT-6 Astra (Converse — NOT the bedrock-mantle path the GPT-5.x
+  // entries below use). Cross-region inference profiles only; EU deployments use
+  // the global. entry below.
+  { label: 'us.openai.gpt-6-astra', value: 'us.openai.gpt-6-astra' },
+  // OpenAI GPT-5.x (bedrock-mantle Responses API) - US regions only
+  { label: 'openai.gpt-5.4', value: 'openai.gpt-5.4' },
+  { label: 'openai.gpt-5.5', value: 'openai.gpt-5.5' },
+  { label: 'openai.gpt-5.6-sol', value: 'openai.gpt-5.6-sol' },
+  { label: 'openai.gpt-5.6-terra', value: 'openai.gpt-5.6-terra' },
+  { label: 'openai.gpt-5.6-luna', value: 'openai.gpt-5.6-luna' },
+  { label: 'eu.amazon.nova-lite-v1:0', value: 'eu.amazon.nova-lite-v1:0' },
+  { label: 'eu.amazon.nova-pro-v1:0', value: 'eu.amazon.nova-pro-v1:0' },
+  { label: 'eu.amazon.nova-2-lite-v1:0', value: 'eu.amazon.nova-2-lite-v1:0' },
+  { label: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', value: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0' },
+  { label: 'eu.anthropic.claude-haiku-5-5', value: 'eu.anthropic.claude-haiku-5-5' },
+  { label: 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0', value: 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0' },
+  { label: 'eu.anthropic.claude-sonnet-4-6', value: 'eu.anthropic.claude-sonnet-4-6' },
+  { label: 'eu.anthropic.claude-sonnet-4-6:1m', value: 'eu.anthropic.claude-sonnet-4-6:1m' },
+  { label: 'eu.anthropic.claude-sonnet-5', value: 'eu.anthropic.claude-sonnet-5' },
+  { label: 'eu.anthropic.claude-sonnet-5:1m', value: 'eu.anthropic.claude-sonnet-5:1m' },
+  { label: 'eu.anthropic.claude-sonnet-5-5', value: 'eu.anthropic.claude-sonnet-5-5' },
+  { label: 'eu.anthropic.claude-opus-4-5-20251101-v1:0', value: 'eu.anthropic.claude-opus-4-5-20251101-v1:0' },
+  { label: 'eu.anthropic.claude-opus-4-6-v1', value: 'eu.anthropic.claude-opus-4-6-v1' },
+  { label: 'eu.anthropic.claude-opus-4-6-v1:1m', value: 'eu.anthropic.claude-opus-4-6-v1:1m' },
+  { label: 'eu.anthropic.claude-opus-4-7', value: 'eu.anthropic.claude-opus-4-7' },
+  { label: 'eu.anthropic.claude-opus-4-7:1m', value: 'eu.anthropic.claude-opus-4-7:1m' },
+  { label: 'eu.anthropic.claude-opus-4-8', value: 'eu.anthropic.claude-opus-4-8' },
+  { label: 'eu.anthropic.claude-opus-4-8:1m', value: 'eu.anthropic.claude-opus-4-8:1m' },
+  { label: 'eu.anthropic.claude-opus-5', value: 'eu.anthropic.claude-opus-5' },
+  { label: 'eu.anthropic.claude-opus-5:1m', value: 'eu.anthropic.claude-opus-5:1m' },
+  { label: 'eu.anthropic.claude-opus-5-5', value: 'eu.anthropic.claude-opus-5-5' },
+  { label: 'eu.anthropic.claude-opus-5-5:1m', value: 'eu.anthropic.claude-opus-5-5:1m' },
+  // Canada (Central) - the only ca. profile AWS offers
+  { label: 'ca.amazon.nova-lite-v1:0', value: 'ca.amazon.nova-lite-v1:0' },
+  { label: 'global.amazon.nova-2-lite-v1:0', value: 'global.amazon.nova-2-lite-v1:0' },
+  {
+    label: 'global.anthropic.claude-haiku-4-5-20251001-v1:0',
+    value: 'global.anthropic.claude-haiku-4-5-20251001-v1:0',
+  },
+  { label: 'global.anthropic.claude-haiku-5-5', value: 'global.anthropic.claude-haiku-5-5' },
+  {
+    label: 'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+    value: 'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+  },
+  { label: 'global.anthropic.claude-sonnet-4-6', value: 'global.anthropic.claude-sonnet-4-6' },
+  { label: 'global.anthropic.claude-sonnet-4-6:1m', value: 'global.anthropic.claude-sonnet-4-6:1m' },
+  { label: 'global.anthropic.claude-sonnet-5', value: 'global.anthropic.claude-sonnet-5' },
+  { label: 'global.anthropic.claude-sonnet-5:1m', value: 'global.anthropic.claude-sonnet-5:1m' },
+  { label: 'global.anthropic.claude-sonnet-5-5', value: 'global.anthropic.claude-sonnet-5-5' },
+  {
+    label: 'global.anthropic.claude-opus-4-5-20251101-v1:0',
+    value: 'global.anthropic.claude-opus-4-5-20251101-v1:0',
+  },
+  { label: 'global.anthropic.claude-opus-4-6-v1', value: 'global.anthropic.claude-opus-4-6-v1' },
+  { label: 'global.anthropic.claude-opus-4-6-v1:1m', value: 'global.anthropic.claude-opus-4-6-v1:1m' },
+  { label: 'global.anthropic.claude-opus-4-7', value: 'global.anthropic.claude-opus-4-7' },
+  { label: 'global.anthropic.claude-opus-4-7:1m', value: 'global.anthropic.claude-opus-4-7:1m' },
+  { label: 'global.anthropic.claude-opus-4-8', value: 'global.anthropic.claude-opus-4-8' },
+  { label: 'global.anthropic.claude-opus-4-8:1m', value: 'global.anthropic.claude-opus-4-8:1m' },
+  { label: 'global.anthropic.claude-opus-5', value: 'global.anthropic.claude-opus-5' },
+  { label: 'global.anthropic.claude-opus-5:1m', value: 'global.anthropic.claude-opus-5:1m' },
+  { label: 'global.anthropic.claude-opus-5-5', value: 'global.anthropic.claude-opus-5-5' },
+  { label: 'global.anthropic.claude-opus-5-5:1m', value: 'global.anthropic.claude-opus-5-5:1m' },
+  { label: 'global.xai.grok-4.6', value: 'global.xai.grok-4.6' },
+  { label: 'global.openai.gpt-6-astra', value: 'global.openai.gpt-6-astra' },
+];
+
+// Per-class extraction prompt overrides (override extraction.system_prompt /
+// extraction.task_prompt for this class). Absent => use the global prompts.
+export const X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT = 'x-aws-idp-extraction-system-prompt';
+export const X_AWS_IDP_EXTRACTION_TASK_PROMPT = 'x-aws-idp-extraction-task-prompt';
+
+/**
+ * Mark a class as excluded from downstream processing. When true, sections
+ * classified as this class are skipped by extraction, assessment,
+ * summarization, rule validation, and evaluation. Useful for static
+ * boilerplate (instructions, legal warnings, cover pages, etc.).
+ */
+export const X_AWS_IDP_EXCLUDE_FROM_PROCESSING = 'x-aws-idp-exclude-from-processing';
+
+/**
+ * Optional short category for why a class is excluded
+ * (e.g. "instructions", "legal", "cover-page"). Shown in UI section badges
+ * and in evaluation report annotations.
+ */
+export const X_AWS_IDP_EXCLUSION_REASON = 'x-aws-idp-exclusion-reason';
+
+/**
+ * Class-level: names the top-level array property whose length is the
+ * section's instance count, for a class already modelled as a packet of
+ * records (one element per document). Purely a signal - it does not change
+ * the extraction shape. Must stay in sync with schema_constants.py.
+ */
+export const X_AWS_IDP_INSTANCE_ARRAY = 'x-aws-idp-instance-array';
+
+/**
+ * Class-level: replace the class's EFFECTIVE schema with a List-of-Class
+ * wrapper, `{instances: {type: array, items: <the original class schema>}}`, so
+ * a section holding several documents of this class extracts every one of them
+ * instead of silently returning only the first.
+ *
+ * The counterpart to X_AWS_IDP_INSTANCE_ARRAY above and mutually exclusive with
+ * it: that key NAMES an array the class already has, this one CREATES one.
+ * Changes the shape of inference_result, so evaluation baselines for the class
+ * must be migrated. Must stay in sync with schema_constants.py.
+ */
+export const X_AWS_IDP_MULTI_INSTANCE = 'x-aws-idp-multi-instance';
+
+/**
+ * Class-level opt-IN that keeps Simple + integrated (1S-TopK) confidence on a
+ * class that declares list fields. Without it such a class is scored in a
+ * separate pass, because Simple + integrated silently drops list rows (measured
+ * at 100+ rows on the shipped default model). Must stay in sync with
+ * schema_constants.py.
+ */
+export const X_AWS_IDP_ALLOW_INTEGRATED_LISTS = 'x-aws-idp-allow-integrated-lists';
+
+/**
+ * Declares the named page sub-types a class can include. Each entry has a
+ * `name`, optional `description`, and `x-aws-idp-document-page-content-regex`
+ * used to detect the page type from per-page OCR text.
+ */
+export const X_AWS_IDP_PAGE_TYPES = 'x-aws-idp-page-types';
+
+/**
+ * On a property: declares which page sub-types contain the property's
+ * source data. If none of the listed page types are present in the section,
+ * the property is treated as MISSING (vs BLANK when the page is present
+ * but the field is empty).
+ */
+export const X_AWS_IDP_SOURCE_PAGE_TYPES = 'x-aws-idp-source-page-types';
+
+// ============================================================================
+// AWS IDP Validation Engine Extensions (Per-Rule Engine Selection)
+// ============================================================================
+/** Per-rule validation engine selector (values: "llm" or "z3") */
+export const X_AWS_IDP_VALIDATION_ENGINE = 'x-aws-idp-validation-engine';
+
+/** Per-rule unique identifier for Z3 rules (maps to RuleJSON file on S3) */
+export const X_AWS_IDP_RULE_ID = 'x-aws-idp-rule-id';
+
+/** Per-rule inline RuleJSON object for Z3 validation (embedded in config) */
+export const X_AWS_IDP_RULE_JSON = 'x-aws-idp-rule-json';
+
+// UI-friendly validation engine options for dropdowns
+export const VALIDATION_ENGINE_OPTIONS = [
+  { label: 'Semantic (LLM)', value: 'llm' },
+  { label: 'Symbolic (Z3)', value: 'z3' },
+];
 
 // ============================================================================
 // AWS IDP List-Specific Extensions
@@ -107,6 +434,7 @@ export const EVALUATION_METHOD_NUMERIC_EXACT = 'NUMERIC_EXACT';
 export const EVALUATION_METHOD_FUZZY = 'FUZZY';
 export const EVALUATION_METHOD_LEVENSHTEIN = 'LEVENSHTEIN';
 export const EVALUATION_METHOD_SEMANTIC = 'SEMANTIC';
+export const EVALUATION_METHOD_DATE = 'DATE';
 export const EVALUATION_METHOD_LLM = 'LLM';
 export const EVALUATION_METHOD_HUNGARIAN = 'HUNGARIAN';
 
@@ -116,6 +444,7 @@ export const VALID_EVALUATION_METHODS = [
   EVALUATION_METHOD_FUZZY,
   EVALUATION_METHOD_LEVENSHTEIN,
   EVALUATION_METHOD_SEMANTIC,
+  EVALUATION_METHOD_DATE,
   EVALUATION_METHOD_LLM,
   EVALUATION_METHOD_HUNGARIAN,
 ];
@@ -151,6 +480,12 @@ export const EVALUATION_METHOD_OPTIONS = [
     value: EVALUATION_METHOD_SEMANTIC,
     description: 'Embedding-based meaning comparison',
     validFor: [TYPE_STRING, TYPE_OBJECT],
+  },
+  {
+    label: 'Date',
+    value: EVALUATION_METHOD_DATE,
+    description: 'Format-insensitive date matching (e.g. 01/05/2024 = 2024-01-05)',
+    validFor: [TYPE_STRING],
   },
   {
     label: 'LLM',

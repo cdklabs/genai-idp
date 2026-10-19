@@ -59,7 +59,7 @@ debug "Diff stat length: ${#DIFF_STAT}"
 debug "Diff content length: ${#DIFF_CONTENT}"
 
 # Truncate diff content to ~6000 chars to stay within token limits while providing good context
-DIFF_TRUNCATED=$(echo "$DIFF_CONTENT" | head -c 6000)
+DIFF_TRUNCATED="${DIFF_CONTENT:0:6000}"
 
 # Build the prompt
 PROMPT="You are a Git commit message expert. Analyze the following git changes and generate a clear, informative commit message.

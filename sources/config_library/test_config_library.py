@@ -15,6 +15,7 @@ Or via: make test-config-library
 
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -138,3 +139,328 @@ class TestConfigFilesStructure:
                 f"'use_bda' field should be a boolean, got {type(parsed['use_bda']).__name__} "
                 f"with value '{parsed['use_bda']}'"
             )
+
+
+def _names_a_model(key) -> bool:
+    """Is `key` a field whose value is a model identifier?
+
+    Matched by SUFFIX, not against the pair ("model", "model_id"). Two of the 71
+    model-bearing fields in this library are named neither — `escalation_model` and
+    `analysis_model_id`, both in `unified/lending-package-sample-govcloud/config.yaml`
+    — so an exact-pair predicate covers 69 of 71 and a private-account ARN written
+    into either one passes every check in this file. The suffix reaches all 71 and,
+    more to the point, reaches the next such field without anyone remembering to add
+    it.
+    """
+    return isinstance(key, str) and (key.endswith("model") or key.endswith("model_id"))
+
+
+def _iter_model_values(node, path=""):
+    """Yield every (dotted-path, value) for a key that names a model."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            here = f"{path}.{key}" if path else str(key)
+            if _names_a_model(key) and isinstance(value, str):
+                yield here, value
+            else:
+                yield from _iter_model_values(value, here)
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            yield from _iter_model_values(item, f"{path}[{i}]")
+
+
+# A Bedrock ARN carrying an account id names a resource that exists only in that
+# account: a custom-model-deployment, a provisioned model, an imported model, an
+# application inference profile. A *foundation* model ARN has an EMPTY account
+# segment (`arn:aws:bedrock:us-east-1::foundation-model/...`) and is therefore fine,
+# which is why this keys on the account segment being populated rather than on a list
+# of resource types that would go stale as Bedrock adds them.
+#
+# ⚠️ Bedrock only. A private-account **SageMaker** endpoint ARN — the Pattern-3 UDOP
+# shape — has a populated account segment too and is not matched here. That is a
+# deliberate bound rather than an oversight: `scripts/check_account_ids.py` (PR #1092)
+# gates committed account ids generally, whatever service names them, so between the
+# two the class is covered. The residual is that this check alone would not catch a
+# SageMaker endpoint, and #1092's own coverage of this directory is what its three
+# preset exemption entries currently suppress — entries slated for deletion once both
+# changes have landed. If #1092 is ever removed, widen the pattern here to any ARN
+# with a populated account segment.
+ACCOUNT_SCOPED_BEDROCK_ARN = re.compile(r"^arn:[^:]*:bedrock:[^:]*:\d{12}:")
+
+# The presets whose whole purpose is to demonstrate a fine-tuned model, and which
+# therefore have to express "substitute your own deployment" without shipping one.
+# Named so that the check below cannot silently stop covering them.
+FINE_TUNED_PRESETS = (
+    "unified/docsplit/docsplit_finedtuned_config.yaml",
+    "unified/ocr-benchmark/fine_tuned_config.yaml",
+    "unified/ocr-benchmark/ocr_fine_tuned_config.yaml",
+)
+
+
+class TestNoAccountScopedModelArns:
+    """A shipped preset must not pin a model to someone else's account.
+
+    `config_library/` is published into every deployment's configuration bucket, so a
+    `model` value naming a Bedrock resource in one specific account cannot work for
+    any other reader: Bedrock answers `AccessDeniedException` ("the provided resource
+    ARN is from a different account") and the stage fails outright rather than
+    degrading. Three fine-tuned presets shipped that way (#1093).
+
+    Nothing else catches this. `model` is declared as a bare `str` on every config
+    model with no validator, the configuration-load path merges with
+    `validate=False`, and `idp-cli config-validate` deliberately downgrades an ARN it
+    cannot resolve offline to a *warning* ("unverifiable, not wrong") — so all three
+    presets validated clean. This check runs in `make test-config-library` and in
+    `make test-packages-cicd`, so it fires in both CIs before a preset ships.
+    """
+
+    @pytest.mark.parametrize("yaml_file", discover_yaml_files())
+    def test_no_model_names_an_account_scoped_bedrock_resource(self, yaml_file: Path):
+        parsed = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+        offenders = [
+            field
+            for field, value in _iter_model_values(parsed)
+            if ACCOUNT_SCOPED_BEDROCK_ARN.match(value.strip())
+        ]
+        assert not offenders, (
+            f"{yaml_file.relative_to(CONFIG_LIBRARY_ROOT)} pins "
+            f"{len(offenders)} model value(s) to an account-scoped Bedrock ARN: "
+            f"{offenders}. Such an ARN resolves only in the account that owns the "
+            f"resource, so every other deployment fails at inference. Ship the base "
+            f"model and document the substitution in a comment — see the fine-tuned "
+            f"presets for the pattern. Redacting the account id is not a fix: the "
+            f"ARN still would not resolve."
+        )
+
+    def test_every_model_bearing_key_in_the_tree_is_matched(self):
+        """No model-bearing field may sit outside the predicate's reach.
+
+        Universe closure for the key rule, derived rather than authored. An exact
+        ("model", "model_id") predicate reached 69 of the 71 model-bearing fields in
+        this library, and a private-account ARN in either of the other two passed every
+        check in this file. So the universe is computed from the tree — every key whose
+        name ends in a model-ish word — and any member the predicate rejects fails here,
+        which is what stops the rule narrowing back without the loss being visible.
+        """
+        key_re = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:")
+        found: dict[str, int] = {}
+        for param in discover_yaml_files():
+            path = param.values[0]
+            for line in path.read_text(encoding="utf-8").splitlines():
+                m = key_re.match(line)
+                if m and re.search(r"model(_id)?$", m.group(1)):
+                    found[m.group(1)] = found.get(m.group(1), 0) + 1
+
+        assert found, (
+            "no model-bearing keys discovered at all; the census below is vacuous and "
+            "the check above may be scanning nothing"
+        )
+        unmatched = sorted(k for k in found if not _names_a_model(k))
+        assert not unmatched, (
+            f"{unmatched} name a model but are not matched by _names_a_model, so a "
+            f"private-account ARN in one of them would pass. Widen the predicate."
+        )
+        # Non-vacuity: the two keys that motivated the suffix rule must still be here,
+        # or the rule is being kept for nothing and a revert to the exact pair would
+        # look harmless.
+        for key in ("escalation_model", "analysis_model_id"):
+            assert key in found, (
+                f"'{key}' is gone from config_library, so it no longer demonstrates "
+                f"why the key predicate matches by suffix. Re-derive the census before "
+                f"narrowing the predicate — do not narrow it because this list shrank."
+            )
+
+    def test_the_check_can_actually_see_the_fine_tuned_presets(self):
+        """The three presets this check exists for must be in its universe.
+
+        `discover_yaml_files()` is what makes the check above cover more than
+        `config.yaml`, and these three are not named `config.yaml` — they are reachable
+        only by an explicit `--custom-config` path, which is exactly why they went
+        unexamined. If discovery narrows, this fails rather than the check quietly
+        passing over nothing.
+        """
+        discovered = {
+            str(param.values[0].relative_to(CONFIG_LIBRARY_ROOT))
+            for param in discover_yaml_files()
+        }
+        missing = [p for p in FINE_TUNED_PRESETS if p not in discovered]
+        assert not missing, (
+            f"{missing} are no longer discovered, so the account-scoped-ARN check no "
+            f"longer covers them. If a preset was renamed or removed, update "
+            f"FINE_TUNED_PRESETS; do not leave the check pointing at nothing."
+        )
+
+    @pytest.mark.parametrize("preset", FINE_TUNED_PRESETS)
+    def test_each_fine_tuned_preset_says_how_to_substitute_its_own_deployment(
+        self, preset: str
+    ):
+        """Shipping the base model silently would lose the preset's whole point.
+
+        The value that makes these runnable is not the one they are demonstrating, so
+        a reader has to be told which line to change. Asserted on the text rather than
+        the parsed document because the instruction is necessarily a comment.
+        """
+        text = (CONFIG_LIBRARY_ROOT / preset).read_text(encoding="utf-8")
+        assert "custom-model-deployment/<deployment-id>" in text, (
+            f"{preset} no longer tells a reader how to point it at their own "
+            f"fine-tuned deployment. Without that, the preset looks like an ordinary "
+            f"base-model config and its reason for existing is invisible."
+        )
+
+
+class TestPolicyClassRegexCoverage:
+    """Every policy class in a preset must be reachable.
+
+    ``PolicyClassificationService`` requires a document-matching regex once a
+    config holds more than one policy class, and it evaluates ONLY the classes
+    whose regex matches. A class with no regex among several is therefore dead
+    weight: its rules never evaluate, silently, with the job still reporting
+    success. The ``rule-validation`` preset shipped with 7 classes but a regex
+    on only the first, so its own bundled sample evaluated 2 of 14 rules.
+    """
+
+    @pytest.mark.parametrize("config_file", discover_config_files())
+    def test_every_policy_class_has_a_matching_regex(self, config_file: Path):
+        """With >1 policy class, each one needs a name or page-content regex."""
+        content = config_file.read_text(encoding="utf-8")
+        parsed = (
+            json.loads(content)
+            if config_file.suffix == ".json"
+            else yaml.safe_load(content)
+        )
+
+        policy_classes = (parsed or {}).get("policy_classes") or []
+        # A single class matches unconditionally, so a regex is optional there.
+        if len(policy_classes) < 2:
+            return
+
+        missing = [
+            pc.get("x-aws-idp-policy-type", f"index {i}")
+            for i, pc in enumerate(policy_classes)
+            if not pc.get("x-aws-idp-document-name-regex")
+            and not pc.get("x-aws-idp-page-content-regex")
+        ]
+        assert not missing, (
+            f"Config file {config_file.relative_to(CONFIG_LIBRARY_ROOT)}: "
+            f"{len(missing)} of {len(policy_classes)} policy classes have no "
+            f"x-aws-idp-document-name-regex and no x-aws-idp-page-content-regex: "
+            f"{missing}. With multiple policy classes only regex-matched classes "
+            f"are evaluated, so these classes' rules can never fire."
+        )
+
+    def test_rule_validation_preset_matches_its_own_sample(self):
+        """The rule-validation preset must evaluate ALL its rules on its sample.
+
+        Guards the specific regression: the preset's regex used `prior_auth` /
+        `pa_packet` with underscores only, and sat on just one of 7 classes.
+        """
+        config_file = (
+            CONFIG_LIBRARY_ROOT / "unified" / "rule-validation" / "config.yaml"
+        )
+        parsed = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+        policy_classes = parsed["policy_classes"]
+
+        # Filenames the preset is expected to recognize, including the shipped
+        # sample and the hyphenated form real intake systems produce.
+        for doc_name in (
+            "medicare_respiratory_pa_packet.pdf",
+            "Prior-Auth-123789456.pdf",
+            "prior auth packet.pdf",
+        ):
+            matched = [
+                pc["x-aws-idp-policy-type"]
+                for pc in policy_classes
+                if re.search(pc.get("x-aws-idp-document-name-regex", "$^"), doc_name)
+            ]
+            assert len(matched) == len(policy_classes), (
+                f"'{doc_name}' matched only {len(matched)} of "
+                f"{len(policy_classes)} policy classes ({matched}); the unmatched "
+                f"classes' rules would never be evaluated."
+            )
+
+        # An unrelated document must still match nothing — the regexes narrow
+        # the preset to policy documents rather than matching everything.
+        assert not [
+            pc["x-aws-idp-policy-type"]
+            for pc in policy_classes
+            if re.search(pc.get("x-aws-idp-document-name-regex", "$^"), "invoice.pdf")
+        ], "an unrelated document matched a policy class; the regex is too broad"
+
+
+REALKIE_FCC_PRESET_DIRS = (
+    "unified/realkie-fcc-verified",
+    "managed_config/realkie-fcc-verified",
+)
+REALKIE_FCC_DEPLOY_TIME_PRESET = "unified/realkie-fcc-verified/config.yaml"
+REALKIE_FCC_WHOLE_DOCUMENT_CONFIGS = (
+    "managed_config/realkie-fcc-verified/config.yaml",
+    "unified/realkie-fcc-verified/config-1s-topk-with-ocr-image.yaml",
+)
+
+
+def _realkie_fcc_section_splitting(relative_path: str):
+    parsed = yaml.safe_load(
+        (CONFIG_LIBRARY_ROOT / relative_path).read_text(encoding="utf-8")
+    )
+    return (parsed.get("classification") or {}).get("sectionSplitting")
+
+
+class TestRealkieFccSectionSplitting:
+    """Which RealKIE-FCC-Verified configurations treat a file as one section.
+
+    Every file in the test set is one invoice, and its ground truth is one
+    ``Invoice`` section spanning every page. Under the ``llm_determined`` default,
+    page-level classification sometimes takes a page in the middle of an invoice
+    for the start of a new document and splits the invoice into several sections,
+    each extracted on its own, and Test Studio lists the file as a classification
+    error. The stack-managed ``realkie-fcc-verified`` profile, which Test Studio
+    selects for this test set, and the 1S-TopK reference configuration therefore
+    declare ``disabled``.
+
+    The deploy-time preset, ``unified/realkie-fcc-verified/config.yaml``, does not
+    set ``classification.sectionSplitting``. A stack deployed with
+    ``ConfigurationPreset=realkie-fcc-verified`` and no ``CustomConfigPath``
+    rebuilds its ``default`` profile from that file on every update, ``default`` is
+    usually the active profile, and an imported or newly uploaded profile is built
+    on it. With the key unset, such a stack keeps the default strategy, so an
+    upgrade never changes its ``default``.
+    """
+
+    @pytest.mark.parametrize("relative_path", REALKIE_FCC_WHOLE_DOCUMENT_CONFIGS)
+    def test_declares_whole_document_sections(self, relative_path: str):
+        splitting = _realkie_fcc_section_splitting(relative_path)
+        assert splitting == "disabled", (
+            f"{relative_path} sets classification.sectionSplitting to "
+            f"{splitting!r}. Every file in this test set is one invoice, so it needs "
+            f"'disabled' (one section over every page). Anything else lets page-level "
+            f"classification split an invoice, and an unrecognised value is coerced "
+            f"to 'llm_determined' with only a logged warning."
+        )
+
+    def test_the_deploy_time_preset_leaves_section_splitting_unset(self):
+        splitting = _realkie_fcc_section_splitting(REALKIE_FCC_DEPLOY_TIME_PRESET)
+        assert splitting is None, (
+            f"{REALKIE_FCC_DEPLOY_TIME_PRESET} sets classification.sectionSplitting "
+            f"to {splitting!r}. A stack deployed with this preset rebuilds its "
+            f"`default` profile from this file on every update, so the value would "
+            f"change that stack's `default` on upgrade, and every profile created "
+            f"from `default` afterwards would inherit it. Set it in "
+            f"{REALKIE_FCC_WHOLE_DOCUMENT_CONFIGS[0]} instead."
+        )
+
+    def test_every_configuration_for_the_test_set_has_a_rule(self):
+        discovered = {
+            str(path.relative_to(CONFIG_LIBRARY_ROOT))
+            for directory in REALKIE_FCC_PRESET_DIRS
+            for path in (CONFIG_LIBRARY_ROOT / directory).iterdir()
+            if path.suffix in (".yaml", ".yml")
+        }
+        ruled = {REALKIE_FCC_DEPLOY_TIME_PRESET, *REALKIE_FCC_WHOLE_DOCUMENT_CONFIGS}
+        assert discovered == ruled, (
+            f"Configurations with no section-splitting rule: "
+            f"{sorted(discovered - ruled)}; listed but not found: "
+            f"{sorted(ruled - discovered)}. Add a new configuration for this test set "
+            f"to REALKIE_FCC_WHOLE_DOCUMENT_CONFIGS if it should treat each file as one "
+            f"invoice, and keep REALKIE_FCC_DEPLOY_TIME_PRESET naming the file a stack "
+            f"deploys as its `default`."
+        )
