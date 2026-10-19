@@ -15,6 +15,14 @@ from idp_common.config.configuration_manager import (
     ConfigurationManager,  # type: ignore[import-untyped]
 )
 from idp_common.config.merge_utils import merge_config_with_defaults
+
+# One definition of "strip the cross-region profile prefix", shared with the
+# retired-model registry rather than re-spelled here. That module's prefix list is
+# itself held to agree with bedrock.model_utils.REGION_PREFIXES by
+# tests/unit/bedrock/test_region_prefix_parity.py, so a new geo prefix reaches
+# this handler too.
+from idp_common.config.retired_models import base_model_id as _base_model_id
+from idp_common.utils.log_sanitizer import sanitize_event_for_logging
 from pydantic import ValidationError
 
 logger = logging.getLogger()
@@ -26,6 +34,7 @@ logging.getLogger("idp_common.bedrock.client").setLevel(
 s3_client = boto3.client("s3")
 
 # Remove slugify function - no longer needed
+
 
 def fetch_content_from_s3(s3_uri: str) -> Union[Dict[str, Any], str]:
     """
@@ -75,39 +84,164 @@ def resolve_content(content: Union[str, Dict[str, Any]]) -> Union[Dict[str, Any]
         return fetch_content_from_s3(content)
     return content
 
+
 # Model mapping between regions
 MODEL_MAPPINGS = {
     "us.amazon.nova-lite-v1:0": "eu.amazon.nova-lite-v1:0",
     "us.amazon.nova-pro-v1:0": "eu.amazon.nova-pro-v1:0",
-    "us.amazon.nova-premier-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    # Nova Premier reached end of life on 2026-09-14 and is no longer selectable
+    # in any US enum, so nothing NEW can produce this key. It is kept as a
+    # source key on purpose: a config stored before the removal may still name
+    # it, and this mapping is what rewrites such a config onto a working model
+    # when the stack is deployed in an EU region. Dropping the row would leave
+    # that stack pointing at a dead model.
+    "us.amazon.nova-premier-v1:0": "eu.anthropic.claude-sonnet-4-6",
     "us.amazon.nova-2-lite-v1:0": "eu.amazon.nova-2-lite-v1:0",
-    "us.anthropic.claude-3-haiku-20240307-v1:0": "eu.anthropic.claude-3-haiku-20240307-v1:0",
-    "us.anthropic.claude-3-5-haiku-20241022-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    # Retired source -> LIVE target. Claude 3 Haiku reached end of life in both
+    # regions, so mapping it onto its EU twin rewrote a stored config from one dead
+    # model to another. Claude Haiku 4.5 is the current Haiku-class model.
+    "us.anthropic.claude-3-haiku-20240307-v1:0": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
     "us.anthropic.claude-haiku-4-5-20251001-v1:0": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "us.anthropic.claude-3-5-sonnet-20241022-v2:0": "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
-    "us.anthropic.claude-3-7-sonnet-20250219-v1:0": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    "us.anthropic.claude-sonnet-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-20250514-v1:0",
-    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    # Haiku 5.5 maps to its own EU geo profile, so this row is safe in BOTH
+    # directions — get_model_mapping walks this dict backwards for a US target, and
+    # the reverse of this row returns the US Haiku 5.5 profile rather than moving a
+    # user onto a different model (the hazard documented at the bottom of this dict).
+    # There is no ":1m" pair to add: 1M is this model's default window.
+    "us.anthropic.claude-haiku-5-5": "eu.anthropic.claude-haiku-5-5",
+    # Retired source -> LIVE target, as above: both 3.5 and 3.7 Sonnet are
+    # end-of-life, so the EU twin was no better than the US original. Sonnet 4.6
+    # rather than Sonnet 4.5, which moved to LEGACY on 2026-10-08: a rescue row
+    # exists to land a stranded configuration on a model with a future, and a
+    # LEGACY model takes no further Service Quota increases.
+    "us.anthropic.claude-3-5-sonnet-20241022-v2:0": "eu.anthropic.claude-sonnet-4-6",
+    "us.anthropic.claude-3-7-sonnet-20250219-v1:0": "eu.anthropic.claude-sonnet-4-6",
+    # Sonnet 4 reached end of life on 2026-10-14 in both regions, so its EU twin
+    # is no better than the US original — same shape as the 3.5/3.7 rows above.
+    "us.anthropic.claude-sonnet-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-6",
+    # Same model in both regions, and still invocable while LEGACY, so this row
+    # is correct in both directions and stays.
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
     "us.anthropic.claude-sonnet-4-6": "eu.anthropic.claude-sonnet-4-6",
     "us.anthropic.claude-sonnet-4-6:1m": "eu.anthropic.claude-sonnet-4-6:1m",
-    "us.anthropic.claude-opus-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "us.anthropic.claude-opus-4-1-20250805-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "us.anthropic.claude-opus-4-5-20251101-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    # Sonnet 5 has an EU geo profile and is in the EU enums, but had no row here,
+    # so an EU deployment whose stored config named it kept a `us.` id that is
+    # not callable there — and it is the default extraction model in
+    # system_defaults/base-extraction.yaml.
+    "us.anthropic.claude-sonnet-5": "eu.anthropic.claude-sonnet-5",
+    "us.anthropic.claude-sonnet-5:1m": "eu.anthropic.claude-sonnet-5:1m",
+    # Sonnet 5.5 maps to its own EU geo profile, so this row is safe in BOTH
+    # directions — get_model_mapping walks this dict backwards for a US target, and
+    # the reverse of this row returns the US Sonnet 5.5 profile rather than moving a
+    # user onto a different model (the hazard documented at the bottom of this dict).
+    # There is no ":1m" pair to add: 1M is this model's default window and
+    # "us.anthropic.claude-sonnet-5-5:1m" is not an id Bedrock accepts.
+    "us.anthropic.claude-sonnet-5-5": "eu.anthropic.claude-sonnet-5-5",
+    # Opus 4 is end-of-life and Opus 4.1 is LEGACY; neither has an EU profile, so
+    # both are rescue rows. Opus 4.5 is the Opus-class EU model, which keeps a
+    # stranded Opus configuration on an Opus rather than silently demoting it to
+    # a Sonnet.
+    "us.anthropic.claude-opus-4-20250514-v1:0": "eu.anthropic.claude-opus-4-5-20251101-v1:0",
+    "us.anthropic.claude-opus-4-1-20250805-v1:0": "eu.anthropic.claude-opus-4-5-20251101-v1:0",
+    # Opus 4.5 DOES have an EU twin. It was mapped onto a Sonnet, which quietly
+    # changed model class for every EU deployment that chose it.
+    "us.anthropic.claude-opus-4-5-20251101-v1:0": "eu.anthropic.claude-opus-4-5-20251101-v1:0",
     "us.anthropic.claude-opus-4-6-v1": "eu.anthropic.claude-opus-4-6-v1",
     "us.anthropic.claude-opus-4-6-v1:1m": "eu.anthropic.claude-opus-4-6-v1:1m",
-    # Third-party models (US-only, no EU equivalent - fall back to themselves)
-    "us.meta.llama4-maverick-17b-instruct-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "us.meta.llama4-scout-17b-instruct-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "us.anthropic.claude-opus-4-7": "eu.anthropic.claude-opus-4-7",
+    "us.anthropic.claude-opus-4-7:1m": "eu.anthropic.claude-opus-4-7:1m",
+    "us.anthropic.claude-opus-4-8": "eu.anthropic.claude-opus-4-8",
+    "us.anthropic.claude-opus-4-8:1m": "eu.anthropic.claude-opus-4-8:1m",
+    "us.anthropic.claude-opus-5": "eu.anthropic.claude-opus-5",
+    "us.anthropic.claude-opus-5:1m": "eu.anthropic.claude-opus-5:1m",
+    "us.anthropic.claude-opus-5-5": "eu.anthropic.claude-opus-5-5",
+    "us.anthropic.claude-opus-5-5:1m": "eu.anthropic.claude-opus-5-5:1m",
+    # Third-party models with no EU profile at all, so these are rescue rows onto
+    # the Active Sonnet rather than a mapping to an equivalent.
+    "us.meta.llama4-maverick-17b-instruct-v1:0": "eu.anthropic.claude-sonnet-4-6",
+    "us.meta.llama4-scout-17b-instruct-v1:0": "eu.anthropic.claude-sonnet-4-6",
+    # NOT MAPPED, deliberately: OpenAI GPT-6 Astra and xAI Grok.
+    #
+    # Both have no eu. profile but a global. one that IS callable from the EU, so
+    # "us.openai.gpt-6-astra": "global.openai.gpt-6-astra" looks like the obvious
+    # row to add. It would fix a narrow case — an EU stack whose STORED config
+    # names the us. ID keeps an ID that is not callable there, because
+    # filter_models_by_region only hides it from the picklists while swap_model_ids
+    # is what rewrites a stored value — but get_model_mapping() also walks this
+    # dict BACKWARDS for target_region_type == "us". So the row would rewrite a US
+    # deployment's stored global. ID to the us. one, silently moving a user off the
+    # profile they chose onto a costlier one with fewer Regions. That regression is
+    # worse than the gap it closes. Fixing this properly needs a
+    # direction-aware mapping, not another row here.
 }
+
+# Canada (ca-*) swaps for the shipped defaults that are not callable from
+# ca-central-1. A SEPARATE table on purpose: get_model_mapping(..., "us") walks
+# MODEL_MAPPINGS backwards over its twin rows, so a Canada row placed there would
+# rewrite a US deployment's stored id as well. This table is a one-way lookup and
+# is never reversed. The consequence: a stored ca. id stays as it is when the
+# configuration is redeployed into a US or EU region, and a stored eu. id in a
+# Canada stack is not rewritten. The picklists hide both, but a stored value stays
+# until someone edits it.
+CA_MODEL_MAPPINGS = {
+    # Twin: the Canada geo profile of the same model, processed in Canada.
+    "us.amazon.nova-lite-v1:0": "ca.amazon.nova-lite-v1:0",
+    # Rescue: Nova Pro has no inference profile in ca-central-1. Nova 2 Lite is the
+    # catalog's current Nova default for OCR, classification and evaluation, and
+    # is multimodal and cheaper.
+    "us.amazon.nova-pro-v1:0": "us.amazon.nova-2-lite-v1:0",
+    # Cohere Embed v4 is reachable from Canada only through its global. profile.
+    "us.cohere.embed-v4:0": "global.cohere.embed-v4:0",
+}
+
+# Shipped ids with no inference profile and no in-region hosting in ca-central-1
+# (verified 2026-10-11 with `aws bedrock list-inference-profiles --region
+# ca-central-1 --type-equals SYSTEM_DEFINED` and `list-foundation-models`, and
+# re-checked 2026-10-14 for Claude Sonnet 5.5 — see below). The
+# CA_MODEL_MAPPINGS sources are swapped away from; the rest are simply not
+# offered. us.xai.grok-4.6 has a profile in ca-central-1, so it is not listed.
+# The GPT-5.x bedrock-mantle ids are handled by _is_us_only below.
+#
+# ⚠️ A model ABSENT from this set is offered in a Canada deployment, because
+# filter_models_by_region keeps every `us.`-prefixed id unless it is _is_us_only or
+# listed here. So an absence is a positive claim about live Bedrock availability and
+# needs the two commands above run, not an assumption — an id that is unavailable
+# there and unlisted here reaches a user as an inference-time failure from a
+# picklist entry.
+#
+# Claude Sonnet 5.5 is deliberately absent, and it is the claim most recently
+# checked: on 2026-10-14 `list-inference-profiles --region ca-central-1
+# --type-equals SYSTEM_DEFINED` returned both `us.anthropic.claude-sonnet-5-5` and
+# `global.anthropic.claude-sonnet-5-5` as ACTIVE, and `list-foundation-models
+# --region ca-central-1` returned `anthropic.claude-sonnet-5-5` ACTIVE as well — so
+# it is reachable from Canada all three ways and needs no entry and no
+# CA_MODEL_MAPPINGS swap. This paragraph exists because the verification date above
+# predates the model, which makes the set's silence about it unreadable otherwise.
+CA_UNAVAILABLE_MODELS = {
+    "us.amazon.nova-lite-v1:0",
+    "us.amazon.nova-pro-v1:0",
+    "us.cohere.embed-v4:0",
+    "global.amazon.nova-pro-v1:0",
+    "us.meta.llama4-maverick-17b-instruct-v1:0",
+    "us.meta.llama4-scout-17b-instruct-v1:0",
+    "qwen.qwen3-vl-235b-a22b",
+    "google.gemma-3-27b-it",
+    "nvidia.nemotron-nano-12b-v2",
+}
+
+
+def _is_geo_scoped(model_id: str) -> bool:
+    """True for a geo inference-profile id (us., eu., ca., apac., ...); False for
+    global. and unprefixed ids. Uses the shared prefix rule, so a new geo prefix
+    reaches this filter too."""
+    return _base_model_id(model_id) != model_id and not model_id.startswith("global.")
+
 
 def get_current_region() -> str:
     """Get the current AWS region"""
     region = boto3.Session().region_name
     if region is None:
         # Fallback to environment variable or default
-        region = os.environ.get('AWS_DEFAULT_REGION', 'us-east-1')
+        region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
     return region
 
 
@@ -121,35 +255,91 @@ def is_us_region(region: str) -> bool:
     return region.startswith("us-")
 
 
+def is_ca_region(region: str) -> bool:
+    """Check if the region is a Canada region"""
+    return region.startswith("ca-")
+
+
 def get_model_mapping(model_id: str, target_region_type: str) -> str:
-    """Get the equivalent model for the target region type"""
+    """Get the equivalent model for the target region type.
+
+    The EU direction is a plain lookup. The US direction walks the table
+    backwards, and must consider only the rows that name the SAME foundation
+    model on both sides. The Canada direction is a plain lookup in the separate
+    ``CA_MODEL_MAPPINGS``, which is never walked backwards.
+
+    ``MODEL_MAPPINGS`` holds two kinds of row. A *twin* row maps a model onto its
+    own profile in the other region, and reversing it is correct. A *rescue* row
+    maps a retired or EU-unavailable model onto a different, live EU model so a
+    stored configuration that names the dead one still runs; reversing such a row
+    is never right, because it moves a working configuration onto an unrelated
+    model. A plain walk in insertion order could not tell them apart and returned
+    whichever row came first, which was a rescue row in two cases:
+    ``eu.anthropic.claude-haiku-4-5-20251001-v1:0`` resolved to end-of-life Claude
+    3 Haiku and ``eu.anthropic.claude-sonnet-4-5-20250929-v1:0`` to end-of-life
+    Nova Premier. So a redeploy from an EU region to a US one moved the stack onto
+    a model Bedrock no longer serves.
+
+    With no twin row, the id is returned unchanged — the same answer the old walk
+    gave for a model absent from the table entirely, and better than a guess.
+    """
     if target_region_type == "eu":
         return MODEL_MAPPINGS.get(model_id, model_id)
     elif target_region_type == "us":
-        # Reverse mapping for US
         for us_model, eu_model in MODEL_MAPPINGS.items():
-            if model_id == eu_model:
+            if model_id == eu_model and _base_model_id(us_model) == _base_model_id(
+                eu_model
+            ):
                 return us_model
         return model_id
+    elif target_region_type == "ca":
+        return CA_MODEL_MAPPINGS.get(model_id, model_id)
     return model_id
 
 
 def filter_models_by_region(data: Any, region_type: str) -> Any:
     """Filter out models that don't match the region type.
-    
+
     Special model values like 'LambdaHook' are always preserved regardless of region.
     """
     # Region-agnostic special model values that should always be included
     REGION_AGNOSTIC_MODELS = {"LambdaHook"}
-    
+
+    # Models that carry no region prefix but are only available in US (and
+    # us-gov) regions via the bedrock-mantle endpoint. They must NOT be offered
+    # in EU-region deployments where they are not callable. See openai_responses.py.
+    #
+    # NOTE: openai.gpt-6-astra deliberately does NOT belong here, despite the
+    # shared "openai." prefix. Astra is only ever offered in the CRIS-prefixed
+    # forms, and the us./global. rules below already do the right thing: the
+    # `us.` profile is dropped for EU deployments while `global.` is kept, which
+    # matches the model card (global CRIS covers every EU region) and was
+    # verified live against global.openai.gpt-6-astra in eu-west-1. Listing it
+    # here would wrongly hide the model from EU stacks entirely.
+    US_ONLY_MODELS = {
+        "openai.gpt-5.4",
+        "openai.gpt-5.5",
+        "openai.gpt-5.6-sol",
+        "openai.gpt-5.6-terra",
+        "openai.gpt-5.6-luna",
+    }
+
+    def _is_us_only(item: str) -> bool:
+        return item in US_ONLY_MODELS or item.startswith("openai.gpt-5")
+
     if isinstance(data, dict):
         filtered_data = {}
         for key, value in data.items():
             if isinstance(value, list) and any(
-                isinstance(item, str) and ("us." in item or "eu." in item)
+                isinstance(item, str)
+                and ("us." in item or "eu." in item or "ca." in item)
                 for item in value
             ):
-                # This is a model list - filter it
+                # This is a model list - filter it. `ca.` is in the test so a list
+                # whose only geo ids are Canada ones is still recognised: without
+                # it such a list skips filtering entirely and a US or EU stack is
+                # offered a `ca.` id it cannot call. Every shipped picklist also
+                # carries `us.` ids, so this changes no current output.
                 filtered_list = []
                 for item in value:
                     if isinstance(item, str):
@@ -158,12 +348,27 @@ def filter_models_by_region(data: Any, region_type: str) -> Any:
                             filtered_list.append(item)
                         # Include models that match the region type or are region-agnostic
                         elif region_type == "us":
-                            # Include US models and non-region-specific models, exclude EU models
-                            if item.startswith("us.") or (not item.startswith("eu.") and not item.startswith("us.")):
+                            # Include US models and non-region-specific models, exclude other geo prefixes.
+                            # GovCloud (us-gov-*) stacks resolve to this region type, so us-gov. ids stay.
+                            if item.startswith(
+                                ("us.", "us-gov.")
+                            ) or not _is_geo_scoped(item):
                                 filtered_list.append(item)
                         elif region_type == "eu":
-                            # Include EU models and non-region-specific models, exclude US models
-                            if item.startswith("eu.") or (not item.startswith("eu.") and not item.startswith("us.")):
+                            # Exclude US-only models (e.g., openai.gpt-5.*) that have no EU availability
+                            if _is_us_only(item):
+                                continue
+                            # Include EU models and non-region-specific models, exclude other geo prefixes
+                            if item.startswith("eu.") or not _is_geo_scoped(item):
+                                filtered_list.append(item)
+                        elif region_type == "ca":
+                            # Exclude US-only models and ids with no profile in ca-central-1
+                            if _is_us_only(item) or item in CA_UNAVAILABLE_MODELS:
+                                continue
+                            # Include US, Canada and non-region-specific models, exclude other geo prefixes
+                            if item.startswith(("us.", "ca.")) or not _is_geo_scoped(
+                                item
+                            ):
                                 filtered_list.append(item)
                         else:
                             # For other regions, include all models
@@ -181,7 +386,7 @@ def filter_models_by_region(data: Any, region_type: str) -> Any:
 
 def swap_model_ids(data: Any, region_type: str) -> Any:
     """Swap model IDs to match the region type.
-    
+
     Special model values like 'LambdaHook' are never swapped.
     """
     if isinstance(data, dict):
@@ -191,7 +396,16 @@ def swap_model_ids(data: Any, region_type: str) -> Any:
                 # Never swap special model values
                 swapped_data[key] = value
             elif isinstance(value, str) and ("us." in value or "eu." in value):
-                # This is a model ID - check if it needs swapping
+                # This is a model ID - check if it needs swapping.
+                #
+                # `ca.` is deliberately NOT in this test, unlike the picklist
+                # filter above. Every arm below rewrites a stored id INTO the
+                # deploying region's geo, and none of them starts from a `ca.` id:
+                # CA_MODEL_MAPPINGS is one-way, so get_model_mapping(ca_id, "us")
+                # and (ca_id, "eu") both return the id unchanged by design — see
+                # that table's comment. A `ca.` arm here would be unreachable
+                # code, and widening the test alone would only walk `ca.` values
+                # that then match no arm.
                 if region_type == "us" and value.startswith("eu."):
                     new_model = get_model_mapping(value, "us")
                     if new_model != value:
@@ -201,6 +415,11 @@ def swap_model_ids(data: Any, region_type: str) -> Any:
                     new_model = get_model_mapping(value, "eu")
                     if new_model != value:
                         logger.info(f"Swapped US model {value} to EU model {new_model}")
+                    swapped_data[key] = new_model
+                elif region_type == "ca" and value.startswith("us."):
+                    new_model = get_model_mapping(value, "ca")
+                    if new_model != value:
+                        logger.info(f"Swapped US model {value} to CA model {new_model}")
                     swapped_data[key] = new_model
                 else:
                     swapped_data[key] = value
@@ -212,20 +431,21 @@ def swap_model_ids(data: Any, region_type: str) -> Any:
     return data
 
 
-
 def detect_pattern_from_config(config: Dict[str, Any]) -> str:
     """
     Auto-detect the IDP pattern from config content.
-    
+
     Args:
         config: Configuration dictionary
-        
+
     Returns:
         Pattern name (pattern-1 or pattern-2)
     """
     # Check classification method
-    classification_method = config.get("classification", {}).get("classificationMethod", "")
-    
+    classification_method = config.get("classification", {}).get(
+        "classificationMethod", ""
+    )
+
     if classification_method == "bda":
         return "pattern-1"
     else:
@@ -239,14 +459,14 @@ def merge_custom_with_defaults(
 ) -> Dict[str, Any]:
     """
     Merge a minimal custom config with system defaults.
-    
+
     This allows users to provide only the fields they want to customize,
     with all other fields populated from system defaults.
-    
+
     Args:
         custom_config: User's custom configuration (may be partial)
         pattern: Pattern to use for defaults. If None, auto-detected.
-        
+
     Returns:
         Complete configuration with defaults applied
     """
@@ -254,19 +474,23 @@ def merge_custom_with_defaults(
     if pattern is None:
         pattern = detect_pattern_from_config(custom_config)
         logger.info(f"Auto-detected pattern: {pattern}")
-    
+
     try:
         # Merge with system defaults
-        merged = merge_config_with_defaults(custom_config, pattern=pattern, validate=False)
-        
+        merged = merge_config_with_defaults(
+            custom_config, pattern=pattern, validate=False
+        )
+
         # Log merge summary
         user_keys = set(custom_config.keys())
         merged_keys = set(merged.keys())
-        logger.info(f"Merged custom config: user provided {len(user_keys)} sections, merged has {len(merged_keys)} sections")
+        logger.info(
+            f"Merged custom config: user provided {len(user_keys)} sections, merged has {len(merged_keys)} sections"
+        )
         logger.info(f"User-provided sections: {user_keys}")
-        
+
         return merged
-        
+
     except FileNotFoundError as e:
         # System defaults not available in Lambda - return config as-is
         logger.warning(f"System defaults not available, using config as-is: {e}")
@@ -277,75 +501,94 @@ def merge_custom_with_defaults(
         return custom_config
 
 
-def save_configuration_bypass_manager(config_type: str, config_data: Any, version: str = None, description: str = None) -> None:
+def save_configuration_bypass_manager(
+    config_type: str, config_data: Any, version: str = None, description: str = None
+) -> None:
     """
     Save configuration directly to DynamoDB bypassing ConfigurationManager.
     Used when ConfigurationManager is unreliable (e.g., after migration from legacy format).
     """
     import boto3
-    from idp_common.config.models import IDPConfig, PricingConfig, SchemaConfig
-    
+    from idp_common.config.models import (
+        IDPConfig,
+        ModelConfigLimitsConfig,
+        PricingConfig,
+        SchemaConfig,
+    )
+
     # Get table name from environment
-    table_name = os.environ.get('CONFIGURATION_TABLE_NAME')
+    table_name = os.environ.get("CONFIGURATION_TABLE_NAME")
     if not table_name:
         logger.error("CONFIGURATION_TABLE_NAME environment variable not set")
         return
-    
-    dynamodb = boto3.resource('dynamodb')
+
+    dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
-    
+
     # Get existing record to preserve created date and active status
     existing_item = None
     try:
-        key = {'Configuration': f"{config_type}#{version}" if version else config_type}
+        key = {"Configuration": f"{config_type}#{version}" if version else config_type}
         response = table.get_item(Key=key)
-        existing_item = response.get('Item')
+        existing_item = response.get("Item")
         # Decompress if stored in compressed format
         if existing_item:
             existing_item = ConfigurationManager._decompress_item(existing_item)
     except Exception as e:
         logger.warning(f"Could not retrieve existing record: {e}")
-    
+
     # Convert dict to appropriate config type if needed (same logic as ConfigurationManager)
     if isinstance(config_data, dict):
         if config_type == "Schema":
             config_data = SchemaConfig(**config_data)
         elif config_type in ("DefaultPricing", "CustomPricing"):
             config_data = PricingConfig(**config_data)
+        elif config_type in ("DefaultModelConfigLimits", "CustomModelConfigLimits"):
+            config_data = ModelConfigLimitsConfig(**config_data)
         else:
             config_data = IDPConfig(**config_data)
-    
+
     # Get config as dict and stringify values (same as ConfigurationRecord.to_dynamodb_item)
+    from idp_common.config.models import ConfigurationRecord
+
     config_dict = config_data.model_dump(mode="python")
     config_dict.pop("config_type", None)  # Remove discriminator
+    # Rollback-safety: omit default-valued None/0 scalars that older-release
+    # config models reject on read (mirrors ConfigurationRecord.to_dynamodb_item).
+    config_dict = ConfigurationRecord._omit_rollback_hostile_defaults(
+        config_data, config_dict
+    )
     stringified = _stringify_values(config_dict)
-    
+
     # Create DynamoDB item with flattened config
     item = {
-        'Configuration': f"{config_type}#{version}" if version else config_type,
-        **stringified
+        "Configuration": f"{config_type}#{version}" if version else config_type,
+        **stringified,
     }
-    
+
     # Preserve existing created date and active status
     if config_type == "Config":
         if existing_item:
-            if 'CreatedAt' in existing_item:
-                item['CreatedAt'] = existing_item['CreatedAt']
-            if 'IsActive' in existing_item:
-                item['IsActive'] = existing_item['IsActive']
-            if 'Description' in existing_item and not description:
-                item['Description'] = existing_item['Description']
+            if "CreatedAt" in existing_item:
+                item["CreatedAt"] = existing_item["CreatedAt"]
+            if "IsActive" in existing_item:
+                item["IsActive"] = existing_item["IsActive"]
+            if "Description" in existing_item and not description:
+                item["Description"] = existing_item["Description"]
         # Set description if provided
         if description:
-            item['Description'] = description
+            item["Description"] = description
         # Always update the timestamp
         from datetime import datetime
-        item['UpdatedAt'] = datetime.utcnow().isoformat() + 'Z'
-    
+
+        item["UpdatedAt"] = datetime.utcnow().isoformat() + "Z"
+
     # Compress config data to match ConfigurationManager storage format
     compressed_item = ConfigurationManager._compress_item(item)
     table.put_item(Item=compressed_item)
-    logger.info(f"Saved {config_type}{f'#{version}' if version else ''} configuration bypassing ConfigurationManager")
+    logger.info(
+        f"Saved {config_type}{f'#{version}' if version else ''} configuration bypassing ConfigurationManager"
+    )
 
 
 def _stringify_values(obj: Any) -> Any:
@@ -368,74 +611,74 @@ def _stringify_values(obj: Any) -> Any:
 def detect_and_migrate_legacy_format() -> bool:
     """
     Detect if legacy format exists by checking for 'Default' key and migrate to versioned format.
-    
+
     Returns:
         bool: True if migration was performed, False if no migration needed
     """
     import boto3
     from botocore.exceptions import ClientError
-    
+
     # Get table name from environment
-    table_name = os.environ.get('CONFIGURATION_TABLE_NAME')
+    table_name = os.environ.get("CONFIGURATION_TABLE_NAME")
     if not table_name:
         logger.error("CONFIGURATION_TABLE_NAME environment variable not set")
         return False
-    
-    dynamodb = boto3.resource('dynamodb')
+
+    dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
-    
+
     try:
         # Check for 'Default' key as indicator of legacy format
-        response = table.get_item(Key={'Configuration': 'Default'})
-        
-        if 'Item' not in response:
+        response = table.get_item(Key={"Configuration": "Default"})
+
+        if "Item" not in response:
             logger.info("No 'Default' key found, no legacy migration needed")
             return False
-            
+
         logger.info("Legacy 'Default' configuration detected, starting migration")
-        
+
         # Check if Custom also exists
-        custom_response = table.get_item(Key={'Configuration': 'Custom'})
-        has_custom = 'Item' in custom_response
-        
+        custom_response = table.get_item(Key={"Configuration": "Custom"})
+        has_custom = "Item" in custom_response
+
         current_time = datetime.utcnow().isoformat() + "Z"
-        
+
         # Migrate Default
-        default_item = response['Item']
+        default_item = response["Item"]
         new_default_item = dict(default_item)
-        new_default_item['Configuration'] = 'Config#default'
-        new_default_item['IsActive'] = not has_custom  # Active only if no Custom exists
-        new_default_item['Description'] = 'Migrated from Default'
-        new_default_item['CreatedAt'] = current_time
-        new_default_item['UpdatedAt'] = current_time
-        
+        new_default_item["Configuration"] = "Config#default"
+        new_default_item["IsActive"] = not has_custom  # Active only if no Custom exists
+        new_default_item["Description"] = "Migrated from Default"
+        new_default_item["CreatedAt"] = current_time
+        new_default_item["UpdatedAt"] = current_time
+
         table.put_item(Item=new_default_item)
         logger.info(f"Migrated Default -> Config#default (IsActive: {not has_custom})")
-        
+
         # Delete old Default record
-        table.delete_item(Key={'Configuration': 'Default'})
+        table.delete_item(Key={"Configuration": "Default"})
         logger.info("Deleted legacy Default record")
-        
+
         # Migrate Custom if it exists
         if has_custom:
-            custom_item = custom_response['Item']
+            custom_item = custom_response["Item"]
             new_custom_item = dict(custom_item)
-            new_custom_item['Configuration'] = 'Config#custom'
-            new_custom_item['IsActive'] = True  # Custom is active if it exists
-            new_custom_item['Description'] = 'Migrated from Custom'
-            new_custom_item['CreatedAt'] = current_time
-            new_custom_item['UpdatedAt'] = current_time
-            
+            new_custom_item["Configuration"] = "Config#custom"
+            new_custom_item["IsActive"] = True  # Custom is active if it exists
+            new_custom_item["Description"] = "Migrated from Custom"
+            new_custom_item["CreatedAt"] = current_time
+            new_custom_item["UpdatedAt"] = current_time
+
             table.put_item(Item=new_custom_item)
             logger.info("Migrated Custom -> Config#custom (IsActive: True)")
-            
+
             # Delete old Custom record
-            table.delete_item(Key={'Configuration': 'Custom'})
+            table.delete_item(Key={"Configuration": "Custom"})
             logger.info("Deleted legacy Custom record")
-        
+
         logger.info("Legacy format migration completed successfully")
         return True
-        
+
     except ClientError as e:
         logger.error(f"Error during migration: {e}")
         raise
@@ -451,11 +694,81 @@ def generate_physical_id(stack_id: str, logical_id: str) -> str:
     return f"{stack_id}/{logical_id}/configuration"
 
 
+def _parse_format_version(value: Any) -> tuple:
+    """Parse a 'MAJOR.MINOR' config_format_version stamp into a comparable tuple.
+
+    Thin adapter over the migration chain's ``parse_version`` so there is ONE
+    implementation of this comparison: rollback detection here and the
+    never-downgrade guard in the migrations must agree about which stamp is
+    newer, and two copies of an ordering rule is how they stop agreeing.
+
+    Differs only in the fallback: missing/unparseable reads as ``(0,)`` — the
+    oldest format — because this caller compares rather than branching on
+    "unknown".
+    """
+    from idp_common.config.migrations._version import parse_version
+
+    return parse_version(value) or (0,)
+
+
+def _is_rollback_to_older_format() -> bool:
+    """Best-effort detection that THIS invocation is a stack rollback to an
+    older release, i.e. this (reverted, older) Lambda code is being re-run
+    against config records written by a NEWER release.
+
+    CloudFormation gives no explicit "rollback" flag on a custom-resource
+    Update event, so we infer it from the data: if any stored Config#* record
+    carries a ``config_format_version`` NEWER than the format version this code
+    understands (``CONFIG_FORMAT_VERSION``), then newer code must have written
+    it and we are now the older code running during a rollback.
+
+    Used only to decide whether to fail the resource (blocking the rollback) or
+    return SUCCESS and let the rollback complete. A genuine forward update never
+    sees a stored format newer than its own code, so it still fails loudly.
+    """
+    try:
+        from idp_common.config.models import CONFIG_FORMAT_VERSION
+
+        my_version = _parse_format_version(CONFIG_FORMAT_VERSION)
+
+        table_name = os.environ.get("CONFIGURATION_TABLE_NAME")
+        if not table_name:
+            return False
+        dynamodb = boto3.resource("dynamodb")
+        table = dynamodb.Table(table_name)
+
+        # config_format_version lives INSIDE the gzipped _compressed_config blob,
+        # not as a top-level attribute, so read+decompress each Config#* record
+        # via the manager's decompress helper and inspect the stamped version.
+        resp = table.scan(ProjectionExpression="Configuration")
+        for row in resp.get("Items", []):
+            key = str(row.get("Configuration", ""))
+            if not key.startswith("Config"):
+                continue
+            full = table.get_item(Key={"Configuration": key}).get("Item")
+            if not full:
+                continue
+            item = ConfigurationManager._decompress_item(full)
+            stored = _parse_format_version(item.get("config_format_version"))
+            if stored > my_version:
+                logger.warning(
+                    f"Detected rollback: stored config '{key}' format "
+                    f"{item.get('config_format_version')} is newer than this "
+                    f"code's format {CONFIG_FORMAT_VERSION}"
+                )
+                return True
+        return False
+    except Exception as e:
+        # Detection is best-effort; never let it mask the original error path.
+        logger.warning(f"Rollback detection failed (treating as forward op): {e}")
+        return False
+
+
 def handler(event: Dict[str, Any], context: Any) -> None:
     """
     Handles CloudFormation Custom Resource events for configuration management
     """
-    logger.info(f"Received event: {json.dumps(event)}")
+    logger.info(f"Received event: {json.dumps(sanitize_event_for_logging(event))}")
 
     try:
         request_type = event["RequestType"]
@@ -476,6 +789,8 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             if is_eu_region(current_region)
             else "us"
             if is_us_region(current_region)
+            else "ca"
+            if is_ca_region(current_region)
             else "other"
         )
         logger.info(f"Detected region: {current_region}, region type: {region_type}")
@@ -489,29 +804,33 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             if request_type == "Update":
                 version_migration_performed = detect_and_migrate_legacy_format()
                 if version_migration_performed:
-                    logger.info("Legacy migration completed, using direct DynamoDB operations for remaining processing")
-            
+                    logger.info(
+                        "Legacy migration completed, using direct DynamoDB operations for remaining processing"
+                    )
+
             # Collect all configurations to process
             configurations = {}
-            
+
             # Process Schema configuration
             if "Schema" in properties:
                 resolved_schema = resolve_content(properties["Schema"])
                 # Filter models based on region
-                if region_type in ["us", "eu"]:
-                    resolved_schema = filter_models_by_region(resolved_schema, region_type)
+                if region_type in ["us", "eu", "ca"]:
+                    resolved_schema = filter_models_by_region(
+                        resolved_schema, region_type
+                    )
                 configurations["Schema"] = resolved_schema
 
             # Process Default configuration -> save with slugified name
             if "Default" in properties:
                 resolved_default = resolve_content(properties["Default"])
-                
+
                 # Merge minimal config with system defaults
                 # This allows config.yaml files to only specify what they want to customize
                 if isinstance(resolved_default, dict):
                     logger.info("Merging default config with system defaults...")
                     resolved_default = merge_custom_with_defaults(resolved_default)
-                
+
                 # Apply custom model ARNs if provided
                 if isinstance(resolved_default, dict):
                     # Replace classification model if CustomClassificationModelARN is provided and not empty
@@ -551,12 +870,12 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 # Remove legacy pricing field if present (now stored separately as DefaultPricing)
                 if isinstance(resolved_custom, dict):
                     resolved_custom.pop("pricing", None)
-                    
+
                     # Merge minimal custom config with system defaults
                     # This allows users to provide only customized fields
                     logger.info("Merging custom config with system defaults...")
                     resolved_custom = merge_custom_with_defaults(resolved_custom)
-                    
+
                 configurations["Config#custom#"] = resolved_custom
 
             # Process DefaultPricing configuration if provided
@@ -567,100 +886,157 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 configurations["DefaultPricing"] = resolved_pricing
                 logger.info("Loaded DefaultPricing configuration")
 
+            # Process DefaultModelConfigLimits configuration if provided
+            if "DefaultModelConfigLimits" in properties:
+                resolved_limits = resolve_content(
+                    properties["DefaultModelConfigLimits"]
+                )
+                configurations["DefaultModelConfigLimits"] = resolved_limits
+                logger.info("Loaded DefaultModelConfigLimits configuration")
+
             # Process ALL other properties as configuration versions dynamically
             excluded_properties = {
-                "ServiceToken", 
-                "Schema", 
+                "ServiceToken",
+                "Schema",
                 "Default",
-                "Custom", 
-                "DefaultPricing", 
+                "Custom",
+                "DefaultPricing",
+                "DefaultModelConfigLimits",
                 "ConfigLibraryHash",
                 "CustomClassificationModelARN",
                 "CustomExtractionModelARN",
                 "PreviousIDPPattern",
-                "BdaProjectArn",
-                "ConfigurationTable",
             }
-            
+
             for prop_name, prop_value in properties.items():
                 if prop_name not in excluded_properties:
                     try:
                         # Skip if value is empty or not a string (likely not a config)
                         if not prop_value or not isinstance(prop_value, str):
-                            logger.info(f"Skipping property {prop_name}: not a valid config reference")
+                            logger.info(
+                                f"Skipping property {prop_name}: not a valid config reference"
+                            )
                             continue
-                            
+
                         # Use property name as-is for version name (preserve case)
                         version_name = prop_name
-                        logger.info(f"Processing configuration version: {prop_name} -> version '{version_name}'")
-                        
+                        logger.info(
+                            f"Processing configuration version: {prop_name} -> version '{version_name}'"
+                        )
+
                         resolved_config = resolve_content(prop_value)
-                        
+
                         # Check if this looks like a schema (has "type": "object" at root)
-                        if isinstance(resolved_config, dict) and resolved_config.get("type") == "object":
-                            logger.warning(f"Skipping {prop_name}: appears to be a schema, not a config")
+                        if (
+                            isinstance(resolved_config, dict)
+                            and resolved_config.get("type") == "object"
+                        ):
+                            logger.warning(
+                                f"Skipping {prop_name}: appears to be a schema, not a config"
+                            )
                             continue
-                        
+
                         if isinstance(resolved_config, dict):
                             # Extract description before processing config
                             description = resolved_config.pop("description", "")
                             resolved_config.pop("pricing", None)
-                            logger.info(f"Merging {version_name} config with system defaults...")
-                            resolved_config = merge_custom_with_defaults(resolved_config)
-                            configurations[f"Config#{version_name}#{description}"] = resolved_config
+                            logger.info(
+                                f"Merging {version_name} config with system defaults..."
+                            )
+                            resolved_config = merge_custom_with_defaults(
+                                resolved_config
+                            )
+                            configurations[f"Config#{version_name}#{description}"] = (
+                                resolved_config
+                            )
                         else:
-                            logger.warning(f"Skipping {prop_name}: resolved content is not a dictionary")
-                            
+                            logger.warning(
+                                f"Skipping {prop_name}: resolved content is not a dictionary"
+                            )
+
                     except Exception as e:
-                        logger.error(f"Failed to process property {prop_name} as config: {e}")
+                        logger.error(
+                            f"Failed to process property {prop_name} as config: {e}"
+                        )
                         continue
 
             # Apply region-specific model swapping to all configurations at once
-            if region_type in ["us", "eu"] and configurations:
+            if region_type in ["us", "eu", "ca"] and configurations:
                 configurations = swap_model_ids(configurations, region_type)
-                logger.info(f"Applied model swapping for {region_type} region to all configurations")
+                logger.info(
+                    f"Applied model swapping for {region_type} region to all configurations"
+                )
 
             # Save all configurations
             for config_key, config in configurations.items():
-                if config_key.split("#")[0] == "Config" : # config item
+                if config_key.split("#")[0] == "Config":  # config item
                     # Versioned format - use config_name as version
                     _, version, description = config_key.split("#")
                     if version_migration_performed:
                         # Use direct DynamoDB operations when migration was performed
-                        save_configuration_bypass_manager("Config", config, version=version)
+                        save_configuration_bypass_manager(
+                            "Config", config, version=version
+                        )
                         logger.info(f"Updated Config {version} (bypass mode)")
                     else:
                         # Use ConfigurationManager for normal operations
                         # Check if this version already exists
                         existing_config = None
                         try:
-                            existing_config = manager.get_configuration("Config", version)
+                            existing_config = manager.get_configuration(
+                                "Config", version
+                            )
                         except Exception:
                             pass
+                        # A stack deployment cuts a revision instead of
+                        # overwriting silently, so an upgrade's configuration
+                        # changes are diffable and can be rolled back.
                         if existing_config:
-                            manager.save_configuration("Config", config, version=version)
-                        else:  #new config           
-                            manager.save_configuration("Config", config, version=version, description=description)
+                            manager.save_configuration(
+                                "Config",
+                                config,
+                                version=version,
+                                created_by="stack-deployment",
+                                revision_notes="Updated by stack deployment",
+                            )
+                        else:  # new config
+                            manager.save_configuration(
+                                "Config",
+                                config,
+                                version=version,
+                                description=description,
+                                created_by="stack-deployment",
+                                revision_notes="Created by stack deployment",
+                            )
                         logger.info(f"Updated config version: {version} configuration")
                 else:
                     # Non-versioned configurations (Schema, DefaultPricing)
                     if version_migration_performed:
                         # Use direct DynamoDB operations when migration was performed
                         save_configuration_bypass_manager(config_key, config)
-                        logger.info(f"Updated {config_key} configuration during migration")
+                        logger.info(
+                            f"Updated {config_key} configuration during migration"
+                        )
                     else:
-                        # Use ConfigurationManager for normal operations                
+                        # Use ConfigurationManager for normal operations
                         manager.save_configuration(config_key, config)
                         logger.info(f"Updated {config_key} configuration")
-            
-            
+
             # For Create: Activate custom if Custom was provided, otherwise default if Default provided
             if request_type == "Create":
                 try:
                     # Check for custom configuration (Config#custom#...)
-                    custom_configs = [key for key in configurations.keys() if key.startswith("Config#custom#")]
-                    default_configs = [key for key in configurations.keys() if key.startswith("Config#default#")]
-                    
+                    custom_configs = [
+                        key
+                        for key in configurations.keys()
+                        if key.startswith("Config#custom#")
+                    ]
+                    default_configs = [
+                        key
+                        for key in configurations.keys()
+                        if key.startswith("Config#default#")
+                    ]
+
                     if custom_configs:
                         manager.activate_version("custom")
                         logger.info("Activated custom version")
@@ -670,19 +1046,16 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 except Exception as e:
                     logger.error(f"Error activating version during create, error: {e}")
 
-            # Set BDA project ARN on the default config version if provided
-            bda_project_arn = properties.get("BdaProjectArn", "").strip()
-            if bda_project_arn:
-                try:
-                    manager.set_bda_project_arn("default", arn=bda_project_arn, sync_status="synced")
-                    logger.info(f"Set BDA project ARN on default version: {bda_project_arn}")
-                except Exception as e:
-                    logger.warning(f"Failed to set BDA project ARN: {e}")
-                    
             # Auto-enable BDA on ALL config versions when upgrading from a Pattern-1 stack
             previous_idp_pattern = properties.get("PreviousIDPPattern", "").strip()
-            if previous_idp_pattern and "pattern" in previous_idp_pattern.lower() and "1" in previous_idp_pattern:
-                logger.info(f"Detected former Pattern-1 stack (PreviousIDPPattern={previous_idp_pattern}) — auto-enabling BDA on all config versions")
+            if (
+                previous_idp_pattern
+                and "pattern" in previous_idp_pattern.lower()
+                and "1" in previous_idp_pattern
+            ):
+                logger.info(
+                    f"Detected former Pattern-1 stack (PreviousIDPPattern={previous_idp_pattern}) — auto-enabling BDA on all config versions"
+                )
                 try:
                     all_versions = manager.list_config_versions()
                     for ver in all_versions:
@@ -691,7 +1064,7 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                             ver_config = manager.get_configuration("Config", ver_name)
                             if ver_config:
                                 # Convert Pydantic model to dict if needed
-                                if hasattr(ver_config, 'model_dump'):
+                                if hasattr(ver_config, "model_dump"):
                                     ver_config_dict = ver_config.model_dump()
                                 elif isinstance(ver_config, dict):
                                     ver_config_dict = ver_config
@@ -699,18 +1072,34 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                                     ver_config_dict = dict(ver_config)
                                 if not ver_config_dict.get("use_bda"):
                                     ver_config_dict["use_bda"] = True
-                                    manager.save_configuration("Config", ver_config_dict, version=ver_name)
-                                    logger.info(f"Set use_bda=true on config version '{ver_name}'")
-                                # Also set bdaSyncStatus to needs-sync
+                                    manager.save_configuration(
+                                        "Config", ver_config_dict, version=ver_name
+                                    )
+                                    logger.info(
+                                        f"Set use_bda=true on config version '{ver_name}'"
+                                    )
+                                # Also set bdaSyncStatus to needs-sync.
+                                # `set_bda_sync_status` is the method that writes
+                                # only that attribute; `set_bda_project_arn` also
+                                # requires the ARN, which this path does not have
+                                # and must not overwrite.
                                 try:
-                                    manager.set_bda_project_arn(ver_name, sync_status="needs-sync")
-                                    logger.info(f"Set bdaSyncStatus=needs-sync on config version '{ver_name}'")
+                                    manager.set_bda_sync_status(ver_name, "needs-sync")
+                                    logger.info(
+                                        f"Set bdaSyncStatus=needs-sync on config version '{ver_name}'"
+                                    )
                                 except Exception as sync_err:
-                                    logger.warning(f"Failed to set bdaSyncStatus on version '{ver_name}': {sync_err}")
+                                    logger.warning(
+                                        f"Failed to set bdaSyncStatus on version '{ver_name}': {sync_err}"
+                                    )
                         except Exception as ve:
-                            logger.warning(f"Failed to auto-enable BDA on version '{ver_name}': {ve}")
+                            logger.warning(
+                                f"Failed to auto-enable BDA on version '{ver_name}': {ve}"
+                            )
                 except Exception as e:
-                    logger.warning(f"Failed to enumerate config versions for BDA auto-enable: {e}")
+                    logger.warning(
+                        f"Failed to enumerate config versions for BDA auto-enable: {e}"
+                    )
 
             cfnresponse.send(
                 event,
@@ -736,6 +1125,28 @@ def handler(event: Dict[str, Any], context: Any) -> None:
     except ValidationError as e:
         # Pydantic validation error - format detailed error message
         logger.error(f"Configuration validation error: {e}")
+
+        # Rollback-safety: if this reverted (older) code can't parse a config
+        # written by a newer release, we are running during a stack rollback.
+        # Return SUCCESS so the rollback can COMPLETE rather than wedging the
+        # stack in UPDATE_ROLLBACK_FAILED. A genuine forward update never sees a
+        # stored format newer than its own code, so it still fails loudly below.
+        if _is_rollback_to_older_format():
+            logger.warning(
+                "Parse failure during a detected rollback — returning SUCCESS to "
+                "allow the rollback to complete (config left as-is)."
+            )
+            physical_id = generate_physical_id(
+                event["StackId"], event["LogicalResourceId"]
+            )
+            cfnresponse.send(
+                event,
+                context,
+                cfnresponse.SUCCESS,
+                {"Message": "Rollback detected; config preserved as-is."},
+                physical_id,
+            )
+            return
 
         # Build detailed error message
         error_messages = []
@@ -792,6 +1203,27 @@ def handler(event: Dict[str, Any], context: Any) -> None:
 
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
+
+        # Rollback-safety (see ValidationError handler): a TypeError such as
+        # int(None) from an older model reading a newer config lands here.
+        # Complete the rollback rather than wedging the stack.
+        if _is_rollback_to_older_format():
+            logger.warning(
+                "Error during a detected rollback — returning SUCCESS to allow "
+                "the rollback to complete (config left as-is)."
+            )
+            physical_id = generate_physical_id(
+                event["StackId"], event["LogicalResourceId"]
+            )
+            cfnresponse.send(
+                event,
+                context,
+                cfnresponse.SUCCESS,
+                {"Message": "Rollback detected; config preserved as-is."},
+                physical_id,
+            )
+            return
+
         # Still need to send physical ID even on failure
         physical_id = generate_physical_id(event["StackId"], event["LogicalResourceId"])
         cfnresponse.send(

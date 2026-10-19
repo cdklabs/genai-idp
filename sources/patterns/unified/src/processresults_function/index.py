@@ -5,12 +5,19 @@ import datetime
 import json
 import logging
 import os
-from urllib.parse import urlparse
 
 import boto3
 from idp_common import s3, utils
 from idp_common.config import get_config
 from idp_common.docs_service import create_document_service
+from idp_common.document_failure import (
+    POSTPROCESSING_STAGE,
+    SECTION_PROCESSING_FAILED_CODE,
+    SECTION_PROCESSING_FAILED_MESSAGE,
+    SectionDiagnosis,
+    persist_failed_document,
+    summarize_errors,
+)
 from idp_common.models import Document, HitlMetadata, Status
 
 logger = logging.getLogger()
@@ -23,11 +30,11 @@ logging.getLogger("idp_common.bedrock.client").setLevel(
 s3_client = boto3.client("s3")
 
 
-def is_hitl_enabled(config_version=None):
+def is_hitl_enabled(config_version=None, config_revision=None):
     """Check if HITL is enabled from configuration."""
     try:
-        config = get_config(as_model=True, version=config_version)
-        return config.assessment.hitl_enabled
+        config = get_config(as_model=True, version=config_version, revision=config_revision)
+        return config.hitl.enabled
     except Exception as e:
         logger.warning(f"Failed to get HITL config: {e}")
         return False  # Default to disabled if config unavailable
@@ -57,14 +64,15 @@ def handler(event, context):
 
     # Load configuration - use document's version if specified, otherwise use active version
     config_version = getattr(document, 'config_version', None)
-    config = get_config(as_model=True, version=config_version)
+    config_revision = getattr(document, 'config_revision', None)
+    config = get_config(as_model=True, version=config_version, revision=config_revision)
 
     extraction_results = event.get("ExtractionResults", [])
     execution_arn = event.get("execution_arn", "")
     execution_id = execution_arn.split(":")[-1] if execution_arn else "unknown"
 
     # Get confidence threshold from configuration
-    confidence_threshold = config.assessment.default_confidence_threshold
+    confidence_threshold = config.hitl.confidence_threshold
     logger.info(f"Using confidence threshold: {confidence_threshold}")
 
     # Update document status to POSTPROCESSING
@@ -83,8 +91,10 @@ def handler(event, context):
     # Clear sections list to rebuild from extraction results
     document.sections = []
     validation_errors = []
-    validation_errors = []
     hitl_triggered = False
+    # #1064: which section failed, and why, so the raise below can persist it on
+    # the section rather than leaving it in the Step Functions cause alone.
+    section_diagnoses = []
 
     # Combine all section results
     for i, result in enumerate(extraction_results):
@@ -100,7 +110,7 @@ def handler(event, context):
                 logger.info(
                     f"section.confidence_threshold_alerts: {section.confidence_threshold_alerts}"
                 )
-                hitl_enabled = is_hitl_enabled(config_version)
+                hitl_enabled = is_hitl_enabled(config_version, config_revision)
                 logger.info(f"is_hitl_enabled: {hitl_enabled}")
                 document.sections.append(section)
 
@@ -136,6 +146,23 @@ def handler(event, context):
                     )
                     validation_errors.append(error_message)
                     logger.error(f"Error: {error_message}")
+                    # Attribute the verdict to the section it is about. The
+                    # exception message below keeps the 1-based ordinal it has
+                    # always used; the issue is keyed by the real section id,
+                    # which is what the Sections panel reads.
+                    section_diagnoses.append(
+                        SectionDiagnosis(
+                            section_id=section.section_id,
+                            stage=POSTPROCESSING_STAGE,
+                            code=SECTION_PROCESSING_FAILED_CODE,
+                            message=SECTION_PROCESSING_FAILED_MESSAGE,
+                            root_cause=summarize_errors(
+                                section_document.errors,
+                                fallback="The section reported status FAILED "
+                                "without recording a reason.",
+                            ),
+                        )
+                    )
 
             # Add metering from section processing
             document.metering = utils.merge_metering_data(
@@ -180,10 +207,10 @@ def handler(event, context):
     rule_validation_enabled = False
     if hasattr(config, 'rule_validation'):
         rule_validation_enabled = config.rule_validation.enabled
-        # Also check if there are any rules configured
-        if rule_validation_enabled and hasattr(config, 'rule_classes'):
-            if not config.rule_classes or len(config.rule_classes) == 0:
-                logger.info("Rule validation is enabled but no rule_classes configured - skipping rule validation")
+        if rule_validation_enabled:
+            policy_classes = getattr(config, 'policy_classes', None) or []
+            if len(policy_classes) == 0:
+                logger.info("Rule validation is enabled but no policy_classes configured - skipping rule validation")
                 rule_validation_enabled = False
         logger.info(f"Rule validation enabled: {rule_validation_enabled}")
     
@@ -209,7 +236,33 @@ def handler(event, context):
         combined_errors = "; ".join(validation_errors)
         full_error_message = f"{error_summary}: {combined_errors}"
         logger.error(f"Error: {full_error_message}")
-        raise Exception(full_error_message)
+        failure = Exception(full_error_message)
+        # #1064: persist before raising. This handler owns the whole-document
+        # write and already holds every section, so ONE `update_document` can carry
+        # both the FAILED status just assigned — which was previously computed and
+        # thrown away — and a per-section issue for each section that failed.
+        #
+        # It writes only when there is at least one section diagnosis, which means
+        # the reachable path below does NOT write: `document.errors` is
+        # document-scope, produces no diagnosis, and `persist_failed_document`
+        # returns before writing, so neither the issues nor the FAILED status are
+        # persisted there. The terminal status still comes from `workflow_tracker`
+        # as it always did.
+        #
+        # `document.errors` is deliberately NOT given a home here. Those entries
+        # are document-scope free text (OCR and classification append to it
+        # without failing the document), they are persisted by no writer, and the
+        # per-page failures behind them are already recorded as section-attributed
+        # issues by classification. A document-level issue would bump
+        # ProcessingIssueCount, which the document list reads, and then have no
+        # text behind the badge — see `idp_common.document_failure`.
+        persist_failed_document(
+            document_service=document_service,
+            document=document,
+            error=failure,
+            diagnoses=section_diagnoses,
+        )
+        raise failure
 
     return response
 
@@ -219,10 +272,11 @@ def create_metadata_file(file_uri, class_type, file_type=None):
     Creates a metadata file alongside the given URI file with the same name plus '.metadata.json'
     """
     try:
-        # Parse the S3 URI to get bucket and key
-        parsed_uri = urlparse(file_uri)
-        bucket = parsed_uri.netloc
-        key = parsed_uri.path.lstrip("/")
+        # Parse the S3 URI to get bucket and key. Use parse_s3_uri (plain
+        # string split) rather than urllib.parse.urlparse: object keys may
+        # contain '#', which urlparse treats as a URL fragment delimiter and
+        # silently truncates, producing a wrong metadata key.
+        bucket, key = utils.parse_s3_uri(file_uri)
 
         # Create the metadata key by adding '.metadata.json' to the original key
         metadata_key = f"{key}.metadata.json"

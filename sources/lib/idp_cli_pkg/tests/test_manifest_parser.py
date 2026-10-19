@@ -9,7 +9,8 @@ import csv
 import json
 
 import pytest
-from idp_sdk.core.manifest_parser import (
+
+from idp_sdk._core.manifest_parser import (
     ManifestParser,
     parse_manifest,
     validate_manifest,
@@ -159,6 +160,7 @@ class TestManifestParser:
         is_valid, error = validate_manifest(str(manifest_file))
 
         assert not is_valid
+        assert error is not None
         assert "Duplicate filenames" in error
 
     def test_validate_manifest_empty(self, tmp_path):
@@ -173,6 +175,7 @@ class TestManifestParser:
         is_valid, error = validate_manifest(str(manifest_file))
 
         assert not is_valid
+        assert error is not None
         assert "no documents" in error
 
     def test_unsupported_format(self, tmp_path):

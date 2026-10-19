@@ -76,6 +76,233 @@ def clean_schema_for_generation(
     return cleaned
 
 
+_SCALAR_TYPES = frozenset({"string", "number", "integer", "boolean"})
+
+
+def nullable_leaves_for_transport(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of ``schema`` in which every SCALAR leaf accepts ``null``.
+    ``required`` is left exactly as it is.
+
+    This exists so an extraction agent can say **"I could not read this cell"**.
+
+    ``datamodel-code-generator`` renders a required scalar as a non-nullable field
+    with no default (``Amount: float``), so on the agentic path a genuinely
+    unreadable cell has no representable answer: of ``null``, ``""``, omitting the
+    key and ``0.0``, only ``0.0`` validates. The retry loop then tells the agent its
+    answer failed validation and asks it to fix it, so the contract actively pushes
+    a *fabricated* zero — schema-valid, silent, and indistinguishable from a real
+    zero (#782). It also contradicts the table-tool prompt, which asks for ``null``
+    on an unreadable cell.
+
+    ``required`` conflates two things, and only one of them should relax:
+
+    * **structural presence** — the key must exist, a list must be a list, the
+      multi-instance wrapper must contain ``instances``. Relaxing this lets an
+      empty tool call, a misspelled key set, or a nulled 100-row list through as
+      "success", which is the #666 failure the repo already fixed once.
+    * **a readable value** — the cell must hold something. This is the part an
+      agent can honestly be unable to satisfy.
+
+    So the transform keeps ``required`` and instead widens each scalar leaf's type
+    to ``[<type>, "null"]``, which the generator renders as ``X | None`` with
+    ``required=True`` — the key must be present, and ``null`` is a legal value. The
+    result, measured on the generated model:
+
+    ========================  ======  ============
+    agent returns             before  after
+    ========================  ======  ============
+    ``Amount: null``          reject  **accept**
+    ``Amount`` key omitted    reject  reject
+    ``Amount: ""``            reject  reject
+    ``Transactions: null``    reject  reject
+    ``{"instances": null}``   reject  reject
+    misspelled keys           reject  reject
+    ========================  ======  ============
+
+    Required-ness is still enforced where it can be REPORTED rather than forced:
+    ``extraction.validation`` validates the result against the real schema, treats
+    a null property as absent, and reports ``'X' is a required property`` — the
+    same treatment simple mode gets, and what feeds the agent's self-correction
+    round and the escalation path.
+
+    Scope, deliberately narrow: only nodes whose ``type`` is a scalar (or a list of
+    scalars) are widened — a type-less ``enum`` leaf or a ``const`` leaf is not; arrays, objects, ``$ref`` leaves and combinator branches
+    are recursed into but never themselves made nullable. An ``enum`` on a widened
+    leaf gains ``None`` so the transport model's own JSON-Schema validator (used
+    for classes with advanced constraints) agrees with the Pydantic type. The
+    input is not mutated — the caller keeps validating against the real schema.
+    """
+    return _widen_scalar_leaves(schema)
+
+
+def _widen_scalar_leaves(schema: Any) -> Any:
+    """Recursive worker for :func:`nullable_leaves_for_transport` (any JSON node)."""
+    if isinstance(schema, list):
+        return [_widen_scalar_leaves(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+
+    out: Dict[str, Any] = {
+        key: _widen_scalar_leaves(value) for key, value in schema.items()
+    }
+    declared = schema.get("type")
+    types: List[str] | None
+    if isinstance(declared, str):
+        types = [declared]
+    elif isinstance(declared, list) and all(isinstance(x, str) for x in declared):
+        types = list(declared)
+    else:
+        types = None
+
+    # A scalar leaf: every declared type is scalar. (A node with `properties` or
+    # `items` is an object/array regardless of what `type` says, so those keys are
+    # checked too rather than trusting `type` alone.)
+    is_scalar_leaf = (
+        types is not None
+        and types
+        and all(x in _SCALAR_TYPES for x in types)
+        and "properties" not in schema
+        and "items" not in schema
+        # A `const` leaf IS its value; widening `type` would contradict `const`
+        # (the generated Literal still rejects None) and make the transport schema
+        # internally inconsistent for the advanced-constraints validator. It is
+        # left alone — a fixed value is not something to abstain on.
+        and "const" not in schema
+    )
+    if is_scalar_leaf:
+        assert types is not None
+        out["type"] = types + ["null"]
+        if isinstance(schema.get("enum"), list) and None not in schema["enum"]:
+            out["enum"] = list(schema["enum"]) + [None]
+    return out
+
+
+_CONTAINER_TYPES = frozenset({"array", "object"})
+
+
+def nullable_required_containers_for_shard(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of ``schema`` in which a **required** array or object property
+    also accepts ``null``. ``required`` itself is left exactly as it is.
+
+    This is :func:`nullable_leaves_for_transport`'s argument carried to the one
+    shape it does not reach, for the one caller where that shape has no honest
+    answer: **a shard of a sharded agentic section.**
+
+    A shard is given only its own pages and told "if a field does not appear in your
+    pages, leave it null — another shard will provide it"
+    (``agentic_idp._run_shard_agent``). ``nullable_leaves_for_transport`` makes that
+    instruction satisfiable for a scalar, because it widens scalar *leaves*. It does
+    not add a null branch to an array or to a nested object, so for a required list
+    or group the instruction names the one answer the tool rejects:
+
+    ==============================  ==========================  ==========================
+    shard returns                   without this transform      with it
+    ==============================  ==========================  ==========================
+    ``Account Number: null``        accept                      accept
+    ``Transactions: null``          reject (``list_type``)      **accept**
+    ``Summary: null``               reject (``model_type``)     **accept**
+    ``Transactions`` key omitted    reject                      reject
+    ``{}`` (empty tool call)        reject                      reject
+    misspelled key set              reject                      reject
+    ``Transactions: []`` under a
+    declared ``minItems``           reject (``too_short``)      reject (``too_short``)
+    ==============================  ==========================  ==========================
+
+    The last three rows are the point of doing this narrowly rather than by dropping
+    ``required``. ``required`` conflates *the key must be present* with *the value
+    must be readable*, and only the second can be relaxed for a shard — exactly the
+    split :func:`nullable_leaves_for_transport` makes for scalars. Dropping
+    ``required`` would render every field ``Optional[...] = None``, so ``{}`` becomes
+    a valid tool call and a shard that answered nothing would merge as a success:
+    the #666 whole-list loss, per shard.
+
+    ``minItems`` is deliberately **not** touched. A row-count floor is enforced per
+    shard at the tool boundary and a section-sized floor is unsatisfiable by a shard
+    — that is documented behaviour with its own guidance (put no ``minItems`` on a
+    list whose section shards; use ``extraction.row_shortfall_action``), and this
+    transform must not quietly change it. Verified: a widened array under
+    ``minItems: 100`` still rejects 43 rows and an empty list, and now accepts
+    ``null``.
+
+    Presence is re-checked once on the MERGED section, against the real schema, by
+    ``extraction.validation`` — which treats a null property as absent and reports
+    ``'X' is a required property``. So a required list or group that no shard saw is
+    reported rather than forced, the same treatment a null required scalar already
+    gets.
+
+    Scope, deliberately narrow:
+
+    * Only a property named in its own object's ``required`` list. A property that
+      was already optional needs nothing.
+    * Applied at every level a ``required`` list appears, including inside ``$defs``
+      and ``items``, so one rule covers the whole schema.
+    * A container is recognised by a declared ``array``/``object`` ``type``, or by
+      carrying ``items`` or ``properties`` when no ``type`` is declared.
+    * ⚠️ A required property that is a **bare** ``$ref`` (no ``type``, no
+      ``properties``, no ``items`` of its own) is NOT widened — there is no keyword
+      to widen without resolving the reference, and the ``anyOf`` form the generator
+      would need turns an array field into a wrapper model, which breaks the shard
+      merge's list detection. Such a property still costs a shard one correction
+      round. No shipped configuration uses that shape for a required property.
+    """
+    return _widen_required_containers(schema)
+
+
+def _declared_container_types(prop: Any) -> List[str] | None:
+    """The ``type`` list to widen for a container property, or None if not one.
+
+    Returns ``[]`` for a container recognised by shape (``items`` / ``properties``)
+    with no declared ``type``, in which case the caller supplies the type name.
+    """
+    if not isinstance(prop, dict):
+        return None
+    declared = prop.get("type")
+    types: List[str] | None
+    if isinstance(declared, str):
+        types = [declared]
+    elif isinstance(declared, list) and all(isinstance(x, str) for x in declared):
+        types = list(declared)
+    else:
+        types = None
+    if types:
+        if "null" in types:
+            return None  # already nullable
+        return types if all(x in _CONTAINER_TYPES for x in types) else None
+    if "properties" in prop or "items" in prop:
+        return []
+    return None
+
+
+def _widen_required_containers(node: Any) -> Any:
+    """Recursive worker for :func:`nullable_required_containers_for_shard`."""
+    if isinstance(node, list):
+        return [_widen_required_containers(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+
+    out: Dict[str, Any] = {
+        key: _widen_required_containers(value) for key, value in node.items()
+    }
+    required = node.get("required")
+    properties = out.get("properties")
+    if not (isinstance(required, list) and isinstance(properties, dict)):
+        return out
+
+    for name in required:
+        prop = properties.get(name)
+        if not isinstance(prop, dict):
+            continue
+        types = _declared_container_types(prop)
+        if types is None:
+            continue
+        if not types:
+            types = ["object" if "properties" in prop else "array"]
+        widened = dict(prop)
+        widened["type"] = list(types) + ["null"]
+        properties[name] = widened
+    return out
+
+
 def _normalize_class_name(name: str) -> str:
     """
     Normalize a class name to PascalCase.
@@ -230,13 +457,142 @@ def _find_model_in_module(
     for name, obj in all_models:
         if name in matching_names:
             logger.debug(f"Selected model '{name}' based on name matching")
-            return obj, all_models
+            return _ensure_model_covers_schema(obj, all_models, schema_dict), all_models
 
     # No exact match - use first available
     logger.debug(
         f"No name match found, using first available model: '{all_models[0][0]}'"
     )
-    return all_models[0][1], all_models
+    return (
+        _ensure_model_covers_schema(all_models[0][1], all_models, schema_dict),
+        all_models,
+    )
+
+
+def _declared_field_names(model: Type[BaseModel]) -> set:
+    """Field names AND aliases of a generated model.
+
+    Both matter: datamodel-code-generator sanitizes a JSON-Schema property name
+    that is not a Python identifier (``"Date of Birth"`` -> ``Date_of_Birth``)
+    and records the original as the field's alias.
+    """
+    names = set()
+    for field_name, field in model.model_fields.items():
+        names.add(field_name)
+        if field.alias:
+            names.add(field.alias)
+    return names
+
+
+def _ensure_model_covers_schema(
+    selected: Type[BaseModel],
+    all_models: List[Tuple[str, Type[BaseModel]]],
+    schema_dict: Dict[str, Any],
+) -> Type[BaseModel]:
+    """Guard against selecting a NESTED model instead of the root one.
+
+    Selection is by title/label priority, which is fine until a schema contains a
+    nested object that happens to match the same name. The case that provoked
+    this is the multi-instance wrapper (GitHub #715): a schema whose single
+    ``instances`` property has ``items`` describing the class would, if those
+    items kept the class title, select the INNER model — so the response was
+    silently validated as ONE record where a LIST had been requested. Every
+    record but the first would be dropped by validation with no error anywhere.
+
+    The check is structural rather than name-based, so it also catches the same
+    mis-selection arising any other way: the chosen model must declare every
+    top-level property the schema declares. When it does not, a model that DOES
+    is preferred (with a warning) and only a total absence of one is fatal —
+    raising on a schema that previously worked would be a worse outcome than the
+    bug this prevents.
+    """
+    properties = schema_dict.get("properties")
+    if not isinstance(properties, dict) or not properties:
+        return selected
+
+    expected = set(properties.keys())
+    if expected.issubset(_declared_field_names(selected)):
+        return selected
+
+    for name, candidate in all_models:
+        if expected.issubset(_declared_field_names(candidate)):
+            logger.warning(
+                "Generated model '%s' does not declare the schema's top-level "
+                "properties %s — it is a nested model, not the root. Using '%s' "
+                "instead, which does. (A wrapper schema whose inner items keep "
+                "the class title hits this: the inner model validates ONE record "
+                "where a LIST was requested.)",
+                selected.__name__,
+                sorted(expected - _declared_field_names(selected)),
+                name,
+            )
+            return candidate
+
+    raise PydanticModelGenerationError(
+        f"No generated Pydantic model declares the schema's top-level properties "
+        f"{sorted(expected)}; the closest was '{selected.__name__}' with fields "
+        f"{sorted(_declared_field_names(selected))}. Validating against it would "
+        f"silently drop data."
+    )
+
+
+def _iter_nested_model_classes(annotation: Any):
+    """Yield every Pydantic ``BaseModel`` subclass referenced by a type annotation.
+
+    Walks into containers and unions (``Optional[X]``, ``list[X]``,
+    ``dict[str, X]``, ``Union[...]``) so nested object/array-of-object fields are
+    reached, not just direct ``BaseModel`` annotations.
+    """
+    import typing
+
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        yield annotation
+        return
+    # typing.get_args handles Optional/Union/list/dict/tuple parameterizations.
+    for arg in typing.get_args(annotation):
+        yield from _iter_nested_model_classes(arg)
+
+
+def _apply_alias_config_recursively(
+    model: Type[BaseModel],
+    config: ConfigDict,
+    _seen: Optional[set] = None,
+) -> None:
+    """Apply ``config`` to ``model`` and every nested generated model in place.
+
+    datamodel-code-generator sanitizes JSON-Schema property names with spaces
+    (e.g. ``"Date of Birth"``) into Python identifiers (``Date_of_Birth``) and
+    records the original name as the field alias. The alias round-trip
+    (``populate_by_name`` / ``serialize_by_alias`` / ``validate_by_*``) is only
+    set on the top-level model by the caller, so **nested** sub-models would
+    otherwise validate/serialize by field name and silently drop or mis-key
+    nested values (see fix for agentic extraction nested-field loss). This walks
+    the whole model graph and applies the same config to every nested model,
+    then rebuilds each so Pydantic's cached core schema picks up the change.
+
+    ``_seen`` guards against recursive/self-referential schemas.
+    """
+    if _seen is None:
+        _seen = set()
+    if model in _seen:
+        return
+    _seen.add(model)
+
+    # Merge (not replace) so we don't clobber any config the model already has.
+    model.model_config.update(config)
+
+    for field in model.model_fields.values():
+        for nested in _iter_nested_model_classes(field.annotation):
+            _apply_alias_config_recursively(nested, config, _seen)
+
+    # Force a rebuild so the updated config takes effect on the cached schema.
+    try:
+        model.model_rebuild(force=True)
+    except Exception as exc:  # pragma: no cover - defensive; rebuild rarely fails
+        logger.warning(
+            f"model_rebuild failed for '{model.__name__}' after alias-config "
+            f"propagation; nested alias serialization may be incomplete: {exc}"
+        )
 
 
 def create_pydantic_model_from_json_schema(
@@ -316,6 +672,14 @@ def create_pydantic_model_from_json_schema(
                 field_constraints=True,
                 snake_case_field=False,
                 use_title_as_name=True,
+                # Emit each object's JSON-Schema `description` as the generated
+                # class's docstring. Pydantic puts a class docstring into
+                # model_json_schema() as the object's `description`, so the class
+                # description and every $defs group description reach the wire
+                # tool schema the agent sees (#836). Without this, only property
+                # descriptions survive and a class whose guidance is all in its
+                # root description sends the model no natural language at all.
+                use_schema_description=True,
             )
 
             # Import the generated module
@@ -374,9 +738,12 @@ def create_pydantic_model_from_json_schema(
                     def validate_json_schema(self):  # type: ignore
                         return validator_func(self)
 
-                # Set the correct name
+                # Set the correct name, and keep the schema description: a
+                # subclass does not inherit __doc__, and Pydantic reads the
+                # description for model_json_schema() from it (#836).
                 ModelWithValidation.__name__ = selected_model.__name__
                 ModelWithValidation.__qualname__ = selected_model.__name__
+                ModelWithValidation.__doc__ = selected_model.__doc__
 
                 final_model = ModelWithValidation
 
@@ -394,7 +761,25 @@ def create_pydantic_model_from_json_schema(
                     __config__=ConfigDict(
                         populate_by_name=True, serialize_by_alias=True
                     ),
+                    # A created subclass has no __doc__; carry the schema
+                    # description so it reaches model_json_schema() (#836).
+                    __doc__=selected_model.__doc__,
                 )
+
+            # Propagate the alias config to ALL nested models. The caller above
+            # only sets it on the top-level model, so without this, nested object
+            # properties whose names contain spaces (aliased to identifiers like
+            # "Date_of_Birth") validate/serialize by field name and silently drop
+            # or mis-key values. This makes nested behavior match the top level.
+            _apply_alias_config_recursively(
+                final_model,
+                ConfigDict(
+                    populate_by_name=True,
+                    serialize_by_alias=True,
+                    validate_by_name=True,
+                    validate_by_alias=True,
+                ),
+            )
 
             # Log the final model with its fields and aliases
             field_count = len(final_model.model_fields)

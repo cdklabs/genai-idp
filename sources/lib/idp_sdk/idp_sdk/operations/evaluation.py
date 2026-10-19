@@ -7,9 +7,12 @@ from typing import Dict, Optional
 
 from idp_sdk.exceptions import IDPProcessingError, IDPResourceNotFoundError
 from idp_sdk.models import (
+    BaselineInfo,
     EvaluationBaselineListResult,
     EvaluationMetrics,
     EvaluationReport,
+    FieldComparison,
+    UseAsBaselineResult,
 )
 
 
@@ -39,7 +42,7 @@ class EvaluationOperation:
         Returns:
             Dictionary with baseline creation result
         """
-        from idp_sdk.core.evaluation_processor import EvaluationProcessor
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
 
         name = self._client._require_stack(stack_name)
 
@@ -52,6 +55,53 @@ class EvaluationOperation:
             )
         except Exception as e:
             raise IDPProcessingError(f"Failed to create baseline: {e}") from e
+
+    def use_as_baseline(
+        self,
+        document_id: str,
+        stack_name: Optional[str] = None,
+        **kwargs,
+    ) -> UseAsBaselineResult:
+        """Promote a processed document's output to the evaluation baseline.
+
+        Programmatic equivalent of the UI "Use as Evaluation Baseline" button:
+        copies every object under the document's output prefix into the
+        evaluation baseline bucket and updates the document's ``EvaluationStatus``
+        to ``BASELINE_AVAILABLE``. Runs synchronously (returns when the copy is
+        complete), so it can be scripted and its result checked directly.
+
+        Args:
+            document_id: Document identifier (S3 key / object key)
+            stack_name: Optional stack name override
+            **kwargs: Additional parameters
+
+        Returns:
+            UseAsBaselineResult with the number of files copied and final status
+
+        Raises:
+            IDPResourceNotFoundError: If no output exists for the document
+            IDPProcessingError: If the copy fails
+        """
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
+
+        name = self._client._require_stack(stack_name)
+
+        try:
+            processor = EvaluationProcessor(
+                stack_name=name, region=self._client._region
+            )
+            result = processor.use_as_baseline(document_id=document_id)
+
+            return UseAsBaselineResult(
+                document_id=result["document_id"],
+                files_copied=result["files_copied"],
+                evaluation_status=result["evaluation_status"],
+                timestamp=result.get("timestamp"),
+            )
+        except FileNotFoundError as e:
+            raise IDPResourceNotFoundError(str(e)) from e
+        except Exception as e:
+            raise IDPProcessingError(f"Failed to use document as baseline: {e}") from e
 
     def get_report(
         self,
@@ -69,9 +119,15 @@ class EvaluationOperation:
             **kwargs: Additional parameters
 
         Returns:
-            EvaluationReport with accuracy and field results
+            EvaluationReport with the section's scores and its per-attribute
+            comparisons
+
+        Raises:
+            IDPResourceNotFoundError: If the document has not been evaluated, or
+                its results contain no such section
+            IDPProcessingError: If the report cannot be read
         """
-        from idp_sdk.core.evaluation_processor import EvaluationProcessor
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
 
         name = self._client._require_stack(stack_name)
 
@@ -86,9 +142,24 @@ class EvaluationOperation:
             return EvaluationReport(
                 document_id=result["document_id"],
                 section_id=result["section_id"],
-                accuracy=result["accuracy"],
-                field_results=result["field_results"],
-                summary=result.get("summary"),
+                field_comparisons=[
+                    FieldComparison(
+                        attribute=comparison["attribute"],
+                        expected=comparison.get("expected"),
+                        actual=comparison.get("actual"),
+                        matched=bool(comparison.get("matched")),
+                        score=comparison.get("score"),
+                        method=comparison.get("method"),
+                        reason=comparison.get("reason"),
+                    )
+                    for comparison in result.get("field_comparisons", [])
+                ],
+                document_class=result.get("document_class"),
+                accuracy=result.get("accuracy"),
+                precision=result.get("precision"),
+                recall=result.get("recall"),
+                f1_score=result.get("f1_score"),
+                overall_metrics=result.get("overall_metrics", {}),
             )
         except FileNotFoundError as e:
             raise IDPResourceNotFoundError(str(e)) from e
@@ -115,9 +186,15 @@ class EvaluationOperation:
             **kwargs: Additional parameters
 
         Returns:
-            EvaluationMetrics with aggregated statistics
+            EvaluationMetrics with aggregated statistics.
+
+            Passing ``document_class`` leaves the four top-level averages ``None``
+            and puts the class-scoped answer in
+            ``by_document_class[document_class]``: the top-level figures come from
+            each document's whole-document metrics, which cannot answer a question
+            about one class of section.
         """
-        from idp_sdk.core.evaluation_processor import EvaluationProcessor
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
 
         name = self._client._require_stack(stack_name)
 
@@ -133,9 +210,15 @@ class EvaluationOperation:
             )
 
             return EvaluationMetrics(
-                total_evaluations=result["total_evaluations"],
-                average_accuracy=result["average_accuracy"],
+                total_documents=result["total_documents"],
+                avg_accuracy=result["avg_accuracy"],
+                avg_precision=result["avg_precision"],
+                avg_recall=result["avg_recall"],
+                avg_f1_score=result["avg_f1_score"],
                 by_document_class=result["by_document_class"],
+                start_date=start_date,
+                end_date=end_date,
+                document_class=document_class,
             )
         except Exception as e:
             raise IDPProcessingError(f"Failed to get evaluation metrics: {e}") from e
@@ -158,7 +241,7 @@ class EvaluationOperation:
         Returns:
             EvaluationBaselineListResult with baselines and optional next_token
         """
-        from idp_sdk.core.evaluation_processor import EvaluationProcessor
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
 
         name = self._client._require_stack(stack_name)
 
@@ -169,7 +252,13 @@ class EvaluationOperation:
             result = processor.list_baselines(limit=limit, next_token=next_token)
 
             return EvaluationBaselineListResult(
-                baselines=result["baselines"],
+                baselines=[
+                    BaselineInfo(
+                        document_id=baseline["document_id"],
+                        s3_location=baseline["s3_location"],
+                    )
+                    for baseline in result["baselines"]
+                ],
                 count=result["count"],
                 next_token=result.get("next_token"),
             )
@@ -192,7 +281,7 @@ class EvaluationOperation:
         Returns:
             Dictionary with deletion result
         """
-        from idp_sdk.core.evaluation_processor import EvaluationProcessor
+        from idp_sdk._core.evaluation_processor import EvaluationProcessor
 
         name = self._client._require_stack(stack_name)
 

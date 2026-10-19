@@ -9,7 +9,15 @@ service tier information from model ID suffixes.
 """
 
 import logging
+import math
+import os
+import re
+import time
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional, Tuple
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +39,15 @@ def parse_model_id(model_id: str) -> Tuple[str, Optional[str]]:
         >>> parse_model_id("us.amazon.nova-2-lite-v1:0:priority")
         ("us.amazon.nova-2-lite-v1:0", "priority")
 
+        A version-less model ID still parses. Every Bedrock model ID used here
+        historically ended in a ``:<version>`` segment, so a tier suffix meant a
+        third colon-part; newer families (e.g. ``us.xai.grok-4.6``) carry no
+        version segment, which left a 2-part ID with the tier silently
+        unextracted and the whole string sent to Bedrock as the modelId:
+
+        >>> parse_model_id("us.xai.grok-4.6:flex")
+        ("us.xai.grok-4.6", "flex")
+
     Args:
         model_id: The model ID string, potentially with service tier suffix
 
@@ -44,8 +61,8 @@ def parse_model_id(model_id: str) -> Tuple[str, Optional[str]]:
     # Split on colons
     parts = model_id.split(":")
 
-    # If only 1 or 2 parts, no tier suffix
-    if len(parts) <= 2:
+    # A single part cannot carry a tier suffix.
+    if len(parts) < 2:
         return model_id, None
 
     # Check if last part is a valid service tier
@@ -59,3 +76,540 @@ def parse_model_id(model_id: str) -> Tuple[str, Optional[str]]:
 
     # Last part is not a valid tier, return as-is
     return model_id, None
+
+
+# The suffix that selects Anthropic's 1M-token context beta. Like a service-tier
+# suffix (``:flex``, ``:priority``), it is stripped before Bedrock is called —
+# ``parse_model_id`` removes a tier and passes it as ``converse_params
+# ["serviceTier"]``, while this one is replaced by the ``context-1m-2025-08-07``
+# beta header. What separates them is pricing, not the wire format: a service
+# tier re-prices *every* request made in it (flex 0.5x, priority 1.75x) and has
+# its own ``config_library/pricing.yaml`` entries, whereas the 1M window carries
+# no price difference at all.
+LONG_CONTEXT_SUFFIX = ":1m"
+
+#: Region / geo prefixes Bedrock cross-region inference profiles use. Lives here,
+#: the module with no first-party imports, so that every prefix-stripping site in
+#: the package can share ONE definition — the defect this replaces was four
+#: hand-rolled copies, of which three listed only ``us``/``eu``/``global``.
+#:
+#: Omitting a prefix fails **permissively**, which is why the copies were harmless
+#: to read and not to run: an id whose prefix is unrecognised falls through
+#: unchanged, so it matches no base-name set and every capability gate returns the
+#: answer for "model I know nothing about". For ``us-gov.`` that means
+#: ``strips_sampling_params`` says False (``temperature`` goes to a model that
+#: rejects it) and ``supports_forced_tool_choice`` says True (a forced tool call
+#: goes to a model that rejects it). GovCloud is where both land, because an
+#: account-scoped inference-profile ARN is the only way to name a model there and
+#: ``resolve_model_id_from_arn`` reduces one to a ``us-gov.`` id.
+#:
+#: ``au`` and ``jp`` are here because Claude Haiku 5.5 is the first model this
+#: repository offers whose card advertises them: its geo inference ids are ``us.``,
+#: ``eu.``, ``au.`` and ``jp.``. Their absence had the permissive failure above for
+#: **every** 4.7-or-later Claude, not only that one — ``au.anthropic.claude-haiku-5-5``
+#: reported ``strips_sampling_params`` False, so ``top_k`` and ``top_p`` went to a
+#: model that rejects both and every request 400'd. Not reachable from the picklists,
+#: which offer ``us.``/``eu.``/``global.`` only, but reachable through a custom
+#: configuration or the CLI, where a user copies the id off the model card.
+#:
+#: ``ca`` is the Canada geo profile, introduced with ``ca.amazon.nova-lite-v1:0``.
+#:
+#: ``config.retired_models._REGION_PREFIX`` holds the same eight as a regex and
+#: cannot import this module (``config`` is imported BY ``bedrock``), so the two are
+#: asserted equal by ``tests/unit/bedrock/test_region_prefix_parity.py``.
+REGION_PREFIXES = ("us", "eu", "apac", "au", "jp", "ca", "global", "us-gov")
+
+
+def metering_model_id(model_id: str) -> str:
+    """
+    Reduce a configured model ID to the identity that should appear in a
+    metering key (and therefore drive cost reporting).
+
+    A suffix belongs in a metering key only when it names a different price. A
+    service tier does: ``:flex`` and ``:priority`` are priced differently per
+    token for the whole request, and they have their own
+    ``config_library/pricing.yaml`` entries, so they are kept.
+
+    ``:1m`` does not. It opts the request into the 1M-token context window, which
+    Anthropic prices at the standard per-token rates on Claude 4.6 and later —
+    the only models the suffix is offered on here — so there is no second rate for
+    the key to select (see the long-context note in ``config_library/pricing.yaml``
+    for the citation). The suffix is also not sent to Bedrock: the client removes
+    it and passes the ``context-1m-2025-08-07`` beta header, so a key that carries
+    it names something that was never invoked. Collapsing it keeps one price per
+    model instead of two entries holding identical rates, and stops a premium rate
+    card being reintroduced under a key nothing invoked — which is exactly the
+    defect in issue #899, where ``:1m`` entries carried a flat 2x input / 1.5x
+    output premium (the rate card of the earlier Sonnet 4 / 4.5 1M beta, which
+    never applied to these models) and overstated every reported cost on them.
+
+    Examples:
+        >>> metering_model_id("us.anthropic.claude-sonnet-5:1m")
+        'us.anthropic.claude-sonnet-5'
+
+        >>> metering_model_id("us.amazon.nova-2-lite-v1:0:flex")
+        'us.amazon.nova-2-lite-v1:0:flex'
+
+    Args:
+        model_id: The configured model ID, possibly with a ``:1m`` suffix
+
+    Returns:
+        The model ID to use in the metering key. Anything else (including an
+        empty value or an ARN) is returned unchanged.
+    """
+    if model_id and model_id.endswith(LONG_CONTEXT_SUFFIX):
+        return model_id[: -len(LONG_CONTEXT_SUFFIX)]
+    return model_id
+
+
+def resolve_model_id_from_arn(model_id: str) -> str:
+    """
+    Reduce a Bedrock model ARN to the model ID it names.
+
+    Bedrock accepts either a bare model ID (``us.anthropic.claude-sonnet-4-6``)
+    or an ARN. GovCloud has no bare cross-region inference-profile path, so a
+    GovCloud config must name an account-scoped inference-profile ARN. Callers
+    that look a model up in a catalog keyed by model ID (pricing.yaml) need the
+    trailing segment.
+
+    ARN fields are colon-delimited and the resource segment itself contains
+    colons (model IDs end in ``:0``), so the split is bounded at 5 and the
+    resource type is then stripped at the first ``/``.
+
+    Anything that is not a well-formed ARN — a bare model ID, ``LambdaHook``,
+    or a malformed string — is returned unchanged. Opaque resources
+    (``application-inference-profile/<uuid>``, ``provisioned-model/<id>``)
+    resolve to that opaque id, since the underlying foundation model cannot be
+    determined without a GetInferenceProfile API call.
+
+    Examples:
+        >>> resolve_model_id_from_arn(
+        ...     "arn:aws-us-gov:bedrock:us-gov-west-1:123456789012"
+        ...     ":inference-profile/us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        ... )
+        'us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0'
+
+        >>> resolve_model_id_from_arn(
+        ...     "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6"
+        ... )
+        'anthropic.claude-sonnet-4-6'
+
+        >>> resolve_model_id_from_arn("us.anthropic.claude-sonnet-4-6")
+        'us.anthropic.claude-sonnet-4-6'
+
+    Args:
+        model_id: A Bedrock model ID or ARN.
+
+    Returns:
+        The model ID named by the ARN, or the input unchanged when it is not a
+        parseable ARN.
+    """
+    if not model_id or not model_id.startswith("arn:"):
+        return model_id
+
+    # arn:<partition>:<service>:<region>:<account>:<resource-type>/<resource-id>
+    parts = model_id.split(":", 5)
+    if len(parts) < 6:
+        return model_id
+
+    resource = parts[5]
+    if "/" not in resource:
+        return model_id
+
+    return resource.split("/", 1)[1] or model_id
+
+
+@lru_cache(maxsize=1)
+def _load_model_limits() -> list[dict]:
+    """
+    Load model limits from config_library/model_config_limits.yaml on disk.
+
+    This is the OFFLINE fallback (dev checkouts, idp-cli, notebooks). At runtime
+    in a deployed stack the DynamoDB Configuration Table is authoritative — see
+    _get_effective_model_limits(). Mirrors how config_library/pricing.yaml is
+    resolved by merge_utils._load_valid_bedrock_models: a single source file in
+    config_library/, nothing bundled into the wheel.
+
+    Returns:
+        List of model limit entries with pattern and max_output_tokens.
+
+    Raises:
+        FileNotFoundError: If model_config_limits.yaml cannot be found.
+        ValueError: If the YAML file is malformed or missing required fields.
+    """
+    limit_paths = [
+        # 1. Development / publish: repo-root config_library/ (5 parents up).
+        Path(__file__).parent.parent.parent.parent.parent
+        / "config_library"
+        / "model_config_limits.yaml",
+        # 2. Fallback: IDP_PROJECT_ROOT or current working directory.
+        Path(os.environ.get("IDP_PROJECT_ROOT", "."))
+        / "config_library"
+        / "model_config_limits.yaml",
+    ]
+
+    limit_file = None
+    for path in limit_paths:
+        if path.exists():
+            limit_file = path
+            break
+
+    if not limit_file:
+        raise FileNotFoundError(
+            "model_config_limits.yaml not found. "
+            "Ensure idp-cli is run from repository root or set IDP_PROJECT_ROOT environment variable. "
+            f"Searched paths: {[str(p) for p in limit_paths]}"
+        )
+
+    try:
+        with open(limit_file) as f:
+            config = yaml.safe_load(f)
+
+        if not config or "model_limits" not in config:
+            raise ValueError(
+                f"model_config_limits.yaml is missing 'model_limits' key: {limit_file}"
+            )
+
+        model_limits = config.get("model_limits", [])
+        logger.debug(
+            "Loaded %d model limit patterns from model_config_limits.yaml",
+            len(model_limits),
+        )
+        return model_limits
+
+    except yaml.YAMLError as e:
+        raise ValueError(f"Failed to parse model_config_limits.yaml: {e}") from e
+
+
+# Effective-limits cache. Model limits are consulted on every Bedrock call, so
+# a per-call DynamoDB read is too slow, but caching forever would require a
+# cold start to pick up UI edits. A 60s TTL bounds staleness after an admin
+# saves in the UI while collapsing thousands of hot-path calls to ~1 read/min
+# per warm container (same TTL the configuration_resolver uses for user scopes).
+_LIMITS_CACHE: dict = {"data": None, "ts": 0.0}
+_LIMITS_CACHE_TTL_SECONDS = 60
+
+
+def _clear_model_limits_cache() -> None:
+    """Reset both limit caches (for tests and tooling)."""
+    _LIMITS_CACHE["data"] = None
+    _LIMITS_CACHE["ts"] = 0.0
+    _load_model_limits.cache_clear()
+
+
+def _load_model_limits_from_dynamodb() -> Optional[list[dict]]:
+    """
+    Load merged model limits (Default + Custom) from the Configuration Table.
+
+    Returns None — never raises — when the table is unavailable so callers fall
+    back to the on-disk config_library/ YAML: no CONFIGURATION_TABLE_NAME env
+    var (offline/idp-cli/notebooks), missing records, or any read/validation
+    error. ConfigurationManager is imported lazily because config/merge_utils
+    already imports this module (a top-level import would create a cycle).
+    """
+    if not os.environ.get("CONFIGURATION_TABLE_NAME"):
+        return None
+    try:
+        from idp_common.config.configuration_manager import (  # noqa: PLC0415
+            ConfigurationManager,
+        )
+
+        merged = ConfigurationManager().get_merged_model_config_limits()
+        if merged is None or not merged.model_limits:
+            return None
+        return [
+            entry.model_dump(mode="python", exclude_none=True)
+            for entry in merged.model_limits
+        ]
+    except Exception as e:  # fallback must be total — never break a Bedrock call
+        logger.debug(
+            "Model limits unavailable from DynamoDB, using config_library YAML: %s",
+            e,
+        )
+        return None
+
+
+def _get_effective_model_limits() -> list[dict]:
+    """
+    Return the model limits in effect: DynamoDB (merged Default/Custom) when a
+    Configuration Table is reachable, else the config_library/ YAML on disk.
+    Results are cached for _LIMITS_CACHE_TTL_SECONDS.
+    """
+    now = time.time()
+    if (
+        _LIMITS_CACHE["data"] is not None
+        and (now - _LIMITS_CACHE["ts"]) < _LIMITS_CACHE_TTL_SECONDS
+    ):
+        return _LIMITS_CACHE["data"]
+
+    limits = _load_model_limits_from_dynamodb()
+    if limits is None:
+        limits = _load_model_limits()
+
+    _LIMITS_CACHE["data"] = limits
+    _LIMITS_CACHE["ts"] = now
+    return limits
+
+
+def get_model_max_output_tokens(model_id: str) -> int:
+    """
+    Get the maximum output tokens supported by a Bedrock model.
+
+    This function determines model-specific maximum token limits from the
+    effective limits list: the DynamoDB Configuration Table (merged
+    DefaultModelConfigLimits + CustomModelConfigLimits, editable in the UI) when
+    available, else config_library/model_config_limits.yaml on disk. Patterns
+    are matched in order (first match wins). There is no AWS API that exposes
+    the per-model output limit, so these limits are the source of truth; an
+    unmatched model raises ValueError (callers can fall back to
+    parse_max_tokens_limit_from_error on a Bedrock over-limit
+    ValidationException to self-heal a missing entry).
+
+    Token Limits by Model Family (from model_config_limits.yaml):
+        - Claude Sonnet 5 / Opus 4.6-4.8 / Sonnet 4.6: 128,000 tokens
+        - Other Claude 4.x models: 64,000 tokens
+        - Claude 3.x models: 8,192 tokens
+        - Amazon Nova models: 10,000 tokens
+        - OpenAI GPT-5.x: 128,000 tokens
+
+    Args:
+        model_id: Bedrock model identifier (e.g., "us.anthropic.claude-sonnet-5")
+
+    Returns:
+        Maximum output tokens supported by the model
+
+    Raises:
+        FileNotFoundError: If model_config_limits.yaml cannot be found
+        ValueError: If model_config_limits.yaml is malformed
+        RuntimeError: If no pattern matches the model_id (should never happen with ".*" catch-all)
+
+    Examples:
+        >>> get_model_max_output_tokens("us.anthropic.claude-sonnet-5")
+        128000
+        >>> get_model_max_output_tokens("us.anthropic.claude-haiku-4-5-20251001-v1:0")
+        64000
+        >>> get_model_max_output_tokens("us.amazon.nova-lite-v1:0")
+        10000
+    """
+    model_id_lower = model_id.lower()
+
+    # DynamoDB (UI-editable) when available, else disk YAML (raises if the
+    # file is also unavailable or malformed)
+    model_limits = _get_effective_model_limits()
+
+    # Match against patterns in order (first match wins)
+    for limit_entry in model_limits:
+        pattern = limit_entry.get("pattern", "")
+        max_tokens = limit_entry.get("max_output_tokens")
+
+        if not pattern or max_tokens is None:
+            logger.warning(
+                "Skipping malformed model limit entry",
+                extra={"entry": limit_entry},
+            )
+            continue
+
+        try:
+            matched = re.search(pattern, model_id_lower)
+        except re.error:
+            # A malformed regex should never crash the Bedrock hot path.
+            # ModelLimitEntry validates patterns at save time, but data written
+            # through a bypass path or hand-edited YAML could still be invalid.
+            logger.warning(
+                "Skipping model limit entry with invalid regex pattern",
+                extra={"pattern": pattern},
+            )
+            continue
+
+        if matched:
+            logger.debug(
+                "Matched model limit pattern",
+                extra={
+                    "model_id": model_id,
+                    "pattern": pattern,
+                    "max_output_tokens": max_tokens,
+                },
+            )
+            return max_tokens
+
+    # No pattern matched - unknown/unsupported model
+    raise ValueError(
+        f"Unsupported model ID: {model_id}. "
+        f"No max_tokens limit defined in model_config_limits.yaml. "
+        f"Supported model families: Claude 4.x, Claude 3.x, Amazon Nova. "
+        f"To add this model, run scripts/discover_model_limits.py to test its actual limits."
+    )
+
+
+def get_model_max_input_tokens(model_id: str) -> int:
+    """Get the maximum INPUT (context-window) tokens supported by a model.
+
+    Companion to :func:`get_model_max_output_tokens`, backed by the same
+    EFFECTIVE limits (DynamoDB Configuration Table when available, else
+    ``config_library/model_config_limits.yaml`` on disk) via the
+    ``max_input_tokens`` field. Drives
+    model-aware auto-sizing of shard token/page budgets and confidence list-batch
+    sizes (see ``idp_common.bedrock.sizing``). Patterns are matched in order
+    (first match wins), so ``:1m`` extended-context variants — which have their
+    own 1,000,000-token patterns placed before the base entries — resolve to the
+    large window rather than the base 200K.
+
+    Args:
+        model_id: Bedrock model identifier (e.g. ``us.anthropic.claude-sonnet-5:1m``)
+
+    Returns:
+        Maximum input/context tokens supported by the model.
+
+    Raises:
+        ValueError: If no pattern matches, or the matched entry has no
+            ``max_input_tokens`` (callers should fall back to a safe default).
+
+    Examples:
+        >>> get_model_max_input_tokens("us.anthropic.claude-sonnet-5")
+        200000
+        >>> get_model_max_input_tokens("us.anthropic.claude-sonnet-5:1m")
+        1000000
+        >>> get_model_max_input_tokens("us.amazon.nova-lite-v1:0")
+        300000
+    """
+    model_id_lower = model_id.lower()
+    # Use the EFFECTIVE limits (DynamoDB Configuration Table when available, else
+    # config_library/model_config_limits.yaml on disk) — same source as
+    # get_model_max_output_tokens — so a window edited in the UI's Model Limits
+    # page also drives input-based auto-sizing.
+    model_limits = _get_effective_model_limits()
+
+    for limit_entry in model_limits:
+        pattern = limit_entry.get("pattern", "")
+        max_input = limit_entry.get("max_input_tokens")
+        if not pattern:
+            continue
+        if re.search(pattern, model_id_lower):
+            if max_input is None:
+                raise ValueError(
+                    f"Model ID {model_id} matched pattern {pattern!r} but that "
+                    "entry has no 'max_input_tokens'. Add it to "
+                    "model_config_limits.yaml."
+                )
+            logger.debug(
+                "Matched model input-window pattern",
+                extra={
+                    "model_id": model_id,
+                    "pattern": pattern,
+                    "max_input_tokens": max_input,
+                },
+            )
+            return max_input
+
+    raise ValueError(
+        f"Unsupported model ID: {model_id}. No max_input_tokens defined in "
+        "model_config_limits.yaml. Supported families: Claude, Amazon Nova, "
+        "OpenAI GPT-5.x."
+    )
+
+
+# --- Image (vision) token estimation ----------------------------------------
+# Claude sees an image as 28x28-pixel patches, so it costs
+# ceil(w/28) * ceil(h/28) visual tokens — but only AFTER being downscaled to the
+# model's resolution tier, which caps the cost: 4,784 tokens (2,576 px long edge)
+# on the high-resolution tier, 1,568 (1,568 px long edge) on every earlier model.
+# Measured for one 2550x3301 page on us.anthropic.claude-sonnet-5: 4,761 real
+# input tokens, against the 11,223 the older (w*h)/750 estimate predicted. That
+# 2.4x over-statement is what made an image-heavy extraction request look like a
+# context-window overflow when the real failure was a per-image dimension
+# rejection (#994), so the cap matters to the diagnosis, not just to accuracy.
+_VISUAL_TOKEN_PATCH_PX = 28
+_HIGH_RES_VISUAL_TOKEN_CAP = 4784
+_STANDARD_VISUAL_TOKEN_CAP = 1568
+# High resolution is "Claude 4.7 and later": Opus 4.7/4.8, Opus 5, Opus 5.5,
+# Sonnet 5. Opus 5.5 is covered by the ``opus-5`` alternative below rather than an
+# alternative of its own, because the pattern is a substring search and
+# "claude-opus-5-5" contains "claude-opus-5" — that is the intended answer, not an
+# accident: Opus 5.5 shares the Opus 4.7+ tokenizer and vision tier.
+# Sonnet 4.6, Haiku 4.5 and the 3.x family are standard tier.
+# Haiku 5.5 is high resolution and Haiku 4.5 is not, so the tier does not follow
+# from the family name. Measured, not assumed: one 2550x3301 page costs 4,770 real
+# input tokens on us.anthropic.claude-haiku-5-5 against 1,542 on
+# us.anthropic.claude-haiku-4-5-20251001-v1:0, with Sonnet 5 at 4,768 for the same
+# image (us-west-2, 2026-10-08). Getting this wrong understates an image-heavy
+# Haiku 5.5 request by ~3x, which is the direction that reads as "plenty of
+# context left" right up to the rejection.
+# Sonnet 5.5 is covered by the ``sonnet-5`` alternative below for the same reason
+# Opus 5.5 is covered by ``opus-5`` — substring — and that inheritance was CHECKED
+# rather than relied on, because this file is the one place a 5.5 model's answer has
+# differed from its 5.0 sibling four times over. Measured: one 2550x3301 page costs
+# 4,772 real input tokens on us.anthropic.claude-sonnet-5-5 (us-east-1,
+# 2026-10-14), against 4,768 for Sonnet 5 on the same image — the same
+# high-resolution tier, so no new alternative is needed here.
+# Deliberately a separate statement of the model set from
+# client._CLAUDE_4_7_BASE_NAMES, not a derivation of it: "rejects sampling
+# parameters" and "tokenizes images on the high-resolution tier" are different
+# properties that coincide today. A parity test fails if the two ever disagree, so
+# a model added to one must be considered for the other rather than silently
+# inheriting a default (#994). The pattern is a substring search so it matches
+# region prefixes (``us.``), the ``:1m`` suffix and inference-profile ARNs alike.
+_HIGH_RES_MODEL_PATTERN = re.compile(
+    r"claude-(opus-4-[78]|opus-5|sonnet-5|haiku-5-5)", re.I
+)
+# Non-Claude families tokenize images differently (Nova budgets by payload size,
+# not patches), so they keep the deliberately generous legacy figure: this
+# estimate only drives a warning and a failure message, and over-stating is the
+# safe direction there.
+_LEGACY_IMAGE_PIXELS_PER_TOKEN = 750
+
+
+def visual_token_cap_for_model(model_id: Optional[str]) -> int:
+    """Maximum visual tokens one image can cost on ``model_id``."""
+    if model_id and _HIGH_RES_MODEL_PATTERN.search(model_id):
+        return _HIGH_RES_VISUAL_TOKEN_CAP
+    return _STANDARD_VISUAL_TOKEN_CAP
+
+
+def estimate_image_tokens(
+    width: int, height: int, model_id: Optional[str] = None
+) -> int:
+    """Estimate the input tokens one ``width`` x ``height`` image costs.
+
+    For Claude, patch math capped at the model's resolution tier (see the
+    constants above). For other families, the legacy (w*h)/750 figure — no
+    published patch equivalent, and over-stating is harmless here.
+    """
+    if width <= 0 or height <= 0:
+        return 1
+    if not model_id or "claude" not in model_id.lower():
+        return max(1, int(width * height / _LEGACY_IMAGE_PIXELS_PER_TOKEN))
+    patches = math.ceil(width / _VISUAL_TOKEN_PATCH_PX) * math.ceil(
+        height / _VISUAL_TOKEN_PATCH_PX
+    )
+    return max(1, min(patches, visual_token_cap_for_model(model_id)))
+
+
+# Bedrock's ValidationException for an over-limit maxTokens request states the
+# real cap in the message. There is no AWS API that exposes the per-model output
+# limit, so this error text is the authoritative source we fall back to when
+# model_config_limits.yaml is missing/stale for a model. Two observed formats:
+#   Claude: "max_tokens: 999999 > 128000, which is the maximum allowed number of
+#            output tokens for anthropic.claude-sonnet-5"
+#   Nova:   "The maximum tokens you requested exceeds the model limit of 10000."
+_MAX_TOKENS_LIMIT_PATTERNS = (
+    re.compile(r">\s*(\d+)\s*,\s*which is the maximum", re.IGNORECASE),
+    re.compile(r"model limit of\s*(\d+)", re.IGNORECASE),
+)
+
+
+def parse_max_tokens_limit_from_error(message: str) -> Optional[int]:
+    """Extract the true max-output-tokens limit from a Bedrock ValidationException.
+
+    Returns the limit as an int when the message matches a known over-limit
+    format, otherwise None (the error is unrelated to max_tokens).
+    """
+    if not message:
+        return None
+    for pattern in _MAX_TOKENS_LIMIT_PATTERNS:
+        m = pattern.search(message)
+        if m:
+            try:
+                return int(m.group(1))
+            except ValueError:
+                return None
+    return None

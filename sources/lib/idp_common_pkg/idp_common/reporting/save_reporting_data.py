@@ -11,15 +11,22 @@ import json
 import logging
 import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
 
 import boto3
 import pyarrow as pa
 import pyarrow.parquet as pq
 
 from idp_common.config.models import IDPConfig
+from idp_common.metering_units import (
+    CACHE_UNITS,
+    NOT_CHARGEABLE,
+    classify_absent_unit,
+    pricing_key_service,
+)
+from idp_common.metrics import emit_document_cost_metrics
 from idp_common.models import Document
 from idp_common.s3 import get_json_content
+from idp_common.utils import parse_s3_uri
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -126,14 +133,7 @@ class SaveReportingData:
         Returns:
             Tuple of (bucket, key)
         """
-        parsed = urlparse(uri)
-        if parsed.scheme != "s3":
-            raise ValueError(f"Not an S3 URI: {uri}")
-
-        bucket = parsed.netloc
-        # Remove leading slash from key
-        key = parsed.path.lstrip("/")
-
+        bucket, key = parse_s3_uri(uri)
         return bucket, key
 
     def _infer_pyarrow_type(self, value: Any) -> pa.DataType:
@@ -220,6 +220,54 @@ class SaveReportingData:
 
         return flattened
 
+    def _multi_instance_records(
+        self, class_label: Optional[str], extraction_data: Dict[str, Any]
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Instance records of a multi-instance section, or None (GitHub #715).
+
+        A class flagged ``x-aws-idp-multi-instance`` produces
+        ``inference_result = {"instances": [...]}``. Left alone, ``_flatten_json_data``
+        ``json.dumps``'s that list into a SINGLE opaque
+        ``inference_result.instances`` Athena column: N columns collapse to 1 and
+        every existing dashboard query against the class's fields returns NULL.
+
+        So a wrapped section fans out into one parquet row per instance, exactly
+        as the existing top-level-list branch already does — same column names a
+        single-record class produces, plus ``record_index``. Glue tables are
+        crawler-discovered, so there is no static column list to update.
+
+        Returns None (leave the section on the ordinary single-row path) when the
+        class is not flagged, the class is unknown, or the wrapper is absent or
+        empty. The config is the source of truth here, not the shape of the
+        output: a Designate-mode class that happens to name its own array
+        ``instances`` must keep its existing reporting shape.
+        """
+        if not class_label:
+            return None
+
+        from idp_common.config.schema_constants import (
+            ID_FIELD,
+            X_AWS_IDP_DOCUMENT_TYPE,
+        )
+        from idp_common.schema.multi_instance import (
+            is_multi_instance,
+            unwrap_instances,
+        )
+
+        flagged = False
+        for class_obj in self.config.classes or []:
+            if not isinstance(class_obj, dict):
+                continue
+            class_id = class_obj.get(ID_FIELD) or class_obj.get(X_AWS_IDP_DOCUMENT_TYPE)
+            if isinstance(class_id, str) and class_id.lower() == class_label.lower():
+                flagged = is_multi_instance(class_obj)
+                break
+        if not flagged:
+            return None
+
+        records = unwrap_instances(extraction_data.get("inference_result"))
+        return records or None
+
     def _create_dynamic_schema(self, records: List[Dict[str, Any]]) -> pa.Schema:
         """
         Create a PyArrow schema dynamically from a list of records.
@@ -247,7 +295,14 @@ class SaveReportingData:
         for record in records:
             all_fields.update(record.keys())
 
-        # Create schema with conservative typing
+        # Create schema with conservative typing. Schema stays naive
+        # ``pa.timestamp("ms")`` because ``_convert_schema_to_glue_columns``
+        # maps that exact type to Glue Hive ``timestamp``; a tz-aware
+        # variant would fall through the mapping and become
+        # ``string``, breaking Athena time-range queries on
+        # dynamically-created document-sections tables. The sanitizer
+        # below coerces tz-aware datetimes to naive UTC to keep pyarrow
+        # happy while preserving the wall-clock semantics.
         schema_fields = []
         for field_name in sorted(all_fields):  # Sort for consistent ordering
             if field_name in TIMESTAMP_FIELDS:
@@ -290,22 +345,30 @@ class SaveReportingData:
                     # Convert all values to strings for string fields
                     sanitized_record[field_name] = self._convert_value_to_string(value)
                 elif field.type == pa.timestamp("ms"):
-                    # Handle timestamp fields
+                    # Handle timestamp fields.
+                    # Round-13 review fix: pyarrow rejects tz-AWARE
+                    # datetimes against a NAIVE column; ``datetime.now()``
+                    # historically returned naive so this worked, but any
+                    # caller (e.g. an updated save_rule_validation) now
+                    # passing ``datetime.now(timezone.utc)`` would raise
+                    # ``TypeError: Cannot use naive schema for a tz-aware
+                    # datetime`` at pa.Table.from_pylist. Normalize to
+                    # naive UTC before write so both shapes survive.
+                    parsed: Optional[datetime.datetime] = None
                     if isinstance(value, datetime.datetime):
-                        sanitized_record[field_name] = value
-                    else:
-                        # Try to parse string timestamps
+                        parsed = value
+                    elif isinstance(value, str):
                         try:
-                            if isinstance(value, str):
-                                sanitized_record[field_name] = (
-                                    datetime.datetime.fromisoformat(
-                                        value.replace("Z", "+00:00")
-                                    )
-                                )
-                            else:
-                                sanitized_record[field_name] = None
+                            parsed = datetime.datetime.fromisoformat(
+                                value.replace("Z", "+00:00")
+                            )
                         except (ValueError, TypeError):
-                            sanitized_record[field_name] = None
+                            parsed = None
+                    if parsed is not None and parsed.tzinfo is not None:
+                        parsed = parsed.astimezone(datetime.timezone.utc).replace(
+                            tzinfo=None
+                        )
+                    sanitized_record[field_name] = parsed
                 else:
                     # For any other types, convert to string as fallback
                     sanitized_record[field_name] = self._convert_value_to_string(value)
@@ -346,7 +409,14 @@ class SaveReportingData:
                 glue_type = "double"
             elif field.type == pa.float32():
                 glue_type = "float"
-            elif field.type == pa.timestamp("ms"):
+            elif field.type == pa.timestamp("ms") or field.type == pa.timestamp(
+                "ms", tz="UTC"
+            ):
+                # Round-19 review fix (#357): also match the tz-aware
+                # timestamp variant. Previously ONLY naive
+                # ``pa.timestamp("ms")`` mapped to Glue "timestamp";
+                # tz-aware fell through to "string" and Athena time-range
+                # queries silently returned nothing for those columns.
                 glue_type = "timestamp"
             else:
                 # Default to string for unknown types
@@ -599,6 +669,7 @@ class SaveReportingData:
                 ("correctly_classified_pages", pa.int32()),
                 ("correctly_split_without_order", pa.int32()),
                 ("correctly_split_with_order", pa.int32()),
+                ("config_version", pa.string()),
             ]
         )
 
@@ -615,6 +686,7 @@ class SaveReportingData:
                 ("false_discovery_rate", pa.float64()),
                 ("weighted_overall_score", pa.float64()),
                 ("evaluation_date", pa.timestamp("ms")),
+                ("config_version", pa.string()),
             ]
         )
 
@@ -634,6 +706,7 @@ class SaveReportingData:
                 ("confidence_threshold", pa.string()),
                 ("weight", pa.float64()),
                 ("evaluation_date", pa.timestamp("ms")),
+                ("config_version", pa.string()),
             ]
         )
 
@@ -689,8 +762,12 @@ class SaveReportingData:
             "false_discovery_rate": eval_result.get("overall_metrics", {}).get(
                 "false_discovery_rate", 0.0
             ),
+            # Preserve None for documents whose sections were all no-ops
+            # (no extractable schema). Athena / parquet float64 columns treat
+            # this as NULL, so downstream queries can filter with IS NOT NULL
+            # instead of accidentally averaging a 0.0 for excluded docs.
             "weighted_overall_score": eval_result.get("overall_metrics", {}).get(
-                "weighted_overall_score", 0.0
+                "weighted_overall_score"
             ),
             "execution_time": eval_result.get("execution_time", 0.0),
             # Doc split classification metrics (None if not available for backward compatibility)
@@ -730,6 +807,7 @@ class SaveReportingData:
                 if doc_split_metrics
                 else None
             ),
+            "config_version": document.config_version or "default",
         }
 
         # Save document metrics in Parquet format
@@ -764,10 +842,14 @@ class SaveReportingData:
                 "false_discovery_rate": section_result.get("metrics", {}).get(
                     "false_discovery_rate", 0.0
                 ),
+                # Sections excluded from scoring (no extractable schema) carry
+                # ``None`` — keep it as SQL NULL so per-section rollups don't
+                # average in a fake 0.0.
                 "weighted_overall_score": section_result.get("metrics", {}).get(
-                    "weighted_overall_score", 0.0
+                    "weighted_overall_score"
                 ),
                 "evaluation_date": evaluation_date,  # Use document's initial_event_time
+                "config_version": document.config_version or "default",
             }
             section_records.append(section_record)
 
@@ -804,6 +886,7 @@ class SaveReportingData:
                     ),
                     "weight": weight,  # Explicitly handle None values
                     "evaluation_date": evaluation_date,  # Use document's initial_event_time
+                    "config_version": document.config_version or "default",
                 }
                 attribute_records.append(attribute_record)
                 logger.debug(
@@ -896,167 +979,119 @@ class SaveReportingData:
         self._pricing_cache = pricing_map
         return pricing_map
 
-    def _create_or_update_metering_glue_table(self, schema: pa.Schema) -> bool:
+    def _get_unit_cost(
+        self, service_api: str, unit: str, value: Any = 1
+    ) -> Optional[float]:
         """
-        Create or update a Glue table specifically for metering data.
+        Get the unit cost for a specific service API and unit using the
+        configuration dictionary (same source as the UI).
+
+        Resolution is by EXACT pricing key. ``service_api`` is tried first, then
+        progressively shorter ``/``-delimited suffixes of it, and the longest
+        match wins — the same rule the benchmark harness uses
+        (``benchmarks/harness/lib.py::price_metering``), so the two cost figures
+        the project publishes cannot diverge. Every shipped pricing key is fully
+        qualified (``bedrock/<model-id>``, ``textract/<api>``,
+        ``lambda_hook/<function-name>``), so the suffix walk only ever strips
+        leading context components; it cannot bind one model to another.
+
+        The suffix walk is also what keeps a pricing key that is *less* qualified
+        than the metering key working, which is why a user config that keys a
+        Lambda hook on the bare ``GENAIIDP-<name>`` still resolves even though the
+        shipped default is now ``lambda_hook/GENAIIDP-<name>``. Note the
+        corollary: a Lambda hook's metering key must carry the bare function
+        name, not the configured ARN — an ARN delimits the name with ``:``, which
+        this walk cannot split, so an ARN-keyed metering row is unpriceable. See
+        ``bedrock.client.lambda_hook_metering_name``.
+
+        There is deliberately NO substring/fuzzy fallback. The previous
+        implementation accepted a pricing key that was merely a substring of the
+        requested ``service_api`` (or vice versa), and — worse — a unit name that
+        was merely a substring of the requested ``unit``. Because ``inputTokens``
+        is the first unit in every pricing row, ``cacheReadInputTokens`` bound to
+        it and cache reads were billed at the FRESH INPUT rate: up to 10x their
+        real price, always in the expensive direction. See GitHub issue #926.
+
+        A unit the matched entry does not list is only $0.00 when
+        ``metering_units.classify_absent_unit`` says so — the metered count is
+        zero, or the unit is declared non-chargeable for that service on the
+        authority of AWS's own price list. Anything else is ``None``: Bedrock's
+        ``usage`` block grows numeric members and ``bedrock.client.numeric_usage``
+        forwards every one of them into metering, so an undeclared unit used to be
+        a new billable dimension priced at exactly $0.00 with nothing to query for
+        (GitHub issue #1212).
+
+        ``value`` defaults to ``1`` rather than to ``0``, and the direction is the
+        point: ``0`` would mean a caller that forgot to pass it got "free" for
+        every absent unit — the check silently off, which is the state #1212 is
+        about. ``1`` means such a caller gets the strict answer instead, so the
+        omission shows up as a NULL to investigate rather than as a zero nobody
+        sees.
 
         Args:
-            schema: PyArrow schema for the metering table
-
-        Returns:
-            True if table was created or updated, False otherwise
-        """
-        if not self.glue_client or not self.database_name:
-            logger.debug(
-                "Glue client or database name not configured, skipping table creation"
-            )
-            return False
-
-        table_name = "metering"
-
-        # Convert schema to Glue columns
-        columns = self._convert_schema_to_glue_columns(schema)
-
-        # Table input for create/update
-        table_input = {
-            "Name": table_name,
-            "Description": "Metering data table for document processing costs and usage",
-            "StorageDescriptor": {
-                "Columns": columns,
-                "Location": f"s3://{self.reporting_bucket}/metering/",
-                "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
-                "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
-                "Compressed": True,
-                "SerdeInfo": {
-                    "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
-                },
-            },
-            "PartitionKeys": [{"Name": "date", "Type": "string"}],
-            "TableType": "EXTERNAL_TABLE",
-            "Parameters": {
-                "projection.enabled": "true",
-                "projection.date.type": "date",
-                "projection.date.format": "yyyy-MM-dd",
-                "projection.date.range": "2020-01-01,NOW",
-                "projection.date.interval": "1",
-                "projection.date.interval.unit": "DAYS",
-                "storage.location.template": f"s3://{self.reporting_bucket}/metering/date=${{date}}/",
-            },
-        }
-
-        try:
-            # Check if table exists
-            existing_table_response = self.glue_client.get_table(
-                DatabaseName=self.database_name, Name=table_name
-            )
-
-            # Table exists, check if we need to update it
-            existing_table = existing_table_response["Table"]
-            existing_columns = existing_table["StorageDescriptor"]["Columns"]
-
-            # Check if new columns need to be added
-            existing_column_names = {col["Name"] for col in existing_columns}
-            new_column_names = {col["Name"] for col in columns}
-
-            # Check if location has changed
-            existing_location = existing_table["StorageDescriptor"].get("Location", "")
-            new_location = table_input["StorageDescriptor"]["Location"]
-
-            # Check if columns or location have changed
-            columns_changed = not new_column_names.issubset(existing_column_names)
-            location_changed = existing_location != new_location
-
-            if columns_changed or location_changed:
-                if columns_changed:
-                    logger.info(f"Updating Glue table {table_name} with new columns")
-                if location_changed:
-                    logger.info(
-                        f"Updating Glue table {table_name} with new location: {existing_location} -> {new_location}"
-                    )
-
-                self.glue_client.update_table(
-                    DatabaseName=self.database_name, TableInput=table_input
-                )
-                logger.info(f"Successfully updated Glue table {table_name}")
-                return True
-            else:
-                logger.debug(f"Glue table {table_name} already up to date")
-                return True
-
-        except Exception as e:
-            if "EntityNotFoundException" in str(e):
-                # Table doesn't exist, create it
-                logger.info(f"Creating new Glue table {table_name} for metering data")
-                try:
-                    self.glue_client.create_table(
-                        DatabaseName=self.database_name, TableInput=table_input
-                    )
-                    logger.info(f"Successfully created Glue table {table_name}")
-                    return True
-                except Exception as create_error:
-                    if "AlreadyExistsException" in str(create_error):
-                        # Race condition - table was created by another process
-                        logger.info(
-                            f"Glue table {table_name} already exists (created by another process)"
-                        )
-                        return True
-                    else:
-                        logger.error(
-                            f"Error creating Glue table {table_name}: {str(create_error)}"
-                        )
-                        return False
-            else:
-                logger.error(
-                    f"Error checking/updating Glue table {table_name}: {str(e)}"
-                )
-                return False
-
-    def _get_unit_cost(self, service_api: str, unit: str) -> float:
-        """
-        Get the unit cost for a specific service API and unit using the configuration dictionary
-        (same source as the UI).
-
-        Args:
-            service_api: The AWS service API (e.g., 'bedrock/model-id', 'textract/operation')
+            service_api: The AWS service API (e.g., 'bedrock/model-id',
+                'textract/operation')
             unit: The unit of measurement (e.g., 'inputTokens', 'pages')
+            value: The metered count for this row, which decides the absent-unit
+                case — a count of zero cannot cost anything at any rate.
 
         Returns:
-            Unit cost in USD, or 0.0 if not found
+            The unit cost in USD; ``0.0`` when a pricing entry exists and either
+            lists this unit or legitimately omits it; or ``None`` when no pricing
+            entry exists for ``service_api`` at all, or when one exists and omits
+            a unit that is neither zero nor declared free. ``None`` is an explicit
+            "unpriced" result, not a price — the caller records it as NULL so a
+            pricing gap stays distinguishable from something that is genuinely
+            free. Never silently substitutes a related model's price.
         """
-        # Get pricing from configuration dictionary
         pricing_map = self._get_pricing_from_config()
 
-        # Try exact match first
-        if service_api in pricing_map and unit in pricing_map[service_api]:
-            return pricing_map[service_api][unit]
+        parts = service_api.split("/")
+        for start in range(len(parts)):
+            candidate = "/".join(parts[start:])
+            service_costs = pricing_map.get(candidate)
+            if service_costs is None:
+                continue
+            if unit in service_costs:
+                return service_costs[unit]
+            # The entry exists but does not list this unit. Whether that means
+            # "not chargeable" or "nobody has priced this yet" is the one
+            # question classify_absent_unit answers, from a declaration sourced
+            # to AWS's published price list rather than from the shape of
+            # pricing.yaml. Reading the absence itself as "free" is what priced a
+            # newly added Bedrock usage field at $0.00 (#1212).
+            if classify_absent_unit(candidate, unit, value) == NOT_CHARGEABLE:
+                logger.debug(
+                    f"Pricing entry '{candidate}' lists no unit '{unit}'; "
+                    f"not chargeable ($0.0)"
+                )
+                return 0.0
+            declaration = (
+                "idp_common.metering_units.EXPECTED_CACHE_UNIT_OMISSIONS, per "
+                "pricing key and per unit"
+                if unit in CACHE_UNITS
+                else "idp_common.metering_units.NON_CHARGEABLE_METERING_UNITS, "
+                f"for the '{pricing_key_service(candidate)}' service"
+            )
+            logger.warning(
+                f"UNPRICED UNIT: pricing entry '{candidate}' lists no unit "
+                f"'{unit}' and nothing declares it non-chargeable in "
+                f"{declaration}. "
+                f"Recording this metering row (value={value}) with a NULL cost "
+                f"rather than $0.00, which would understate spend silently. "
+                f"Either add a '{unit}' rate to the '{candidate}' pricing entry, "
+                f"or declare the unit non-chargeable there with the AWS "
+                f"price-list reading that shows it is."
+            )
+            return None
 
-        # Try partial matches for common patterns
-        service_api_lower = service_api.lower()
-        unit_lower = unit.lower()
-
-        for service_key, service_costs in pricing_map.items():
-            service_key_lower = service_key.lower()
-            if (
-                service_key_lower in service_api_lower
-                or service_api_lower in service_key_lower
-            ):
-                for unit_key, cost in service_costs.items():
-                    unit_key_lower = unit_key.lower()
-                    if (
-                        unit_key_lower == unit_lower
-                        or unit_key_lower in unit_lower
-                        or unit_lower in unit_key_lower
-                    ):
-                        logger.info(
-                            f"Using partial match for {service_api}/{unit}: {service_key}/{unit_key} = ${cost}"
-                        )
-                        return cost
-
-        # Log when no cost mapping is found
         logger.warning(
-            f"No unit cost mapping found for service_api='{service_api}', unit='{unit}'. Using $0.0"
+            f"UNPRICED: no pricing entry for service_api='{service_api}' "
+            f"(unit='{unit}'). Recording this metering row with a NULL cost "
+            f"rather than $0.00, which would understate spend silently. Add a "
+            f"'{service_api}' entry to the pricing configuration."
         )
-        return 0.0
+        return None
 
     def clear_pricing_cache(self):
         """
@@ -1081,7 +1116,12 @@ class SaveReportingData:
             logger.warning(warning_msg)
             return None
 
-        # Define schema for metering data with new cost fields
+        # Define schema for metering data with new cost fields.
+        # ``timestamp`` is the write time (= doc completion time, since this
+        # runs at end of workflow). ``initial_event_time`` preserves the
+        # queue time for consumers that need queue-time semantics. See
+        # docs/reporting-sql-layer.md §2.3 for the partitioning
+        # rationale.
         metering_schema = pa.schema(
             [
                 ("document_id", pa.string()),
@@ -1092,34 +1132,74 @@ class SaveReportingData:
                 ("number_of_pages", pa.int32()),
                 ("unit_cost", pa.float64()),
                 ("estimated_cost", pa.float64()),
-                ("timestamp", pa.timestamp("ms")),
+                # Explicit UTC tz — round-8 review fix. Values are
+                # written from tz-aware datetimes (datetime.now(UTC),
+                # fromisoformat with '+00:00'), so declaring the pyarrow
+                # schema as tz="UTC" preserves the tz metadata in the
+                # parquet file instead of silently stripping it. Athena
+                # treats both forms as UTC on read, but readers outside
+                # Athena (Pandas, DuckDB) now see the correct tz too.
+                ("timestamp", pa.timestamp("ms", tz="UTC")),
+                ("initial_event_time", pa.timestamp("ms", tz="UTC")),
+                ("config_version", pa.string()),
+                # ``document_class`` — the document's overall classification,
+                # derived from ``document.sections`` using the 0/1/N rule:
+                # 0 distinct section classes → 'unknown'; 1 → that class;
+                # >1 → 'mixed'. Excluded sections (instruction/legal
+                # boilerplate) are filtered out. Present on rows written
+                # by post-widening writers; older parquet files return
+                # NULL via Parquet schema evolution. The rollup Lambda
+                # falls back to a ``document_sections_*`` JOIN when this
+                # is NULL. See docs/reporting-sql-layer.md §10.
+                ("document_class", pa.string()),
             ]
         )
 
-        # Use document.initial_event_time if available, otherwise use current time
+        # Partition by WRITE TIME (= completion time). Every metering row
+        # lands in the current partition — no time-travel into past
+        # partitions, so rollup rows are trivially append-only. The
+        # ``initial_event_time`` column preserves queue-time semantics for
+        # any consumer that needs them.
+        timestamp = datetime.datetime.now(datetime.timezone.utc)
+        date_partition = timestamp.strftime("%Y-%m-%d")
+        hour_partition = timestamp.strftime("%H")
+
+        # Parse initial_event_time for the column value (best-effort — falls
+        # back to timestamp if parsing fails or the field is missing).
+        # Round-9 review fix: the metering parquet schema now declares
+        # ``tz="UTC"``, which requires timezone-AWARE datetimes. A naive
+        # ISO string like ``"2026-08-27T12:34:56"`` (no Z, no offset)
+        # parses to a naive datetime; the previous None-fallback didn't
+        # catch it. Force UTC on any naive result so pyarrow doesn't
+        # raise ArrowInvalid at write.
+        initial_event_time: Optional[datetime.datetime] = None
         if document.initial_event_time:
             try:
-                # Try to parse the initial_event_time string into a datetime object
-                doc_time = datetime.datetime.fromisoformat(
+                initial_event_time = datetime.datetime.fromisoformat(
                     document.initial_event_time.replace("Z", "+00:00")
-                )
-                timestamp = doc_time
-                date_partition = doc_time.strftime("%Y-%m-%d")
-                logger.info(
-                    f"Using document initial_event_time: {document.initial_event_time} for partitioning"
                 )
             except (ValueError, TypeError) as e:
                 logger.warning(
-                    f"Could not parse document.initial_event_time: {document.initial_event_time}, using current time instead. Error: {str(e)}"
+                    f"Could not parse document.initial_event_time: "
+                    f"{document.initial_event_time}. Error: {str(e)}"
                 )
-                timestamp = datetime.datetime.now()
-                date_partition = timestamp.strftime("%Y-%m-%d")
-        else:
+        if initial_event_time is None:
+            # Log the fallback — downstream queue-latency computations
+            # (initial_event_time → timestamp) would otherwise silently
+            # read as 0 duration, indistinguishable from truly-instant
+            # processing. Round-11 review fix.
             logger.warning(
-                "Document initial_event_time not available, using current time instead"
+                f"Document {document.id!r} has no initial_event_time; "
+                f"falling back to completion timestamp {timestamp.isoformat()}. "
+                f"Queue-latency metrics for this doc will read as 0."
             )
-            timestamp = datetime.datetime.now()
-            date_partition = timestamp.strftime("%Y-%m-%d")
+            initial_event_time = timestamp
+        elif initial_event_time.tzinfo is None:
+            # Naive datetime — assume UTC (matches the queue-time
+            # convention used everywhere else in the pipeline).
+            initial_event_time = initial_event_time.replace(
+                tzinfo=datetime.timezone.utc
+            )
 
         # Escape document ID by replacing slashes with underscores
         document_id = document.id or document.input_key or "unknown"
@@ -1130,8 +1210,55 @@ class SaveReportingData:
             :-3
         ]  # Include milliseconds
 
+        # Derive the document's overall classification from its sections.
+        # 0 distinct classes → 'unknown' (in-flight, FAILED, or classifier
+        # didn't fire); 1 → that class; >1 → 'mixed' (packet document).
+        # Excluded sections (instruction/legal boilerplate — Section.excluded)
+        # are filtered out so a W2 with an instructions page doesn't read as
+        # 'mixed'. Matches the read-side 0/1/N rule that the widget
+        # previously computed at query time from ``document_sections_*``,
+        # but with the ``excluded`` filter that the read-side lacked — see
+        # docs/reporting-sql-layer.md §10 and the PR description.
+        section_classes = {
+            s.classification
+            for s in (document.sections or [])
+            if s.classification and not s.excluded
+        }
+        if not section_classes:
+            document_class = "unknown"
+        elif len(section_classes) == 1:
+            document_class = next(iter(section_classes))
+        else:
+            document_class = "mixed"
+
         # Process metering data
         metering_records = []
+        # service_api values with no pricing entry at all. Collected so the miss
+        # is reported once per document as well as per row — a single grep-able
+        # line naming every unpriced service, rather than a warning buried among
+        # the per-unit ones.
+        # Each member is "<service_api> [<unit>]": the miss is per (service, unit)
+        # rather than per service, because either axis can be the one that has no
+        # price — no entry for the service at all, or an entry that omits a unit
+        # nothing declares as free (#1212). Naming only the service would report
+        # the second case as though the whole model were unpriced.
+        unpriced_rows = set()
+        # Running total of the per-row ``estimated_cost`` values below, for the
+        # ``DocumentEstimatedCost`` CloudWatch metric (GitHub issue #934 item 2).
+        # Accumulated from the SAME figure written to the parquet row, so the
+        # metric cannot drift from the Athena ledger; nothing is recomputed and no
+        # pricing decision is taken here.
+        #
+        # Starts at None and only becomes a number once a priced row is seen, so
+        # a document whose every row is unpriced emits NO cost datapoint rather
+        # than a 0.00 — the same NULL-not-zero rule the metering columns follow,
+        # and for the same reason: a zero there is indistinguishable from
+        # something genuinely free and silently understates spend.
+        # ``unpriced_row_count`` is counted separately from the ``unpriced_rows``
+        # set because that set is keyed on (service, unit) and so de-duplicates;
+        # the metric needs a row count.
+        priced_cost_total: Optional[float] = None
+        unpriced_row_count = 0
 
         for key, metrics in document.metering.items():
             # Split the key into context and service_api
@@ -1157,9 +1284,33 @@ class SaveReportingData:
                 # Get the number of pages from the document
                 num_pages = document.num_pages if document.num_pages is not None else 0
 
-                # Calculate unit cost and estimated cost using pricing from configuration
-                unit_cost = self._get_unit_cost(service_api, unit)
-                estimated_cost = float_value * unit_cost
+                # Calculate unit cost and estimated cost using pricing from
+                # configuration. ``None`` means the pricing configuration has no
+                # entry for this service at all, so both cost columns are written
+                # as NULL instead of $0.00: a zero is indistinguishable from
+                # something that is genuinely free, and it silently understates
+                # spend. SUM() in Athena ignores NULLs the same way it would a
+                # zero, so totals are unaffected, but the gap is now queryable
+                # (``WHERE unit_cost IS NULL``). See _get_unit_cost.
+                # ``float_value``, not the raw ``value``: the row records
+                # float_value, so classifying on anything else would judge one
+                # number and store another. It matters in both directions — a
+                # count of "0" as a string is a measured zero once converted, and
+                # an unconvertible count became 1.0 with a warning above, which
+                # is a non-zero the strict branch should see rather than a string
+                # the classifier reads as unreadable.
+                unit_cost = self._get_unit_cost(service_api, unit, float_value)
+                if unit_cost is None:
+                    unpriced_rows.add(f"{service_api} [{unit}]")
+                    estimated_cost = None
+                    unpriced_row_count += 1
+                else:
+                    estimated_cost = float_value * unit_cost
+                    priced_cost_total = (
+                        estimated_cost
+                        if priced_cost_total is None
+                        else priced_cost_total + estimated_cost
+                    )
 
                 metering_record = {
                     "document_id": document_id,
@@ -1171,12 +1322,42 @@ class SaveReportingData:
                     "unit_cost": unit_cost,
                     "estimated_cost": estimated_cost,
                     "timestamp": timestamp,
+                    "initial_event_time": initial_event_time,
+                    "config_version": document.config_version or "default",
+                    "document_class": document_class,
                 }
                 metering_records.append(metering_record)
 
-        # Save metering data in Parquet format
+        if unpriced_rows:
+            logger.warning(
+                f"UNPRICED for document {document_id}: {sorted(unpriced_rows)}. "
+                f"Cost for these rows is NULL, so reported spend for this "
+                f"document is INCOMPLETE. Add the missing pricing entry — or, "
+                f"for a unit an entry omits, the missing unit rate — to "
+                f"config_library/pricing.yaml; declare the unit non-chargeable "
+                f"in idp_common.metering_units only with the AWS price-list "
+                f"reading that shows it is."
+            )
+
+        # Emit the document's cost to CloudWatch so it can be alarmed on, which
+        # the parquet ledger cannot be. Deliberately BEFORE the parquet write and
+        # outside its success path: the spend happened whether or not the write
+        # succeeds, and a cost figure suppressed by a reporting-bucket failure is
+        # the one time you most want it. Fire-and-forget inside the helper, so a
+        # CloudWatch outage cannot fail this document's reporting.
+        emit_document_cost_metrics(
+            estimated_cost=priced_cost_total,
+            unpriced_row_count=unpriced_row_count,
+        )
+
+        # Save metering data in Parquet format. Path is date+hour partitioned
+        # so the tier picker's <2h tail query can prune to the current hour
+        # instead of scanning the whole day (see docs/reporting-sql-layer.md §2).
         if metering_records:
-            metering_key = f"metering/date={date_partition}/{escaped_doc_id}_{timestamp_str}_results.parquet"
+            metering_key = (
+                f"metering/date={date_partition}/hour={hour_partition}/"
+                f"{escaped_doc_id}_{timestamp_str}_results.parquet"
+            )
             self._save_records_as_parquet(
                 metering_records, metering_key, metering_schema
             )
@@ -1208,13 +1389,25 @@ class SaveReportingData:
             logger.warning(warning_msg)
             return None
 
-        # Use document.initial_event_time if available, otherwise use current time
+        # Use document.initial_event_time if available, otherwise use current time.
+        # Round-20 review fix (#1183): the fallback paths used naive
+        # ``datetime.now()`` (system local time) so the section-parquet
+        # date partition and timestamp column diverged from every other
+        # reporting-table writer (which round-13 migrated to UTC).
+        # Non-UTC hosts (unit tests, local reproducers) landed section
+        # rows in the wrong date partition. Fix: use UTC everywhere and
+        # strip tz to match the naive schema (section tables use naive
+        # timestamp; Athena reads naive as UTC).
         if document.initial_event_time:
             try:
                 # Try to parse the initial_event_time string into a datetime object
                 doc_time = datetime.datetime.fromisoformat(
                     document.initial_event_time.replace("Z", "+00:00")
                 )
+                if doc_time.tzinfo is not None:
+                    doc_time = doc_time.astimezone(datetime.timezone.utc).replace(
+                        tzinfo=None
+                    )
                 timestamp = doc_time
                 date_partition = doc_time.strftime("%Y-%m-%d")
                 logger.info(
@@ -1224,14 +1417,18 @@ class SaveReportingData:
                 logger.warning(
                     f"Could not parse document.initial_event_time: {document.initial_event_time}, using current time instead. Error: {str(e)}"
                 )
-                current_time = datetime.datetime.now()
+                current_time = datetime.datetime.now(datetime.timezone.utc).replace(
+                    tzinfo=None
+                )
                 timestamp = current_time
                 date_partition = current_time.strftime("%Y-%m-%d")
         else:
             logger.warning(
                 "Document initial_event_time not available, using current time instead"
             )
-            current_time = datetime.datetime.now()
+            current_time = datetime.datetime.now(datetime.timezone.utc).replace(
+                tzinfo=None
+            )
             timestamp = current_time
             date_partition = current_time.strftime("%Y-%m-%d")
 
@@ -1254,6 +1451,22 @@ class SaveReportingData:
                 if not section.extraction_result_uri:
                     logger.warning(
                         f"Section {section.section_id} has no extraction_result_uri, skipping"
+                    )
+                    continue
+
+                # Skip sections whose class is marked as excluded from
+                # processing. Their result.json is a small "skipped" stub and
+                # has no extractable attributes to report on — including it
+                # would pollute the section parquet schema.
+                from idp_common.section_exclusion import is_section_excluded
+
+                if is_section_excluded(section):
+                    logger.info(
+                        "Reporting skipped for excluded section %s "
+                        "(class=%s, reason=%s)",
+                        section.section_id,
+                        section.classification,
+                        section.exclusion_reason or "excluded",
                     )
                     continue
 
@@ -1281,17 +1494,46 @@ class SaveReportingData:
 
                 # Handle different data structures
                 if isinstance(extraction_data, dict):
-                    # Flatten the JSON data
-                    flattened_data = self._flatten_json_data(extraction_data)
+                    # Multi-instance (#715): one row per instance, so the class's
+                    # fields keep their own Athena columns instead of collapsing
+                    # into a single opaque `inference_result.instances` blob.
+                    instances = self._multi_instance_records(
+                        section.classification, extraction_data
+                    )
+                    if instances is not None:
+                        for i, instance in enumerate(instances):
+                            per_instance = dict(extraction_data)
+                            per_instance["inference_result"] = instance
+                            flattened_item = self._flatten_json_data(per_instance)
+                            flattened_item["section_id"] = section.section_id
+                            flattened_item["document_id"] = document_id
+                            flattened_item["section_classification"] = (
+                                section.classification
+                            )
+                            flattened_item["section_confidence"] = section.confidence
+                            flattened_item["timestamp"] = timestamp
+                            flattened_item["record_index"] = i
+                            flattened_item["config_version"] = (
+                                document.config_version or "default"
+                            )
+                            section_records.append(flattened_item)
+                    else:
+                        # Flatten the JSON data
+                        flattened_data = self._flatten_json_data(extraction_data)
 
-                    # Add section metadata
-                    flattened_data["section_id"] = section.section_id
-                    flattened_data["document_id"] = document_id
-                    flattened_data["section_classification"] = section.classification
-                    flattened_data["section_confidence"] = section.confidence
-                    flattened_data["timestamp"] = timestamp
+                        # Add section metadata
+                        flattened_data["section_id"] = section.section_id
+                        flattened_data["document_id"] = document_id
+                        flattened_data["section_classification"] = (
+                            section.classification
+                        )
+                        flattened_data["section_confidence"] = section.confidence
+                        flattened_data["timestamp"] = timestamp
+                        flattened_data["config_version"] = (
+                            document.config_version or "default"
+                        )
 
-                    section_records.append(flattened_data)
+                        section_records.append(flattened_data)
 
                 elif isinstance(extraction_data, list):
                     # Handle list of records
@@ -1309,6 +1551,9 @@ class SaveReportingData:
                         )
                         flattened_item["section_confidence"] = section.confidence
                         flattened_item["record_index"] = i
+                        flattened_item["config_version"] = (
+                            document.config_version or "default"
+                        )
 
                         section_records.append(flattened_item)
                 else:
@@ -1319,6 +1564,7 @@ class SaveReportingData:
                         "section_classification": section.classification,
                         "section_confidence": section.confidence,
                         "value": str(extraction_data),
+                        "config_version": document.config_version or "default",
                     }
                     section_records.append(record)
 
@@ -1543,14 +1789,18 @@ class SaveReportingData:
             logger.error(error_msg)
             return {"statusCode": 500, "body": error_msg}
 
-        # Define schemas
+        # Define schemas. Schema stays naive to keep the Glue column
+        # mapping stable (naive pa.timestamp("ms") → Hive "timestamp"; the
+        # tz-aware variant maps to a different type Athena would see as
+        # ``timestamp with time zone`` and existing Glue tables were
+        # created without tz). Round-13 review fix strips tz on write below.
         document_summary_schema = pa.schema(
             [
                 ("document_id", pa.string()),
                 ("input_key", pa.string()),
                 ("validation_date", pa.timestamp("ms")),
                 ("overall_status", pa.string()),
-                ("total_rule_types", pa.int32()),
+                ("total_policy_types", pa.int32()),
                 ("total_rules", pa.int32()),
                 ("pass_count", pa.int32()),
                 ("fail_count", pa.int32()),
@@ -1561,7 +1811,7 @@ class SaveReportingData:
         rule_details_schema = pa.schema(
             [
                 ("document_id", pa.string()),
-                ("rule_type", pa.string()),
+                ("policy_type", pa.string()),
                 ("rule", pa.string()),
                 ("recommendation", pa.string()),
                 ("reasoning", pa.string()),
@@ -1570,22 +1820,45 @@ class SaveReportingData:
             ]
         )
 
-        # Get timestamp
+        # Get timestamp. Round-13 review fix: compute UTC deliberately
+        # (datetime.now(timezone.utc)) so the wall-clock is unambiguous —
+        # datetime.now() previously returned the container's local time,
+        # which on non-Lambda hosts (unit tests, local reproducers) drifts
+        # from UTC. Then STRIP tz to match the naive parquet schema —
+        # changing the schema to tz-aware would flip Glue's column type
+        # to ``timestamp with time zone`` and break already-existing
+        # rule_validation Glue tables. UTC-then-strip keeps semantics
+        # correct and Athena reads the naive timestamp back as UTC.
         if document.initial_event_time:
             try:
                 doc_time = datetime.datetime.fromisoformat(
                     document.initial_event_time.replace("Z", "+00:00")
                 )
+                if doc_time.tzinfo is not None:
+                    doc_time = doc_time.astimezone(datetime.timezone.utc).replace(
+                        tzinfo=None
+                    )
                 validation_date = doc_time
                 date_partition = doc_time.strftime("%Y-%m-%d")
             except (ValueError, TypeError):
-                validation_date = datetime.datetime.now()
+                validation_date = datetime.datetime.now(datetime.timezone.utc).replace(
+                    tzinfo=None
+                )
                 date_partition = validation_date.strftime("%Y-%m-%d")
         else:
-            validation_date = datetime.datetime.now()
+            validation_date = datetime.datetime.now(datetime.timezone.utc).replace(
+                tzinfo=None
+            )
             date_partition = validation_date.strftime("%Y-%m-%d")
 
-        document_id = rule_validation_data.get("document_id", document.id)
+        # Round-12 review fix: dict.get() only returns the default when the
+        # KEY is absent; if the JSON payload has ``"document_id": null``,
+        # dict.get returns None even with a fallback. And document.id itself
+        # can be None. Coalesce explicitly so re.sub() below doesn't
+        # TypeError on None and abort rule-validation saving for the doc.
+        document_id = (
+            rule_validation_data.get("document_id") or document.id or "unknown"
+        )
         escaped_doc_id = re.sub(r"[/\\]", "_", document_id)
 
         # Prepare document summary
@@ -1597,7 +1870,7 @@ class SaveReportingData:
             "input_key": document.input_key,
             "validation_date": validation_date,
             "overall_status": rule_validation_data.get("overall_status", "UNKNOWN"),
-            "total_rule_types": rule_validation_data.get("total_rule_types", 0),
+            "total_policy_types": rule_validation_data.get("total_policy_types", 0),
             "total_rules": overall_stats.get("total_rules", 0),
             "pass_count": recommendation_counts.get("Pass", 0),
             "fail_count": recommendation_counts.get("Fail", 0),
@@ -1622,13 +1895,13 @@ class SaveReportingData:
         rule_records = []
         rule_details = rule_validation_data.get("rule_details", {})
 
-        for rule_type, rule_stats in rule_details.items():
+        for policy_type, rule_stats in rule_details.items():
             rules_list = rule_stats.get("rules", [])
             for rule_detail in rules_list:
                 rule_records.append(
                     {
                         "document_id": document_id,
-                        "rule_type": rule_type,
+                        "policy_type": policy_type,
                         "rule": rule_detail.get("rule", "Unknown"),
                         "recommendation": rule_detail.get("recommendation", "Unknown"),
                         "reasoning": rule_detail.get("reasoning", ""),

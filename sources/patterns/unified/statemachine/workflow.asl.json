@@ -1,489 +1,1477 @@
 {
-    "Comment": "Unified IDP Document Processing Workflow - routes between BDA and step-by-step pipeline based on use_bda config flag",
-    "StartAt": "RouteByProcessingMode",
-    "States": {
-        "RouteByProcessingMode": {
-            "Type": "Choice",
-            "Comment": "Route to BDA or step-by-step pipeline based on use_bda flag in document config",
-            "Choices": [
-                {
-                    "Variable": "$.document.use_bda",
-                    "BooleanEquals": true,
-                    "Next": "BDA_CheckExistingData"
-                }
-            ],
-            "Default": "OCRStep"
+  "Comment": "Unified IDP Document Processing Workflow - routes between BDA and step-by-step pipeline based on use_bda config flag. TimeoutSeconds (WorkflowExecutionTimeoutSeconds) bounds a stalled execution, which otherwise runs for up to one year while holding a concurrency slot (#757).",
+  "StartAt": "PreprocessingHook",
+  "TimeoutSeconds": ${WorkflowExecutionTimeoutSeconds},
+  "States": {
+    "PreprocessingHook": {
+      "Type": "Task",
+      "Comment": "Standalone preprocessing extension point \u2014 runs FIRST, before the BDA/pipeline routing, so it fires in both processing modes and even when OCR is disabled. Dispatches to the single generic hook (arn + args) in the config's preprocessing section (e.g. PII anonymization). A hook may return halt=true to short-circuit this execution (e.g. when it has spawned a redacted copy that will be processed as a separate document). NOTE: a dispatcher/hook error is NOT caught to normal routing \u2014 a preprocessing hook that fails (e.g. onError:fail on a redaction hook) must STOP the execution, never fall through to processing the un-preprocessed original (which for PII redaction would leak the original). It fails the execution instead.",
+      "Resource": "arn:${Partition}:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PipelineHooksDispatcherLambdaArn}",
+        "Payload": {
+          "hookPoint": "preprocessing",
+          "executionArn.$": "$$.Execution.Id",
+          "document.$": "$.document"
+        }
+      },
+      "ResultPath": "$.HookResults.preprocessing",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
         },
-        "BDA_CheckExistingData": {
-            "Type": "Choice",
-            "Comment": "Check if document already has pages/sections data (reprocessing scenario)",
-            "Choices": [
-                {
-                    "And": [
-                        {
-                            "Variable": "$.document.num_pages",
-                            "NumericGreaterThan": 0
-                        },
-                        {
-                            "Variable": "$.document.sections[0]",
-                            "IsString": true
-                        }
-                    ],
-                    "Comment": "Document has existing data with string section IDs - skip BDA invocation",
-                    "Next": "BDA_ProcessResultsSkip"
-                },
-                {
-                    "And": [
-                        {
-                            "Variable": "$.document.num_pages",
-                            "NumericGreaterThan": 0
-                        },
-                        {
-                            "Variable": "$.document.sections[0].section_id",
-                            "IsPresent": true
-                        }
-                    ],
-                    "Comment": "Document has existing data with section objects - skip BDA invocation",
-                    "Next": "BDA_ProcessResultsSkip"
-                }
-            ],
-            "Default": "BDA_InvokeDataAutomation"
-        },
-        "BDA_InvokeDataAutomation": {
-            "Type": "Task",
-            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
-            "Parameters": {
-                "FunctionName": "${InvokeBDALambdaArn}",
-                "Payload": {
-                    "taskToken.$": "$$.Task.Token",
-                    "execution_arn.$": "$$.Execution.Id",
-                    "working_bucket": "${WorkingBucket}",
-                    "BDAProjectArn.$": "$.document.bda_project_arn",
-                    "document.$": "$.document"
-                }
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.HookResults.preprocessing.error",
+          "Next": "PreprocessingHookFailed"
+        }
+      ],
+      "Next": "ApplyPreprocessingHookDocument"
+    },
+    "ApplyPreprocessingHookDocument": {
+      "Type": "Pass",
+      "Comment": "Copy the (possibly hook-modified) document the dispatcher returned into $.document, which the routing + OCR steps read. The dispatcher ALWAYS returns a document \u2014 the inbound one verbatim when no hook modified it \u2014 so this is a no-op copy in the common case. A dispatcher/hook error skips this state via the Catch above, leaving the pre-hook $.document intact.",
+      "InputPath": "$.HookResults.preprocessing.Payload.document",
+      "ResultPath": "$.document",
+      "Next": "CheckPreprocessingHalt"
+    },
+    "PreprocessingHookFailed": {
+      "Type": "Fail",
+      "Comment": "Deliberately a STATIC Cause, unlike PostStepHookFailed/PostExtractionHookFailed which interpolate the dispatcher message via CausePath. Two reasons. (1) This state is reached by a States.ALL catcher - the broadest in the file - so the caught error output is not necessarily a Lambda function error and a missing $.HookResults.preprocessing.error.Cause would surface as States.Runtime, masking the real failure with a JSONPath error. (2) preprocessing holds exactly ONE flat hook, so unlike the post-step lists there is no ambiguity about WHICH hook failed - the config names it. The dispatcher's own message is still in the execution history on the TaskFailed event immediately before this state.",
+      "Error": "PreprocessingHookFailed",
+      "Cause": "A preprocessing hook failed (e.g. a PII-redaction hook with onError:fail). The execution is stopped rather than continuing to process the un-preprocessed original. For the hook error itself, read the TaskFailed event for PreprocessingHook in this execution's history - this Fail state's Cause replaces the original error on the ExecutionFailed event."
+    },
+    "CheckPreprocessingHalt": {
+      "Type": "Choice",
+      "Comment": "If a preprocessing hook requested halt (e.g. redacted-only mode), end this execution as REDACTED_SUPERSEDED. Otherwise route to normal processing. The dispatcher always returns a top-level halt flag, so this path is safe even when no hook is registered (halt=false).",
+      "Choices": [
+        {
+          "Variable": "$.HookResults.preprocessing.Payload.halt",
+          "BooleanEquals": true,
+          "Next": "MarkSupersededByRedacted"
+        }
+      ],
+      "Default": "RouteByProcessingMode"
+    },
+    "MarkSupersededByRedacted": {
+      "Type": "Pass",
+      "Comment": "Terminal state for a document intentionally not processed further because a preprocessing hook produced a redacted copy (processed as its own document). Sets status REDACTED_SUPERSEDED, which the workflow tracker preserves rather than forcing COMPLETED.",
+      "Parameters": {
+        "document.$": "$.document"
+      },
+      "ResultPath": "$",
+      "Next": "SetSupersededStatus"
+    },
+    "SetSupersededStatus": {
+      "Type": "Pass",
+      "Result": "REDACTED_SUPERSEDED",
+      "ResultPath": "$.document.status",
+      "Next": "WorkflowComplete"
+    },
+    "RouteByProcessingMode": {
+      "Type": "Choice",
+      "Comment": "Route to BDA or step-by-step pipeline based on use_bda flag in document config",
+      "Choices": [
+        {
+          "Variable": "$.document.use_bda",
+          "BooleanEquals": true,
+          "Next": "BDA_CheckExistingData"
+        }
+      ],
+      "Default": "OCRStep"
+    },
+    "BDA_CheckExistingData": {
+      "Type": "Choice",
+      "Comment": "Check if document already has pages/sections data (reprocessing scenario)",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.document.num_pages",
+              "NumericGreaterThan": 0
             },
-            "ResultPath": "$.BDAResponse",
+            {
+              "Variable": "$.document.sections[0]",
+              "IsString": true
+            }
+          ],
+          "Comment": "Document has existing data with string section IDs - skip BDA invocation",
+          "Next": "BDA_ProcessResultsSkip"
+        },
+        {
+          "And": [
+            {
+              "Variable": "$.document.num_pages",
+              "NumericGreaterThan": 0
+            },
+            {
+              "Variable": "$.document.sections[0].section_id",
+              "IsPresent": true
+            }
+          ],
+          "Comment": "Document has existing data with section objects - skip BDA invocation",
+          "Next": "BDA_ProcessResultsSkip"
+        }
+      ],
+      "Default": "BDA_InvokeDataAutomation"
+    },
+    "BDA_InvokeDataAutomation": {
+      "Type": "Task",
+      "Resource": "arn:${Partition}:states:::lambda:invoke.waitForTaskToken",
+      "TimeoutSeconds": ${BDACallbackTimeoutSeconds},
+      "Parameters": {
+        "FunctionName": "${InvokeBDALambdaArn}",
+        "Payload": {
+          "taskToken.$": "$$.Task.Token",
+          "execution_arn.$": "$$.Execution.Id",
+          "working_bucket": "${WorkingBucket}",
+          "BDAProjectArn.$": "$.document.bda_project_arn",
+          "document.$": "$.document"
+        }
+      },
+      "ResultPath": "$.BDAResponse",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ServiceQuotaExceededException",
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "RequestLimitExceeded",
+            "ServiceUnavailableException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 8,
+          "BackoffRate": 2.5
+        }
+      ],
+      "Next": "BDA_ProcessResultsStep",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "FailState"
+        }
+      ]
+    },
+    "BDA_ProcessResultsStep": {
+      "Type": "Task",
+      "Resource": "${BDAProcessResultsLambdaArn}",
+      "Parameters": {
+        "execution_arn.$": "$$.Execution.Id",
+        "output_bucket": "${OutputBucket}",
+        "BDAResponse.$": "$.BDAResponse"
+      },
+      "ResultPath": "$.Result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ServiceQuotaExceededException",
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "RequestLimitExceeded",
+            "ServiceUnavailableException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 8,
+          "BackoffRate": 2.5
+        }
+      ],
+      "Next": "CheckHITLRequired"
+    },
+    "BDA_ProcessResultsSkip": {
+      "Type": "Task",
+      "Comment": "Process existing document data without BDA invocation (reprocessing scenario)",
+      "Resource": "${BDAProcessResultsLambdaArn}",
+      "Parameters": {
+        "execution_arn.$": "$$.Execution.Id",
+        "output_bucket": "${OutputBucket}",
+        "skip_bda": true,
+        "document.$": "$.document"
+      },
+      "ResultPath": "$.Result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ServiceQuotaExceededException",
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "RequestLimitExceeded",
+            "ServiceUnavailableException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 8,
+          "BackoffRate": 2.5
+        }
+      ],
+      "Next": "CheckHITLRequired"
+    },
+    "OCRStep": {
+      "Type": "Task",
+      "Resource": "${OCRFunctionArn}",
+      "Parameters": {
+        "execution_arn.$": "$$.Execution.Id",
+        "document.$": "$.document"
+      },
+      "ResultPath": "$.OCRResult",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task.",
+          "ErrorEquals": [
+            "Sandbox.Timedout",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 1,
+          "BackoffRate": 1.0
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ServiceQuotaExceededException",
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "RequestLimitExceeded",
+            "ServiceUnavailableException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 8,
+          "BackoffRate": 2.5
+        }
+      ],
+      "Next": "PostOcrHook"
+    },
+    "PostOcrHook": {
+      "Type": "Task",
+      "Resource": "arn:${Partition}:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PipelineHooksDispatcherLambdaArn}",
+        "Payload": {
+          "hookPoint": "postOcr",
+          "executionArn.$": "$$.Execution.Id",
+          "document.$": "$.OCRResult.document"
+        }
+      },
+      "ResultPath": "$.HookResults.postOcr",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "HookFatalError"
+          ],
+          "Next": "PostStepHookFailed"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.HookResults.postOcr.error",
+          "Next": "ClassificationStep"
+        }
+      ],
+      "Next": "ApplyPostOcrHookDocument"
+    },
+    "ApplyPostOcrHookDocument": {
+      "Type": "Pass",
+      "Comment": "Copy the (possibly hook-modified) document into $.OCRResult.document, which ClassificationStep reads. No-op copy when no hook modified it. On a dispatcher/hook error the Catch above routes straight to ClassificationStep, bypassing this state, so $.OCRResult keeps its pre-hook value with no restore logic needed.",
+      "InputPath": "$.HookResults.postOcr.Payload.document",
+      "ResultPath": "$.OCRResult.document",
+      "Next": "ClassificationStep"
+    },
+    "ClassificationStep": {
+      "Type": "Task",
+      "Resource": "${ClassificationFunctionArn}",
+      "Parameters": {
+        "execution_arn.$": "$$.Execution.Id",
+        "OCRResult.$": "$.OCRResult"
+      },
+      "ResultPath": "$.ClassificationResult",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task.",
+          "ErrorEquals": [
+            "Sandbox.Timedout",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 1,
+          "BackoffRate": 1.0
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ServiceQuotaExceededException",
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "RequestLimitExceeded",
+            "ServiceUnavailableException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 8,
+          "BackoffRate": 2.5
+        }
+      ],
+      "Next": "PostClassificationHook"
+    },
+    "PostClassificationHook": {
+      "Type": "Task",
+      "Resource": "arn:${Partition}:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PipelineHooksDispatcherLambdaArn}",
+        "Payload": {
+          "hookPoint": "postClassification",
+          "executionArn.$": "$$.Execution.Id",
+          "document.$": "$.ClassificationResult.document"
+        }
+      },
+      "ResultPath": "$.HookResults.postClassification",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "HookFatalError"
+          ],
+          "Next": "PostStepHookFailed"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.HookResults.postClassification.error",
+          "Next": "ProcessSections"
+        }
+      ],
+      "Next": "ApplyPostClassificationHookDocument"
+    },
+    "ApplyPostClassificationHookDocument": {
+      "Type": "Pass",
+      "Comment": "Copy the (possibly hook-modified) document into $.ClassificationResult.document. This is the most powerful mutation point: ProcessSections iterates ITS sections list, and Pipeline_ProcessResultsStep rebuilds the final document from it \u2014 so section adds/removes/relabels made here propagate through the whole rest of the pipeline. No-op copy when no hook modified it; the Catch above bypasses this state on error.",
+      "InputPath": "$.HookResults.postClassification.Payload.document",
+      "ResultPath": "$.ClassificationResult.document",
+      "Next": "ProcessSections"
+    },
+    "ProcessSections": {
+      "Type": "Map",
+      "ItemsPath": "$.ClassificationResult.document.sections",
+      "ItemSelector": {
+        "execution_arn.$": "$$.Execution.Id",
+        "document.$": "$.ClassificationResult.document",
+        "section_id.$": "$$.Map.Item.Value"
+      },
+      "MaxConcurrency": 10,
+      "Iterator": {
+        "StartAt": "ExtractionPlanStep",
+        "States": {
+          "ExtractionPlanStep": {
+            "Type": "Task",
+            "Resource": "${ShardRuntimeFunctionArn}",
+            "Parameters": {
+              "mode": "plan",
+              "execution_arn.$": "$.execution_arn",
+              "document.$": "$.document",
+              "section_id.$": "$.section_id"
+            },
+            "ResultPath": "$.ShardPlan",
             "Retry": [
-                {
-                    "ErrorEquals": [
+              {
+                "ErrorEquals": [
+                  "Lambda.CodeArtifactUserPendingException",
+                  "Lambda.CodeArtifactUserDeletedException"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 5,
+                "BackoffRate": 2
+              },
+              {
+                "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task.",
+                "ErrorEquals": [
+                  "Sandbox.Timedout",
+                  "States.Timeout"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 1,
+                "BackoffRate": 1.0
+              },
+              {
+                "ErrorEquals": [
+                  "TransientError",
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                  "ThrottlingException",
+                  "ServiceUnavailableException",
+                  "InternalServerException",
+                  "InternalServerError"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 6,
+                "BackoffRate": 2.0
+              }
+            ],
+            "Next": "ShardModeChoice"
+          },
+          "ShardModeChoice": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.ShardPlan.shard_mode",
+                "BooleanEquals": true,
+                "Next": "ExtractionShardMap"
+              }
+            ],
+            "Default": "ExtractionStep"
+          },
+          "ExtractionShardMap": {
+            "Type": "Map",
+            "ItemProcessor": {
+              "ProcessorConfig": {
+                "Mode": "DISTRIBUTED",
+                "ExecutionType": "STANDARD"
+              },
+              "StartAt": "ShardExtractionStep",
+              "States": {
+                "ShardExtractionStep": {
+                  "Type": "Task",
+                  "Resource": "arn:${Partition}:states:::lambda:invoke",
+                  "Parameters": {
+                    "FunctionName": "${ShardRuntimeFunctionArn}",
+                    "Payload": {
+                      "mode": "shard",
+                      "execution_arn.$": "$.execution_arn",
+                      "document.$": "$.document",
+                      "section_id.$": "$.section_id",
+                      "shard_index.$": "$.shard_index"
+                    }
+                  },
+                  "OutputPath": "$.Payload",
+                  "Retry": [
+{
+                      "ErrorEquals": [
+                        "Lambda.CodeArtifactUserPendingException",
+                        "Lambda.CodeArtifactUserDeletedException"
+                      ],
+                      "IntervalSeconds": 5,
+                      "MaxAttempts": 5,
+                      "BackoffRate": 2
+                    },
+                    {
+                      "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task. Lambda.Unknown is Step Functions' report for an unhandled Lambda fault: a function timeout is one cause and an out-of-memory kill is the other, and neither is fixed by trying again.",
+                      "ErrorEquals": [
+                        "States.Timeout",
+                        "Lambda.Unknown",
+                        "Sandbox.Timedout"
+                      ],
+                      "IntervalSeconds": 5,
+                      "MaxAttempts": 1,
+                      "BackoffRate": 1.0
+                    },
+                    {
+                      "ErrorEquals": [
+                        "TransientError",
                         "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
                         "Lambda.SdkClientException",
                         "Lambda.TooManyRequestsException",
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
                         "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 10,
-                    "MaxAttempts": 8,
-                    "BackoffRate": 2.5
+                        "ServiceUnavailableException",
+                        "InternalServerException",
+                        "InternalServerError"
+                      ],
+                      "IntervalSeconds": 10,
+                      "MaxAttempts": 8,
+                      "BackoffRate": 2.0
+                    }
+                  ],
+                  "End": true
                 }
+              }
+            },
+            "ItemsPath": "$.ShardPlan.shards",
+            "ItemSelector": {
+              "execution_arn.$": "$.execution_arn",
+              "document.$": "$.document",
+              "section_id.$": "$.section_id",
+              "shard_index.$": "$$.Map.Item.Value.shard_index"
+            },
+            "MaxConcurrency": 5,
+            "Retry": [
+              {
+                "Comment": "One retry of the WHOLE Map. The Map declares no ToleratedFailurePercentage, so Step Functions' default of 0 applies and a single failed shard fails the Map - discarding the output of the shards that SUCCEEDED, which is strictly worse for that document than not sharding at all (#1014). Deliberately NOT a higher tolerance: accepting a partial extraction would ship silent data loss, which is worse than failing. WHAT THE RETRY COSTS, stated plainly because it is not one invocation: for a shard that COMPLETED, nothing - its result is persisted to S3 and the second pass loads it instead of re-inferring, which is what that persistence was built for and what nothing could use while the Map had no retrier. For the shard that FAILED, the second pass re-runs ShardExtractionStep's ENTIRE retry ladder, not one attempt. A shard hitting Sandbox.Timedout therefore costs two more 900s invocations, taking the worst case from 1800s to 3600s; a shard failing under the TransientError ladder (8 attempts, 10s at BackoffRate 2 = 2550s of backoff on top of up to nine 900s attempts) runs that whole ladder a second time, bounded only by the state machine's own WorkflowExecutionTimeoutSeconds. MaxAttempts 1 and no more for exactly that reason. The trade is deliberate: one duplicated ladder is worth not discarding a document's completed shards, and scripts/tests/test_state_machine_retry_policies.py holds Map-level retriers to the same single-attempt rule as the Lambda tasks so this cannot be widened quietly.",
+                "ErrorEquals": [
+                  "States.ExceedToleratedFailureThreshold"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 1,
+                "BackoffRate": 1.0
+              }
             ],
-            "Next": "BDA_ProcessResultsStep",
             "Catch": [
-                {
-                    "ErrorEquals": [
-                        "States.ALL"
-                    ],
-                    "Next": "FailState"
-                }
-            ]
-        },
-        "BDA_ProcessResultsStep": {
+              {
+                "Comment": "Without this, a shard failure surfaces on the ExecutionFailed event as a bare States.ExceedToleratedFailureThreshold with no section, no shard and no cause - the operator has to find the Map Run by hand before learning anything at all (#1014). The catcher names ONE concrete error rather than States.ALL on purpose: States.ALL would also take States.DataLimitExceeded, States.Runtime and a raw States.TaskFailed, each of which already reports a specific and differently-actionable condition, and would feed the Fail state below an error-output shape that is not guaranteed. ResultPath keeps the Map state input intact under $ and files the error alongside it, which is what lets the Cause name the SECTION as well as the error - a default ResultPath of $ would replace the input with the error object and lose $.section_id.",
+                "ErrorEquals": [
+                  "States.ExceedToleratedFailureThreshold"
+                ],
+                "ResultPath": "$.ShardMapError",
+                "Next": "ExtractionShardMapFailed"
+              }
+            ],
+            "ResultPath": "$.ShardResults",
+            "Next": "ExtractionMergeStep"
+          },
+          "ExtractionShardMapFailed": {
+            "Type": "Fail",
+            "Comment": "Reached only from ExtractionShardMap's Catch, and only for States.ExceedToleratedFailureThreshold. CausePath reads $.ShardMapError and $.section_id, both of which that one catcher guarantees: ShardMapError is the error output it files there, and section_id comes from the enclosing ProcessSections ItemSelector. Neither is the optional $.Cause that PostStepHookFailed depends on, so the States.Runtime hazard documented on PreprocessingHookFailed does not apply here - but pointing a broader catcher at this state would reintroduce it, which patterns/unified/tests/test_workflow_hook_fatal_catch.py asserts against. States.JsonToString is used because $.ShardMapError is an object and States.Format takes only scalars.",
+            "Error": "ExtractionShardMapFailed",
+            "CausePath": "States.Format('Sharded extraction failed for section {} because at least one shard did not complete. ExtractionShardMap tolerates ZERO shard failures on purpose: finishing a document with shards missing is silent data loss, which is worse than the failure it would replace. The Map has already been retried once - per-shard results persist to S3, so that retry re-inferred only the shards still incomplete and kept the ones that had succeeded. Map error output: {}. For the failing shard and its own error, open the Map Run from the ExtractionShardMap event in this execution history: the per-iteration failure is recorded there, not on this event. A shard killed at its Lambda timeout reports Sandbox.Timedout, which is retried once and no more because a timeout is deterministic (#917); if that is what happened, the shard needed more time than one invocation allows and the read-timeout budget in idp_common.timeout_budget is where that arithmetic lives (#1014).', $.section_id, States.JsonToString($.ShardMapError))"
+          },
+          "ExtractionMergeStep": {
             "Type": "Task",
-            "Resource": "${BDAProcessResultsLambdaArn}",
+            "Resource": "${ShardRuntimeFunctionArn}",
             "Parameters": {
-                "execution_arn.$": "$$.Execution.Id",
-                "output_bucket": "${OutputBucket}",
-                "BDAResponse.$": "$.BDAResponse"
+              "mode": "merge",
+              "execution_arn.$": "$.execution_arn",
+              "document.$": "$.document",
+              "section_id.$": "$.section_id"
             },
-            "ResultPath": "$.Result",
             "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Lambda.ServiceException",
-                        "Lambda.AWSLambdaException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 10,
-                    "MaxAttempts": 8,
-                    "BackoffRate": 2.5
-                }
+              {
+                "ErrorEquals": [
+                  "Lambda.CodeArtifactUserPendingException",
+                  "Lambda.CodeArtifactUserDeletedException"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 5,
+                "BackoffRate": 2
+              },
+              {
+                "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task. Lambda.Unknown is Step Functions' report for an unhandled Lambda fault: a function timeout is one cause and an out-of-memory kill is the other, and neither is fixed by trying again.",
+                "ErrorEquals": [
+                  "States.Timeout",
+                  "Lambda.Unknown",
+                  "Sandbox.Timedout"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 1,
+                "BackoffRate": 1.0
+              },
+              {
+                "ErrorEquals": [
+                  "TransientError",
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                  "ThrottlingException",
+                  "ServiceUnavailableException",
+                  "InternalServerException",
+                  "InternalServerError"
+                ],
+                "IntervalSeconds": 10,
+                "MaxAttempts": 8,
+                "BackoffRate": 2.5
+              }
             ],
-            "Next": "CheckHITLRequired"
-        },
-        "BDA_ProcessResultsSkip": {
+            "Next": "PostExtractionHook"
+          },
+          "ExtractionStep": {
             "Type": "Task",
-            "Comment": "Process existing document data without BDA invocation (reprocessing scenario)",
-            "Resource": "${BDAProcessResultsLambdaArn}",
-            "Parameters": {
-                "execution_arn.$": "$$.Execution.Id",
-                "output_bucket": "${OutputBucket}",
-                "skip_bda": true,
-                "document.$": "$.document"
-            },
-            "ResultPath": "$.Result",
+            "Resource": "${ExtractionFunctionArn}",
             "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Lambda.ServiceException",
-                        "Lambda.AWSLambdaException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 10,
-                    "MaxAttempts": 8,
-                    "BackoffRate": 2.5
-                }
+              {
+                "ErrorEquals": [
+                  "Lambda.CodeArtifactUserPendingException",
+                  "Lambda.CodeArtifactUserDeletedException"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 5,
+                "BackoffRate": 2
+              },
+              {
+                "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task. Lambda.Unknown is Step Functions' report for an unhandled Lambda fault: a function timeout is one cause and an out-of-memory kill is the other, and neither is fixed by trying again.",
+                "ErrorEquals": [
+                  "States.Timeout",
+                  "Lambda.Unknown",
+                  "Sandbox.Timedout"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 1,
+                "BackoffRate": 1.0
+              },
+              {
+                "ErrorEquals": [
+                  "TransientError",
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                  "ServiceQuotaExceededException",
+                  "ThrottlingException",
+                  "ProvisionedThroughputExceededException",
+                  "RequestLimitExceeded",
+                  "ServiceUnavailableException",
+                  "InternalServerException",
+                  "InternalServerError"
+                ],
+                "IntervalSeconds": 10,
+                "MaxAttempts": 8,
+                "BackoffRate": 2.5
+              }
             ],
-            "Next": "CheckHITLRequired"
-        },
-        "OCRStep": {
+            "Next": "PostExtractionHook"
+          },
+          "PostExtractionHook": {
             "Type": "Task",
-            "Resource": "${OCRFunctionArn}",
+            "Resource": "arn:${Partition}:states:::lambda:invoke",
             "Parameters": {
-                "execution_arn.$": "$$.Execution.Id",
-                "document.$": "$.document"
+              "FunctionName": "${PipelineHooksDispatcherLambdaArn}",
+              "Payload": {
+                "hookPoint": "postExtraction",
+                "executionArn.$": "$$.Execution.Id",
+                "document.$": "$.document",
+                "section.$": "$"
+              }
             },
-            "ResultPath": "$.OCRResult",
+            "ResultPath": "$.HookResults",
             "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Sandbox.Timedout",
-                        "Lambda.ServiceException",
-                        "Lambda.AWSLambdaException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 10,
-                    "MaxAttempts": 8,
-                    "BackoffRate": 2.5
-                }
+              {
+                "ErrorEquals": [
+                  "Lambda.CodeArtifactUserPendingException",
+                  "Lambda.CodeArtifactUserDeletedException"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 5,
+                "BackoffRate": 2
+              },
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2
+              }
             ],
-            "Next": "ClassificationStep"
-        },
-        "ClassificationStep": {
-            "Type": "Task",
-            "Resource": "${ClassificationFunctionArn}",
-            "Parameters": {
-                "execution_arn.$": "$$.Execution.Id",
-                "OCRResult.$": "$.OCRResult"
-            },
-            "ResultPath": "$.ClassificationResult",
-            "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Sandbox.Timedout",
-                        "Lambda.ServiceException",
-                        "Lambda.AWSLambdaException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 10,
-                    "MaxAttempts": 8,
-                    "BackoffRate": 2.5
-                }
+            "Catch": [
+              {
+                "ErrorEquals": [
+                  "HookFatalError"
+                ],
+                "Next": "PostExtractionHookFailed"
+              },
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "ResultPath": "$.HookResults.error",
+                "Next": "AssessmentStep"
+              }
             ],
-            "Next": "ProcessSections"
-        },
-        "ProcessSections": {
-            "Type": "Map",
-            "ItemsPath": "$.ClassificationResult.document.sections",
-            "ItemSelector": {
-                "execution_arn.$": "$$.Execution.Id",
-                "document.$": "$.ClassificationResult.document",
-                "section_id.$": "$$.Map.Item.Value"
-            },
-            "MaxConcurrency": 10,
-            "Iterator": {
-                "StartAt": "ExtractionStep",
-                "States": {
-                    "ExtractionStep": {
-                        "Type": "Task",
-                        "Resource": "${ExtractionFunctionArn}",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Sandbox.Timedout",
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.SdkClientException",
-                                    "Lambda.TooManyRequestsException",
-                                    "ServiceQuotaExceededException",
-                                    "ThrottlingException",
-                                    "ProvisionedThroughputExceededException",
-                                    "RequestLimitExceeded",
-                                    "ServiceUnavailableException"
-                                ],
-                                "IntervalSeconds": 10,
-                                "MaxAttempts": 8,
-                                "BackoffRate": 2.5
-                            }
-                        ],
-                        "Next": "AssessmentStep"
-                    },
-                    "AssessmentStep": {
-                        "Type": "Task",
-                        "Resource": "${AssessmentFunctionArn}",
-                        "Parameters": {
-                            "execution_arn.$": "$$.Execution.Id",
-                            "document.$": "$.document",
-                            "section_id.$": "$.section_id"
-                        },
-                        "ResultPath": "$",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Sandbox.Timedout",
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.SdkClientException",
-                                    "Lambda.TooManyRequestsException",
-                                    "ServiceQuotaExceededException",
-                                    "ThrottlingException",
-                                    "ProvisionedThroughputExceededException",
-                                    "RequestLimitExceeded",
-                                    "ServiceUnavailableException"
-                                ],
-                                "IntervalSeconds": 10,
-                                "MaxAttempts": 8,
-                                "BackoffRate": 2.5
-                            }
-                        ],
-                        "Next": "SectionComplete"
-                    },
-                    "SectionComplete": {
-                        "Type": "Pass",
-                        "End": true
-                    }
-                }
-            },
-            "ResultPath": "$.ExtractionResults",
-            "Next": "Pipeline_ProcessResultsStep"
-        },
-        "Pipeline_ProcessResultsStep": {
-            "Type": "Task",
-            "Resource": "${PipelineProcessResultsLambdaArn}",
-            "Parameters": {
-                "execution_arn.$": "$$.Execution.Id",
-                "ClassificationResult.$": "$.ClassificationResult",
-                "ExtractionResults.$": "$.ExtractionResults"
-            },
-            "ResultPath": "$.Result",
-            "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Sandbox.Timedout",
-                        "Lambda.ServiceException",
-                        "Lambda.AWSLambdaException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 10,
-                    "MaxAttempts": 8,
-                    "BackoffRate": 2.5
-                }
-            ],
-            "Next": "CheckHITLRequired"
-        },
-        "CheckRuleValidationEnabled": {
-            "Type": "Choice",
-            "Choices": [
-                {
-                    "Variable": "$.Result.rule_validation_enabled",
-                    "BooleanEquals": true,
-                    "Next": "ProcessRuleValidationSections"
-                }
-            ],
-            "Default": "SetEmptyRuleValidationResult"
-        },
-        "SetEmptyRuleValidationResult": {
+            "Next": "ApplyPostExtractionHookDocument"
+          },
+          "ApplyPostExtractionHookDocument": {
             "Type": "Pass",
-            "Parameters": {
-                "document.$": "$.Result.document"
-            },
-            "ResultPath": "$.RuleValidationOrchestrationResult",
-            "Next": "SummarizationStep"
-        },
-        "ProcessRuleValidationSections": {
-            "Type": "Map",
-            "ItemsPath": "$.Result.document.sections",
-            "ItemSelector": {
-                "execution_arn.$": "$$.Execution.Id",
-                "document.$": "$.Result.document",
-                "section_id.$": "$$.Map.Item.Value"
-            },
-            "MaxConcurrency": 10,
-            "Iterator": {
-                "StartAt": "RuleValidationStep",
-                "States": {
-                    "RuleValidationStep": {
-                        "Type": "Task",
-                        "Resource": "${RuleValidationLambdaArn}",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Sandbox.Timedout",
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.SdkClientException",
-                                    "Lambda.TooManyRequestsException",
-                                    "ServiceQuotaExceededException",
-                                    "ThrottlingException",
-                                    "ProvisionedThroughputExceededException",
-                                    "RequestLimitExceeded",
-                                    "ServiceUnavailableException"
-                                ],
-                                "IntervalSeconds": 10,
-                                "MaxAttempts": 8,
-                                "BackoffRate": 2.5
-                            }
-                        ],
-                        "Next": "RuleValidationSectionComplete"
-                    },
-                    "RuleValidationSectionComplete": {
-                        "Type": "Pass",
-                        "End": true
-                    }
-                }
-            },
-            "ResultPath": "$.RuleValidationResults",
-            "Next": "RuleValidationOrchestration"
-        },
-        "RuleValidationOrchestration": {
+            "Comment": "Copy the (possibly hook-modified) document into $.document, which AssessmentStep reads. NOTE this runs INSIDE the ProcessSections Map, so the document here is a SECTION document: Pipeline_ProcessResultsStep rebuilds the final document from the ClassificationResult base and takes only sections[0] + metering from each Map result, so section-scoped mutations propagate but top-level/page-level ones made here do not (use postClassification or postRuleValidation for those). No-op copy when no hook modified it; the Catch above bypasses this state on error.",
+            "InputPath": "$.HookResults.Payload.document",
+            "ResultPath": "$.document",
+            "Next": "AssessmentStep"
+          },
+          "AssessmentStep": {
             "Type": "Task",
-            "Resource": "${RuleValidationOrchestrationLambdaArn}",
-            "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Lambda.ServiceException",
-                        "Lambda.AWSLambdaException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 10,
-                    "MaxAttempts": 8,
-                    "BackoffRate": 2.5
-                }
-            ],
-            "ResultPath": "$.RuleValidationOrchestrationResult",
-            "Next": "SummarizationStep"
-        },
-        "CheckHITLRequired": {
-            "Type": "Choice",
-            "Choices": [
-                {
-                    "Variable": "$.Result.hitl_triggered",
-                    "BooleanEquals": true,
-                    "Next": "MarkHITLPending"
-                }
-            ],
-            "Default": "CheckRuleValidationEnabled"
-        },
-        "MarkHITLPending": {
-            "Type": "Pass",
-            "Comment": "Document marked for async HITL review, workflow continues without waiting",
-            "Next": "CheckRuleValidationEnabled"
-        },
-        "SummarizationStep": {
-            "Type": "Task",
-            "Resource": "${SummarizationLambdaArn}",
+            "Resource": "${AssessmentFunctionArn}",
             "Parameters": {
-                "execution_arn.$": "$$.Execution.Id",
-                "document.$": "$.Result.document"
-            },
-            "ResultPath": "$.Result",
-            "OutputPath": "$.Result.document",
-            "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Sandbox.Timedout",
-                        "Lambda.ServiceException",
-                        "Lambda.AWSLambdaException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 10,
-                    "MaxAttempts": 8,
-                    "BackoffRate": 2.5
-                }
-            ],
-            "Next": "EvaluationStep"
-        },
-        "EvaluationStep": {
-            "Type": "Task",
-            "Resource": "${EvaluationLambdaArn}",
-            "Parameters": {
-                "execution_arn.$": "$$.Execution.Id",
-                "document.$": "$"
+              "execution_arn.$": "$$.Execution.Id",
+              "document.$": "$.document",
+              "section_id.$": "$.section_id"
             },
             "ResultPath": "$",
             "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Sandbox.Timedout",
-                        "Lambda.ServiceException",
-                        "Lambda.AWSLambdaException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 10,
-                    "MaxAttempts": 8,
-                    "BackoffRate": 2.5
-                }
+              {
+                "ErrorEquals": [
+                  "Lambda.CodeArtifactUserPendingException",
+                  "Lambda.CodeArtifactUserDeletedException"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 5,
+                "BackoffRate": 2
+              },
+              {
+                "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task. Lambda.Unknown is Step Functions' report for an unhandled Lambda fault: a function timeout is one cause and an out-of-memory kill is the other, and neither is fixed by trying again.",
+                "ErrorEquals": [
+                  "States.Timeout",
+                  "Lambda.Unknown",
+                  "Sandbox.Timedout"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 1,
+                "BackoffRate": 1.0
+              },
+              {
+                "ErrorEquals": [
+                  "TransientError",
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                  "ServiceQuotaExceededException",
+                  "ThrottlingException",
+                  "ProvisionedThroughputExceededException",
+                  "RequestLimitExceeded",
+                  "ServiceUnavailableException"
+                ],
+                "IntervalSeconds": 10,
+                "MaxAttempts": 8,
+                "BackoffRate": 2.5
+              }
             ],
-            "Next": "WorkflowComplete"
-        },
-        "WorkflowComplete": {
+            "Next": "SectionComplete"
+          },
+          "SectionComplete": {
             "Type": "Pass",
             "End": true
-        },
-        "FailState": {
+          },
+          "PostExtractionHookFailed": {
             "Type": "Fail",
-            "Cause": "Workflow Failed",
-            "Error": "WorkflowFailedException"
+            "Comment": "CausePath rather than a static Cause, for the reason spelled out on PostStepHookFailed: the static string replaced the dispatcher message that names the failing hook. Reached only by a HookFatalError catcher, so $.Cause is always present.",
+            "Error": "HookFatalError",
+            "CausePath": "States.Format('{} || onError:fail aborted the section rather than assessing and merging it as though the hook had succeeded. This Map has no Catch, so the failure propagates out and fails the execution - which is what onError:fail asks for.', $.Cause)"
+          }
         }
+      },
+      "ResultPath": "$.ExtractionResults",
+      "Next": "Pipeline_ProcessResultsStep"
+    },
+    "Pipeline_ProcessResultsStep": {
+      "Type": "Task",
+      "Resource": "${PipelineProcessResultsLambdaArn}",
+      "Parameters": {
+        "execution_arn.$": "$$.Execution.Id",
+        "ClassificationResult.$": "$.ClassificationResult",
+        "ExtractionResults.$": "$.ExtractionResults"
+      },
+      "ResultPath": "$.Result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task.",
+          "ErrorEquals": [
+            "Sandbox.Timedout",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 1,
+          "BackoffRate": 1.0
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ServiceQuotaExceededException",
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "RequestLimitExceeded",
+            "ServiceUnavailableException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 8,
+          "BackoffRate": 2.5
+        }
+      ],
+      "Next": "CheckHITLRequired"
+    },
+    "CheckRuleValidationEnabled": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Result.rule_validation_enabled",
+          "BooleanEquals": true,
+          "Next": "PolicyClassificationStep"
+        }
+      ],
+      "Default": "SetEmptyRuleValidationResult"
+    },
+    "PolicyClassificationStep": {
+      "Type": "Task",
+      "Resource": "${RuleValidationPolicyClassificationLambdaArn}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task.",
+          "ErrorEquals": [
+            "Sandbox.Timedout",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 1,
+          "BackoffRate": 1.0
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ServiceQuotaExceededException",
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "RequestLimitExceeded",
+            "ServiceUnavailableException",
+            "TransientError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "ResultPath": "$.PolicyClassificationResult",
+      "Next": "CheckPolicyMatch"
+    },
+    "CheckPolicyMatch": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.PolicyClassificationResult.skip_rule_validation",
+          "BooleanEquals": true,
+          "Next": "SetSkippedRuleValidationResult"
+        }
+      ],
+      "Default": "ProcessRuleValidationSections"
+    },
+    "SetSkippedRuleValidationResult": {
+      "Type": "Pass",
+      "Parameters": {
+        "document.$": "$.PolicyClassificationResult.document"
+      },
+      "ResultPath": "$.RuleValidationOrchestrationResult",
+      "Next": "PostRuleValidationHook"
+    },
+    "SetEmptyRuleValidationResult": {
+      "Type": "Pass",
+      "Parameters": {
+        "document.$": "$.Result.document"
+      },
+      "ResultPath": "$.RuleValidationOrchestrationResult",
+      "Next": "PostRuleValidationHook"
+    },
+    "ProcessRuleValidationSections": {
+      "Type": "Map",
+      "ItemsPath": "$.PolicyClassificationResult.document.sections",
+      "ItemSelector": {
+        "execution_arn.$": "$$.Execution.Id",
+        "document.$": "$.PolicyClassificationResult.document",
+        "section_id.$": "$$.Map.Item.Value"
+      },
+      "MaxConcurrency": 10,
+      "Iterator": {
+        "StartAt": "RuleValidationStep",
+        "States": {
+          "RuleValidationStep": {
+            "Type": "Task",
+            "Resource": "${RuleValidationLambdaArn}",
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.CodeArtifactUserPendingException",
+                  "Lambda.CodeArtifactUserDeletedException"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 5,
+                "BackoffRate": 2
+              },
+              {
+                "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task.",
+                "ErrorEquals": [
+                  "Sandbox.Timedout",
+                  "States.Timeout"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 1,
+                "BackoffRate": 1.0
+              },
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                  "ServiceQuotaExceededException",
+                  "ThrottlingException",
+                  "ProvisionedThroughputExceededException",
+                  "RequestLimitExceeded",
+                  "ServiceUnavailableException",
+                  "TransientError"
+                ],
+                "IntervalSeconds": 10,
+                "MaxAttempts": 8,
+                "BackoffRate": 2.5
+              }
+            ],
+            "Next": "RuleValidationSectionComplete"
+          },
+          "RuleValidationSectionComplete": {
+            "Type": "Pass",
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.RuleValidationResults",
+      "Next": "RuleValidationOrchestration"
+    },
+    "RuleValidationOrchestration": {
+      "Type": "Task",
+      "Resource": "${RuleValidationOrchestrationLambdaArn}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ServiceQuotaExceededException",
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "RequestLimitExceeded",
+            "ServiceUnavailableException",
+            "TransientError"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 8,
+          "BackoffRate": 2.5
+        }
+      ],
+      "ResultPath": "$.RuleValidationOrchestrationResult",
+      "Next": "PostRuleValidationHook"
+    },
+    "PostRuleValidationHook": {
+      "Type": "Task",
+      "Resource": "arn:${Partition}:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PipelineHooksDispatcherLambdaArn}",
+        "Payload": {
+          "hookPoint": "postRuleValidation",
+          "executionArn.$": "$$.Execution.Id",
+          "document.$": "$.RuleValidationOrchestrationResult.document"
+        }
+      },
+      "ResultPath": "$.HookResults.postRuleValidation",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "HookFatalError"
+          ],
+          "Next": "PostStepHookFailed"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.HookResults.postRuleValidation.error",
+          "Next": "SummarizationStep"
+        }
+      ],
+      "Next": "ApplyPostRuleValidationHookDocument"
+    },
+    "ApplyPostRuleValidationHookDocument": {
+      "Type": "Pass",
+      "Comment": "Copy the (possibly hook-modified) document into $.RuleValidationOrchestrationResult.document, which SummarizationStep reads. This is the last whole-document mutation point (the Map fan-out is done, so mutations here reach summarization, evaluation, and the final workflow output). No-op copy when no hook modified it; the Catch above bypasses this state on error.",
+      "InputPath": "$.HookResults.postRuleValidation.Payload.document",
+      "ResultPath": "$.RuleValidationOrchestrationResult.document",
+      "Next": "SummarizationStep"
+    },
+    "CheckHITLRequired": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Result.hitl_triggered",
+          "BooleanEquals": true,
+          "Next": "MarkHITLPending"
+        }
+      ],
+      "Default": "CheckRuleValidationEnabled"
+    },
+    "MarkHITLPending": {
+      "Type": "Pass",
+      "Comment": "Document marked for async HITL review, workflow continues without waiting",
+      "Next": "CheckRuleValidationEnabled"
+    },
+    "SummarizationStep": {
+      "Type": "Task",
+      "Resource": "${SummarizationLambdaArn}",
+      "Parameters": {
+        "execution_arn.$": "$$.Execution.Id",
+        "document.$": "$.RuleValidationOrchestrationResult.document"
+      },
+      "ResultPath": "$.Result",
+      "OutputPath": "$.Result.document",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "Comment": "A Lambda timeout is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. Sharing the transient ladder below multiplied that by its attempt count and its backoff, holding a concurrency slot for hours before failing (#917). One attempt, then fail - the policy EvaluationStep already carried, now applied to every Lambda task.",
+          "ErrorEquals": [
+            "Sandbox.Timedout",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 1,
+          "BackoffRate": 1.0
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ServiceQuotaExceededException",
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "RequestLimitExceeded",
+            "ServiceUnavailableException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 8,
+          "BackoffRate": 2.5
+        }
+      ],
+      "Next": "PostSummarizationHook"
+    },
+    "PostSummarizationHook": {
+      "Type": "Task",
+      "Comment": "At this point in the workflow $ IS the document (SummarizationStep's OutputPath narrowed it), so the dispatcher result is parked under $.PostSummarizationHookOut rather than discarded, and the Apply state below unwraps it back to $. Parameters are evaluated BEFORE ResultPath, so the hook payload still receives a clean document.",
+      "Resource": "arn:${Partition}:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PipelineHooksDispatcherLambdaArn}",
+        "Payload": {
+          "hookPoint": "postSummarization",
+          "executionArn.$": "$$.Execution.Id",
+          "document.$": "$"
+        }
+      },
+      "ResultPath": "$.PostSummarizationHookOut",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "HookFatalError"
+          ],
+          "Next": "PostStepHookFailed"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": null,
+          "Next": "EvaluationStep"
+        }
+      ],
+      "Next": "ApplyPostSummarizationHookDocument"
+    },
+    "ApplyPostSummarizationHookDocument": {
+      "Type": "Pass",
+      "Comment": "Replace $ with the (possibly hook-modified) document, which EvaluationStep reads and which becomes the workflow's final output. This also drops the temporary PostSummarizationHookOut key, so the final output shape is byte-identical to before this feature. On a dispatcher/hook error the Catch above keeps ResultPath null and routes past this state, so $ remains the unmodified document.",
+      "InputPath": "$.PostSummarizationHookOut.Payload.document",
+      "ResultPath": "$",
+      "Next": "EvaluationStep"
+    },
+    "EvaluationStep": {
+      "Type": "Task",
+      "Resource": "${EvaluationLambdaArn}",
+      "Parameters": {
+        "execution_arn.$": "$$.Execution.Id",
+        "document.$": "$"
+      },
+      "ResultPath": "$",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "Comment": "A Lambda timeout in evaluation is DETERMINISTIC, not transient: the document needs more work than the function has time for, so every retry burns another full timeout and fails the same way. This used to share the transient-error policy (8 attempts @2.5x backoff), so one such document occupied a workflow slot for ~5.2 hours before failing - and with MaxConcurrentWorkflows slots leaking behind it, a batch of them stopped a stack accepting documents at all. One attempt, then hand off to the Catch below, which preserves the document and records the failure.",
+          "ErrorEquals": [
+            "Sandbox.Timedout",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 1,
+          "BackoffRate": 1.0
+        },
+        {
+          "Comment": "Genuinely transient faults - these DO succeed on retry.",
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ServiceQuotaExceededException",
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "RequestLimitExceeded",
+            "ServiceUnavailableException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 8,
+          "BackoffRate": 2.5
+        }
+      ],
+      "Next": "PostprocessingHook",
+      "Comment": "Scores the document against its baseline. This is a MEASUREMENT step: by the time it runs, every expensive production step has succeeded and its output objects are written, so an evaluation failure must not discard a good document (the same reasoning PostprocessingHook documents). Errors are therefore caught to RecordEvaluationFailure, which stamps an honest EvaluationStatus and continues to the normal tail, rather than failing the execution.",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.EvaluationError",
+          "Next": "RecordEvaluationFailure"
+        }
+      ]
+    },
+    "RecordEvaluationFailure": {
+      "Comment": "Records that evaluation did not complete, so EvaluationStatus reflects reality instead of being stuck at RUNNING, then continues to the normal tail so the document keeps its extraction output. Its own failure is caught to the tail as well - the document surviving matters more than the status being written. document.$ is $ (not $.document) because ApplyPostSummarizationHookDocument set $ to the document dict itself, so there is no $.document key at this point; the Catch above adds $.EvaluationError as a sibling of the doc fields. The Lambda handler's raw-fallback path filters event['document'] against a five-name list (EvaluationError, record_failure_only, failure_reason, error, execution_arn), of which only EvaluationError can actually appear there: the other four are siblings of document in the Payload below, not members of it, so those four entries in the list are dead. Its own Catch captures the error under $.RecordFailureError instead of discarding it with ResultPath null (#918): with ResultPath null this state's output was its input unchanged - the bare document dict, which has no 'document' member - so PostprocessingHook's document.$ = $.document could not resolve and raised States.Runtime, which is not retriable and is NOT caught by a Catch on States.ALL, failing the execution and discarding a fully processed document at the last step. NormalizeEvaluationFailureOutput restores the { document: ... } envelope before the tail.",
+      "Type": "Task",
+      "Resource": "${EvaluationLambdaArn}",
+      "Parameters": {
+        "execution_arn.$": "$$.Execution.Id",
+        "record_failure_only": true,
+        "failure_reason": "Evaluation step failed or timed out",
+        "error.$": "$.EvaluationError",
+        "document.$": "$"
+      },
+      "ResultPath": "$",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "Comment": "The failure-recorder is a minimum-work step, so its own timeout is as deterministic as the evaluation timeout that routed the document here (#917): one attempt, then hand off to the Catch below, which keeps the document. Listing the codes explicitly - they were absent entirely before - is what makes that Catch a documented outcome rather than an accident of the retry list.",
+          "ErrorEquals": [
+            "Sandbox.Timedout",
+            "States.Timeout"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 1,
+          "BackoffRate": 1.0
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException",
+            "ThrottlingException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.RecordFailureError",
+          "Next": "NormalizeEvaluationFailureOutput"
+        }
+      ],
+      "Next": "PostprocessingHook"
+    },
+    "NormalizeEvaluationFailureOutput": {
+      "Type": "Pass",
+      "Comment": "Restores the { document: ... } envelope that PostprocessingHook and every state after it read (#918). Reached only when RecordEvaluationFailure itself failed, where $ is the bare document dict (see that state's Comment) with the state-level keys EvaluationError and RecordFailureError merged in alongside the document's own fields. Parameters + ResultPath $ rebuild $ as exactly { \"document\": <that dict> }, which is the shape RecordEvaluationFailure returns on its success path - so the tail behaves identically either way and $.document always resolves. The two diagnostic keys ride along inside the document dict and are harmless for one reason only: Document.from_dict ignores keys it does not know. Do NOT assume the evaluation handler removes them. Its raw-fallback strip list (src/evaluation_function/index.py:289-301) names EvaluationError, record_failure_only, failure_reason, error and execution_arn - RecordFailureError is NOT among them - and that stripping is largely vestigial in any case: it filters event['document'], while four of those five names are only ever siblings of document in RecordEvaluationFailure's Payload, never members of it, and event['document'] on this path is the nine-key compressed wrapper Document.compress returns (serialize_document defaults size_threshold_kb=0, so every step compresses), which carries none of them either. EvaluationError is the only name that list can actually match.",
+      "Parameters": {
+        "document.$": "$"
+      },
+      "ResultPath": "$",
+      "Next": "PostprocessingHook"
+    },
+    "PostprocessingHook": {
+      "Type": "Task",
+      "Comment": "Standalone postprocessing extension point \u2014 runs LAST, after evaluation and before the terminal state, on the SHARED tail so it fires in both processing modes (mirroring how PreprocessingHook runs before the routing decision). Dispatches to the single generic hook (arn + args) in the config's postprocessing section. A mutation here is the last word on the document: WorkflowComplete's output is what the workflow tracker loads, so it reaches the persisted tracking row, the reporting/Athena rows, and the UI. NOTE: unlike PreprocessingHook, a dispatcher/hook error is caught to the normal terminal state \u2014 by this point every expensive step has succeeded and the output objects are written, so a delivery-integration error must not discard a good document. A hook that needs to gate sets onError:fail, which the dispatcher raises as HookFatalError - caught by the FIRST Catch entry below, ahead of States.ALL, and routed to PostStepHookFailed. Until #919 that entry did not exist, so States.ALL swallowed the fail policy and this comment's claim was false.",
+      "Resource": "arn:${Partition}:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PipelineHooksDispatcherLambdaArn}",
+        "Payload": {
+          "hookPoint": "postprocessing",
+          "executionArn.$": "$$.Execution.Id",
+          "document.$": "$.document"
+        }
+      },
+      "ResultPath": "$.HookResults.postprocessing",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.CodeArtifactUserPendingException",
+            "Lambda.CodeArtifactUserDeletedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        },
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "HookFatalError"
+          ],
+          "Next": "PostStepHookFailed"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": null,
+          "Next": "WorkflowComplete"
+        }
+      ],
+      "Next": "ApplyPostprocessingHookDocument"
+    },
+    "ApplyPostprocessingHookDocument": {
+      "Type": "Pass",
+      "Comment": "Rebuild $ as { document: <possibly hook-modified document> }, which becomes the workflow's final output. Parameters + ResultPath $ (rather than InputPath) is deliberate: it both unwraps the dispatcher result AND drops the temporary $.HookResults key, so the final output shape stays byte-identical to before this feature \u2014 the workflow tracker and the EventBridge post-processing hook read $.document, and the output is subject to Step Functions' 256KB limit. On a dispatcher/hook error the Catch above keeps ResultPath null and routes past this state, so $ remains the unmodified { document: ... }.",
+      "Parameters": {
+        "document.$": "$.HookResults.postprocessing.Payload.document"
+      },
+      "ResultPath": "$",
+      "Next": "WorkflowComplete"
+    },
+    "WorkflowComplete": {
+      "Type": "Pass",
+      "End": true
+    },
+    "PostStepHookFailed": {
+      "Type": "Fail",
+      "Comment": "CausePath, not a static Cause: a Fail state's Error/Cause REPLACE the original error in executionFailedEventDetails, so a static string discards the dispatcher's own message - which is the only place the failing hook's featureId and hook point appear - exactly when an operator needs it (the tracking row and the UI show a bare FAILED). The dispatcher message is interpolated FIRST so a truncated read of the cause still names the hook. Safe here because the ONLY catchers routing to this state match HookFatalError, a Lambda function error, whose error output always carries Cause; a States.ALL catcher pointed here would widen that to errors whose shape is not guaranteed and a missing $.Cause would surface as States.Runtime, masking the real failure. patterns/unified/tests/test_workflow_hook_fatal_catch.py asserts that invariant.",
+      "Error": "HookFatalError",
+      "CausePath": "States.Format('{} || onError:fail aborted the document rather than continuing as though the hook had succeeded. Every hook state lists HookFatalError BEFORE its States.ALL catcher: ASL takes the FIRST matching catcher, and States.ALL - which deliberately routes FORWARD so that a non-gating hook fault cannot discard an otherwise-good document - matches this error too. Reordering those two entries silently restores the fail-open behaviour of issue #919.', $.Cause)"
+    },
+    "FailState": {
+      "Type": "Fail",
+      "Cause": "Workflow Failed",
+      "Error": "WorkflowFailedException"
     }
+  }
 }

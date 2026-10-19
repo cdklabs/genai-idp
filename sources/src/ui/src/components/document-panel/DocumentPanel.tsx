@@ -1,9 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
+  Alert,
   Box,
+  ButtonDropdown,
   ColumnLayout,
   Container,
   SpaceBetween,
@@ -13,7 +15,8 @@ import {
   ExpandableSection,
   StatusIndicator,
 } from '@cloudscape-design/components';
-import { generateClient } from 'aws-amplify/api';
+import type { ButtonDropdownProps } from '@cloudscape-design/components';
+import { generateClient } from '../../api/client-shim';
 import useConfigurationVersions from '../../hooks/use-configuration-versions';
 import { formatConfigVersionLink } from '../test-studio/utils/configVersionUtils';
 import type { ConfigVersion } from '../test-studio/utils/configVersionUtils';
@@ -26,11 +29,26 @@ import ChatPanel from '../chat-panel';
 import useConfiguration from '../../hooks/use-configuration';
 import usePricing from '../../hooks/use-pricing';
 import useUserRole from '../../hooks/use-user-role';
+import useAppContext from '../../contexts/app';
+import useSettingsContext from '../../contexts/settings';
 import { getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
+import { describePromptCache, summarizeCacheUsage } from '../common/promptCacheModel';
+import type { PromptCacheDescription } from '../common/promptCacheModel';
 import { renderHitlStatus } from '../common/hitl-status-renderer';
+import { getMalwareScanView, MALWARE_REFUSED_STATUSES } from '../common/malware-scan';
 import StepFunctionFlowViewer from '../step-function-flow/StepFunctionFlowViewer';
 import TroubleshootModal from './TroubleshootModal';
+import DocumentVersionsPanel from './DocumentVersionsPanel';
+import type { DocumentVersionDetail } from './DocumentVersionsPanel';
+import { DocumentVersionProvider } from '../../contexts/document-version';
 import { claimReview } from '../../graphql/generated';
+import usePolling from '../../hooks/use-polling';
+import useClassificationComparison from '../../hooks/use-classification-comparison';
+import { exportDocument, isBaselineAvailable, triggerBrowserDownload } from './document-export';
+import type { ExportErrorEntry, ExportProgress, ExportScope } from './document-export';
+import { DownloadOptionsModal, DownloadProgressModal } from './DocumentDownloadModals';
+import { calculateTotalCosts, priceMetering } from './metering-cost';
+import type { PricingLookup } from './pricing';
 // Uncomment the line below to enable debugging
 // import { debugDocumentStructure } from '../common/debug-utils';
 
@@ -41,6 +59,12 @@ interface MappedDocument {
   completionTime?: string;
   duration?: string;
   configVersion?: string;
+  /** Where configVersion came from — see CONFIG_SOURCE_LABELS. */
+  configSource?: string;
+  /** The config prefix mapping that decided it, when one did. */
+  configMappingPrefix?: string;
+  /** Why the document was refused at ingest, for a `reject` prefix mapping. */
+  configAssignmentError?: string;
   pageCount?: number;
   evaluationStatus?: string;
   evaluationReportUri?: string;
@@ -58,6 +82,15 @@ interface MappedDocument {
   hitlReviewedBy?: string;
   hitlReviewedByEmail?: string;
   mergedConfig?: Record<string, unknown>;
+  // Declared rather than left to the index signature below, so a typo in one of
+  // these names is a type error here instead of a field that silently reads
+  // `undefined` and renders nothing — the malware verdict failing to display is
+  // indistinguishable from there being no verdict.
+  malwareScanStatus?: string;
+  malwareScanResult?: string;
+  malwareScanThreat?: string;
+  malwareScanReasons?: string[];
+  malwareScanTime?: string;
   [key: string]: unknown;
 }
 
@@ -72,6 +105,8 @@ interface MeteringRowItem {
   isTotal: boolean;
   isSubtotal: boolean;
   note?: string;
+  // Per-phase prompt-cache verdict, shown on the phase's subtotal row (#780).
+  cacheNote?: PromptCacheDescription;
 }
 
 interface PricingUnit {
@@ -86,12 +121,6 @@ interface PricingItem {
 
 interface PricingData {
   pricing: PricingItem[];
-}
-
-interface PricingLookup {
-  [serviceName: string]: {
-    [unitName: string]: number;
-  };
 }
 
 interface ConfidenceAlertsSectionProps {
@@ -135,8 +164,27 @@ interface TroubleshootJobData {
   documentKey: string | undefined;
 }
 
+/**
+ * How each `ConfigSource` value reads to an operator. The raw values are the
+ * wire/DB spelling (idp_common.config.prefix_mappings SOURCE_*); these are the
+ * sentence fragments that answer "why this profile?".
+ */
+const CONFIG_SOURCE_LABELS: Record<string, string> = {
+  'prefix-mapping': 'Assigned by prefix mapping',
+  metadata: 'Specified at upload',
+  'active-profile': 'Active profile',
+  'document-pin': 'Kept from the previous run',
+  'explicit-request': 'Chosen when reprocessing',
+  'internal-producer': 'Pinned by the submitting feature',
+  rejected: 'Refused at ingest',
+};
+
 const client = generateClient();
 const logger = new ConsoleLogger('DocumentPanel');
+
+// Detail-view polling cadence under the HTTP API transport (no subscriptions).
+const USE_POLLING = true;
+const DOCUMENT_DETAIL_POLL_INTERVAL_MS = 4000;
 
 // Component to display confidence alerts count only
 const ConfidenceAlertsSection = ({ sections, mergedConfig }: ConfidenceAlertsSectionProps): React.JSX.Element => {
@@ -156,18 +204,6 @@ const ConfidenceAlertsSection = ({ sections, mergedConfig }: ConfidenceAlertsSec
   return <StatusIndicator type="warning">{totalAlertCount}</StatusIndicator>;
 };
 
-// Helper function to parse serviceApi key into context and service
-const parseServiceApiKey = (serviceApiKey: string): { context: string; serviceApi: string } => {
-  const parts = serviceApiKey.split('/');
-  if (parts.length >= 3) {
-    const context = parts[0];
-    const serviceApi = parts.slice(1).join('/');
-    return { context, serviceApi };
-  }
-  // Fallback for keys that don't follow the new format (less than 3 parts) - set context to ''
-  return { context: '', serviceApi: serviceApiKey };
-};
-
 // Helper function to format cost cells
 const formatCostCell = (rowItem: MeteringRowItem): React.JSX.Element | string => {
   if (rowItem.isTotal) {
@@ -182,7 +218,7 @@ const formatCostCell = (rowItem: MeteringRowItem): React.JSX.Element | string =>
 // Component to display metering information in a table
 const MeteringTable = ({ meteringData, preCalculatedTotals }: MeteringTableProps): React.JSX.Element | null => {
   // Use usePricing hook to get pricing data from the new separate pricing config
-  const { pricing, loading } = usePricing();
+  const { pricing, nonChargeableUnits, loading } = usePricing();
   const [pricingData, setPricingData] = useState<PricingLookup>({});
   // We no longer use a default unit cost, showing "None" instead
 
@@ -215,54 +251,18 @@ const MeteringTable = ({ meteringData, preCalculatedTotals }: MeteringTableProps
   }
 
   // Transform metering data into table rows with context parsing
-  const rawTableItems: MeteringRowItem[] = [];
-  const contextTotals: Record<string, number> = {};
-  let totalCost = 0;
-
-  Object.entries(meteringData).forEach(([originalServiceApiKey, metrics]) => {
-    const { context, serviceApi } = parseServiceApiKey(originalServiceApiKey);
-
-    Object.entries(metrics as Record<string, unknown>).forEach(([unit, value]) => {
-      const numericValue = Number(value);
-
-      // Look up the unit price from the pricing data using the parsed serviceApi
-      let unitPrice: number | null = null;
-      let unitPriceDisplayValue = 'None';
-      let cost = 0;
-      if (pricingData[serviceApi] && pricingData[serviceApi][unit] !== undefined) {
-        unitPrice = Number(pricingData[serviceApi][unit]);
-        if (!Number.isNaN(unitPrice)) {
-          unitPriceDisplayValue = `$${unitPrice}`;
-          cost = numericValue * unitPrice;
-          totalCost += cost;
-
-          // Track context totals
-          if (!contextTotals[context]) {
-            contextTotals[context] = 0;
-          }
-          contextTotals[context] += cost;
-
-          logger.debug(`Found price for ${serviceApi}/${unit}: ${unitPriceDisplayValue}`);
-        } else {
-          logger.warn(`Invalid price for ${serviceApi}/${unit}, using None`);
-        }
-      } else {
-        logger.debug(`No price found for ${serviceApi}/${unit}, using None`);
-      }
-
-      rawTableItems.push({
-        context,
-        serviceApi,
-        unit,
-        value: String(numericValue),
-        unitCost: unitPriceDisplayValue,
-        cost: unitPrice !== null ? `$${cost.toFixed(4)}` : 'N/A',
-        costValue: cost,
-        isTotal: false,
-        isSubtotal: false,
-      });
-    });
-  });
+  const { rows, contextTotals, totalCost } = priceMetering(meteringData, pricingData, nonChargeableUnits);
+  const rawTableItems: MeteringRowItem[] = rows.map(({ context, serviceApi, unit, value, unitPrice, cost }) => ({
+    context,
+    serviceApi,
+    unit,
+    value: String(value),
+    unitCost: unitPrice !== null ? `$${unitPrice}` : 'None',
+    cost: unitPrice !== null ? `$${cost.toFixed(4)}` : 'N/A',
+    costValue: cost,
+    isTotal: false,
+    isSubtotal: false,
+  }));
 
   // Group items by context and add subtotals
   const tableItems: MeteringRowItem[] = [];
@@ -299,8 +299,11 @@ const MeteringTable = ({ meteringData, preCalculatedTotals }: MeteringTableProps
     // Add all items for this context
     tableItems.push(...contextGroups[context]);
 
-    // Add subtotal row for this context
+    // Add subtotal row for this context, carrying the phase's prompt-cache
+    // verdict: the cache units are priced above, but a row of numbers does not
+    // say whether the cache point did anything (#780).
     const contextTotal = contextTotals[context] || 0;
+    const cacheSummary = context ? summarizeCacheUsage(meteringData as Record<string, unknown>, context, { exact: true }) : null;
     tableItems.push({
       context: '',
       serviceApi: '',
@@ -312,6 +315,10 @@ const MeteringTable = ({ meteringData, preCalculatedTotals }: MeteringTableProps
       isTotal: false,
       isSubtotal: true,
       note: `${context} Subtotal`,
+      cacheNote:
+        cacheSummary && cacheSummary.state !== 'no-cache-data'
+          ? describePromptCache(cacheSummary, { phaseOnly: true, context })
+          : undefined,
     });
   });
 
@@ -343,7 +350,17 @@ const MeteringTable = ({ meteringData, preCalculatedTotals }: MeteringTableProps
         {
           id: 'serviceApi',
           header: 'Service/Api',
-          cell: (rowItem: MeteringRowItem) => rowItem.serviceApi,
+          cell: (rowItem: MeteringRowItem) =>
+            rowItem.cacheNote ? (
+              <Box fontSize="body-s">
+                <StatusIndicator type={rowItem.cacheNote.indicator}>{rowItem.cacheNote.headline}</StatusIndicator>
+                <Box fontSize="body-s" color="text-body-secondary">
+                  {rowItem.cacheNote.detail}
+                </Box>
+              </Box>
+            ) : (
+              rowItem.serviceApi
+            ),
         },
         {
           id: 'unit',
@@ -383,39 +400,6 @@ const MeteringTable = ({ meteringData, preCalculatedTotals }: MeteringTableProps
   );
 };
 
-// Helper function to calculate total costs using pricing data
-const calculateTotalCosts = (
-  meteringData: Record<string, Record<string, unknown>> | null,
-  documentItem: MappedDocument,
-  pricingData: PricingLookup | null,
-): { totalCost: number; costPerPage: number } => {
-  if (!meteringData) return { totalCost: 0, costPerPage: 0 };
-
-  let totalCost = 0;
-
-  if (pricingData) {
-    Object.entries(meteringData).forEach(([originalServiceApiKey, metrics]) => {
-      // Parse the serviceApi key to remove context prefix
-      const { serviceApi } = parseServiceApiKey(originalServiceApiKey);
-
-      Object.entries(metrics).forEach(([unit, value]) => {
-        const numericValue = Number(value);
-        if (pricingData[serviceApi] && pricingData[serviceApi][unit] !== undefined) {
-          const unitPrice = Number(pricingData[serviceApi][unit]);
-          if (!Number.isNaN(unitPrice)) {
-            totalCost += numericValue * unitPrice;
-          }
-        }
-      });
-    });
-  }
-
-  const numPages = (documentItem && documentItem.pageCount) || 1;
-  const costPerPage = totalCost / numPages;
-
-  return { totalCost, costPerPage };
-};
-
 // Expandable section containing the metering table
 const MeteringExpandableSection = ({ meteringData, documentItem }: MeteringExpandableSectionProps): React.JSX.Element => {
   const [expanded, setExpanded] = useState(false);
@@ -441,7 +425,7 @@ const MeteringExpandableSection = ({ meteringData, documentItem }: MeteringExpan
   }, [pricing]);
 
   // Calculate the cost per page for the header
-  const { totalCost, costPerPage } = calculateTotalCosts(meteringData, documentItem, pricingData);
+  const { totalCost, costPerPage } = calculateTotalCosts(meteringData, documentItem?.pageCount, pricingData);
 
   return (
     <Box margin={{ top: 'l', bottom: 'm' }}>
@@ -511,9 +495,26 @@ const DocumentAttributes = ({ item, versions }: DocumentAttributesProps): React.
         <SpaceBetween size="xs">
           <div>
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
-              <strong>Config Version</strong>
+              <strong>Config Profile</strong>
             </Box>
             <div>{formatConfigVersionLink(item.configVersion, versions)}</div>
+            {/*
+              WHERE that profile came from. There are several possible sources and
+              the name alone does not say which applied, so a profile that
+              surprises someone is otherwise unexplainable without correlating
+              logs across two Lambdas.
+            */}
+            {item.configSource && (
+              <Box fontSize="body-s" color="text-body-secondary">
+                {CONFIG_SOURCE_LABELS[item.configSource] ?? item.configSource}
+                {item.configMappingPrefix ? ` (${item.configMappingPrefix})` : ''}
+              </Box>
+            )}
+            {item.configAssignmentError && (
+              <Box fontSize="body-s" color="text-status-error">
+                {item.configAssignmentError}
+              </Box>
+            )}
           </div>
         </SpaceBetween>
 
@@ -579,8 +580,72 @@ const DocumentAttributes = ({ item, versions }: DocumentAttributesProps): React.
             <div>{item.summaryReportUri ? 'Available' : 'N/A'}</div>
           </div>
         </SpaceBetween>
+
+        <MalwareScanAttribute item={item} />
       </ColumnLayout>
     </Container>
+  );
+};
+
+/**
+ * The malware-scan verdict as a detail field.
+ *
+ * Rendered for CLEAN documents too, not only refused ones: "the scan ran and
+ * found nothing" is the observation an auditor needs, and showing it only on a
+ * detection would make a clean document indistinguishable from an unscanned one.
+ *
+ * Renders nothing at all when the document carries no verdict and is not waiting
+ * for one, which is every document on a stack with malware scanning disabled —
+ * so enabling the feature is what makes this field appear, rather than it sitting
+ * there reading N/A on every deployment.
+ */
+const MalwareScanAttribute = ({ item }: { item: MappedDocument }): React.JSX.Element | null => {
+  const scan = getMalwareScanView(item);
+  if (scan.outcome === 'none') return null;
+
+  const statusType = {
+    clean: 'success' as const,
+    threat: 'error' as const,
+    unscannable: 'warning' as const,
+    pending: 'in-progress' as const,
+  }[scan.outcome];
+
+  return (
+    <SpaceBetween size="xs">
+      <div>
+        <Box margin={{ bottom: 'xxxs' }} color="text-label">
+          <strong>Malware scan</strong>
+        </Box>
+        <StatusIndicator type={statusType}>{scan.label}</StatusIndicator>
+        {scan.time ? (
+          <Box fontSize="body-s" color="text-status-inactive">
+            {new Date(scan.time).toLocaleString()}
+          </Box>
+        ) : null}
+      </div>
+    </SpaceBetween>
+  );
+};
+
+/**
+ * The whole story for a document the malware gate refused.
+ *
+ * This is the surface that replaces the flow viewer for such a document: it
+ * never started an execution, so there is no execution to open and the diagram
+ * would be empty. Without this the UI would show a terminal status nobody can
+ * explain.
+ */
+const MalwareScanAlert = ({ item }: { item: MappedDocument }): React.JSX.Element | null => {
+  const scan = getMalwareScanView(item);
+  if (!scan.refused) return null;
+
+  return (
+    <Alert
+      type={scan.outcome === 'threat' ? 'error' : 'warning'}
+      header={scan.outcome === 'threat' ? 'Malware detected — document quarantined' : 'Document was not malware-scanned'}
+    >
+      {scan.detail}
+    </Alert>
   );
 };
 
@@ -588,6 +653,7 @@ const DocumentAttributes = ({ item, versions }: DocumentAttributesProps): React.
 const ABORTABLE_STATUSES = [
   'QUEUED',
   'RUNNING',
+  'PREPROCESSING',
   'OCR',
   'CLASSIFYING',
   'EXTRACTING',
@@ -617,17 +683,90 @@ export const DocumentPanel = ({
   const [troubleshootJobs, setTroubleshootJobs] = useState<Record<string, TroubleshootJobData>>({});
   // State for Start Review button
   const [isClaimingReview, setIsClaimingReview] = useState(false);
+  // State for document-level download
+  const [downloadScope, setDownloadScope] = useState<ExportScope | null>(null);
+  const [isDownloadOptionsOpen, setIsDownloadOptionsOpen] = useState(false);
+  const [includePageImages, setIncludePageImages] = useState(false);
+  const [includeSourceDocument, setIncludeSourceDocument] = useState(false);
+  const [isDownloadInProgress, setIsDownloadInProgress] = useState(false);
+  const [isDownloadFinished, setIsDownloadFinished] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<ExportProgress | null>(null);
+  const [downloadErrors, setDownloadErrors] = useState<ExportErrorEntry[]>([]);
+  const [downloadAbortController, setDownloadAbortController] = useState<AbortController | null>(null);
+  const { settings } = useSettingsContext();
+  const { currentCredentials } = useAppContext();
   // Local state for document item to enable real-time updates
   const [localItem, setLocalItem] = useState(item);
+
+  // Document version viewing: when set, the page renders a past run's snapshot
+  // (read-only). versionFiles maps each output S3 key -> pinned VersionId so
+  // viewers fetch that run's exact bytes.
+  const [viewingRunId, setViewingRunId] = useState<string | null>(null);
+  const [versionDetail, setVersionDetail] = useState<DocumentVersionDetail | null>(null);
+
+  const handleViewVersion = useCallback((runId: string | null, detail: DocumentVersionDetail | null) => {
+    setViewingRunId(runId);
+    setVersionDetail(detail);
+  }, []);
 
   // Update local item when prop changes
   useEffect(() => {
     setLocalItem(item);
   }, [item]);
 
+  // If the underlying document changes (navigated to a different doc), drop any
+  // historical-version view so we don't show a stale snapshot for the new doc.
+  const itemObjectKey = item?.objectKey;
+  useEffect(() => {
+    setViewingRunId(null);
+    setVersionDetail(null);
+  }, [itemObjectKey]);
+
+  // Detail-view polling (httpapi transport). Under AppSync the onUpdateDocument
+  // subscription pushed live Sections/Pages updates into the open document.
+  // With the HTTP API there are no subscriptions, so while the open document is
+  // still processing we re-fetch its rich detail (getDocument via the parent's
+  // getDocumentDetailsFromIds, which merges into shared list state and flows back
+  // as the `item` prop). Stops once the document reaches a terminal status.
+  const detailStatus = (localItem?.objectStatus || '').toUpperCase();
+  // Every status a document will never leave. A status missing here is re-fetched
+  // for as long as the page stays open, which is why the two malware-gate
+  // refusals and REDACTED_SUPERSEDED are listed: all three are terminal, none of
+  // them ever reaches COMPLETED, and polling a document that will never change
+  // again costs a request every few seconds per open tab.
+  //
+  // MALWARE_SCANNING is deliberately NOT here: the verdict is still coming, so
+  // the poll is what makes the status change visible without a manual refresh.
+  const isTerminalStatus = ['COMPLETED', 'FAILED', 'ABORTED', 'REDACTED_SUPERSEDED', ...MALWARE_REFUSED_STATUSES].includes(detailStatus);
+  const pollDetail = useCallback(() => {
+    if (!localItem?.objectKey || !getDocumentDetailsFromIds) return;
+    if (isTerminalStatus) return;
+    void getDocumentDetailsFromIds([localItem.objectKey]);
+  }, [localItem?.objectKey, isTerminalStatus, getDocumentDetailsFromIds]);
+
+  usePolling(pollDetail, {
+    // Suspend live polling while viewing a historical version so the snapshot
+    // isn't overwritten by a live re-fetch.
+    enabled: USE_POLLING && !!localItem?.objectKey && !isTerminalStatus && viewingRunId === null,
+    intervalMs: DOCUMENT_DETAIL_POLL_INTERVAL_MS,
+  });
+
+  // When the open document transitions to a terminal status (typically detected
+  // by the lightweight list poll, which carries no Sections/Pages/Metering), the
+  // detail poll above stops firing. Do one final rich getDocument fetch on that
+  // transition so the completed sections, pages, and estimated cost are pulled in.
+  const objectKey = localItem?.objectKey;
+  const wasTerminalRef = useRef(isTerminalStatus);
+  useEffect(() => {
+    if (isTerminalStatus && !wasTerminalRef.current && objectKey && getDocumentDetailsFromIds) {
+      void getDocumentDetailsFromIds([objectKey]);
+    }
+    wasTerminalRef.current = isTerminalStatus;
+  }, [isTerminalStatus, objectKey, getDocumentDetailsFromIds]);
+
   // Fetch active configuration for dynamic confidence threshold (used by sections panel, etc.)
   const { mergedConfig } = useConfiguration();
-  // Fetch the specific config version that was used to process this document (for flow viewer).
+  // Fetch the specific configuration profile that was used to process this document (for flow viewer).
   // Optimization: skip the extra API call when the document version is 'default' or unset,
   // since useConfiguration() above already fetches the default config.
   const docConfigVersion = localItem?.configVersion || 'default';
@@ -680,133 +819,291 @@ export const DocumentPanel = ({
     }
   };
 
-  // Create enhanced item with configuration
+  // Baseline option is only useful if the document has evaluation data
+  const isBaselineAvailableForDoc = isBaselineAvailable(localItem);
+
+  // Kick off a document export for the given scope. Scope 'all' routes through the
+  // options modal so the user can opt into page images; other scopes start immediately.
+  const startDownload = async (scope: ExportScope) => {
+    setDownloadScope(scope);
+    setDownloadErrors([]);
+    setDownloadProgress(null);
+    setIsDownloadFinished(false);
+    setIsDownloadInProgress(true);
+    const controller = new AbortController();
+    setDownloadAbortController(controller);
+
+    try {
+      const result = await exportDocument(localItem as unknown as Parameters<typeof exportDocument>[0], settings, {
+        scope,
+        includePageImages: scope === 'all' && includePageImages,
+        includeSourceDocument: scope === 'all' && includeSourceDocument,
+        credentials: currentCredentials as Record<string, unknown>,
+        signal: controller.signal,
+        onProgress: (p) => {
+          setDownloadProgress(p);
+          setDownloadErrors(p.errors);
+        },
+      });
+      triggerBrowserDownload(result);
+      setDownloadErrors(result.errors);
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError') {
+        logger.info('Document export cancelled by user');
+      } else {
+        logger.error('Document export failed:', err);
+        alert(`Download failed: ${(err as Error).message || 'Unknown error'}`);
+      }
+    } finally {
+      setIsDownloadInProgress(false);
+      setIsDownloadFinished(true);
+      setDownloadAbortController(null);
+    }
+  };
+
+  const handleDownloadMenuItemClick = (id: string) => {
+    if (id === 'all') {
+      setIsDownloadOptionsOpen(true);
+    } else if (id === 'predictions' || id === 'baselines') {
+      void startDownload(id);
+    }
+  };
+
+  const handleConfirmDownloadAll = () => {
+    setIsDownloadOptionsOpen(false);
+    void startDownload('all');
+  };
+
+  const handleCancelDownload = () => {
+    downloadAbortController?.abort();
+  };
+
+  const handleCloseDownloadProgress = () => {
+    setIsDownloadFinished(false);
+    setDownloadProgress(null);
+    setDownloadScope(null);
+  };
+
+  const downloadMenuItems: ButtonDropdownProps.ItemOrGroup[] = [
+    { id: 'all', text: 'Download All (ZIP)', iconName: 'download' },
+    { id: 'predictions', text: 'Download Predictions (ZIP)', iconName: 'download' },
+  ];
+  if (isBaselineAvailableForDoc) {
+    downloadMenuItems.push({ id: 'baselines', text: 'Download Baselines (ZIP)', iconName: 'download' });
+  }
+
+  // When viewing a past version, render that run's snapshot (sections, pages,
+  // metering, report URIs) instead of the live document. The section/page
+  // shapes from getDocumentVersion match what the sub-panels consume
+  // (Id/Class/OutputJSONUri/ImageUri/...), and the DocumentVersionProvider
+  // supplies the per-object VersionIds so file fetches read the run's bytes.
+  const displayedItem = useMemo(() => {
+    if (!viewingRunId || !versionDetail) return localItem;
+    let parsedMetering = null;
+    if (versionDetail.Metering) {
+      try {
+        parsedMetering = JSON.parse(versionDetail.Metering);
+      } catch {
+        parsedMetering = null;
+      }
+    }
+    return {
+      ...localItem,
+      sections: (versionDetail.Sections ?? []) as Record<string, unknown>[],
+      pages: (versionDetail.Pages ?? []) as Record<string, unknown>[],
+      summaryReportUri: versionDetail.SummaryReportUri ?? '',
+      evaluationReportUri: versionDetail.EvaluationReportUri ?? '',
+      // Rule validation isn't versioned; hide it for historical views.
+      ruleValidationResultUri: '',
+      metering: parsedMetering,
+    } as typeof localItem;
+  }, [viewingRunId, versionDetail, localItem]);
+
+  // Ground-truth-vs-predicted classification, loaded once here and shared by
+  // the Sections and Pages tables so each annotates its Class/Type values from
+  // one request. Empty for a document with no evaluation, in which case neither
+  // table shows anything new.
+  const classificationIndex = useClassificationComparison(displayedItem.evaluationReportUri);
+
+  // Create enhanced item with configuration. Use the doc's own version
+  // config so the header Confidence Alerts badge reads the threshold the
+  // document was actually assessed against — otherwise the header count
+  // can disagree with per-section alerts (which use documentVersionConfig
+  // via SectionsPanel) whenever the stack's live threshold has drifted
+  // from the version-at-processing-time threshold.
   const enhancedItem = {
-    ...localItem,
-    mergedConfig: mergedConfig ?? undefined,
+    ...displayedItem,
+    mergedConfig: documentVersionConfig ?? undefined,
   };
 
   return (
-    <SpaceBetween size="s">
-      <Container
-        header={
-          <Header
-            variant="h2"
-            actions={
-              <SpaceBetween direction="horizontal" size="xs">
-                {showStartReview && (
+    <DocumentVersionProvider runId={viewingRunId} files={versionDetail?.Files}>
+      <SpaceBetween size="s">
+        <Container
+          header={
+            <Header
+              variant="h2"
+              actions={
+                <SpaceBetween direction="horizontal" size="xs">
+                  {showStartReview && (
+                    <Button
+                      iconName="user-profile"
+                      variant="primary"
+                      onClick={handleStartReview}
+                      loading={isClaimingReview}
+                      disabled={isClaimingReview}
+                    >
+                      Start Review
+                    </Button>
+                  )}
                   <Button
-                    iconName="user-profile"
-                    variant="primary"
-                    onClick={handleStartReview}
-                    loading={isClaimingReview}
-                    disabled={isClaimingReview}
-                  >
-                    Start Review
-                  </Button>
-                )}
-                <Button
-                  iconName="gen-ai"
-                  variant="normal"
-                  onClick={() => {
-                    logger.info('Opening troubleshoot modal for document:', localItem.objectKey);
-                    setIsTroubleshootModalVisible(true);
-                  }}
-                >
-                  Troubleshoot
-                </Button>
-                {localItem?.executionArn && (
-                  <Button
-                    iconName="status-positive"
-                    variant={isFlowViewerVisible ? 'primary' : 'normal'}
+                    iconName="gen-ai"
+                    variant="normal"
                     onClick={() => {
-                      console.log('Execution ARN:', localItem.executionArn);
-                      logger.info('Opening flow viewer with execution ARN:', localItem.executionArn);
-                      setIsFlowViewerVisible(true);
+                      logger.info('Opening troubleshoot modal for document:', localItem.objectKey);
+                      setIsTroubleshootModalVisible(true);
                     }}
                   >
-                    View Processing Flow
+                    Troubleshoot
                   </Button>
-                )}
-                {onAbort && canAbort && (
-                  <Button iconName="status-stopped" variant="normal" onClick={onAbort}>
-                    Abort
-                  </Button>
-                )}
-                {onReprocess && (
-                  <Button iconName="redo" variant="normal" onClick={onReprocess}>
-                    Reprocess
-                  </Button>
-                )}
-                {onDelete && (
-                  <Button iconName="remove" variant="normal" onClick={onDelete}>
-                    Delete
-                  </Button>
-                )}
-              </SpaceBetween>
-            }
-          >
-            Document Details
-          </Header>
-        }
-      >
-        <SpaceBetween size="l">
-          <DocumentAttributes
-            item={enhancedItem}
-            versions={versions}
-            setToolsOpen={setToolsOpen}
-            getDocumentDetailsFromIds={getDocumentDetailsFromIds}
-          />
+                  {localItem?.executionArn && (
+                    <Button
+                      iconName="status-positive"
+                      variant={isFlowViewerVisible ? 'primary' : 'normal'}
+                      onClick={() => {
+                        logger.info('Opening flow viewer with execution ARN:', localItem.executionArn);
+                        setIsFlowViewerVisible(true);
+                      }}
+                    >
+                      View Processing Flow
+                    </Button>
+                  )}
+                  {onAbort && canAbort && (
+                    <Button iconName="status-stopped" variant="normal" onClick={onAbort}>
+                      Abort
+                    </Button>
+                  )}
+                  {onReprocess && (
+                    <Button iconName="redo" variant="normal" onClick={onReprocess}>
+                      Reprocess
+                    </Button>
+                  )}
+                  <ButtonDropdown
+                    items={downloadMenuItems}
+                    onItemClick={({ detail }) => handleDownloadMenuItemClick(detail.id)}
+                    disabled={isDownloadInProgress}
+                    loading={isDownloadInProgress}
+                    variant="normal"
+                    expandToViewport
+                  >
+                    Download
+                  </ButtonDropdown>
+                  {onDelete && (
+                    <Button iconName="remove" variant="normal" onClick={onDelete}>
+                      Delete
+                    </Button>
+                  )}
+                </SpaceBetween>
+              }
+            >
+              Document Details
+            </Header>
+          }
+        >
+          <SpaceBetween size="l">
+            {/* Above the attribute grid on purpose: for a refused document this
+                is the only explanation there is, since no workflow ran and the
+                flow viewer has no execution to show. */}
+            <MalwareScanAlert item={enhancedItem} />
 
-          {localItem.metering && (
-            <div>
-              <MeteringExpandableSection meteringData={localItem.metering} documentItem={localItem} />
-            </div>
-          )}
-        </SpaceBetween>
-      </Container>
-      <DocumentViewers
-        objectKey={localItem.objectKey}
-        evaluationReportUri={localItem.evaluationReportUri}
-        summaryReportUri={localItem.summaryReportUri}
-        ruleValidationResultUri={localItem.ruleValidationResultUri}
-      />
-      <SectionsPanel
-        {...({
-          sections: localItem.sections,
-          pages: localItem.pages,
-          documentItem: localItem,
-          mergedConfig,
-          onDocumentUpdate: setLocalItem,
-        } as Record<string, unknown>)}
-      />
-      <PagesPanel {...({ pages: localItem.pages, documentItem: localItem } as Record<string, unknown>)} />
-      <ChatPanel objectKey={localItem.objectKey} />
+            <DocumentAttributes
+              item={enhancedItem}
+              versions={versions}
+              setToolsOpen={setToolsOpen}
+              getDocumentDetailsFromIds={getDocumentDetailsFromIds}
+            />
 
-      {/* Step Function Flow Viewer - uses the document's config version, not the active stack config */}
-      {localItem?.executionArn && (
-        <StepFunctionFlowViewer
-          executionArn={localItem.executionArn}
-          visible={isFlowViewerVisible}
-          onDismiss={() => setIsFlowViewerVisible(false)}
-          mergedConfig={documentVersionConfig}
+            {displayedItem.metering && (
+              <div>
+                <MeteringExpandableSection meteringData={displayedItem.metering} documentItem={displayedItem} />
+              </div>
+            )}
+          </SpaceBetween>
+        </Container>
+        <DocumentViewers
+          objectKey={displayedItem.objectKey}
+          evaluationReportUri={displayedItem.evaluationReportUri}
+          summaryReportUri={displayedItem.summaryReportUri}
+          ruleValidationResultUri={displayedItem.ruleValidationResultUri}
+          evaluationStatus={displayedItem.evaluationStatus}
         />
-      )}
+        <SectionsPanel
+          {...({
+            sections: displayedItem.sections,
+            pages: displayedItem.pages,
+            documentItem: displayedItem,
+            // Use the configuration profile the document was processed with, not the
+            // stack's current live config. This drives the Edit Mode class
+            // dropdown (so users see the classes the doc was actually
+            // classified against) and section confidence-alert thresholds.
+            // Falls back to `mergedConfig` when the doc's version is
+            // 'default'/unset — see `documentVersionConfig` above.
+            mergedConfig: documentVersionConfig,
+            // Editing is disabled for a historical snapshot; the panels also
+            // gate their own edit affordances via useDocumentVersion().isHistorical.
+            onDocumentUpdate: viewingRunId ? undefined : setLocalItem,
+            classificationIndex,
+          } as Record<string, unknown>)}
+        />
+        <PagesPanel {...({ pages: displayedItem.pages, documentItem: displayedItem, classificationIndex } as Record<string, unknown>)} />
+        <DocumentVersionsPanel objectKey={localItem.objectKey} viewingRunId={viewingRunId} onViewVersion={handleViewVersion} />
+        <ChatPanel objectKey={localItem.objectKey} configVersion={docConfigVersion} />
 
-      {/* Troubleshoot Modal */}
-      <TroubleshootModal
-        visible={isTroubleshootModalVisible}
-        onDismiss={() => setIsTroubleshootModalVisible(false)}
-        documentItem={localItem}
-        existingJob={troubleshootJobs[localItem?.objectKey] as unknown as { jobId: string; status: string }}
-        onJobUpdate={(jobData: TroubleshootJobData) => {
-          setTroubleshootJobs((prev) => ({
-            ...prev,
-            [localItem.objectKey]: jobData,
-          }));
-        }}
-      />
-    </SpaceBetween>
+        {/* Step Function Flow Viewer - uses the document's configuration profile, not the active stack config */}
+        {localItem?.executionArn && (
+          <StepFunctionFlowViewer
+            executionArn={localItem.executionArn}
+            visible={isFlowViewerVisible}
+            onDismiss={() => setIsFlowViewerVisible(false)}
+            mergedConfig={documentVersionConfig}
+            malwareScan={localItem}
+          />
+        )}
+
+        {/* Troubleshoot Modal */}
+        <TroubleshootModal
+          visible={isTroubleshootModalVisible}
+          onDismiss={() => setIsTroubleshootModalVisible(false)}
+          documentItem={localItem}
+          existingJob={troubleshootJobs[localItem?.objectKey] as unknown as { jobId: string; status: string }}
+          onJobUpdate={(jobData: TroubleshootJobData) => {
+            setTroubleshootJobs((prev) => ({
+              ...prev,
+              [localItem.objectKey]: jobData,
+            }));
+          }}
+        />
+
+        {/* Document-level download UX */}
+        <DownloadOptionsModal
+          visible={isDownloadOptionsOpen}
+          includePageImages={includePageImages}
+          includeSourceDocument={includeSourceDocument}
+          onIncludePageImagesChange={setIncludePageImages}
+          onIncludeSourceDocumentChange={setIncludeSourceDocument}
+          onConfirm={handleConfirmDownloadAll}
+          onDismiss={() => setIsDownloadOptionsOpen(false)}
+        />
+        <DownloadProgressModal
+          visible={(isDownloadInProgress || isDownloadFinished) && downloadScope !== null}
+          progress={downloadProgress}
+          errors={downloadErrors}
+          isFinished={isDownloadFinished}
+          onCancel={handleCancelDownload}
+          onClose={handleCloseDownloadProgress}
+        />
+      </SpaceBetween>
+    </DocumentVersionProvider>
   );
 };
 

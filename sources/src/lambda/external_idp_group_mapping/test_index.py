@@ -1,0 +1,1147 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+"""Unit tests for the external IdP group mapping Lambda function.
+
+Covers:
+- Group claim parsing (JSON array, comma-separated, single value, edge cases)
+- Bidirectional group sync (add to target groups, remove from stale groups)
+- Error handling (Cognito API failures, missing claims)
+- Token override injection
+- Provenance: only a user federated through the configured provider may be
+  granted groups from custom:idp_groups (a self-set value on a native user
+  grants nothing)
+- Freshness: only a fresh sign-in is honoured, never a token refresh
+- Coverage: every Cognito group template.yaml declares is reachable from an IdP
+  claim, in both copies of the handler (TestCognitoGroupCoverage)
+"""
+import json
+import logging
+import os
+import re
+import pytest
+from unittest.mock import MagicMock, patch, call
+
+
+# The Cognito identity provider whose assertions may grant groups.
+IDP_NAME = "MyOkta"
+
+# Set env vars BEFORE importing the module so GROUP_MAPPING is populated at module load
+ENV_VARS = {
+    "ADMIN_GROUP_NAME": "IdP-Admins",
+    "AUTHOR_GROUP_NAME": "IdP-Authors",
+    "REVIEWER_GROUP_NAME": "IdP-Reviewers",
+    "ANNOTATOR_GROUP_NAME": "IdP-Annotators",
+    "VIEWER_GROUP_NAME": "IdP-Viewers",
+    "EXTERNAL_IDP_NAME": IDP_NAME,
+    "LOG_LEVEL": "DEBUG",
+}
+
+TEMPLATE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "template.yaml"
+)
+
+# Resource logical id of the pre-token trigger whose InlineCode is the copy that
+# actually deploys.
+TRIGGER_RESOURCE = "ExternalIdPGroupMappingFunction"
+
+
+def load_template():
+    """Parse template.yaml, or skip the calling test if it is not reachable.
+
+    CloudFormation short-form tags (!Ref, !Sub, ...) are not valid YAML tags, so
+    they are collapsed to their plain scalar payload: `!Ref ExternalIdPAdminGroupName`
+    becomes the string "ExternalIdPAdminGroupName". That is exactly what the
+    coverage tests below need — the parameter a group env var is wired to.
+    """
+    import yaml
+
+    if not os.path.exists(TEMPLATE_PATH):
+        pytest.skip("template.yaml not reachable from this test's location")
+
+    class _CfnLoader(yaml.SafeLoader):
+        pass
+
+    def _passthrough(loader, _tag_suffix, node):
+        if isinstance(node, yaml.ScalarNode):
+            return loader.construct_scalar(node)
+        if isinstance(node, yaml.SequenceNode):
+            return loader.construct_sequence(node)
+        return loader.construct_mapping(node)
+
+    _CfnLoader.add_multi_constructor("!", _passthrough)
+
+    with open(TEMPLATE_PATH) as f:
+        return yaml.load(f, Loader=_CfnLoader)
+
+
+def declared_cognito_groups(template):
+    """Every group name the stack creates, read from the template.
+
+    Deliberately derived from `AWS::Cognito::UserPoolGroup` resources rather than
+    written out here: a sixth group added to the deployment must then break the
+    coverage tests instead of quietly joining Annotator as unmappable from an IdP
+    claim (#968).
+    """
+    return {
+        res["Properties"]["GroupName"]
+        for res in template["Resources"].values()
+        if res.get("Type") == "AWS::Cognito::UserPoolGroup"
+    }
+
+
+def group_env_vars(template):
+    """`{env var: stack parameter}` for the trigger's group-mapping variables."""
+    variables = template["Resources"][TRIGGER_RESOURCE]["Properties"]["Environment"][
+        "Variables"
+    ]
+    return {k: v for k, v in variables.items() if k.endswith("_GROUP_NAME")}
+
+
+def load_inline_copy(env):
+    """Import the InlineCode from template.yaml as a module, under `env`.
+
+    The exec IS the assertion: `code` comes from this repo's own template.yaml,
+    and running the copy that actually deploys is what proves it has not drifted
+    from the copy index.py's tests cover. Comparing the two as text would pass
+    while the deployed handler behaved differently.
+    """
+    import types
+
+    template = load_template()
+    code = template["Resources"][TRIGGER_RESOURCE]["Properties"]["InlineCode"]
+
+    env = dict(env)
+    env.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+    with patch.dict(os.environ, env, clear=False):
+        mod = types.ModuleType("inline_external_idp_group_mapping")
+        # The pragma has to sit on the line immediately above the finding —
+        # semgrep does not look further back than that.
+        # nosemgrep: python.lang.security.audit.exec-detected.exec-detected
+        exec(compile(code, "template.yaml:InlineCode", "exec"), mod.__dict__)  # nosec B102 - see above
+    return mod
+
+
+def load_standalone_copy(env):
+    """Import src/lambda/external_idp_group_mapping/index.py under `env`."""
+    import importlib
+    import index as mod
+
+    env = dict(env)
+    env.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+    with patch.dict(os.environ, env, clear=False):
+        importlib.reload(mod)
+    return mod
+
+
+def _make_event(
+    username="testuser",
+    user_pool_id="us-east-1_abc123",
+    idp_groups="",
+    extra_attrs=None,
+    trigger_source="TokenGeneration_HostedAuth",
+):
+    """Build a minimal Cognito PreTokenGeneration trigger event."""
+    attrs = {"custom:idp_groups": idp_groups}
+    if extra_attrs:
+        attrs.update(extra_attrs)
+    return {
+        "userPoolId": user_pool_id,
+        "userName": username,
+        "triggerSource": trigger_source,
+        "request": {"userAttributes": attrs},
+    }
+
+
+def _admin_get_user_response(provider_name=IDP_NAME):
+    """An AdminGetUser response for a user federated through `provider_name`.
+
+    Pass provider_name=None for a native (non-federated) user, who has no
+    `identities` attribute at all.
+
+    The `identities` value below is the shape Cognito actually returns — captured
+    from a live pool with a SAML provider and `AdminLinkProviderForUser`. Note
+    `primary` and `dateCreated` come back as *strings*, not a boolean and an int;
+    the handler reads neither, and this fixture keeps the real shape so that
+    stays true.
+    """
+    attributes = [{"Name": "email", "Value": "testuser@example.com"}]
+    if provider_name is not None:
+        attributes.append(
+            {
+                "Name": "identities",
+                "Value": json.dumps(
+                    [
+                        {
+                            "dateCreated": "1788903903014",
+                            "userId": "testuser@example.com",
+                            "providerName": provider_name,
+                            "providerType": "SAML",
+                            "issuer": None,
+                            "primary": "false",
+                        }
+                    ]
+                ),
+            }
+        )
+    return {"Username": "testuser", "UserAttributes": attributes}
+
+
+
+def _override_groups(result):
+    """The groups the handler asked Cognito to put in the token, or None.
+
+    Reads whichever response key is present. The two names are not
+    interchangeable — Cognito reads `claimsOverrideDetails` for a V1_0 trigger and
+    `claimsAndScopeOverrideDetails` for V2_0/V3_0 — so the handler emits both and
+    tests assert on both (see TestTokenOverrideShape).
+    """
+    response = result.get("response") or {}
+    details = (
+        response.get("claimsOverrideDetails")
+        or response.get("claimsAndScopeOverrideDetails")
+    )
+    if not details:
+        return None
+    return (details.get("groupOverrideDetails") or {}).get("groupsToOverride")
+
+
+# ============================================================
+# Group parsing tests
+# ============================================================
+
+class TestParseIdpGroups:
+    """Tests for parse_idp_groups handling various claim formats."""
+
+    @pytest.fixture(autouse=True)
+    def _load_module(self):
+        with patch.dict(os.environ, ENV_VARS, clear=False):
+            import importlib
+            import index as mod
+            importlib.reload(mod)
+            self.parse = mod.parse_idp_groups
+
+    def test_json_array(self):
+        assert self.parse('["IdP-Admins", "IdP-Authors"]') == ["IdP-Admins", "IdP-Authors"]
+
+    def test_json_array_single(self):
+        assert self.parse('["IdP-Admins"]') == ["IdP-Admins"]
+
+    def test_comma_separated(self):
+        assert self.parse("IdP-Admins, IdP-Authors") == ["IdP-Admins", "IdP-Authors"]
+
+    def test_single_value(self):
+        assert self.parse("IdP-Admins") == ["IdP-Admins"]
+
+    def test_empty_string(self):
+        assert self.parse("") == []
+
+    def test_none(self):
+        assert self.parse(None) == []
+
+    def test_whitespace_only(self):
+        assert self.parse("   ") == []
+
+    def test_json_array_with_extra_whitespace(self):
+        result = self.parse('  ["IdP-Admins" , "IdP-Authors"]  ')
+        assert result == ["IdP-Admins", "IdP-Authors"]
+
+    def test_malformed_json_array_fallback(self):
+        """Malformed JSON that starts with [ should fall back to split parsing."""
+        result = self.parse("[IdP-Admins, IdP-Authors]")
+        assert "IdP-Admins" in result
+        assert "IdP-Authors" in result
+
+    def test_comma_separated_with_spaces(self):
+        assert self.parse("  IdP-Admins ,  IdP-Authors , IdP-Viewers  ") == [
+            "IdP-Admins", "IdP-Authors", "IdP-Viewers"
+        ]
+
+
+# ============================================================
+# Handler tests
+# ============================================================
+
+@pytest.mark.unit
+class TestHandler:
+    """Tests for the Lambda handler function."""
+
+    @pytest.fixture(autouse=True)
+    def _load_module(self):
+        """Reload module with env vars and mock the cognito client.
+
+        The mock user is federated through the configured provider by default, so
+        these tests exercise the group-sync behaviour. Provenance and freshness
+        are covered by TestProvenanceAndFreshness.
+        """
+        with patch.dict(os.environ, ENV_VARS, clear=False):
+            import importlib
+            import index as mod
+            importlib.reload(mod)
+            self.mod = mod
+            self.handler = mod.handler
+            self.mock_cognito = MagicMock()
+            self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+            mod.cognito = self.mock_cognito
+
+    def test_no_idp_groups_claim_returns_event_unchanged(self):
+        """When custom:idp_groups is empty, handler returns event without calling Cognito."""
+        event = _make_event(idp_groups="")
+        result = self.handler(event, None)
+        assert result is event
+        self.mock_cognito.admin_list_groups_for_user.assert_not_called()
+
+    def test_no_matching_groups_returns_event_unchanged(self):
+        """When IdP groups don't match any mapping, handler returns event without syncing."""
+        event = _make_event(idp_groups="UnknownGroup")
+        result = self.handler(event, None)
+        assert result is event
+        self.mock_cognito.admin_list_groups_for_user.assert_not_called()
+
+    def test_adds_user_to_mapped_groups(self):
+        """User with IdP-Admins should be added to Cognito Admin group."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        self.mock_cognito.admin_add_user_to_group.assert_called_once_with(
+            UserPoolId="us-east-1_abc123", Username="testuser", GroupName="Admin"
+        )
+        # Verify token override
+        override = result["response"]["claimsAndScopeOverrideDetails"]["groupOverrideDetails"]
+        assert "Admin" in override["groupsToOverride"]
+
+    def test_multiple_groups_added(self):
+        """User with multiple IdP groups should be added to all matching Cognito groups."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+        event = _make_event(idp_groups="IdP-Admins, IdP-Reviewers")
+
+        result = self.handler(event, None)
+
+        add_calls = self.mock_cognito.admin_add_user_to_group.call_args_list
+        added_groups = {c.kwargs["GroupName"] for c in add_calls}
+        assert added_groups == {"Admin", "Reviewer"}
+
+    def test_skips_already_assigned_groups(self):
+        """User already in Admin should not be re-added."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {
+            "Groups": [{"GroupName": "Admin"}]
+        }
+        event = _make_event(idp_groups="IdP-Admins")
+
+        self.handler(event, None)
+
+        self.mock_cognito.admin_add_user_to_group.assert_not_called()
+
+    def test_removes_stale_managed_groups(self):
+        """User currently in Admin+Author but IdP only says Author → remove from Admin."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {
+            "Groups": [{"GroupName": "Admin"}, {"GroupName": "Author"}]
+        }
+        event = _make_event(idp_groups="IdP-Authors")
+
+        self.handler(event, None)
+
+        self.mock_cognito.admin_remove_user_from_group.assert_called_once_with(
+            UserPoolId="us-east-1_abc123", Username="testuser", GroupName="Admin"
+        )
+        self.mock_cognito.admin_add_user_to_group.assert_not_called()
+
+    def test_does_not_remove_unmanaged_groups(self):
+        """Groups not in the mapping (e.g., 'CustomGroup') should not be removed."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {
+            "Groups": [{"GroupName": "CustomGroup"}, {"GroupName": "Author"}]
+        }
+        event = _make_event(idp_groups="IdP-Authors")
+
+        self.handler(event, None)
+
+        self.mock_cognito.admin_remove_user_from_group.assert_not_called()
+
+    def test_token_override_contains_all_target_groups(self):
+        """The groupsToOverride in the response should list all target groups."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+        event = _make_event(idp_groups='["IdP-Admins", "IdP-Viewers"]')
+
+        result = self.handler(event, None)
+
+        override_groups = set(
+            result["response"]["claimsAndScopeOverrideDetails"]["groupOverrideDetails"]["groupsToOverride"]
+        )
+        assert override_groups == {"Admin", "Viewer"}
+
+    def test_list_groups_api_failure_returns_event(self):
+        """If admin_list_groups_for_user fails, handler returns event gracefully."""
+        self.mock_cognito.admin_list_groups_for_user.side_effect = Exception("AccessDenied")
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        assert result is event
+        self.mock_cognito.admin_add_user_to_group.assert_not_called()
+
+    def test_add_group_api_failure_continues(self):
+        """If adding to one group fails, the handler should continue with others."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+        self.mock_cognito.admin_add_user_to_group.side_effect = [
+            Exception("Throttled"),  # first call fails
+            None,  # second call succeeds
+        ]
+        event = _make_event(idp_groups="IdP-Admins, IdP-Authors")
+
+        result = self.handler(event, None)
+
+        # Should still have attempted both adds
+        assert self.mock_cognito.admin_add_user_to_group.call_count == 2
+        # Token override should still contain both target groups
+        override_groups = set(
+            result["response"]["claimsAndScopeOverrideDetails"]["groupOverrideDetails"]["groupsToOverride"]
+        )
+        assert override_groups == {"Admin", "Author"}
+
+    def test_remove_group_api_failure_continues(self):
+        """If removing from a group fails, handler should continue gracefully."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {
+            "Groups": [{"GroupName": "Admin"}, {"GroupName": "Author"}]
+        }
+        self.mock_cognito.admin_remove_user_from_group.side_effect = Exception("Throttled")
+        event = _make_event(idp_groups="IdP-Authors")
+
+        result = self.handler(event, None)
+
+        # Should still return event with token override
+        assert "claimsAndScopeOverrideDetails" in result["response"]
+
+    def test_json_array_groups_claim(self):
+        """Groups sent as a JSON array should be parsed correctly."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+        event = _make_event(idp_groups=json.dumps(["IdP-Admins", "IdP-Reviewers"]))
+
+        result = self.handler(event, None)
+
+        add_calls = self.mock_cognito.admin_add_user_to_group.call_args_list
+        added_groups = {c.kwargs["GroupName"] for c in add_calls}
+        assert added_groups == {"Admin", "Reviewer"}
+
+    def test_missing_user_attributes_key(self):
+        """Event with no custom:idp_groups attribute should return unchanged."""
+        event = {
+            "userPoolId": "us-east-1_abc123",
+            "userName": "testuser",
+            "triggerSource": "TokenGeneration_HostedAuth",
+            "request": {"userAttributes": {}},
+        }
+        result = self.handler(event, None)
+        assert result is event
+
+
+# ============================================================
+# Provenance and freshness tests
+# ============================================================
+
+@pytest.mark.unit
+class TestProvenanceAndFreshness:
+    """The attribute only grants groups when the IdP put it there.
+
+    `custom:idp_groups` is mutable and — when IdP-mapped — writable by the app
+    client, so a user's own access token can set it via UpdateUserAttributes.
+    These tests pin the two checks that stop a self-set value from granting
+    groups.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _load_module(self):
+        with patch.dict(os.environ, ENV_VARS, clear=False):
+            import importlib
+            import index as mod
+            importlib.reload(mod)
+            self.mod = mod
+            self.handler = mod.handler
+            self.mock_cognito = MagicMock()
+            self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+            mod.cognito = self.mock_cognito
+
+    def _assert_nothing_granted(self, result, event):
+        """No group membership change and no token override."""
+        assert result is event
+        self.mock_cognito.admin_add_user_to_group.assert_not_called()
+        self.mock_cognito.admin_remove_user_from_group.assert_not_called()
+        assert "claimsAndScopeOverrideDetails" not in result.get("response", {})
+
+    def test_native_user_self_set_attribute_grants_nothing(self):
+        """A native user who sets custom:idp_groups on themselves gains no groups.
+
+        Without the provenance check, any value a user put in the attribute would
+        be mapped, so a Viewer naming the admin IdP group would be added to the
+        Admin group. This is the case the check exists for.
+        """
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response(
+            provider_name=None
+        )
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        self._assert_nothing_granted(result, event)
+
+    def test_user_federated_via_other_provider_grants_nothing(self):
+        """Being federated through some *other* provider is not enough."""
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response(
+            provider_name="SomeOtherIdP"
+        )
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        self._assert_nothing_granted(result, event)
+
+    def test_federated_user_is_granted_groups(self):
+        """The positive case: federated through the configured provider."""
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        self.mock_cognito.admin_add_user_to_group.assert_called_once_with(
+            UserPoolId="us-east-1_abc123", Username="testuser", GroupName="Admin"
+        )
+        override = result["response"]["claimsAndScopeOverrideDetails"]["groupOverrideDetails"]
+        assert override["groupsToOverride"] == ["Admin"]
+
+    def test_token_refresh_grants_nothing(self):
+        """A refresh re-reads stored state, which the user may have written.
+
+        Skipping the refresh closes the path where a federated user self-sets the
+        attribute after sign-in and then refreshes to pick up the new groups.
+        """
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        event = _make_event(
+            idp_groups="IdP-Admins", trigger_source="TokenGeneration_RefreshTokens"
+        )
+
+        result = self.handler(event, None)
+
+        self._assert_nothing_granted(result, event)
+        self.mock_cognito.admin_get_user.assert_not_called()
+
+    def test_unknown_trigger_source_grants_nothing(self):
+        """Anything not on the fresh-sign-in list is treated as untrusted."""
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        event = _make_event(idp_groups="IdP-Admins", trigger_source="TokenGeneration_Future")
+
+        result = self.handler(event, None)
+
+        self._assert_nothing_granted(result, event)
+
+    @pytest.mark.parametrize(
+        "trigger_source",
+        [
+            "TokenGeneration_HostedAuth",
+            "TokenGeneration_Authentication",
+            "TokenGeneration_NewPasswordChallenge",
+            "TokenGeneration_AuthenticateDevice",
+        ],
+    )
+    def test_fresh_sign_in_sources_are_honoured(self, trigger_source):
+        """Every non-refresh sign-in source maps groups."""
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        event = _make_event(idp_groups="IdP-Authors", trigger_source=trigger_source)
+
+        result = self.handler(event, None)
+
+        self.mock_cognito.admin_add_user_to_group.assert_called_once_with(
+            UserPoolId="us-east-1_abc123", Username="testuser", GroupName="Author"
+        )
+        assert "claimsAndScopeOverrideDetails" in result["response"]
+
+    def test_admin_get_user_failure_fails_closed(self):
+        """An unreadable user is not a trusted user."""
+        self.mock_cognito.admin_get_user.side_effect = Exception("AccessDenied")
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        self._assert_nothing_granted(result, event)
+
+    def test_unparseable_identities_fails_closed(self):
+        """A malformed identities value grants nothing rather than being ignored."""
+        self.mock_cognito.admin_get_user.return_value = {
+            "UserAttributes": [{"Name": "identities", "Value": "not-json"}]
+        }
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        self._assert_nothing_granted(result, event)
+
+    def test_empty_identities_list_fails_closed(self):
+        """An empty identities array names no provider, so it matches none."""
+        self.mock_cognito.admin_get_user.return_value = {
+            "UserAttributes": [{"Name": "identities", "Value": "[]"}]
+        }
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        self._assert_nothing_granted(result, event)
+
+    def test_no_configured_provider_grants_nothing(self):
+        """With EXTERNAL_IDP_NAME unset no provider is trusted, so nothing is granted."""
+        env = dict(ENV_VARS)
+        env["EXTERNAL_IDP_NAME"] = ""
+        with patch.dict(os.environ, env, clear=False):
+            import importlib
+            import index as mod
+            importlib.reload(mod)
+            mock_cognito = MagicMock()
+            mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+            mod.cognito = mock_cognito
+
+            event = _make_event(idp_groups="IdP-Admins")
+            result = mod.handler(event, None)
+
+            assert result is event
+            mock_cognito.admin_add_user_to_group.assert_not_called()
+            mock_cognito.admin_get_user.assert_not_called()
+
+    def test_provenance_is_not_read_from_the_event(self):
+        """An `identities` attribute in the event does not substitute for AdminGetUser.
+
+        The event's userAttributes mirror stored attributes; provenance must come
+        from the AdminGetUser read so the decision rests on one server-side source.
+        """
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response(
+            provider_name=None
+        )
+        event = _make_event(
+            idp_groups="IdP-Admins",
+            extra_attrs={
+                "identities": json.dumps([{"providerName": IDP_NAME}]),
+            },
+        )
+
+        result = self.handler(event, None)
+
+        self._assert_nothing_granted(result, event)
+
+
+# ============================================================
+# Deployed-copy (template.yaml InlineCode) tests
+# ============================================================
+
+@pytest.mark.unit
+class TestDeployedInlineCopy:
+    """The handler that deploys is the InlineCode in template.yaml, not this file.
+
+    ExternalIdPGroupMappingFunction carries an inline copy of the same logic (a
+    Lambda-layer-free trigger), so a fix applied only to index.py would not ship.
+    These tests load that inline copy and re-run the provenance and freshness
+    assertions against it, which fails if the two drift apart.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _load_inline_module(self):
+        mod = load_inline_copy(ENV_VARS)
+        self.mod = mod
+        self.handler = mod.handler
+        self.mock_cognito = MagicMock()
+        self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+        mod.cognito = self.mock_cognito
+
+    def test_inline_copy_grants_nothing_to_a_native_user(self):
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response(
+            provider_name=None
+        )
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        assert result is event
+        self.mock_cognito.admin_add_user_to_group.assert_not_called()
+        assert "claimsAndScopeOverrideDetails" not in result.get("response", {})
+
+    def test_inline_copy_grants_nothing_on_refresh(self):
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        event = _make_event(
+            idp_groups="IdP-Admins", trigger_source="TokenGeneration_RefreshTokens"
+        )
+
+        result = self.handler(event, None)
+
+        assert result is event
+        self.mock_cognito.admin_add_user_to_group.assert_not_called()
+
+    def test_inline_copy_grants_nothing_via_another_provider(self):
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response(
+            provider_name="SomeOtherIdP"
+        )
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        assert result is event
+        self.mock_cognito.admin_add_user_to_group.assert_not_called()
+
+    def test_inline_copy_grants_groups_to_a_federated_user(self):
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        event = _make_event(idp_groups="IdP-Admins")
+
+        result = self.handler(event, None)
+
+        self.mock_cognito.admin_add_user_to_group.assert_called_once_with(
+            UserPoolId="us-east-1_abc123", Username="testuser", GroupName="Admin"
+        )
+        override = result["response"]["claimsAndScopeOverrideDetails"]["groupOverrideDetails"]
+        assert override["groupsToOverride"] == ["Admin"]
+
+    def test_inline_copy_reads_the_provider_name_from_the_environment(self):
+        """The trusted provider must come from EXTERNAL_IDP_NAME, not be hardcoded."""
+        assert self.mod.EXTERNAL_IDP_NAME == IDP_NAME
+
+
+
+# ============================================================
+# Token override response shape
+# ============================================================
+
+@pytest.mark.unit
+class TestTokenOverrideShape:
+    """Cognito reads a different response key per trigger event version.
+
+    `claimsOverrideDetails` is the V1_0 name; `claimsAndScopeOverrideDetails` is
+    V2_0/V3_0. template.yaml registers the trigger with `PreTokenGeneration:`,
+    which is V1_0, so emitting only the V2 name meant Cognito silently ignored the
+    override and a first sign-in produced a token with no group claim — confirmed
+    against a deployed pool. The handler emits both; these tests keep it that way.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _load_module(self):
+        with patch.dict(os.environ, ENV_VARS, clear=False):
+            import importlib
+            import index as mod
+            importlib.reload(mod)
+            self.handler = mod.handler
+            self.mock_cognito = MagicMock()
+            self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+            self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+            mod.cognito = self.mock_cognito
+
+    def test_emits_the_v1_key(self):
+        result = self.handler(_make_event(idp_groups="IdP-Admins"), None)
+        details = result["response"]["claimsOverrideDetails"]
+        assert details["groupOverrideDetails"]["groupsToOverride"] == ["Admin"]
+
+    def test_emits_the_v2_key(self):
+        result = self.handler(_make_event(idp_groups="IdP-Admins"), None)
+        details = result["response"]["claimsAndScopeOverrideDetails"]
+        assert details["groupOverrideDetails"]["groupsToOverride"] == ["Admin"]
+
+    def test_both_keys_agree(self):
+        result = self.handler(_make_event(idp_groups="IdP-Admins, IdP-Viewers"), None)
+        v1 = result["response"]["claimsOverrideDetails"]
+        v2 = result["response"]["claimsAndScopeOverrideDetails"]
+        assert v1 == v2
+
+    def test_neither_key_appears_when_nothing_is_granted(self):
+        """A skipped sign-in must not emit an empty override under either name."""
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response(
+            provider_name=None
+        )
+        result = self.handler(_make_event(idp_groups="IdP-Admins"), None)
+        response = result.get("response") or {}
+        assert "claimsOverrideDetails" not in response
+        assert "claimsAndScopeOverrideDetails" not in response
+
+# ============================================================
+# Module-level GROUP_MAPPING tests
+# ============================================================
+
+class TestGroupMapping:
+    """Tests for GROUP_MAPPING initialization from environment variables.
+
+    Each test here reloads ``index``, which re-executes its module-level
+    ``boto3.client("cognito-idp")``. Because ``clear=True`` wipes the whole
+    environment, that client construction has no region unless one is put back,
+    and botocore then raises ``NoRegionError`` — so these three tests passed only
+    on a machine whose region comes from the shared AWS config file (which
+    ``clear=True`` cannot reach) and failed on any CI runner, where the region is
+    an environment variable or absent. ``AWS_DEFAULT_REGION`` is therefore
+    restored in each dictionary below.
+
+    This is the one case ``conftest.py`` cannot cover, which is why the region
+    appears in both places. ``conftest.py`` populates the process environment
+    before collection, and ``clear=True`` removes it again for the duration of
+    these three tests specifically. Neither setting can affect what is asserted:
+    ``GROUP_MAPPING`` is built from the ``*_GROUP_NAME`` variables only.
+    """
+
+    def test_partial_env_vars(self):
+        """Only configured env vars should appear in GROUP_MAPPING."""
+        partial_env = {
+            "ADMIN_GROUP_NAME": "MyAdmins",
+            "LOG_LEVEL": "INFO",
+            "AWS_DEFAULT_REGION": "us-east-1",
+        }
+        with patch.dict(os.environ, partial_env, clear=True):
+            import importlib
+            import index as mod
+            importlib.reload(mod)
+            assert mod.GROUP_MAPPING == {"MyAdmins": "Admin"}
+            assert mod.COGNITO_GROUPS == {"Admin"}
+
+    def test_empty_env_vars(self):
+        """No group env vars → empty mapping."""
+        cleared = {"LOG_LEVEL": "INFO", "AWS_DEFAULT_REGION": "us-east-1"}
+        with patch.dict(os.environ, cleared, clear=True):
+            import importlib
+            import index as mod
+            importlib.reload(mod)
+            assert mod.GROUP_MAPPING == {}
+            assert mod.COGNITO_GROUPS == set()
+
+    def test_whitespace_env_vars_ignored(self):
+        """Env vars with only whitespace should be ignored."""
+        env = {
+            "ADMIN_GROUP_NAME": "  ",
+            "AUTHOR_GROUP_NAME": "Authors",
+            "LOG_LEVEL": "INFO",
+            "AWS_DEFAULT_REGION": "us-east-1",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            import importlib
+            import index as mod
+            importlib.reload(mod)
+            assert "  " not in mod.GROUP_MAPPING
+            assert mod.GROUP_MAPPING == {"Authors": "Author"}
+
+
+# ============================================================
+# Every declared Cognito group is reachable from an IdP claim
+# ============================================================
+
+# Both copies of the handler, so a change applied to only one of them fails here.
+# "inline" is the InlineCode in template.yaml, which is what deploys; "standalone"
+# is index.py, which carries these tests.
+COPY_LOADERS = {"inline": load_inline_copy, "standalone": load_standalone_copy}
+
+
+def _role_from_parameter(parameter_name):
+    """`ExternalIdPAnnotatorGroupName` -> `Annotator`."""
+    match = re.fullmatch(r"ExternalIdP(?P<role>\w+)GroupName", parameter_name)
+    assert match, f"unexpected group parameter name: {parameter_name}"
+    return match.group("role")
+
+
+@pytest.mark.unit
+class TestCognitoGroupCoverage:
+    """Every Cognito group the stack creates must be assignable from an IdP claim.
+
+    Nothing here writes the group names out. They are read from the
+    `AWS::Cognito::UserPoolGroup` resources in template.yaml, so a sixth group
+    added to the deployment fails these tests rather than silently becoming
+    unmappable — which is the shape of the defect this class exists for (#968:
+    `Annotator` was declared as a group with no `ExternalIdPAnnotatorGroupName`
+    parameter and no `ANNOTATOR_GROUP_NAME` anywhere, so a federated user could
+    never hold it).
+    """
+
+    def test_every_group_has_a_stack_parameter_wired_to_the_trigger(self):
+        """Each declared group needs a parameter, an env var, and the wiring."""
+        template = load_template()
+        declared = declared_cognito_groups(template)
+        env_to_parameter = group_env_vars(template)
+
+        wired_roles = {
+            _role_from_parameter(param) for param in env_to_parameter.values()
+        }
+        assert wired_roles == declared, (
+            "every AWS::Cognito::UserPoolGroup must have an "
+            "ExternalIdP<Role>GroupName parameter wired into "
+            f"{TRIGGER_RESOURCE}'s environment. Declared but not wired: "
+            f"{sorted(declared - wired_roles)}; wired but not declared: "
+            f"{sorted(wired_roles - declared)}"
+        )
+
+        # The env var name and the parameter must agree, or the handler reads a
+        # variable the template never sets.
+        for env_key, parameter in env_to_parameter.items():
+            role = _role_from_parameter(parameter)
+            assert env_key == f"{role.upper()}_GROUP_NAME", (
+                f"{parameter} is wired to {env_key}; the handler builds its "
+                f"mapping from {role.upper()}_GROUP_NAME"
+            )
+            assert parameter in template["Parameters"], (
+                f"{parameter} is referenced by {TRIGGER_RESOURCE} but not declared"
+            )
+            assert template["Parameters"][parameter]["Type"] == "String"
+            assert template["Parameters"][parameter]["Default"] == ""
+
+    def test_every_group_parameter_is_in_the_console_parameter_group(self):
+        """A parameter missing from the Interface lands in "other parameters"."""
+        template = load_template()
+        interface = template["Metadata"]["AWS::CloudFormation::Interface"]
+        grouped = {
+            param
+            for group in interface["ParameterGroups"]
+            for param in group["Parameters"]
+        }
+        for parameter in group_env_vars(template).values():
+            assert parameter in grouped, (
+                f"{parameter} is not listed in any AWS::CloudFormation::Interface "
+                "ParameterGroup, so it renders in an ungrouped bucket on the "
+                "deploy screen"
+            )
+
+    def test_every_group_parameter_is_stripped_by_the_headless_transform(self):
+        """The headless template has no Cognito, so it must drop these.
+
+        A parameter left behind is a parameter with no consumer: the transform
+        removes `ExternalIdPGroupMappingFunction` itself, so the headless
+        template would carry an input that does nothing.
+        """
+        transform = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..", "..",
+            "lib", "idp_sdk", "idp_sdk", "_core", "template_transform.py",
+        )
+        if not os.path.exists(transform):
+            pytest.skip("template_transform.py not reachable from this location")
+
+        with open(transform) as f:
+            source = f.read()
+
+        for parameter in group_env_vars(load_template()).values():
+            assert re.search(rf'^\s+"{parameter}",$', source, re.M), (
+                f"{parameter} must be listed in parameters_to_remove in "
+                "lib/idp_sdk/idp_sdk/_core/template_transform.py"
+            )
+
+    @pytest.mark.parametrize("copy_name", sorted(COPY_LOADERS))
+    def test_mapping_covers_every_declared_group(self, copy_name):
+        """With every group env var set, the mapping must produce every group."""
+        template = load_template()
+        declared = declared_cognito_groups(template)
+        env = {
+            env_key: f"IdP-{_role_from_parameter(parameter)}s"
+            for env_key, parameter in group_env_vars(template).items()
+        }
+        env["EXTERNAL_IDP_NAME"] = IDP_NAME
+
+        mod = COPY_LOADERS[copy_name](env)
+
+        mapped = set(mod.GROUP_MAPPING.values())
+        assert mapped == declared, (
+            f"the {copy_name} copy of the handler maps {sorted(mapped)}, but the "
+            f"stack declares {sorted(declared)}. Missing: "
+            f"{sorted(declared - mapped)}"
+        )
+        assert mod.COGNITO_GROUPS == declared
+
+    def test_both_copies_build_the_same_mapping(self):
+        """The two copies must stay in step.
+
+        template.yaml's MAINTENANCE NOTE says to change both together; this is
+        what makes that more than a comment. A tuple added to one mapping list
+        and not the other fails here, in either direction.
+        """
+        inline = load_inline_copy(ENV_VARS)
+        standalone = load_standalone_copy(ENV_VARS)
+
+        assert inline.GROUP_MAPPING == standalone.GROUP_MAPPING, (
+            "template.yaml's InlineCode and index.py disagree about the IdP "
+            "group mapping; both must be changed together"
+        )
+        assert inline.COGNITO_GROUPS == standalone.COGNITO_GROUPS
+
+    def test_annotator_is_unmanaged_when_the_parameter_is_left_empty(self):
+        """An empty parameter keeps Annotator under manual control.
+
+        `COGNITO_GROUPS` is the set the trigger removes a user from, so an
+        operator who assigns Annotator by hand keeps it across federated
+        sign-ins as long as ExternalIdPAnnotatorGroupName is unset. That is what
+        makes the parameter safe to pick up on an existing stack with no
+        operator action.
+        """
+        # CloudFormation always sets the variable; an unsupplied parameter
+        # arrives as the empty string, which is the case the handler must ignore.
+        env = dict(ENV_VARS, ANNOTATOR_GROUP_NAME="")
+        for mod in (load_standalone_copy(env), load_inline_copy(env)):
+            assert "Annotator" not in mod.COGNITO_GROUPS
+            assert "Annotator" not in set(mod.GROUP_MAPPING.values())
+            # The other four are unaffected.
+            assert mod.COGNITO_GROUPS == {"Admin", "Author", "Reviewer", "Viewer"}
+
+
+@pytest.mark.unit
+class TestGroupSyncOnBothCopies:
+    """The add/remove side effects, run against both copies of the handler.
+
+    `TestHandler` covers these against `index.py` only, and
+    `TestDeployedInlineCopy` covers provenance and freshness against the
+    InlineCode without ever asserting a group was added or removed. The whole
+    nine-line removal loop could therefore be deleted from the copy that deploys
+    with every test still passing, which is what these four exist to stop.
+
+    Comparing `GROUP_MAPPING` between the copies, as `TestCognitoGroupCoverage`
+    does, catches a divergent mapping but says nothing about divergent *logic* —
+    and the copies are not textually identical (`index.py` factors claim parsing
+    into `parse_idp_groups`, the inline copy inlines it), so the possibility is
+    real rather than theoretical.
+    """
+
+    @pytest.fixture(params=sorted(COPY_LOADERS), autouse=True)
+    def _load(self, request):
+        mod = COPY_LOADERS[request.param](ENV_VARS)
+        self.handler = mod.handler
+        self.mock_cognito = MagicMock()
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        mod.cognito = self.mock_cognito
+
+    def test_adds_the_mapped_group(self):
+        self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+
+        result = self.handler(_make_event(idp_groups="IdP-Admins"), None)
+
+        self.mock_cognito.admin_add_user_to_group.assert_called_once_with(
+            UserPoolId="us-east-1_abc123", Username="testuser", GroupName="Admin"
+        )
+        assert _override_groups(result) == ["Admin"]
+
+    def test_removes_a_managed_group_the_claim_no_longer_names(self):
+        """The removal loop. Deleting it passed every other test in this file."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {
+            "Groups": [{"GroupName": "Admin"}, {"GroupName": "Author"}]
+        }
+
+        self.handler(_make_event(idp_groups="IdP-Authors"), None)
+
+        self.mock_cognito.admin_remove_user_from_group.assert_called_once_with(
+            UserPoolId="us-east-1_abc123", Username="testuser", GroupName="Admin"
+        )
+        self.mock_cognito.admin_add_user_to_group.assert_not_called()
+
+    def test_does_not_remove_a_group_it_does_not_manage(self):
+        """Only groups in COGNITO_GROUPS are eligible for removal."""
+        self.mock_cognito.admin_list_groups_for_user.return_value = {
+            "Groups": [{"GroupName": "CustomGroup"}, {"GroupName": "Author"}]
+        }
+
+        self.handler(_make_event(idp_groups="IdP-Authors"), None)
+
+        self.mock_cognito.admin_remove_user_from_group.assert_not_called()
+
+    def test_does_not_re_add_a_group_the_user_already_holds(self):
+        self.mock_cognito.admin_list_groups_for_user.return_value = {
+            "Groups": [{"GroupName": "Admin"}]
+        }
+
+        self.handler(_make_event(idp_groups="IdP-Admins"), None)
+
+        self.mock_cognito.admin_add_user_to_group.assert_not_called()
+
+
+@pytest.mark.unit
+class TestAnnotatorClaimGrantsTheAnnotatorGroup:
+    """A federated claim naming the annotator IdP group yields `Annotator`."""
+
+    @pytest.fixture(params=sorted(COPY_LOADERS), autouse=True)
+    def _load(self, request):
+        mod = COPY_LOADERS[request.param](ENV_VARS)
+        self.handler = mod.handler
+        self.mock_cognito = MagicMock()
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+        mod.cognito = self.mock_cognito
+
+    def test_annotator_claim_is_added_to_the_annotator_group(self):
+        event = _make_event(idp_groups="IdP-Annotators")
+
+        result = self.handler(event, None)
+
+        self.mock_cognito.admin_add_user_to_group.assert_called_once_with(
+            UserPoolId="us-east-1_abc123", Username="testuser", GroupName="Annotator"
+        )
+        assert _override_groups(result) == ["Annotator"]
+
+    def test_annotator_alongside_another_role(self):
+        """A claim naming two groups grants both."""
+        event = _make_event(idp_groups='["IdP-Annotators", "IdP-Reviewers"]')
+
+        result = self.handler(event, None)
+
+        added = {
+            c.kwargs["GroupName"]
+            for c in self.mock_cognito.admin_add_user_to_group.call_args_list
+        }
+        assert added == {"Annotator", "Reviewer"}
+        assert set(_override_groups(result)) == {"Annotator", "Reviewer"}
+
+
+@pytest.mark.unit
+class TestUnmappedGroupLogging:
+    """Discarded claim values are named in the log.
+
+    An operator debugging "my federated user has no permissions" needs to know
+    which claim values the trigger threw away. The all-unmapped case already
+    warned, but a claim carrying one mapped name *plus* an unmapped one produced
+    no warning at all, because the no-target warning is skipped once
+    `target_groups` is non-empty.
+
+    Group names only: neither the event nor the whole claim set is logged.
+    """
+
+    @pytest.fixture(params=sorted(COPY_LOADERS), autouse=True)
+    def _load(self, request):
+        mod = COPY_LOADERS[request.param](ENV_VARS)
+        self.handler = mod.handler
+        self.mock_cognito = MagicMock()
+        self.mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        self.mock_cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+        mod.cognito = self.mock_cognito
+
+    @staticmethod
+    def _warnings(caplog):
+        return [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+
+    def test_unmapped_group_is_named_when_another_group_maps(self, caplog):
+        """The mixed case, which produced no diagnostic at all before."""
+        with caplog.at_level(logging.WARNING):
+            self.handler(_make_event(idp_groups="IdP-Admins, Finance-EMEA"), None)
+
+        matching = [m for m in self._warnings(caplog) if "Finance-EMEA" in m]
+        assert matching, (
+            "an IdP group with no Cognito mapping must be named in a warning "
+            "even when another group in the same claim maps. Warnings: "
+            f"{self._warnings(caplog)}"
+        )
+        assert "testuser" in matching[0]
+        # The mapped group still takes effect.
+        self.mock_cognito.admin_add_user_to_group.assert_called_once_with(
+            UserPoolId="us-east-1_abc123", Username="testuser", GroupName="Admin"
+        )
+
+    def test_every_unmapped_group_is_named(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            self.handler(
+                _make_event(idp_groups='["IdP-Authors", "Contractors", "Finance-EMEA"]'),
+                None,
+            )
+
+        joined = " ".join(self._warnings(caplog))
+        assert "Contractors" in joined and "Finance-EMEA" in joined
+
+    def test_all_unmapped_groups_are_named(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            self.handler(_make_event(idp_groups="Contractors"), None)
+
+        assert any("Contractors" in m for m in self._warnings(caplog))
+        self.mock_cognito.admin_add_user_to_group.assert_not_called()
+
+    def test_no_unmapped_warning_when_every_group_maps(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            self.handler(_make_event(idp_groups="IdP-Admins, IdP-Annotators"), None)
+
+        assert not any(
+            "no Cognito mapping" in m for m in self._warnings(caplog)
+        ), self._warnings(caplog)

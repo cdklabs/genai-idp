@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getDocumentConfidenceAlertCount } from './confidence-alerts-utils';
+import { getDocumentProcessingIssueCount } from './processing-issues-utils';
 import { parseMetering, parseHITLReviewHistory } from '../../graphql/awsjson-parsers';
 
 interface DocumentApiItem {
@@ -35,7 +36,29 @@ interface DocumentApiItem {
   HITLReviewedByEmail?: string;
   HITLReviewHistory?: string | Record<string, unknown>[];
   ConfidenceAlertCount?: number;
+  ProcessingIssueCount?: number;
   ConfigVersion?: string;
+  ConfigRevision?: number | null;
+  // Malware-scan verdict, written by the ingest gate for every scanned document.
+  // Absent on every document from a stack with malware scanning disabled, and on
+  // documents uploaded before it was enabled — `getMalwareScanView` reads that
+  // absence as "say nothing", so the UI surfaces appear only when the feature is
+  // on rather than showing a column of N/A.
+  //
+  // ⚠️ These reach the browser WITHOUT being named in a `.graphql` operation
+  // document. The REST client parses only the field name out of the query string
+  // (`src/ui/src/api/rest-client.ts`) and the dispatcher's `getDocument` returns
+  // the raw tracking-table item, so the selection set is not a filter. They are
+  // declared here because this mapper is where the API shape is written down,
+  // not because the codegen knows about them.
+  MalwareScanStatus?: string;
+  MalwareScanResult?: string;
+  MalwareScanThreat?: string;
+  MalwareScanReasons?: string[];
+  MalwareScanTime?: string;
+  ConfigSource?: string;
+  ConfigMappingPrefix?: string;
+  ConfigAssignmentError?: string;
 }
 
 // Helper function to determine Review Status without nested ternaries
@@ -54,7 +77,7 @@ const isHitlCompleted = (status: string | undefined): boolean => {
 };
 
 /* Maps document attributes from API to a format that can be used in tables and panel */
-// eslint-disable-next-line arrow-body-style
+
 const mapDocumentsAttributes = (documents: DocumentApiItem[]): Record<string, unknown>[] => {
   return documents.map((item) => {
     const {
@@ -79,6 +102,10 @@ const mapDocumentsAttributes = (documents: DocumentApiItem[]): Record<string, un
       HITLStatus: hitlStatus,
       HITLReviewURL: hitlReviewURL,
       ConfigVersion: configVersion,
+      ConfigRevision: configRevision,
+      ConfigSource: configSource,
+      ConfigMappingPrefix: configMappingPrefix,
+      ConfigAssignmentError: configAssignmentError,
     } = item;
 
     // Extract HITL sections arrays
@@ -113,6 +140,14 @@ const mapDocumentsAttributes = (documents: DocumentApiItem[]): Record<string, un
         ? apiConfidenceAlertCount
         : getDocumentConfidenceAlertCount((sections ?? null) as Parameters<typeof getDocumentConfidenceAlertCount>[0]);
 
+    // Processing-issue count: prefer the server-side ProcessingIssueCount (GSI /
+    // getDocument), else derive from the sections' ProcessingIssues arrays.
+    const apiProcessingIssueCount = item.ProcessingIssueCount;
+    const processingIssueCount =
+      apiProcessingIssueCount != null
+        ? apiProcessingIssueCount
+        : getDocumentProcessingIssueCount((sections ?? null) as Parameters<typeof getDocumentProcessingIssueCount>[0]);
+
     // Extract HITL metadata - use HITLTriggered from backend, fallback to status check
     const hitlTriggered = item.HITLTriggered === true || (hitlStatus && hitlStatus !== 'N/A');
     const hitlCompleted = isHitlCompleted(hitlStatus);
@@ -145,6 +180,7 @@ const mapDocumentsAttributes = (documents: DocumentApiItem[]): Record<string, un
       summaryReportUri,
       ruleValidationResultUri,
       confidenceAlertCount,
+      processingIssueCount,
       listPK,
       listSK,
       hitlTriggered,
@@ -160,6 +196,15 @@ const mapDocumentsAttributes = (documents: DocumentApiItem[]): Record<string, un
       hitlReviewedByEmail,
       hitlReviewHistory,
       configVersion,
+      configRevision,
+      malwareScanStatus: item.MalwareScanStatus,
+      malwareScanResult: item.MalwareScanResult,
+      malwareScanThreat: item.MalwareScanThreat,
+      malwareScanReasons: item.MalwareScanReasons || [],
+      malwareScanTime: item.MalwareScanTime,
+      configSource,
+      configMappingPrefix,
+      configAssignmentError,
     };
 
     return mapping;

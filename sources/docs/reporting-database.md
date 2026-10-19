@@ -46,6 +46,7 @@ The `document_evaluations` table contains document-level evaluation metrics:
 | false_alarm_rate | double | False alarm rate (0-1) |
 | false_discovery_rate | double | False discovery rate (0-1) |
 | execution_time | double | Time taken to evaluate (seconds) |
+| config_version | string | Configuration version used for processing |
 
 This table is partitioned by date (YYYY-MM-DD format).
 
@@ -65,6 +66,7 @@ The `section_evaluations` table contains section-level evaluation metrics:
 | false_alarm_rate | double | Section false alarm rate (0-1) |
 | false_discovery_rate | double | Section false discovery rate (0-1) |
 | evaluation_date | timestamp | When the evaluation was performed |
+| config_version | string | Configuration version used for processing |
 
 This table is partitioned by date (YYYY-MM-DD format).
 
@@ -87,6 +89,7 @@ The `attribute_evaluations` table contains attribute-level evaluation metrics:
 | confidence | string | Confidence score from extraction |
 | confidence_threshold | string | Confidence threshold used |
 | evaluation_date | timestamp | When the evaluation was performed |
+| config_version | string | Configuration version used for processing |
 
 This table is partitioned by date (YYYY-MM-DD format).
 
@@ -105,7 +108,7 @@ The `rule_validation_summary` table contains document-level rule validation resu
 | input_key | string | S3 key of the input document |
 | validation_date | timestamp | When the validation was performed |
 | overall_status | string | Overall validation status (COMPLETE, FAILED, etc.) |
-| total_rule_types | int | Number of rule types evaluated |
+| total_policy_types | int | Number of policy types evaluated |
 | total_rules | int | Total number of rules evaluated |
 | pass_count | int | Number of rules that passed |
 | fail_count | int | Number of rules that failed |
@@ -120,7 +123,7 @@ The `rule_validation_details` table contains individual rule validation results:
 | Column | Type | Description |
 |--------|------|-------------|
 | document_id | string | Unique identifier for the document |
-| rule_type | string | Category/type of the rule |
+| policy_type | string | Category/type of the policy class |
 | rule | string | Description of the specific rule being validated |
 | recommendation | string | Validation result (Pass, Fail, Information Not Found) |
 | reasoning | string | Explanation for the recommendation |
@@ -143,9 +146,55 @@ The `metering` table captures detailed usage metrics and cost information for ea
 | number_of_pages | int | Number of pages in the document |
 | unit_cost | double | Cost per unit in USD (e.g., cost per token, cost per page) |
 | estimated_cost | double | Calculated total cost in USD (value × unit_cost) |
-| timestamp | timestamp | When the operation was performed |
+| timestamp | timestamp | Document COMPLETION time — when the workflow ended and the row was written. Same value as the partition. |
+| initial_event_time | timestamp | Original queue time — when the document was first enqueued. Preserved for consumers who need queue-time semantics. |
+| config_version | string | Configuration version used for processing |
 
-This table is partitioned by date (YYYY-MM-DD format).
+**Partitioned by `date` + `hour`** (both string; `YYYY-MM-DD` and `HH`).
+Partition values reflect **completion time** (write time), not queue
+time. `WHERE date = 'X'` means "docs completed on X", NOT "docs queued
+on X" — filter on `initial_event_time` explicitly when you need
+queue-time semantics. Add `AND hour = 'HH'` to partition-prune queries
+scoped to a specific hour.
+
+### Rollup tables (populated by the scheduled `DataMartRollupFunction`)
+
+For aggregate cost/volume queries over wider ranges, consumers should
+read from the pre-aggregated Athena tables — a full-day scan of raw
+metering is ~10× more expensive than the equivalent daily rollup query:
+
+| Table | Grain | Written by | Use for |
+|---|---|---|---|
+| `metering_hourly` | hour × config_version × service_api × unit | Hourly rollup Lambda, at N+1:05 UTC for hour N | Ranges of `2h` to `24h` — cost per service/unit |
+| `metering_daily` | day × config_version × service_api × unit | Daily rollup Lambda, at D+1 00:15 UTC for day D | Ranges of `> 24h` — cost per service/unit |
+| `metering_docs_hourly` | hour × config_version | Hourly rollup Lambda, alongside `metering_hourly` | Ranges of `2h` to `24h` — doc counts and pages |
+| `metering_docs_daily` | day × config_version | Daily rollup Lambda, alongside `metering_daily` | Ranges of `> 24h` — doc counts and pages |
+| `control_plane_hourly` | hour × function_name × component × bedrock_model | Same rollup Lambda, from CloudWatch metrics | Per-Lambda control-plane cost attribution |
+| `data_plane_lambda_hourly` | hour × function_name × component | Same rollup Lambda, from CloudWatch `AWS/Lambda` metrics for `idp:plane=data` Lambdas | Per-Lambda data-plane compute cost — Lambda GB-seconds only (Bedrock/Textract API costs are already in `metering_hourly` per-doc, omitted here to avoid double-count) |
+
+Aggregate columns on `metering_hourly` / `metering_daily` (cost per
+service/unit): `sum_value, sum_cost`.
+
+Aggregate columns on `metering_docs_hourly` / `metering_docs_daily`
+(doc-grain volume/pages): `n_docs, sum_pages`. `number_of_pages` is
+stamped identically on every metering row per document, so aggregating
+it at the (service_api, unit) grain of `metering_hourly` would fan the
+page count out by the number of rows a doc touches; the `metering_docs_*`
+tables aggregate via a `MAX(number_of_pages) GROUP BY document_id`
+subquery to collapse the fan-out.
+
+**Naming note:** on `metering_docs_hourly`, `n_docs` is
+`COUNT(DISTINCT document_id)` within that hour. On `metering_docs_daily`,
+`n_docs = SUM(hourly n_docs)`, i.e. a "doc-hours" count (a document
+processed across two hours counts twice). For strict cross-day
+unique-doc counts, query raw `metering` with
+`COUNT(DISTINCT document_id)`.
+
+See [`docs/reporting-sql-layer.md`](reporting-sql-layer.md) for the
+consumer tier picker (`<2h → raw`, `2-24h → hourly`, `>24h → daily`),
+the tagging model that drives control-plane discovery, and the
+automated migration path (a CFN custom resource) for the new `hour`
+partition key.
 
 ### Cost Calculation and Pricing
 
@@ -154,7 +203,66 @@ The metering table now includes automated cost calculation capabilities:
 - **unit_cost**: Retrieved from pricing configuration for each service_api/unit combination
 - **estimated_cost**: Automatically calculated as value × unit_cost for each record
 - **Dynamic Pricing**: Costs are loaded from configuration and cached for performance
-- **Fallback Handling**: When pricing data is not available, unit_cost defaults to $0.0
+- **Unpriced services**: When the pricing configuration has **no entry** for a
+  `service_api`, `unit_cost` and `estimated_cost` are written as `NULL` (not
+  `0.0`), and a warning naming the service is logged. `SUM()` ignores NULLs, so
+  totals are unaffected, but the gap can be found rather than being read as
+  free usage:
+
+  ```sql
+  SELECT DISTINCT service_api, unit
+  FROM metering
+  WHERE unit_cost IS NULL;   -- add pricing entries for anything listed here
+  ```
+
+  A unit *absent from an entry that exists* is a genuine `0.0` only when it is
+  **declared non-chargeable** for that service, or when its metered count is `0`
+  (a count of zero costs nothing at any rate). The declaration lives in one place,
+  `idp_common.metering_units`, and each entry records the authority behind it.
+  The basis on which that set was populated is that **a unit appearing in no
+  priced entry of AWS's published price list is treated as non-chargeable**:
+  Bedrock's `totalTokens` and `requests` are there because no Bedrock usagetype
+  names a total token count, and on-demand model inference is priced in tokens,
+  images or video and never per request.
+
+  ⚠️ **That is an accepted assumption, not something the price list states.** A
+  price list catalogues published SKUs; it does not say what AWS bills. So a unit
+  AWS charges for and publishes no dimension for is treated as free here and
+  billed at `$0.00`, and that risk is accepted rather than eliminated. It is
+  bounded in one partial, measured way: every token unit the shipped Bedrock
+  pricing prices does appear as a published Bedrock dimension, so on that service
+  every unit known to be chargeable is listed. The non-Bedrock units this project
+  meters — `pages`, `documents`, `gb_seconds`, and Lambda `requests` — were not
+  checked against their own services' price lists.
+
+  The two **prompt-cache** units are decided per **model** rather than per
+  service, because that is the level at which the question has an answer: AWS
+  prices a cache read at $0.625 per million tokens on Amazon Nova Premier and
+  publishes no cache dimension at all for Claude 3 Haiku, in any of the seventeen
+  regions it serves it from. Eleven shipped Bedrock entries omit at least one of
+  the two cache rates, and each omission now records, per unit, which price-list
+  model it was read against and whether AWS publishes a non-zero rate for the
+  dimension. Where AWS publishes none, the omission is a true `0.0`. Where AWS
+  **does** publish a rate, the unit is written as `NULL` and appears in the query
+  above — the omission is justified only by the model being unable to report the
+  unit on this code path, and a count that nevertheless turns up is a fact worth
+  seeing rather than a zero. A cache unit omitted from a Bedrock entry that has no
+  recorded basis — a pricing row added later, or your own edited pricing table —
+  is `NULL` for the same reason.
+
+  ⚠️ **The web UI's document cost table does not draw this distinction yet.** It
+  carries its own port of the cost lookup and still shows `$0.00` for a unit a
+  pricing entry omits, so a row this table records as `NULL` appears there as
+  free with no mark. Treat the `metering` table as the authority on which of the
+  two a `$0.00` is.
+
+  Any *other* unit an entry omits is written as `NULL`, not `0.0`, and appears in
+  the query above. That matters because Bedrock's `usage` block grows: a numeric
+  field a future model returns reaches the metering table automatically, and if
+  its absence from your pricing configuration were read as "free" it would be
+  billed at `$0.00` with nothing to distinguish it from a unit AWS does not
+  charge for. If you see a unit listed by that query, add its rate to the pricing
+  configuration for that model.
 
 #### Pricing Configuration Format
 
@@ -176,10 +284,28 @@ pricing:
 
 #### Cost Calculation Process
 
-1. **Service/Unit Matching**: System attempts exact match for service_api/unit combination
-2. **Partial Matching**: If exact match fails, uses fuzzy matching for common patterns
+1. **Service Matching**: The pricing key is matched **exactly** against
+   `service_api`, then against progressively shorter `/`-delimited suffixes of
+   it (longest match wins)
+2. **Unit Matching**: The unit name is matched **exactly** within that entry —
+   there is no fuzzy or substring matching in either step, so one model can
+   never be priced off another model's row
 3. **Cost Calculation**: estimated_cost = value × unit_cost
 4. **Caching**: Pricing data is cached to avoid repeated configuration lookups
+
+> **Note on cache-read pricing.** Prompt-cache reads are billed at a fraction of
+> fresh input tokens (about 0.1x for Claude, 0.25x for Nova), so `pricing.yaml`
+> carries a separate `cacheReadInputTokens` rate per model. Releases before this
+> fix resolved pricing by substring, which could bind a `cacheReadInputTokens`
+> lookup to a row's `inputTokens` rate and **overstate** the cost of cache reads
+> by up to 10x. This only happened for a model id that had no exact pricing entry
+> of its own, or whose entry omitted `cacheReadInputTokens`; a model with a
+> complete entry was always priced correctly. Among shipped, selectable models the
+> live case was the EU Nova 2 Lite service tiers
+> (`eu.amazon.nova-2-lite-v1:0:flex` and `:priority`), which had no pricing rows
+> and so billed cache reads at the EU base-tier fresh-input rate — 8x their real
+> price. If your reported costs came from an earlier release **and** you used one
+> of those, re-run the report for corrected numbers.
 
 The metering table is particularly valuable for:
 - **Cost analysis and allocation** - Track spending by document type, service, or time period
@@ -214,6 +340,7 @@ Document sections are stored in dynamically created tables based on the section 
 | section_classification | string | Type/class of the section |
 | section_confidence | double | Confidence score for the section classification |
 | timestamp | timestamp | When the document was processed |
+| config_version | string | Configuration version used for processing |
 
 **Dynamic Data Columns:**
 The remaining columns are dynamically inferred from the JSON extraction results and vary by section type. Common patterns include:
@@ -239,6 +366,33 @@ document_sections/
         └── doc-abc_section_1.parquet
 ```
 
+### Prompt-cache efficiency per class
+
+Every section that made a Bedrock extraction call carries `metadata.prompt_cache` (see
+[configuration.md](configuration.md#reading-cache-efficiency-back-per-phase-and-per-class)),
+so each `document_sections_<class>` table has the columns
+`"metadata.prompt_cache.state"` (`caching` | `write-only` | `never-cached` | `disabled`
+| `no-cache-point` | `no-cache-data`), `"metadata.prompt_cache.cache_point_sent"`, `"metadata.prompt_cache.read_share"`,
+`"metadata.prompt_cache.input_tokens"`, `"metadata.prompt_cache.cache_read_input_tokens"`,
+`"metadata.prompt_cache.cache_write_input_tokens"`, `"metadata.prompt_cache.requests"`
+and `"metadata.prompt_cache.min_cacheable_prefix_tokens"`. Column names contain dots,
+so quote them, and the flattener stores every leaf as a **string** (`model_ids` as a
+JSON list), so cast before aggregating. A class that is `never-cached` across most
+documents has a prompt prefix below its model's minimum; a class that is mostly
+`write-only` arrives less than once per 5-minute TTL.
+
+```sql
+SELECT "metadata.prompt_cache.state"                                            AS cache_state,
+       COUNT(*)                                                                  AS sections,
+       ROUND(AVG(CAST("metadata.prompt_cache.read_share" AS double)), 3)         AS avg_read_share,
+       SUM(CAST("metadata.prompt_cache.cache_write_input_tokens" AS bigint))     AS tokens_written,
+       SUM(CAST("metadata.prompt_cache.cache_read_input_tokens" AS bigint))      AS tokens_read
+FROM document_sections_invoice
+WHERE date >= '2026-09-01'
+GROUP BY 1
+ORDER BY sections DESC;
+```
+
 ### Crawler Configuration
 
 The AWS Glue Crawler automatically discovers new section types and creates corresponding tables. The crawler can be configured to run:
@@ -261,7 +415,32 @@ To use the reporting database with Athena:
 
 ### Sample Queries
 
-Here are some example queries to get you started:
+Here are some example queries to get you started.
+
+> **Semantic note:** in `metering`, `WHERE date = 'X'` filters on
+> **completion time**. Every sample below that filters `metering` by
+> `date` is asking "docs completed in this range", not "docs queued".
+> For queue-time semantics, filter on the `initial_event_time` column
+> instead.
+>
+> **Cross-table `date` divergence — read this before joining tables
+> by `date`.** `metering` partitions on completion time (write time);
+> the sibling reporting tables `evaluation_metrics/*` and
+> `document_sections_*` still partition on queue time
+> (`initial_event_time`). A document processed across midnight lands
+> in a different partition depending on which table you look at. If
+> you're joining `metering` with any of those tables, either:
+> (1) filter each side by its own partition and accept the day-boundary
+> skew, (2) join on `document_id` alone and filter downstream by a
+> single semantic (either `metering.timestamp` or
+> `metering.initial_event_time`), or (3) prefer daily/weekly aggregates
+> where the skew averages out.
+
+> **Performance note:** for wide date ranges (>24h), prefer
+> `metering_daily` / `metering_hourly` over raw `metering` — same
+> shape of query, but KB-scale scan instead of GB-scale. See
+> [Reporting SQL Layer](reporting-sql-layer.md) for the tier picker.
+
 
 **Overall accuracy by document type:**
 ```sql
@@ -421,11 +600,19 @@ ORDER BY
   total_cost DESC;
 
 -- Cost per page analysis by document type
+--
+-- Note the COALESCE and the unpriced_rows column. `estimated_cost` is NULL for a
+-- service with no pricing entry, and SUM() skips NULLs while the denominator counts
+-- those rows' pages regardless — so a plain SUM(estimated_cost)/SUM(number_of_pages)
+-- silently understates cost per page whenever any row is unpriced. COALESCE makes
+-- the assumption explicit (treat unpriced as $0) and unpriced_rows tells you whether
+-- that assumption cost you anything: if it is not 0, the figure is a lower bound.
 SELECT 
   se.section_type,
-  SUM(m.estimated_cost) / SUM(m.number_of_pages) as cost_per_page,
-  SUM(m.estimated_cost) as total_cost,
+  SUM(COALESCE(m.estimated_cost, 0)) / SUM(m.number_of_pages) as cost_per_page,
+  SUM(COALESCE(m.estimated_cost, 0)) as total_cost,
   SUM(m.number_of_pages) as total_pages,
+  COUNT_IF(m.unit_cost IS NULL) as unpriced_rows,
   COUNT(DISTINCT m.document_id) as document_count
 FROM 
   metering m
@@ -472,11 +659,17 @@ ORDER BY
 LIMIT 10;
 
 -- Cost efficiency by model (cost per token)
+--
+-- Same NULL caveat as the cost-per-page query above: without COALESCE the numerator
+-- drops unpriced rows while the denominator keeps their token counts, so a model with
+-- no pricing entry appears cheap rather than unknown. unpriced_rows > 0 means the
+-- ratio is a lower bound.
 SELECT 
   service_api,
-  SUM(estimated_cost) / SUM(value) as cost_per_token,
-  SUM(estimated_cost) as total_cost,
+  SUM(COALESCE(estimated_cost, 0)) / SUM(value) as cost_per_token,
+  SUM(COALESCE(estimated_cost, 0)) as total_cost,
   SUM(value) as total_tokens,
+  COUNT_IF(unit_cost IS NULL) as unpriced_rows,
   COUNT(DISTINCT document_id) as document_count
 FROM 
   metering
@@ -502,6 +695,68 @@ GROUP BY
   context
 ORDER BY 
   total_cost DESC;
+
+-- Cost analysis by configuration version
+SELECT 
+  config_version,
+  COUNT(DISTINCT document_id) as document_count,
+  SUM(estimated_cost) as total_cost,
+  AVG(estimated_cost) as avg_cost_per_record
+FROM 
+  metering
+WHERE 
+  date >= '2024-01-01'
+GROUP BY 
+  config_version
+ORDER BY 
+  total_cost DESC;
+```
+
+**Configuration version analysis:**
+```sql
+-- Compare accuracy across configuration versions
+SELECT 
+  config_version,
+  AVG(accuracy) as avg_accuracy,
+  AVG(f1_score) as avg_f1_score,
+  COUNT(DISTINCT document_id) as document_count
+FROM 
+  document_evaluations
+WHERE 
+  date >= '2024-01-01'
+GROUP BY 
+  config_version
+ORDER BY 
+  avg_f1_score DESC;
+
+-- Filter documents by configuration version
+SELECT 
+  document_id,
+  section_classification,
+  timestamp
+FROM 
+  document_sections_w2
+WHERE 
+  config_version = 'v2.1'
+  AND date >= '2024-01-01'
+LIMIT 100;
+
+-- Cost vs quality by configuration version
+SELECT 
+  m.config_version,
+  AVG(e.weighted_overall_score) as avg_quality,
+  SUM(m.estimated_cost) as total_cost,
+  COUNT(DISTINCT m.document_id) as document_count
+FROM 
+  document_evaluations e
+JOIN 
+  metering m ON e.document_id = m.document_id AND e.config_version = m.config_version
+WHERE 
+  e.date >= '2024-01-01'
+GROUP BY 
+  m.config_version
+ORDER BY 
+  avg_quality DESC;
 ```
 
 ### Creating Dashboards

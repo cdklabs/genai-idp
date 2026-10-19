@@ -122,7 +122,7 @@ Few-shot examples work by including reference documents with known expected attr
 ### Key Differences from Classification
 
 - **Example Scope**: Extraction uses examples ONLY from the specific document class being processed (e.g., only "letter" examples when extracting from a "letter" document)
-- **Prompt Field**: Uses `attributesPrompt` instead of `classPrompt` from examples
+- **Prompt Field**: Uses `x-aws-idp-attributes-prompt` instead of `x-aws-idp-class-prompt` from examples
 - **Purpose**: Shows expected attribute extraction format and values rather than distinguishing between document types
 
 ### Configuration
@@ -142,9 +142,9 @@ classes:
         description: "The name of the person receiving the letter..."
       # ... other attributes
     examples:
-      - classPrompt: "This is an example of the class 'letter'"
+      - x-aws-idp-class-prompt: "This is an example of the class 'letter'"
         name: "Letter1"
-        attributesPrompt: |
+        x-aws-idp-attributes-prompt: |
           expected attributes are:
               "sender_name": "Will E. Clark",
               "sender_address": "206 Maple Street P.O. Box 1056 Murray Kentucky 42071-1056",
@@ -156,10 +156,10 @@ classes:
               "signature": "Will E. Clark",
               "cc": null,
               "reference_number": "TNJB 0008497"
-        imagePath: "config_library/pattern-2/few_shot_example/example-images/letter1.jpg"
-      - classPrompt: "This is an example of the class 'letter'"
+        x-aws-idp-image-path: "config_library/unified/few_shot_example/example-images/letter1.jpg"
+      - x-aws-idp-class-prompt: "This is an example of the class 'letter'"
         name: "Letter2"
-        attributesPrompt: |
+        x-aws-idp-attributes-prompt: |
           expected attributes are:
               "sender_name": "William H. W. Anderson",
               "sender_address": "P O. BOX 12046 CAMERON VILLAGE STATION RALEIGH N. c 27605",
@@ -171,44 +171,44 @@ classes:
               "signature": "Bill",
               "cc": null,
               "reference_number": null
-        imagePath: "config_library/pattern-2/few_shot_example/example-images/letter2.png"
+        x-aws-idp-image-path: "config_library/unified/few_shot_example/example-images/letter2.png"
 ```
 
 ### Configuration Parameters
 
 Each few-shot example includes:
 
-- **classPrompt**: A description identifying this as an example of the document class (used for classification)
-- **attributesPrompt**: The expected attribute extraction results showing the exact JSON format and values expected
+- **x-aws-idp-class-prompt**: A description identifying this as an example of the document class (used for classification)
+- **x-aws-idp-attributes-prompt**: The expected attribute extraction results showing the exact JSON format and values expected
 - **name**: A unique identifier for the example (for reference and debugging)
-- **imagePath**: Path to example document image(s) - supports single files, local directories, or S3 prefixes
+- **x-aws-idp-image-path**: Path to example document image(s) - supports single files, local directories, or S3 prefixes
 
 #### Image Path Options
 
-The `imagePath` field now supports multiple formats for maximum flexibility:
+The `x-aws-idp-image-path` field now supports multiple formats for maximum flexibility:
 
 **Single Image File (Original functionality)**:
 
 ```yaml
-imagePath: "config_library/pattern-2/few_shot_example/example-images/letter1.jpg"
+x-aws-idp-image-path: "config_library/unified/few_shot_example/example-images/letter1.jpg"
 ```
 
 **Local Directory with Multiple Images (New)**:
 
 ```yaml
-imagePath: "config_library/pattern-2/few_shot_example/example-images/"
+x-aws-idp-image-path: "config_library/unified/few_shot_example/example-images/"
 ```
 
 **S3 Prefix with Multiple Images (New)**:
 
 ```yaml
-imagePath: "s3://my-config-bucket/few-shot-examples/letter/"
+x-aws-idp-image-path: "s3://my-config-bucket/few-shot-examples/letter/"
 ```
 
 **Direct S3 Image URI**:
 
 ```yaml
-imagePath: "s3://my-config-bucket/few-shot-examples/letter/example1.jpg"
+x-aws-idp-image-path: "s3://my-config-bucket/few-shot-examples/letter/example1.jpg"
 ```
 
 When pointing to a directory or S3 prefix, the system automatically:
@@ -223,7 +223,7 @@ When pointing to a directory or S3 prefix, the system automatically:
 The system uses these environment variables for resolving relative paths:
 
 - **`CONFIGURATION_BUCKET`**: S3 bucket name for configuration files
-  - Used when `imagePath` doesn't start with `s3://`
+  - Used when `x-aws-idp-image-path` doesn't start with `s3://`
   - The path is treated as a key within this bucket
 
 - **`ROOT_DIR`**: Root directory for local file resolution
@@ -231,6 +231,21 @@ The system uses these environment variables for resolving relative paths:
   - The path is treated as relative to this directory
 
 ### Task Prompt Integration
+
+All three shipped extraction prompt variants in
+`config/system_defaults/base-extraction.yaml` (`task_prompt`,
+`task_prompt_extraction_with_confidence`,
+`task_prompt_extraction_with_confidence_topk`) already include
+`{FEW_SHOT_EXAMPLES}` ahead of `<<CACHEPOINT>>`, so a class that defines
+`x-aws-idp-examples` gets them with no prompt edit; classes without examples
+render the section empty (no content items added). A config that supplies its
+**own** extraction `task_prompt` must include the placeholder itself — exactly
+once, since `_build_prompt_content` splits on it and ignores it otherwise.
+
+Example fields are read under either the `x-aws-idp-*` names or the legacy
+camelCase names (`x-aws-idp-class-prompt` / `x-aws-idp-attributes-prompt` / `x-aws-idp-image-path`). Unreadable
+example images log a warning and the example is sent as text-only rather than
+failing the section.
 
 To use few-shot examples, your task prompt must include the `{FEW_SHOT_EXAMPLES}` placeholder:
 
@@ -282,7 +297,7 @@ When creating few-shot examples for extraction:
 
 ```yaml
 # Good example - shows all attributes with realistic values
-attributesPrompt: |
+x-aws-idp-attributes-prompt: |
   expected attributes are:
       "invoice_number": "INV-2024-001",
       "invoice_date": "01/15/2024",
@@ -293,7 +308,7 @@ attributesPrompt: |
       "po_number": "PO-789456"
 
 # Avoid incomplete examples
-attributesPrompt: |
+x-aws-idp-attributes-prompt: |
   expected attributes are:
       "invoice_number": "INV-2024-001"
       # Missing other important attributes
@@ -302,7 +317,7 @@ attributesPrompt: |
 #### 2. Handle Null Values Explicitly
 
 ```yaml
-attributesPrompt: |
+x-aws-idp-attributes-prompt: |
   expected attributes are:
       "sender_name": "John Smith",
       "cc": null,  # Explicitly show when fields are not present
@@ -322,14 +337,14 @@ attributesPrompt: |
 
 ```yaml
 # Consistent JSON format across all examples
-attributesPrompt: |
+x-aws-idp-attributes-prompt: |
   expected attributes are:
       "field1": "value1",
       "field2": "value2",
       "field3": null
 
 # Avoid inconsistent formatting
-attributesPrompt: |
+x-aws-idp-attributes-prompt: |
   field1: value1
   field2 = "value2"
   field3: (empty)
@@ -341,11 +356,11 @@ When using directories or S3 prefixes with multiple images:
 
 ```yaml
 # Good: Use descriptive, ordered filenames
-imagePath: "examples/letters/"
+x-aws-idp-image-path: "examples/letters/"
 # Contents: 001_formal_letter.jpg, 002_informal_letter.png, 003_business_letter.jpg
 
 # Good: Group related examples together
-imagePath: "s3://config-bucket/examples/invoices/"
+x-aws-idp-image-path: "s3://config-bucket/examples/invoices/"
 # Contents: invoice_simple.jpg, invoice_complex.png, invoice_international.jpg
 ```
 
@@ -413,9 +428,9 @@ classes:
       - name: date_sent
         description: "The date and time when the email was sent..."
     examples:
-      - classPrompt: "This is an example of the class 'email'"
+      - x-aws-idp-class-prompt: "This is an example of the class 'email'"
         name: "Email1"
-        attributesPrompt: |
+        x-aws-idp-attributes-prompt: |
           expected attributes are: 
              "from_address": "Kelahan, Ben",
              "to_address": "TI New York: 'TI Minnesota",
@@ -427,7 +442,7 @@ classes:
              "priority": null,
              "thread_id": null,
              "message_id": null
-        imagePath: "config_library/pattern-2/few_shot_example/example-images/email1.jpg"
+        x-aws-idp-image-path: "config_library/unified/few_shot_example/example-images/email1.jpg"
 
 extraction:
   task_prompt: |
@@ -469,7 +484,7 @@ from idp_common.extraction.service import ExtractionService
 import yaml
 
 # Load configuration with examples
-with open('config_library/pattern-2/few_shot_example/config.yaml', 'r') as f:
+with open('config_library/unified/few_shot_example/config.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
 # Initialize service
@@ -505,13 +520,521 @@ Common issues and solutions:
 
 3. **Inconsistent Extraction Results**:
    - Review example quality and ensure they're representative
-   - Check that `attributesPrompt` format matches expected output
+   - Check that `x-aws-idp-attributes-prompt` format matches expected output
    - Ensure examples cover the range of variations in your documents
 
 4. **Poor Performance**:
    - Add more diverse examples for the document class
    - Improve example quality and accuracy
    - Ensure examples demonstrate proper null handling
+
+## Coercion and validation (Simple mode)
+
+Simple extraction used to do a raw `json.loads` and pass whatever came back
+downstream, so a wrong *type* or a non-ISO date reached DynamoDB unchallenged.
+Advanced (agentic) extraction has had full-schema validation and escalation for
+some time; as of v0.7 the simple path gets the same guarantee, in two steps.
+
+**1. Deterministic coercion (always, free).** Before validating, obvious
+type/format mismatches are repaired without a model call: `"$1,234.00"` and
+`"1.234,00"` into a `number` field, named-month and unambiguous numeric dates
+into `format: date`, boolean-ish strings into `boolean`, and a string that is the
+JSON of the object/array the field asks for is parsed (`json_parsed_from_string` —
+the one cross-family repair that is lossless; the field must not also allow a
+string, so a text field holding JSON is left alone). Every change is recorded
+under `metadata.coercion` and anything ambiguous (`01/02/2024`, a 2-digit year,
+fractional-to-integer) is **refused** rather than guessed. Nothing is ever
+rewritten without a record. See `idp_common.extraction.coercion`.
+
+**2. Full JSON-Schema validation**, then `extraction.validation.fail_action`:
+
+| `fail_action` | Behaviour | Extra inference? |
+|---|---|---|
+| `warn` (default) | Record the outcome in `metadata.validation` and raise a ProcessingIssue | **No — free** |
+| `reject` | Same, plus `parsing_succeeded=False`, which makes the processing report and the UI's report tab read FAILED | **No — free** |
+| `escalate` | Re-extract ONLY the failing top-level fields with `escalation_model`, merged back over the fields that already validated | **Yes** |
+
+Validation is **on by default** precisely because the default action is free: it
+turns an otherwise-silent schema violation into something visible at no cost.
+`escalate` is the opt-in that spends money.
+
+⚠️ **No `fail_action` value rejects a section.** `reject` is a *visibility*
+setting: `parsing_succeeded=False` is read by `_generate_processing_report`'s
+status line and by `ProcessingReportTab.tsx`, and by nothing in the status path, so
+the values are still written to `result.json` and the document still completes. The
+one extraction setting that turns a detection into an outcome is
+`extraction.row_shortfall_action: fail`, which raises `ExtractionOutputIncomplete`
+and so fails the Step Functions execution (see *Simple-mode large-document
+warnings* below).
+
+Escalation is deliberately **not** preceded by a same-model retry: re-asking the
+model that just produced invalid output, with the same prompt, mostly buys
+another invalid answer at full document cost. Only the failing fields are
+re-extracted, and only those fields are merged back — an over-eager escalation
+response cannot overwrite fields that already validated. A failed escalation
+returns the original extraction unchanged; a broken repair must never be worse
+than no repair.
+
+## Prompt caching knob and minimum-prefix warning (`extraction.prompt_cache`)
+
+`extraction.prompt_cache: auto | off` (default `auto`). `off` removes every
+`<<CACHEPOINT>>` marker before Simple-mode content is built
+(`_build_prompt_content`) and, on the Advanced path, skips the trailing
+`cachePoint` block and the Strands `cache_prompt` / `cache_tools` flags, so no cache
+point reaches Bedrock. A cache write is 1.25× input price and pays back only on a
+second same-prefix request inside the 5-minute TTL, so a low-volume deployment is
+better off with `off`.
+
+⚠️ **Bedrock permits at most four `cache_control` blocks in one request, and the
+Advanced path already uses three of them.** It counts additively across the three
+places they can appear — one in `system` (Strands `cache_prompt`), one in
+`toolConfig` (`cache_tools`), and one per message block — so a fifth is rejected
+outright with `ValidationException: A maximum of 4 blocks with cache_control may be
+provided. Found 5.`, which is not retried and fails the section keeping no rows.
+There is one message-level block, the trailing one `_prepare_prompt_content`
+appends, and **adding a second cache point to the message content is therefore the
+last one available**. This is also why `invoke_agent_with_retry` *resumes* a failed
+attempt's conversation rather than sending the prompt again: a second copy of the
+prompt is a fourth block and a third copy is a fifth
+([#1296](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/1296)).
+
+Each model has a **minimum cacheable prefix**, and below it a cache point silently
+does nothing. ⚠️ **The numbers are deliberately not repeated here** — ask
+`idp_common.bedrock.prompt_cache.min_cacheable_prefix_tokens(model_id)`. Repeating
+them here would be a sixth copy, and `benchmarks/tests/test_cache_minimum_parity.py`
+only keeps five in agreement. The table is also
+not monotonic across generations and not a property of the family: the two Haikus sit
+at opposite ends of it (4.5 at 4,096, 5.5 at 512) and the two Sonnets a tier apart
+(Sonnet 5 at 1,024, Sonnet 5.5 at 512), so a number carried over from a sibling is
+wrong about half the time. `docs/configuration.md` holds the table for a reader who
+wants to see it, and the function is what the product reads. `merge_utils._validate_prompt_cache_prefix` estimates
+each class's Simple-mode prefix (`estimate_prefix_tokens`, chars/4, about ±10% against
+Bedrock's count; a class within that band of the minimum is reported as "may not
+cache") using the prompt the service would send (the 1S-TopK prompt under integrated
+confidence, a per-class override when present) and warns per class, naming both
+numbers. Extraction only — classification, assessment and rule-validation prompts are
+not checked and keep their cache points when the knob is `off`. YAML's bare `off`
+parses as `false`; the config model accepts both.
+
+**Reading it back (item 2 of #780).** `_save_results` calls
+`_record_prompt_cache_metadata`, which sums the section's `Extraction*/bedrock/<model>`
+metering (the escalation contexts included) with
+`idp_common.bedrock.prompt_cache.summarize_cache_usage` and stores
+`metadata["prompt_cache"]` — `state` (`caching` | `write-only` | `never-cached` |
+`disabled` | `no-cache-point` | `no-cache-data`), `cache_point_sent`, `input_tokens`, `cache_read_input_tokens`,
+`cache_write_input_tokens`, `requests`, `read_share`, `model_ids`,
+`min_cacheable_prefix_tokens`. It has to happen there because the metering key carries
+phase and model but not class, and the section's metering is merged into the document
+total right after the result is written. Measured reads/writes win over the `off` flag.
+Because Claude reports `cacheReadInputTokens: 0` even when no cache point was sent,
+zero/zero alone cannot prove a cache point was inert: `_build_prompt_content` sets
+`_pending_cache_marker_seen` when a Simple-mode prompt still carries a marker after the
+knob (Advanced mode always attempts one), and `model_supports_cache_point` mirrors the
+client's `CACHEPOINT_SUPPORTED_MODELS` (inference-profile ARNs are unknown, never
+"unsupported"); only a sent cache point with zero/zero is `never-cached`, otherwise
+`no-cache-point`.
+`describe_cache_state` renders the one-line verdict for the text report; the Web UI
+mirrors both in `src/ui/src/components/common/promptCacheModel.ts` (per-class in the
+section's Processing Report tab, per-phase on the document cost table's subtotal rows).
+See [#780](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/780) and `docs/benchmarking/studies/prompt-caching.md` for the measurements.
+
+## Forced tool use (Simple mode, `extraction.forced_tool`)
+
+Coercion and validation act on a result that already exists. Forced tool use tries
+to prevent one failure mode up front: instead of describing the schema in prose
+and parsing whatever text comes back, the class schema is sent as a Converse
+**tool** and `toolChoice` names it, so the reply arrives as structured tool input.
+Simple mode only — the agentic path already sends a tool schema. Off by default.
+
+`idp_common.extraction.forced_tool` owns the whole surface:
+
+| Helper | Purpose |
+|---|---|
+| `should_force_tool(model_id, enabled, class_schema)` | `(force, skip_reason)`. Refuses routes that cannot carry a `toolConfig` (Lambda hook, GPT-5.x Responses API), models that carry one but reject a *forced* `toolChoice` (Claude Opus 5.5, Claude Sonnet 5.5 — **not** Sonnet 5 or Opus 5, which accept it), and schemas with no properties. |
+| `build_extraction_tool_config(class_schema)` | `(tool_config, name_map)` for the single `emit_extracted_fields` tool. |
+| `forced_tool_choice()` | `{"tool": {"name": ...}}` — must NAME the tool; `any`/`auto` would not be forcing. |
+| `restore_extracted_fields(tool_input, name_map)` | Undoes wire-safe property renaming. |
+
+**Property-name sanitization.** Bedrock enforces `^[a-zA-Z0-9_.-]{1,64}$` on
+**top-level** tool property names, which several shipped presets violate
+(`"Invoice Number"`). `idp_common.bedrock.tool_schema` rewrites those names for the
+request and `restore_extracted_fields` puts the authored names back, so the stored
+result is byte-identical to the un-forced path. `BedrockClient` also *rejects* an
+invalid `toolConfig` outright rather than letting the API return an opaque
+validation error.
+
+**A force is a request, not a guarantee.** A model can accept a `toolConfig` and
+still answer in prose (`stopReason: end_turn`). That falls back to text parsing
+unless `fallback_to_prompt` is off, in which case the section is a parse failure —
+which exists only to measure the honored rate without fallback masking it.
+
+**`metadata.forced_tool`** records `requested`, `honored`, `renamed_properties`,
+`renamed_definitions`, and `skipped` (with a reason). This is load-bearing for measurement, not just
+audit: without it a before/after comparison cannot distinguish "forcing had no
+effect" from "forcing never ran", and both look identical in the output.
+
+> **Module-level call sites.** The service reaches the response parsers as
+> `bedrock.extract_tool_use_from_response(...)`. Those are bound methods
+> re-exported at the bottom of `idp_common/bedrock/__init__.py` — a client method
+> missing from that list raises `AttributeError` at runtime, not import time.
+> `tests/unit/bedrock/test_module_level_api.py` sweeps the package for
+> `bedrock.<name>(...)` calls and asserts each resolves; add the re-export line
+> whenever you call a new client method that way.
+
+## Page images over Bedrock's per-image limit (`metadata.image_downscale`)
+
+Bedrock enforces its 5 MiB per-image limit on the **base64-encoded** payload, so a
+stored page image over **3.75 MiB** used to fail the whole section with a hard
+`ValidationException` (#778). `_load_document_images` now runs each page through
+`idp_common.image.fit_image_to_bedrock_limit` after the configured
+`image.target_width/target_height` resize; a page that had to be shrunk is recorded
+in the section's `metadata.image_downscale` as a list of per-page entries
+(`page_id`, original/final bytes and encoded bytes, original/final size and format,
+`passes`, `reason`). Pages already within budget are passed through byte-identical and
+leave no entry. The attach-time choke point (`prepare_bedrock_image_attachment`)
+fits as well, so the shard runtime and every other caller are covered even when
+they bypass this loader; only the loader records metadata.
+
+The same loader also applies Bedrock's **many-image dimension cap** (#994): a
+request carrying more than 20 image blocks caps every image in it at 2,000 px per
+side, so `_load_document_images` counts the pages it is actually about to attach
+(page ids not present in `document.pages` are skipped and do not count) and passes
+`max_dimension=image.max_dimension_for_image_count(count)` into the same fit.
+
+The count it passes is the count **one request** will carry, not the section's page
+count, because the two differ on the agentic path. `_agentic_images_per_request`
+answers it from the section's real per-page OCR text — which `_prepare_section_context`
+now loads immediately *before* the images for exactly this reason — by taking the worse
+of the shard planner's **two regimes**, capped by `max_images_per_agent`:
+
+- **the page ceiling holds** → `max_pages_per_shard` (or the whole section when it is
+  `0`, "page cap off");
+- **the repack fired** → the largest range `_rebalance_to_cap` returns. That function
+  takes no token budget, so this is exact rather than an estimate. It is consulted only
+  when the repack could fire for *some* budget (`_repack_is_reachable`); asking
+  unconditionally over-clamps a section with no OCR text at all, whose degenerate
+  zero-token split reports a large tail shard the real planner never produces.
+
+Three closed forms were tried before this and all were wrong:
+
+- `min(pages, max_pages_per_shard)` — the page cap is not a ceiling. `plan_shards`
+  closes a shard at that many pages, but when doing so would produce more shards than
+  `max_concurrent_batches`, `_rebalance_to_cap` discards those ranges and repacks the
+  pages, ignoring the cap. At `max_concurrent_batches: 2` a 30-page section is two
+  15-page requests, not six 5-page ones.
+- `ceil(pages / max_concurrent_batches)` — the repack is **token-balanced**, not
+  page-balanced (`target = total_tokens / max_shards`). One dense page can take a
+  shard to itself and leave the sparse pages crowded into another, so no arithmetic
+  over page counts bounds the largest shard. It also silently dropped the clamp when
+  `max_pages_per_shard: 0` (documented as "page cap off") made the whole section one
+  shard.
+- `plan_shards` under a deliberately huge token budget, on the argument that erring
+  large only closes shards earlier. The budget also decides **whether the repack fires**,
+  and the repack discards the page cap — so on the shipped defaults a 50-page section
+  with one dense page plans as ten 5-page shards under an unbounded budget and as
+  `[1, 41, 1, …]` at Sonnet 4.6's real 18,400-token budget. Reporting 5 there missed
+  the clamp entirely.
+
+`max_images_per_agent` is the only hard ceiling on the attached count —
+`_cap_agent_images` truncates the list before every invocation.
+
+The result is then **doubled**, because Strands re-sends the attached page images on
+every turn and a `view_image` tool result adds a further copy of a page to the same
+request. The resulting thresholds — note `max_concurrent_batches` caps the shard
+*count*, so raising it makes each request smaller and the threshold higher:
+
+| Configuration | Clamps at |
+|---|---|
+| Simple | 21+ pages in the section |
+| Advanced, **shipped defaults** (`max_concurrent_batches: 10`, `max_pages_per_shard: 5`) | ~101+ pages |
+| Advanced, `max_concurrent_batches: 5` / `2` | ~51+ / ~21+ pages |
+| Advanced, sharding off (`max_concurrent_batches: 1`) | 11+ pages (`min(pages, max_images_per_agent=20) * 2 > 20`) |
+| Advanced, `max_images_per_agent` ≤ 10 | never |
+
+The doubling is a heuristic and deliberately pessimistic — clamping to 2,000 px
+costs ~15% of the image tokens, a rejected request costs the section — but it covers
+only **one** extra copy per page. Two gaps remain, both recorded in
+`image/README.md`: an agent that calls `view_image` enough times to push a small
+shard past 20 blocks, and a **resume** run (`existing_data_model`, or a
+`checkpoint_buffer`), where sharding is skipped entirely and the whole section goes
+to one agent even with `max_concurrent_batches > 1` — something the load-time
+estimate cannot see. `max_images_per_agent` still bounds the attached count there (at its default of
+20; `0` means unlimited and removes that backstop), and the failure mode is a named `ExtractionImageRejected`.
+`BedrockClient.invoke_model` sweeps every request with
+`image.fit_images_in_request` as the authoritative backstop (it is the only place
+that sees the whole request, tool results included); the loader exists so the
+reduction is auditable per page and so the agentic path, which builds its own
+requests, is covered too.
+
+## Multi-document sections (`instance_count`)
+
+Classification splits sections on document *type*. When a packet concatenates
+several records of the **same** type with no separator, there is no type change
+to split on, so they land in one section — and extraction, whose class schema
+describes one document, returns one record. See
+[#565](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/565).
+
+`Section.instance_count` reports how many documents of the class a section turned
+out to hold: `0` = undetermined, `1` = normal, `> 1` = the section spans several.
+The UI surfaces `> 1` so this is obvious at a glance. It is populated from
+whichever of two sources applies.
+
+### Recovered (automatic, no config)
+
+If the model returns a **JSON array** for the single-object schema — which is
+what it tends to do when it notices several records — every element is kept.
+The first populates `inference_result` (so the output shape is identical to a
+normal extraction and no downstream consumer changes), the rest are recorded in
+`metadata.recovered_instances`, and the section gets an
+`extraction_multi_instance_detected` **warning** because only the first is scored
+and reviewed.
+
+This replaced the previous behaviour, which stored the array under a `raw_array`
+key that nothing read, failed the section, and reported a misleading
+`extraction_sparse`. Note what it does *not* fix: if the model returns a single
+object for a two-document section, only the first record exists in the response
+and there is nothing to recover.
+
+### Declared (`x-aws-idp-instance-array`)
+
+A class whose schema is already modelled as a **packet of records** can name its
+own instance axis:
+
+```yaml
+classes:
+  - $id: patient_packet
+    type: object
+    x-aws-idp-instance-array: records   # each element is one document
+    properties:
+      records:
+        type: array
+        items:
+          type: object
+          properties:
+            patient_name: { type: string }
+            patient_dob:  { type: string, format: date }
+```
+
+`instance_count` becomes `len(inference_result["records"])`. Nothing else
+changes — **no schema transform, no output-shape change, no downstream impact** —
+because the pipeline is only being told which existing array means "one document
+per element". This exists so configs that already solved multi-record packets by
+hand keep working unchanged while still getting the count and the UI badge.
+
+A declared count above 1 is *correct*, not a problem, so it raises **no** warning
+— unlike the recovered case. The declaration is validated at config-validate
+time (the property must exist and be an array of objects), because a typo would
+otherwise fail silently by simply never producing a count.
+
+### Suspected (`extraction.multi_instance_detection`, #753)
+
+The common branch, and the one that used to be completely silent: the model
+returns a **single object** for a several-document section, so records 2..N are
+absent from the response and there is nothing to recover. `instance_count` landed
+on `1` by construction, `ProcessingIssueCount` on `0`, and the document on
+`COMPLETED`.
+
+Detection asks the model, **in the same inference**, how many separate documents
+of the class the pages contain. `extraction/instance_probe.py` adds one auxiliary
+integer property (`IDPDocumentInstanceCount`) to a **copy** of the class schema —
+`self._wire_class_schema`, used for the prompt text and, when forced tool use is
+on, for the `toolSpec`. `self._class_schema` is untouched, so the off-schema
+filter, the JSON-Schema validator and every downstream stage still see exactly
+the declared fields. (Advanced extraction carries the probe on the transport
+model of the unsharded call instead — see "Covered paths" below.)
+
+`_read_instance_probe` pops the value **before** the off-schema filter, and pops
+it unconditionally — even when detection was not requested for the section — so an
+echoed field can never reach `inference_result`, be scored by assessment, become a
+reporting column, or turn up in an evaluation diff. It tolerates `3`, `"3"`,
+`3.0`, and the 1S-TopK candidate shape `{"G1": 3, "P1": 0.9}`.
+
+`_resolve_instance_reporting` compares the answer with the number of records the
+result actually holds. When the answer is larger:
+`instance_source = "suspected"`, `instance_count` becomes the model's answer,
+`metadata.instance_extracted_count` records what was really extracted (so the
+audit trail cannot be misread as "3 records were extracted"), and
+`_build_extraction_issues` raises `extraction_multi_instance_suspected`
+(**warning**) naming both numbers. A `MultiInstanceSectionsSuspected` metric goes
+to CloudWatch.
+
+Not limited to unflagged classes: a class in Designate or Synthesize mode whose
+array came back with fewer records than the model reports is under-extracting,
+which is the same data loss.
+
+Config: `extraction.multi_instance_detection.enabled`, default **false**.
+
+Measured on two real labeled corpora via Test Studio, 80 paired runs (identical
+documents per pair, only the toggle differing) — see
+`docs/benchmarking/studies/feature-multi-instance.md`:
+
+* **The counting works.** On 40 bank-check images from the OmniAI OCR benchmark,
+  scored against their committed baselines: 18 true positives, **0 false
+  positives**, 0 false negatives, 22 correct silences. Precision and recall
+  **1.000**, and the reported count was **exactly** right on all 18 (2 to 8 checks
+  per image).
+* **⚠ A warning is not by itself evidence of loss, and the same benchmark proves
+  it.** Counting the extracted rows on those 18 documents afterwards: **0 checks
+  missing**, in both arms. `BANK_CHECK`'s schema is a single `checks` array, so the
+  class already models several checks per sheet. The warning fired because
+  `instance_count` is **1** for a class that declares no instance axis — which is
+  true whether the records are absent *or* sitting inside a declared array. The
+  predicate `probe_count > instance_extracted_count` cannot distinguish the two.
+  Correct and useful (the fix is `x-aws-idp-instance-array: checks`), but it is a
+  configuration finding, not a data-loss finding. Say so wherever this warning is
+  surfaced.
+* **Tokens are negligible:** input +1.8%, output −0.5%.
+* **On a corpus with nothing to find it is pure cost.** RealKIE-FCC-Verified:
+  0.7678 → 0.7552 weighted score, worse on 14 of 40 documents and better on 1,
+  sign test **p = 0.001**. The loss is diffuse (four attributes, one or two
+  documents each), not a single failure mode.
+
+Hence off by default, and turn it on per configuration profile where a section can
+hold several documents of one class **and the class schema describes only one** —
+that conjunction is what loses records. It is also worth running once as a pure
+diagnostic on any corpus, then turning off: that is how the `BANK_CHECK` missing
+instance axis above was found.
+
+The question itself is `extraction.multi_instance_detection.question`, sent as the
+auxiliary property's description and supporting `{DOCUMENT_CLASS}`. The shipped text
+lives in `config/system_defaults/base-extraction.yaml` (so it is editable in
+`Config#default` like every other prompt) *and* as `DEFAULT_INSTANCE_QUESTION` in
+`instance_probe.py` (so an `IDPConfig` built without merging system defaults still
+has it). A test asserts the two are byte-identical, and another pins the two
+load-bearing clauses, because dropping either quietly degrades detection rather
+than failing.
+
+Covered paths: Simple extraction (prompt and forced-tool) and the **unsharded**
+Advanced (agentic) call. Agentic is driven by a generated Pydantic model rather than
+the wire schema dict, so `_agentic_probe_model` generates the probe onto the
+transport model (the same `augment_schema_with_probe` copy, through
+`_transport_model`) and the answer is popped from the dumped fields immediately
+after the call — before validation/escalation and before the integrated field
+assessment is lifted, from which the probe key is also removed. Sharded agentic
+sections are not probed: each shard would answer for its own pages, and neither
+sum (double-counts a document spanning a boundary) nor max (under-counts records
+spread across shards) is right (#772, options 2/3 remain open). A resumed run keeps
+its existing model.
+
+## Synthesize mode (`x-aws-idp-multi-instance`, #715)
+
+Detection makes the loss visible; this fixes it. A class flagged
+`x-aws-idp-multi-instance: true` has its **effective** schema replaced by
+
+```json
+{"type": "object", "title": "<Class> Instances",
+ "properties": {"instances": {"type": "array", "minItems": 1,
+                              "items": { …the original class schema… }}},
+ "required": ["instances"]}
+```
+
+so the author keeps writing the class as ONE record and the pipeline asks for a
+list of them.
+
+### It is a schema TRANSFORM, not an output envelope
+
+This is the decision that makes the feature affordable. Because the wrapper is
+declared *in* the class schema, `inference_result` stays a valid instance of its
+own declared schema, and the prompt, the generated Pydantic model, the JSON-Schema
+validator, `_filter_extracted_to_schema`, assessment's `attr_type == "list"`
+branch, `resolve_array_item_thresholds` and Stickler's Hungarian row matching all
+work **unchanged** — none of them special-case anything, they all just read "the
+class schema".
+
+Treating the wrapper as an out-of-band key instead breaks every one of them:
+`_filter_extracted_to_schema` deletes `instances` and emits `{}`; assessment
+collapses the whole section to one `{"confidence": 0.5}` leaf;
+`_schema_field_mismatch_reason` blacklists the section so the escalation ladder
+skips it permanently; evaluation builds a Stickler model with zero declared fields
+and silently scores 0.0.
+
+### The helper
+
+`idp_common/schema/multi_instance.py` — pure (no boto3, no Strands, no service
+imports), idempotent, never mutates its input:
+
+```python
+is_multi_instance(class_schema) -> bool     # tolerates "true" from a round-trip
+is_wrapped(class_schema) -> bool
+wrap_class_schema(class_schema) -> dict     # no-op (same object) when unflagged
+unwrap_instances(inference_result) -> list[dict] | None
+wrap_instances(records) -> dict
+```
+
+Assessment, evaluation, reporting and the analytics agent read the class schema
+**from config**, not from the extraction output, so each derives the wrapper
+itself. Applied at the single point each stage loads a schema:
+`ExtractionService._get_class_schema`, `AssessmentService._get_class_schema`,
+`SticklerConfigMapper.build_all_stickler_configs`. **Do not** persist the wrapped
+schema as the source of truth — config is, and the helper is the one derivation.
+
+### Two things that are easy to get wrong
+
+1. **The wrapper also emits `x-aws-idp-instance-array: instances`.** The wrapper
+   alone extracts every record but leaves `Section.instance_count` at 1, so the UI
+   badge, the `extraction_multi_instance_detected` warning and the
+   `MultiInstanceSections` / `MultiInstanceRecordsRecovered` metrics all still
+   report a single instance. Everything the visibility work shipped goes dark on
+   exactly the schemas this creates unless both are emitted.
+2. **The inner `items` gets a DISTINCT title** (`"<Class> Record"`).
+   `_find_model_in_module` selects the generated Pydantic model by title/label
+   priority, so items keeping the class title select the **inner** model and
+   silently validate ONE instance instead of the list. Backed by a structural
+   guard in `pydantic_generator._ensure_model_covers_schema`: the selected model
+   must declare the schema's top-level properties; a better-covering model is
+   preferred with a warning, and only a total absence is fatal.
+
+`$defs` are hoisted to the wrapper, because `{"$ref": "#/$defs/X"}` resolves from
+the document root — moving them down with the properties would dangle every ref.
+Class-level metadata (identity, classification hints, per-class model/prompt
+overrides, exclusion flags, few-shot examples) stays on the wrapper; only
+shape-describing keywords move into `items`. The class-level
+`x-aws-idp-evaluation-match-threshold` becomes the `instances` array's row-match
+threshold, which is what makes record alignment order-insensitive.
+
+### Rescuing a response that ignored the wrapper
+
+`_adapt_to_instances_wrapper` re-expresses two shapes a model can still return,
+both of which would otherwise be deleted entirely by the off-schema filter (whose
+only allowed top-level key is now `instances`) and emitted as `{}`:
+
+- a **bare top-level array** of records → adopted as the instance list;
+- a **single flat record** (the pre-flag shape) → adopted as one instance, but
+  only when its keys actually overlap the record's properties, so an
+  `error`/`raw_output` sentinel stays a parse failure.
+
+Forgiving on purpose: the alternative to accepting a recoverable shape is throwing
+the section's data away.
+
+### Config-validate rules
+
+Enforced by the `classes` field validator in `config/models.py`:
+
+- **reject** both `multi-instance` and `instance-array` on one class — they answer
+  opposite questions, so setting both is a contradiction, not a stronger request;
+- **reject** `multi-instance: true` on a class that already declares a top-level
+  `instances` property (the wrapper would shadow it; rejected rather than renamed,
+  because a silent rename changes the extraction contract under the user);
+- **warn only** when the class's top level is nothing but one array-of-object.
+  Having an internal array is **not** evidence of already being a list wrapper —
+  an invoice with `line_items[]` is a single-instance document and
+  `multi-instance: true` on it correctly gives `instances[i].line_items[j]`.
+
+An already-wrapped schema legitimately carries both keys, so `is_wrapped` short-
+circuits these rules; the transform is applied at runtime and never persisted, but
+rejecting a schema this code produced itself would be a nasty trap.
+
+### Evaluation baselines must be migrated
+
+`evaluation/baseline_migration.py` (pure) plus
+`scripts/migrate_multi_instance_baselines.py` (the S3 walker: dry-run by default,
+idempotent, `--direction unwrap` for rollback, `--backup-suffix`). A wrapped
+prediction against a flat baseline scores every field as missing-on-one-side, so
+the class reads ~0 accuracy with no error — the one way this feature can break a
+working deployment.
+
+Rollback refuses to flatten a baseline holding more than one record, because that
+would discard ground truth the user authored.
 
 ## Error Handling
 
@@ -521,6 +1044,171 @@ The ExtractionService has built-in error handling:
 2. If extraction fails for any reason, the error is captured in `document.errors`
 3. All errors are logged for debugging
 4. Few-shot example loading errors are handled gracefully with fallback to standard prompts
+
+### A raising failure still reaches the section's record — `idp_common.extraction.failure`
+
+Every extraction failure raises: `ExtractionInputTooLarge`,
+`ExtractionImageRejected`, `ModelInvalidToolUseSequence` and
+`ExtractionOutputIncomplete`. Both Lambda entry points persist the section to
+DynamoDB *after* the service call returns, so on a raise the write did not happen
+and the section's record still held whatever classification left there — nothing
+in the Sections panel identified the section that failed.
+
+`idp_common.extraction.failure` is the shared body of the fix. Each entry point
+wraps its service call and, in the `except` block, calls
+`persist_section_after_extraction_failure` before re-raising unchanged:
+
+- `patterns/unified/src/extraction_function/index.py` — the in-process path,
+  around `process_document_section`;
+- `patterns/unified/src/extraction_function/sfn_runtime_handler.py`, `mode="merge"`
+  — the Distributed Map shard merge, around `merge_section_shards`.
+
+Three properties it relies on, and one it deliberately does not do:
+
+- **The document carries the diagnosis on a raise.** Both service entry points
+  mutate the document they are given and return the same object, and the `section`
+  they operate on is the live object inside `document.sections`. So after a raise
+  the caller's handle still holds everything the service recorded — which for
+  `ExtractionOutputIncomplete` is the whole point, since `_save_results` finishes
+  writing the partial result and the error-severity
+  `extraction_rows_below_ocr_estimate` issue before the raise at its tail.
+- **Existing issues are preserved.** A *successful* run replaces the section's
+  extraction-stage issues; doing that here would delete the diagnosis. Only a
+  previous `extraction_failed` is replaced, so a retried section does not collect
+  one issue per attempt.
+- **The write cannot mask the original error.** It is swallowed and logged. The
+  original exception is what names the rows lost or the input that was too large,
+  and it is what the Step Functions cause reports. That swallowing is also why the
+  section map has to stay under DynamoDB's 400 KB item limit: a write that fails
+  here is not reported, so an oversized issue leaves the section unmarked. Both
+  free-size fields are bounded by `ProcessingIssue` itself — see
+  `MAX_ROOT_CAUSE_BYTES` and `MAX_DETAIL_STRING_BYTES` — which is what makes
+  `assessment/degradation.py` covered without a second copy of the rule.
+- **No metric.** Unlike `idp_common.assessment.degradation`, whose whole reason for
+  existing is that the document *completes* and trips no alarm, everything here
+  re-raises — the execution fails and the existing failure alarms already count it.
+- **A transient error records nothing.** `is_transient_error` is the same predicate
+  that decides whether the handler re-raises under the name `ExtractionStep` /
+  `ExtractionMergeStep` retries, so it reads as "a retry is coming". Marking the
+  section would show it failed for the length of the ladder — eight attempts at
+  2.5x backoff from a 10-second interval — and then clear itself. The residual is
+  that an exhausted ladder leaves the section unmarked; the execution still fails.
+
+### Who may delete a section's resume state, and when
+
+The whole-section checkpoint and the per-shard results exist so a Step Functions retry
+does not start from nothing. Whether deleting them is safe differs between the two
+runtimes, and the difference decides the rule:
+
+| | shard merge (`sfn_runtime_handler`, `mode="merge"`) | in-process (`index.py`) |
+|---|---|---|
+| What they are | a **precondition** — `merge_section_shards` re-loads every shard on entry and raises if one is absent | an **optimisation** — without them the retry re-runs extraction |
+| Cost of deleting too early | permanent `"shard(s) … have no persisted result"`, discarding every token of shard inference | re-inference: money, not correctness |
+| Rule | **never deleted from the handler** | deleted **last**, after the response is built |
+
+What makes "too early" reachable at all is the tail of both handlers:
+`serialize_document` defaults to `size_threshold_kb=0`, so it **always** performs an S3
+put, and it is not wrapped in `try`. A `SlowDown`, a `ServiceUnavailable` or a read
+timeout there is re-raised, classified `TransientError`, and retried — after the
+extraction has already succeeded and been paid for.
+
+For the merge path there is therefore **no safe point inside the Lambda**: whether the
+*state* succeeded is not observable from inside it, and that is what decides whether a
+retry follows. So nothing there deletes the shards and the working bucket's lifecycle
+rule reclaims them. Nothing else reads them, and a reprocess from the UI starts a new
+execution and so a new key prefix, which means "start clean" needs no deletion either.
+
+For the in-process path deleting is safe at any point, so it happens as late as
+possible — after `serialize_document` returns — which bounds the residual window's cost
+at one re-inference. `patterns/unified/tests/test_shard_retention.py` pins both rules,
+including the transient-tail reproduction.
+
+`ExtractionMergeStep` also has no `Catch` and no path back to `ExtractionShardMap`, so
+a *deterministic* merge failure is not retried at all; those kept objects simply
+expire.
+
+### Shard results are keyed by content, not by the section's ordinal id
+
+`shard_result_key` takes a **shard-persistence section id** —
+`{class_label}_{first_page}_{last_page}`, built by `shard_persistence_section_id` —
+rather than the `section_id` classification assigns, which is an ordinal (`"0"`,
+`"1"`, …) and is not stable across a reclassify.
+
+There are consequently two prefixes under `checkpoints/{safe_arn}/`: the
+whole-section checkpoint at `{section_id}/extraction_state.json` uses the ordinal,
+and the shard results at `{persist_section_id}/shards/` do not. Anything that
+addresses the `shards/` prefix must go through `shard_results_prefix`, which
+`shard_result_key` is itself built on so the two cannot diverge, and must derive its
+id through `shard_persistence_section_id`. Both cleanup callers
+(`delete_shard_results`, `_cleanup_shards`) therefore take the **section** rather
+than a section id, so a raw ordinal cannot be passed by mistake — which is what
+happened, leaving both listing a prefix nothing had ever been written to and
+deleting nothing while logging success.
+`tests/unit/extraction/test_shard_cleanup_prefix.py` drives the real service against
+both deployed handlers with a fake S3 that answers the correct prefix only.
+
+### An empty effective schema: three causes, one of them a fault
+
+`_get_class_schema` returns `{}` both for a class the configuration contains and
+gave no attributes, and for a label the configuration does not contain at all;
+`_prepare_section_context` returns `None` for either, and `_handle_empty_schema`
+skips the model and writes a stub. That stub's
+`metadata.skipped_due_to_empty_attributes` flag is what the confidence pass keys
+its carve-out on, so while it was the only signal, three different situations were
+indistinguishable downstream — and the one that is an operator fault was the one
+that went unreported.
+
+`_empty_schema_reason` separates them and the stub records the answer as
+`metadata.empty_schema_reason` (constants in `idp_common.empty_schema`):
+
+| Reason | When | Recorded issue |
+|---|---|---|
+| `class_has_no_attributes` | The label resolves to a class in configuration that declares no properties. An authoring choice; nothing was expected from the section | none |
+| `class_unclassified` | The label is the `unclassified` sentinel, or the configured `classification.invalidClassFallback`. Classification determined no class — a blank page, a page whose classification failed, or a deployment with no document types configured | none here. The **classification** stage reports it, at the severity only it can judge |
+| `class_not_configured` | The section carries a **named** class the configuration in force does not contain: renamed or deleted while documents were in flight, or an old document reprocessed under a newer configuration | error-severity `extraction_class_not_configured` on the section and in the stub's `metadata.processing_issues` |
+
+The fault case is reported here, at the stage that discovered it, because the
+remedy is a configuration change: add the class back, or reclassify the document
+under the current configuration. Reporting it only from the confidence pass — the
+next stage to notice the empty result — would have produced a `root_cause` pointing
+at an extraction call that never happened.
+
+`skipped_due_to_empty_attributes` stays set in all three cases: it is what stored
+result files and existing readers use, and it is true for each of them. A stub
+written before `empty_schema_reason` existed has no reason key, and readers treat
+that as `class_has_no_attributes` — so reassessing a backlog of old documents
+cannot manufacture a wave of new reports.
+
+### Schema-compliance filtering (Simple mode)
+
+Advanced (agentic) extraction validates its output through a generated Pydantic
+model, which structurally **ignores any field the class schema does not define**.
+Simple (traditional) extraction has no such step — it does a raw `json.loads` and
+keeps whatever the model emits — so a model that hallucinates or bleeds attributes
+across classes (e.g. a `resume` section coming back with `publications`, or a
+`scientific_publication` with `invoice_number`) would carry those off-schema fields
+into `inference_result`. Downstream that breaks the confidence assessment: the
+enhancer collapses a **list emitted for an attribute the schema does not declare as
+an array**, leaving those rows permanently unscored and failing the section
+(`assessment_schema_mismatch`).
+
+To close that gap at zero extra model cost, `_filter_extracted_to_schema` runs on
+the simple path right after parsing and **drops top-level keys not present in the
+class schema's `properties`**, mirroring the agentic Pydantic behavior. It is
+conservative and fail-open:
+
+- No-op when the schema has no `properties` (can't tell what's off-schema).
+- Only drops **unknown** top-level keys; defined fields pass through untouched
+  (value/type correction remains assessment's job, not this filter's).
+- Dropped names are logged and surfaced as an **`extraction_off_schema_fields`**
+  (info) `ProcessingIssue` naming the fields, so a systematic prompt/schema
+  mismatch is visible rather than silent.
+
+> **Note on `additionalProperties`.** Enabling the agentic `validation` gate does
+> *not* catch off-schema extras on its own: JSON-Schema validation allows unknown
+> properties unless the class schema sets `additionalProperties: false`. Agentic
+> mode is safe here because its Pydantic model ignores extras regardless; this
+> filter gives Simple mode the same guarantee.
 
 ## Performance Optimization
 
@@ -553,13 +1241,1402 @@ The service supports both text and image inputs:
 
 The extraction service is designed to be thread-safe, supporting concurrent processing of multiple sections in parallel workloads.
 
+## 1S-TopK: single-stage extraction + confidence (Simple mode)
+
+> **Not used on list-bearing classes unless the class opts in.** When the section's
+> class declares a top-level array property (a multi-instance `instances` wrapper
+> counts), `ExtractionService._simple_integrated_list_downgrade` switches the section
+> to the plain extraction prompt and emits no inline confidence, so the standalone
+> Assessment step (which skips only when `explainability_info` is already present)
+> scores it separately. Benchmarked reason: Simple + integrated returned 1–10 of 100
+> rows on 4/4 repeats and an 800-row list came back absent, all reporting COMPLETED
+> (config-guidance §2.1). The cost delta is model-dependent: ~2.5× per 100-row document
+> at Sonnet 5, cheaper than the integrated call at Sonnet 4.6 (live pass 2026-09-09). Recorded
+> in `metadata.confidence_mode_effective` / `confidence_mode_downgraded_reason` and the
+> Processing Flow (`status: info`) — deliberately NOT a ProcessingIssue, because the
+> document list's badge counts `ProcessingIssueCount`, which is severity-blind, and
+> would badge every document. Two class-level
+> opt-outs keep 1S-TopK: `x-aws-idp-extraction-task-prompt` (a user-controlled prompt is
+> never half-applied) and `x-aws-idp-allow-integrated-lists: true` (the author has
+> verified list completeness). `config.merge_utils._validate_simple_integrated_lists`
+> warns at `idp-cli config-validate` / SDK validate time — the web UI does not validate
+> on save; its Prompt Preview shows the decision per class. Runtime per-section decision,
+> not a config rejection: a stored config must keep loading, and the new key is a
+> free-form class key that older releases ignore.
+
+When `extraction.mode: simple` and `extraction.confidence.mode: integrated`, the
+service produces the extracted values **and** their per-field confidence in a
+**single LLM call** — there is no separate Assessment pass, halving the number of
+LLM invocations for the extraction workflow.
+
+**How it works.** The selected task prompt
+(`extraction.task_prompt_extraction_with_confidence_topk`, chosen automatically by
+`prompt_assembly.select_extraction_task_prompt`) instructs the model to return,
+per field, its **top-K guesses with probabilities** rather than a single value:
+
+```json
+{
+  "Agency": { "G1": "ACME Media", "P1": 0.93, "G2": "ACME", "P2": 0.05, "G3": "...", "P3": 0.02 },
+  "LineItems": [
+    { "LineItemRate": { "G1": "800.15", "P1": 0.88 }, "LineItemDays": { "G1": "-TWTF--", "P1": 0.71 } }
+  ]
+}
+```
+
+`idp_common.extraction.topk_resolver.resolve_candidates` then splits this into:
+
+- **`inference_result`** — the top guess `G1` per field (numbers coerced per schema).
+- **raw confidence leaves** — `{"confidence": P1}` per field, stashed in
+  `metering["_integrated_field_assessment"]`. `_save_results` runs these through the
+  **shared** `enrich_assessment_with_thresholds` (attaches
+  `confidence_threshold` from each field's `x-aws-idp-confidence-threshold` or the
+  default, and builds threshold alerts) and grounds them into
+  `explainability_info` — the identical output contract to separate mode, so
+  evaluation, reporting, the UI, and HITL are all unchanged.
+- **`metadata.topk_candidates`** — the full candidate set (all K guesses) per field,
+  preserved for auditability, plus `metadata.assessment_method: "1s_topk"`.
+
+Because `explainability_info` is already present in the saved `result.json`, the
+downstream Assessment Lambda **auto-skips**.
+
+**Shapes the resolver handles.** Three, plus a pass-through:
+
+| Shape | Example |
+|---|---|
+| Scalar candidate | `{"Agency": {"G1": …, "P1": …}}` |
+| Array, direct | `{"LineItems": [{"Rate": {"G1": …, "P1": …}}]}` |
+| Array, wrapped | `{"LineItems": {"G1": [ … ], "P1": …}}` |
+| **Group (object)** | `{"Address": {"City": {"G1": …, "P1": …}}}` |
+| Pass-through | a field the model returned as a plain value — kept verbatim, no confidence leaf |
+
+Groups recurse, so a group inside a group, and a list inside a group, both
+resolve; `$ref`s are dereferenced against `$defs` at every level so numeric
+coercion applies to nested sub-attributes too.
+
+> **Group handling was previously missing**, and the failure was silent: a group
+> fell through to pass-through, so the raw candidate dict became the *extracted
+> value* (`Address.City` came out as `{"G1": "Anytown", "P1": 0.95, …}` instead of
+> `"Anytown"`) and the group produced **no confidence leaves at all**, making its
+> fields invisible to threshold alerts and HITL. Observed on every group field of
+> every document processed in integrated mode.
+
+⚠️ **Cost/completeness caveat on long lists.** The TopK envelope costs several
+guesses per cell, so a list that fits comfortably in a plain extraction can exceed
+what the model will emit in one response — and it stops emitting rows rather than
+erroring. Measured on a 100-row list: `integrated` returned **10 of 100 rows**
+where `separate` returned 100 of 100 in every repeat. List cells are therefore
+asked for a **single** guess (`G1/P1` only, not four), which cuts list output
+roughly 4×, and the prompt no longer instructs the model to make guesses *"as
+short as possible"* — that wording was also causing it to return **shortened
+values**, with the document's actual text demoted to `G2`. The single-response
+limit is fundamental to this mode, so **prefer `separate` on list-bearing
+schemas**.
+
+**Why top-K.** Asking the model to enumerate and rank alternatives (instead of a
+single value + a single confidence number) forces it to distribute probability
+mass, yielding **better-calibrated, less-overconfident** scores. See Tian et al.,
+*"Just Ask for Calibration"* (EMNLP 2023).
+
+**Contract.** Output keys follow `G<N>` (guess) / `P<N>` (probability). K is
+flexible — `G1`/`P1` alone is valid; the default prompt requests K=4. Only `G1`/`P1`
+are consumed; `G2..GK`/`P2..PK` are preserved verbatim in `topk_candidates`. If the
+model returns a flat response with no `G1`/`P1` candidates, the values pass through
+unchanged and the standalone Assessment step runs as the fallback (no regression).
+Under `geometry.mode: llm`/`llm_grounded` the bbox block is appended to the TopK
+prompt, so a candidate may also carry `bbox`/`page`; the resolver carries those onto
+the confidence leaf for the shared grounding path (under pure `llm` — no OCR
+grounding — this is the only box source). `llm` is **discouraged**: it costs the
+same as `llm_grounded` and skips the correction step, so prefer `llm_grounded`
+wherever LLM boxes are wanted at all.
+
+Advanced (agentic) integrated mode can opt into the same top-K elicitation via the
+hidden experimental knob `extraction.agentic.integrated_confidence_strategy: topk`
+(see below).
+
+Reference config:
+[`config_library/unified/realkie-fcc-verified/config-1s-topk-with-ocr-image.yaml`](../../../../config_library/unified/realkie-fcc-verified/config-1s-topk-with-ocr-image.yaml);
+end-to-end demo: [`notebooks/misc/e2e-example-with-1s-topk.ipynb`](../../../../notebooks/misc/e2e-example-with-1s-topk.ipynb).
+
+## Agentic Extraction with Table Parsing Tool
+
+The extraction service supports an optional **agentic extraction mode** powered by the Strands agent framework with tool-based structured output. When enabled, the extraction agent gains intelligent tools including a deterministic table parser for robust tabular data extraction.
+
+### Schema token budget: the schema is sent three times (#710)
+
+Advanced extraction transmits the class schema **three times per request**. Measured
+on `config_library/unified/lending-package-sample` -> `Payslip` at ~4 chars/token:
+
+| # | Where | Tokens |
+|---|---|---|
+| 1 | prose `{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}` substituted into the task prompt | ~1,485 |
+| 2 | `"Expected Schema: ..."` appended to the **system** prompt | ~2,600 |
+| 3 | the extraction tool's `inputSchema`, which Strands derives from the same model | ~2,595 |
+
+Figures measured before #836; the class and group descriptions that fix recovers add roughly 130 tokens to each of copies 2 and 3 on `Payslip`.
+| | **total ~6,680, of which copy 2 is 38%** | |
+
+Copies 2 and 3 are **the same JSON string** — not merely equivalent; a test asserts
+the substring match. So copy 2 carries no information copy 3 does not, and
+`extraction.agentic.restate_schema_in_system_prompt: false` removes it. The agent
+can still fetch the schema on demand via `get_extraction_schema_reminder`, which is
+unaffected.
+
+**It defaults to `true`, and that is deliberate.** Restating a schema in prose often
+improves how closely a model follows it, so the duplication may be doing real work.
+Treat this as an A/B knob: the benchmark `restatement` suite runs both arms on one
+stack with identical code, and the gate is **completeness**, not token count — a
+token saving that loses list rows is a loss.
+
+**What the payoff actually is — smaller than it looks in both directions:**
+
+- **Smaller in dollars.** All three copies sit inside the prompt-cache prefix, so on
+  a repeated-class workload they are cache reads at roughly a tenth of input price.
+- **Shard-count headroom, since #775.** `compute_sizing_plan` now subtracts the
+  MEASURED per-request prompt overhead — system prompt, the task prompt with the
+  class schema rendered in, few-shot text, the forced toolSpec, and on the Advanced
+  path the agent system prompt, the tool schema and this restatement — from the
+  shard budget (`ExtractionService._prompt_overhead_tokens`, chars/4 like the page
+  text), so `context_buffer` is a safety margin *on top of* the prompt text and
+  schema copies. The other agent tool specs (~3k tokens) and the table-guidance
+  instruction are not counted and stay inside the buffer, so the estimate runs low. Turning the restatement off therefore frees one schema copy's worth of
+  shard budget, which is the mechanism this knob was always assumed to have; before
+  #775 the overhead was subtracted nowhere and came off a blanket reserve that was
+  already unused, so no shard count could move. Magnitudes on the shipped default
+  model (Sonnet 5, 200K in / 128K out): the text-only budget is **18,400 tokens**
+  (140,000 usable minus an 89,600 output reserve and a 32,000 image reserve), and
+  the shipped presets' Advanced-mode overhead is roughly 4k–8k, so budgets land
+  near 10k–14k. Processed pages measure ~650–1,060 OCR tokens, so a five-page
+  shard is 3k–5k tokens and `max_pages_per_shard` (default 5) still closes shards
+  on page count by a wide margin; only unusually dense pages (>2k tokens each)
+  would now split a page-bound shard. The processing report shows
+  `prompt_overhead_tokens` beside the shard budget.
+
+A fourth copy is stored in agent state for the reminder tool, but it is only
+transmitted if that tool is invoked, so it is not a per-request cost.
+
+**Measured effect of turning it off** (50 runs, 25 per arm, Sonnet 4.6, three
+synthetic bank-statement documents; `docs/benchmarking/studies/schema-restatement-tokens.md`):
+quality unchanged — `completeness_recall`, `cell_accuracy` and `scalar_accuracy` were
+1.000 in all 50 runs with identical `cells_compared`. Input-side extraction tokens fell
+5.2% on a 400-row document and 6.7% on a 100-row one, with the arms completely separated
+(*p* = 1.3 × 10⁻⁸ and *p* = 0.008); on a third document the point estimate moved +9.5%
+the other way and was not significant, because that document's agent-loop turn count
+varied and every turn re-reads the prefix. **It is not a cost saving**: extraction
+output tokens rose 17.4% (*p* = 1.2 × 10⁻⁵), so extraction cost's central estimate rose
+7.5% and total cost 5.3% (neither significant). The asymmetry is the cache: −9,181
+input-side tokens are worth ~$0.007 because they are nearly all cache reads, while
++2,347 output tokens are worth ~$0.039. **So the payoff of this knob is shard headroom,
+not dollars** — which is what the bullet above describes.
+
+### Sampling parameters on the agentic path: why there is no `top_k` (#956)
+
+`_get_inference_params` returns only `temperature` **or** `top_p`, and it must stay that
+way. **`topK` cannot be added to it**, for two independent reasons — recorded here so
+the analysis is not repeated:
+
+1. **It is not a Converse `inferenceConfig` field.** botocore rejects
+   `inferenceConfig.topK` client-side for every model, before any request is sent:
+   `Unknown parameter in inferenceConfig: "topK", must be one of: maxTokens,
+   temperature, topP, stopSequences`.
+2. **Strands' `BedrockConfig` has no `top_k` member, and adding one fails silently.**
+   The dict this helper returns is splatted straight into
+   `BedrockModel(**model_config, **inference_params)`, whose signature is
+   `**model_config: Unpack[BedrockConfig]`. `BedrockConfig` is a `TypedDict`, so at
+   runtime an unexpected `top_k` key raises nothing — it lands in `self.config` and is
+   then **dropped** by `format_request`, which builds `inferenceConfig` from only
+   `max_tokens` / `temperature` / `top_p` / `stop_sequences`. The parameter would never
+   reach ConverseStream and nothing would report that it had been discarded, which is
+   the worst of the available failure modes.
+
+**Where it would have to go instead:** `_build_model_config`'s
+`additional_request_fields`, which Strands maps to ConverseStream's
+`additionalModelRequestFields` — the same mechanism already used there for
+`anthropic_beta`, `output_config.effort` and `reasoning.effort`. It could not be a
+single key, because the carrier shape is per-provider (probed on Bedrock in `us-west-2`,
+2026-09-20, each result confirmed against a deliberately bogus control key so that a
+200 from a provider that silently ignores unknown keys is not read as success):
+
+| Family | Carrier | Valid range |
+|---|---|---|
+| Nova Lite / Pro / 2 Lite | `{"inferenceConfig": {"topK": N}}` | 1–128 (`top_k` → `extraneous key [top_k] is not permitted`) |
+| Claude ≤ 4.6 | `{"top_k": N}` | −1 – 100,000,000 (`inferenceConfig` → `Extra inputs are not permitted`) |
+| Claude 4.7+ | none | `` `top_k` is deprecated for this model `` — already covered by `strips_sampling_params` |
+| OpenAI GPT-6 Astra | none | `Unknown parameter: 'top_k'` — already covered by `strips_sampling_params` |
+| xAI Grok 4.6 | unverifiable | accepts any unknown key with 200, including the control |
+
+So it would need a per-family branch, i.e. another entry in the per-model Converse
+capability gates alongside `strips_sampling_params` and
+`tool_config_unsupported_reason`.
+
+**No such option is shipped, because the measured effect is null.** `topK: 1` — and
+AWS's full greedy triple `temperature 0` + `topP 1` + `topK 1`, which its Nova tool-use
+troubleshooting guide recommends for exactly the `ModelInvalidToolUseSequence` failure
+below — did not move Nova Lite's invalid-tool-use rate: 0.787 with no `topK`, 0.812 with
+`topK: 1`, 0.838 with the full triple, over 160 direct Bedrock calls per arm interleaved
+against capacity drift (Fisher exact *p* = 0.68 and 0.39). ⚠️ That null has a floor: at
+n = 160 per arm, 80% power reaches only a failure rate of 0.65 (18% relative), so a
+large improvement is excluded and a small one is not. Full tables, the trigger analysis
+and the power figures: `docs/benchmarking/studies/greedy-decoding-tool-use.md`.
+
+### Enabling Agentic Extraction
+
+Configure agentic extraction in your configuration file:
+
+```yaml
+extraction:
+  model: "us.anthropic.claude-sonnet-5"  # Anthropic Claude recommended for agentic
+  agentic:
+    enabled: true
+    max_concurrent_batches: 1  # Parallel processing (2-10 for very large docs)
+    table_parsing:
+      enabled: true  # Enable deterministic table parser tool
+      min_confidence_threshold: 95.0  # OCR confidence target (Textract only)
+      min_parse_success_rate: 0.90  # Parse quality threshold
+      use_confidence_data: true  # Cross-reference with OCR confidence
+      max_empty_line_gap: 3  # Tolerate up to N empty lines in tables
+      auto_merge_adjacent_tables: true  # Merge table fragments
+    validation:                # see "Schema-Constraint Validation" below
+      enabled: false
+```
+
+> **Every `agentic.*` sub-option only takes effect when `agentic.enabled: true`**
+> — `table_parsing`, `validation`, and `max_concurrent_batches` are all ignored
+> for non-agentic extraction. In the **Configuration UI** these options are
+> progressively disclosed: they appear only after you enable Agentic Extraction,
+> the table-parsing thresholds appear only after you enable the parse_table tool,
+> and the escalation model appears only when validation `fail_action` is
+> `escalate` — so you only see the knobs that currently matter.
+
+### Table Parsing Tool
+
+When `table_parsing.enabled: true`, the extraction agent gains a `parse_table` tool that:
+
+1. **Deterministically parses Markdown tables** from OCR text without LLM inference
+2. **Handles OCR artifacts robustly**:
+   - Tolerates empty lines (page breaks) within tables via configurable lookahead
+   - Recovers from missing pipe characters in corrupted rows
+   - Automatically merges table fragments with identical columns
+3. **Provides quality metrics and warnings**:
+   - `parse_success_rate`: Ratio of cleanly parsed rows
+   - `avg_confidence`: OCR confidence scores (when available from Textract)
+   - `low_confidence_cells`: Specific cells needing LLM verification
+   - **⚠️ Warnings**: Alert agent to table fragmentation or quality issues
+   - **ℹ️ Info**: Confirm successful gap recovery
+4. **Enables hybrid extraction workflow**:
+   - Agent uses `parse_table` for well-structured tabular data
+   - Falls back to LLM extraction for complex layouts or poor quality
+   - Cross-validates low-confidence cells using multimodal reasoning
+
+### How It Works
+
+```
+1. Agent analyzes document and identifies Markdown tables
+2. Agent calls parse_table(table_text, expected_columns)
+3. Tool returns:
+   - Structured rows as list of dicts
+   - Quality metrics (parse_success_rate, avg_confidence)
+   - Warnings about potential incompleteness
+4. Agent reviews quality:
+   - If good (parse_rate >= 0.90, confidence >= 95):
+     * Calls map_table_to_schema with column mapping and transforms
+     * Calls finalize_table_extraction with scalar fields
+   - If poor or warnings present:
+     * Falls back to LLM extraction for affected sections
+     * Verifies low-confidence cells using document images
+5. Agent validates completeness:
+   - Cross-checks row counts against document visuals
+   - Extracts from ALL table fragments if multiple found
+   - Verifies schema constraints (e.g., min_length) are met
+```
+
+### Three-Tool Table Extraction Workflow
+
+The table extraction uses a three-tool pipeline that keeps large data out of the LLM context, minimizing token usage:
+
+```
+parse_table ──► map_table_to_schema ──► finalize_table_extraction
+   │                    │                        │
+   ▼                    ▼                        ▼
+ Agent State:       Agent State:             Agent State:
+ last_parse_        mapped_table_            current_extraction
+ table_result       rows                     (validated Pydantic)
+```
+
+**Step 1: `parse_table`** — Deterministic Markdown parser. Finds all tables, recovers from OCR artifacts, returns structured rows with quality metrics. Result stored in agent state as `last_parse_table_result`.
+
+**Step 2: `map_table_to_schema`** — Bulk transformation of parsed rows using a column mapping. The agent provides a small mapping dict; the tool transforms all rows instantly. Supports:
+- **`column_mapping`**: Maps table columns to schema fields (case-insensitive, fuzzy substring matching)
+- **`static_fields`**: Constant values added to every row (e.g., `{"account_number": "1234"}`)
+- **`value_transforms`**: Per-field transforms applied during mapping:
+  - `strip_currency`: Removes `$` and `,` (e.g., `"$1,234.56"` → `"1234.56"`)
+  - `strip_whitespace`: Removes all internal whitespace
+  - `lowercase` / `uppercase`: Case conversion
+- **Merged-row auto-splitting**: Detects OCR page-boundary artifacts where two rows are concatenated on one line (e.g., `"$57.90 $55.11"` in multiple columns) and splits them back into separate rows
+
+Mapped rows accumulate in agent state as `mapped_table_rows` (supports multiple calls for chunked processing).
+
+**Step 3: `finalize_table_extraction`** — Combines mapped table rows (from state) with scalar fields the agent provides. Validates the complete extraction against the Pydantic schema model. The agent never generates large JSON — only a small `scalar_fields` dict.
+- **`table_array_field`**: Schema field name for the table array (e.g., `"transactions"`)
+- **`scalar_fields`**: Non-table fields (e.g., `{"statement_period": "Jan 2025"}`)
+
+### The pre-flight parse and the PRE-PARSED TABLE DATA instruction
+
+Before the agent runs at all, the service parses the section's tables itself —
+`ExtractionService._preflight_table_parse`, gated on `table_parsing.enabled` and
+at least 50 estimated table rows in the OCR text. The parse result drives two
+things:
+
+1. **`lazy_images`** — a successful parse means the loop is text-driven, so the
+   up-front page-image attachment is suppressed (see the config note in
+   [extraction-and-confidence.md](../../../../docs/extraction-and-confidence.md)).
+2. **The agent instruction** — `_append_preflight_table_guidance` appends a
+   `**PRE-PARSED TABLE DATA AVAILABLE**` block naming the table count, the total
+   row count and the column list, explaining the `--- PAGE N ---` markers, and
+   walking the agent through the three-tool chain above, ending with the point
+   that `finalize_table_extraction` reads the mapped rows **from agent state** so
+   no JSON rows need to be generated.
+
+That closing point is the cost lever. An agent that does not know the rows are
+already parsed falls back to emitting them as output tokens, which is the
+expensive failure mode the tool chain exists to avoid — removing an analogous
+fallback took one 12-run benchmark arm from 1,512,506 to 681,222 Extraction
+output tokens.
+
+Both are applied on **both** agentic paths: the single-pass path in
+`_invoke_extraction_model` and the sharded plan in `_build_agentic_shard_plan`
+(the default for any multi-page table document). The pre-flight parse reached the
+sharded path in #898 and the instruction block in #900. Be precise about which
+shard agents were missing the block before #900: `_build_agentic_shard_plan`
+serves the **Step Functions** runtime (`runtime: step_functions`, the shipped
+default in `base-extraction.yaml`), and it was the only route that dropped the
+block. The in-process runtime shards inside `_invoke_extraction_model` and passes
+that method's already-augmented instruction to
+`concurrent_structured_output_async`, so in-process shard agents had the block all
+along — deployed stacks nevertheless hit the broken route, because they run on
+Step Functions.
+
+`_build_agentic_shard_plan` returns **one** `custom_instruction` for all of a
+section's shards, so the block's page wording stays generic ("when you are
+assigned a page range"). The concrete assignment is appended per shard by
+`agentic_idp._run_shard_agent`, which adds `You are processing shard i of N,
+covering pages A-B of T` immediately after the block.
+
+Two sentences of that block are, however, actively **wrong** when a shard agent
+reads them, so both sharded call sites pass
+`_append_preflight_table_guidance(..., scope_note=_SHARD_SCOPE_NOTE)`, which
+inserts a correcting paragraph directly after the page-marker rule (the
+single-agent path passes nothing, keeping its text byte-identical):
+
+- "extract ONLY text between markers for your pages" — a shard's text already
+  contains only its pages, and every shard after the first is prefixed with a
+  `--- DOCUMENT HEADER (page 1, for context only) ---` block that
+  `_build_shard_payloads` deliberately places **outside** the `--- PAGE N ---`
+  markers because it carries the table's column-header row. An agent obeying the
+  rule literally discards that header, the deterministic parse then fails on text
+  starting mid-table, and the agent falls back to emitting rows itself — a
+  completeness risk, not only a cost one. The note tells the shard to pass **all**
+  of its text to `parse_table`, header block included.
+- the table and row totals are **section-wide** (`_preflight_table_parse` parses
+  the whole section), while `TABLE_PARSING_PROMPT_ADDENDUM` in the system prompt
+  tells the agent to verify `row_count` against the document and never stop until
+  every row is captured. A shard covering 2 of 6 pages that reads those totals as
+  its own target can over-extract or fail to terminate. The note says the totals
+  cover the whole section and that `parse_table` on the shard's pages will
+  legitimately return fewer rows.
+
+### Page Markers and Batch Extraction
+
+When processing multi-page documents, the service inserts page boundary markers between page texts:
+
+```
+--- PAGE 1 ---
+Account Number: 12345
+Statement Period: January 2025
+
+| Date | Description | Amount |
+|---|---|---|
+| 01/15 | Deposit | 3500.00 |
+--- PAGE 2 ---
+| 01/16 | ATM | -200.00 |
+| 01/20 | Transfer | -1500.00 |
+```
+
+**Page marker format**: `--- PAGE {N} ---` (1-indexed)
+
+The table parser transparently skips page markers inside tables — they do not break table continuity or appear in parsed rows.
+
+**Sharded concurrent extraction** (`max_concurrent_batches > 1`): the section's
+pages are split into **token-budgeted page ranges**, and each shard's prompt
+contains **only that shard's OCR text and images** — not the whole document. The
+shards run concurrently (up to `max_concurrent_batches` at a time) and their
+results are merged. This serves two purposes:
+
+> **Why "shard" and not "chunk"?** A *shard* here is a **non-overlapping page
+> range fanned out to a concurrent extraction agent** — the term is chosen for
+> its distributed-systems connotation of *partition-for-parallelism/scale*,
+> which is exactly this feature's purpose. We deliberately avoid "chunk" because
+> it already denotes several *other*, unrelated concepts elsewhere in the
+> codebase: RAG-style overlapping text windows (`max_chunk_size`,
+> `chunk_overlap_percentage`), sequential assessment list sub-batches
+> (`assessment/batching.py`), rule-validation `chunking_occurred`, and streaming
+> byte reads. Reusing "chunk" for agentic-extraction shards would collide with
+> all of those; "shard" keeps this concept unambiguous.
+
+1. **Bounds the context window.** Because each agent sees only its pages, a long
+   or dense section that would overflow a single agent's context (the failure
+   mode behind `ContextWindowOverflowException`) is split until each shard fits.
+2. **Reduces wall-clock time** via parallelism.
+
+Key behaviors:
+- **Bounded by tokens AND pages.** Pages are grouped so each shard's estimated
+  input stays under `shard_token_budget` (default **8,000**; `≈ chars/4`) **and**
+  holds at most `max_pages_per_shard` pages (default **5**, `0` disables the page
+  ceiling). A shard closes when *either* bound is hit. The page ceiling means a
+  large document shards even when its OCR text is unusually compact and would
+  otherwise fit one token budget — so sharding engages **by default** with no
+  per-config tuning. `max_concurrent_batches` is an **upper bound on parallelism
+  and shard count** — a very large section is split into as many shards as needed
+  to fit (capped at `max_concurrent_batches`).
+  > ⚠️ **`max_pages_per_shard` is not a guarantee.** Once the page ceiling would
+  > produce more shards than `max_concurrent_batches` allows — which at the
+  > defaults (10 and 5) happens on every section over 50 pages — `_rebalance_to_cap`
+  > **discards** those ranges and repacks the pages into exactly
+  > `max_concurrent_batches` token-balanced groups, ignoring the page cap. At
+  > `max_concurrent_batches: 2` a 30-page section is two 15-page shards, not six
+  > 5-page ones, and because the repack balances estimated tokens rather than pages,
+  > a text-heavy page can occupy a shard alone. Code that needs a bound on a shard's
+  > page count must cover **both** regimes — the page ceiling and the repack — and
+  > must not derive one from a single token budget; see the many-image cap note above.
+  > **Why the low default budget?** A high budget (the old 40,000 default) let
+  > even a ~25-page dense table fit one shard, so sharding silently did *not*
+  > engage and a single agent had to emit the whole giant table in one Bedrock
+  > call → read timeout. 8,000 + a 5-page ceiling reliably shard large docs so
+  > each agent's work stays bounded. Raise `shard_token_budget` for
+  > large-context (`:1m`) models if you want fewer, larger shards.
+- **Page-aligned splits keep table rows intact.** A table spans pages but each
+  row lives on one page, so splits fall between rows; list fields are
+  concatenated in page order on merge (no row loss/duplication).
+- **Header context propagation.** The section's first-page text is prepended to
+  every later shard (clearly marked "for context only") so column headers and
+  page-1 scalar context survive the split.
+- **Scalar merge.** Each shard extracts what it can see; scalars take the
+  **first non-null** value across shards. If two shards disagree on a scalar, the
+  first is kept and the conflict is recorded in `metadata.shard_scalar_conflicts`.
+
+> If a single shard's input *still* exceeds the model context window, extraction
+> raises a clear, actionable error (enable table parsing / lower
+> `shard_token_budget` / use a larger-context `:1m` model) rather than the
+> opaque Strands "insufficient messages for summarization" message.
+
+```yaml
+# Enable sharded concurrent extraction (up to 4 shards in parallel)
+extraction:
+  agentic:
+    enabled: true
+    max_concurrent_batches: 4
+    shard_token_budget: 8000    # default; lower if shards still overflow, raise for 1M-context models
+    max_pages_per_shard: 5      # default; page ceiling so large docs always shard (0 = disable)
+    table_parsing:
+      enabled: true
+```
+
+**Document-size guidance.** The defaults above are tuned to work without
+hand-tuning on large documents (validated at scale on 100- and 200-page
+single- and multi-table PDFs). For very large documents (100+ pages) prefer the
+Step Functions Distributed Map runtime (`runtime: step_functions`) so each shard
+runs in its own Lambda and the section is not bound by the single-Lambda 15-min
+ceiling; the in-process runtime still shards correctly but a 200-page section may
+approach that ceiling.
+
+### ExtractionRuntime: pluggable orchestration over shared primitives
+
+Sharding is factored into runtime-agnostic primitives in
+`idp_common.extraction.runtime` so the **same** shard/merge logic runs whether
+you call the library from a notebook, a CLI, a single Lambda, or a production
+Step Functions Distributed Map — one implementation, no behaviour divergence.
+
+**Primitives (the single source of truth):**
+
+- `extract_one_shard(...)` — runs ONE shard's agent (via an injected
+  `shard_runner`; `agentic_idp.default_shard_runner` in production) and is
+  **idempotent**: if a `ShardPersistence` backend already holds a complete
+  result for the shard's page range, it is loaded and returned instead of
+  re-inferring. This is the asyncio task body AND the SFN Map iteration body.
+- `merge_shard_results(...)` / `merge_shard_dicts(...)` — concatenate list fields
+  in page order and take first-non-null scalars (recording conflicts).
+- `ShardPersistence` protocol + `S3ShardPersistence`, keyed at
+  `checkpoints/{execution_arn}/{section_id}/shards/shard_{start}_{end}.json`.
+
+**Two backends behind the `ExtractionRuntime` interface:**
+
+- **`InProcessRuntime`** (default) — plans shards, runs them via `asyncio.gather`
+  + a semaphore, then merges. This is what a notebook / CLI / single Lambda uses;
+  **sharding works fully here with no Step Functions dependency.**
+  `ExtractionService.process_document_section()` routes its concurrent path
+  through this runtime, so standalone usage is unchanged.
+- **`StepFunctionsRuntime`** (production) — a nested SFN **Distributed Map** where
+  each iteration is a thin shard Lambda calling `extract_one_shard` (one fresh
+  15-minute Lambda per shard) and a following merge state calls
+  `merge_shard_results`. Because each shard persists its result idempotently to
+  S3, SFN's **native per-iteration retry re-runs only the failed/incomplete
+  shards** — completed shards load from S3, with no custom near-timeout/reentry
+  code and no 15-minute ceiling for the section as a whole.
+
+Select the backend with `extraction.agentic.runtime` (`in_process` default, or
+`step_functions`); the `EXTRACTION_RUNTIME` env var and an explicit `override`
+argument also work. The in-process section Lambda additionally wires
+`S3ShardPersistence`, so even on the in-process path an SFN `ExtractionStep`
+retry of a timed-out section resumes only the incomplete shards.
+
+**Standalone usage (plain Python, no SFN):**
+
+```python
+from idp_common.extraction import ExtractionService
+service = ExtractionService(config=config)            # config.extraction.agentic.max_concurrent_batches > 1
+doc = service.process_document_section(document, section_id)   # shards + merges in-process
+```
+
+See `notebooks/misc/standalone_sharded_extraction_demo.py` for a runnable
+demonstration (offline with a fake agent; live with real Bedrock).
+
+### Confidence Assessment (in-shard confidence & bounding boxes)
+
+> **Config v0.6:** confidence scoring is an **output of extraction** — its settings
+> live under `extraction.confidence` (was the top-level `assessment` block) and
+> geometry under `extraction.geometry` (was `assessment.geometry_mode`). HITL moved
+> to the top-level `hitl` block. Old configs are migrated on read.
+
+Per-field confidence/bbox **assessment can run inside extraction** instead of as a
+separate downstream step, controlled by `extraction.confidence.mode`:
+
+```yaml
+extraction:
+  confidence:
+    enabled: true                     # master on/off — false disables confidence entirely
+    mode: separate                    # off | "separate" (default) | "integrated"
+    model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    list_batch_size: 25               # rows scored per inference (agentic in-shard)
+  geometry:
+    mode: ocr_only                    # ocr_only (default) | llm_grounded | off
+                                      # ('llm' also accepted, but discouraged: same
+                                      #  prompt and cost as llm_grounded, no grounding)
+  agentic:
+    enabled: true
+    max_concurrent_batches: 4         # sharded; confidence scoring runs per-shard
+hitl:
+  enabled: false                      # route low-confidence fields to human review
+  confidence_threshold: 0.8
+```
+
+- **`separate`** (default, **no behavior change on upgrade**): extraction and
+  assessment are distinct inferences.
+  - *Agentic*: after each shard extracts, a **second assessment inference runs
+    inside that same shard** over the shard's pages/values — so assessment
+    inherits the same per-shard scaling as extraction (a 200-page section never
+    assesses in one oversized call). Per-shard assessments are collated on merge
+    (per-field, **page-ordered for list items**, first-shard-wins for scalars),
+    grounded once in real OCR geometry over the whole section, and emitted as
+    `explainability_info` — byte-for-byte the same output the standalone
+    Assessment step produces.
+  - *Non-agentic*: unchanged — the pipeline flows to the standalone Assessment
+    step exactly as before.
+- **`integrated`**: confidence is produced **within the extraction inference
+  itself** — the document is already in context, so there is no separate
+  assessment request and no re-sent document. The inline result rides the **same**
+  collation → post-merge reconcile → OCR grounding → `explainability_info` path as
+  `separate`, so the output contract is identical; only the source of the
+  confidence differs. The `extraction.confidence` model/prompt settings are unused,
+  and the standalone Assessment step is bypassed (auto-skips once
+  `explainability_info` is present).
+  - *Agentic*: the agent emits confidence via a tool call (see the strategy knob
+    below).
+  - *Non-agentic (simple)*: the single extraction inference is prompted to return
+    values **and** a parallel confidence structure as
+    `{"extraction": {...}, "confidence": {...}}`; the service splits that envelope
+    (values → `inference_result`, confidence → the same in-extraction marker),
+    enriches it with per-field `confidence_threshold` + alerts, reconciles, grounds,
+    and emits `explainability_info`. If the model returns a flat response with no
+    confidence envelope, the path **falls back to the standalone Assessment step**
+    (no data loss). Best for **smaller documents** where one inference comfortably
+    holds the whole doc; for large docs prefer agentic (sharded) or `separate`.
+  - **Missing-row robustness (both paths):** because integrated confidence rides on
+    the extraction call, a model can under-score a large table. After reconcile,
+    any list rows left unscored are **retried in focused, bounded re-assessment
+    calls** (only the missing rows) and spliced back — so large-list confidence
+    coverage reaches 100% rather than leaving null placeholders. Best for
+    cost/latency once you've confirmed your model produces well-calibrated inline
+    confidence; otherwise prefer `separate` (a dedicated assessment inference).
+
+  <a id="integrated-confidence-strategy"></a>
+  **Hidden setting — `extraction.agentic.integrated_confidence_strategy` (experimental).**
+  For the *agentic* path, integrated confidence can be produced two ways. This knob
+  is **not surfaced in the config UI** — it exists so operators can A/B the
+  cost/latency-vs-calibration trade-off before we pick a default. Set it via
+  `idp-cli config-upload` on a throwaway config version; both values produce
+  identical `explainability_info` downstream (only the inference mechanics differ):
+
+  | value | how confidence is produced | inferences per turn/shard (happy path) |
+  |---|---|---|
+  | `two_step` *(default)* | the agent extracts via the extraction tool, then calls `provide_field_assessment` in a **follow-up inference** within the same turn — a dedicated reflection pass over the finalized values | 3 (extract → assess → close) |
+  | `single_shot` | the agent emits values **and** per-field confidence in **one combined tool call** (`extraction_with_confidence_tool`), saving the follow-up inference | 2 (extract+confidence → close) |
+
+  Why it is not one inference either way: agentic extraction is delivered via a
+  *tool call*, and the tool-use protocol ends an inference at each tool call, so a
+  final "close the turn" inference is always required after the last tool result.
+  `single_shot` removes the *middle* (assessment) inference, not the close. It
+  reuses the same prompt cache as `two_step` (the document/system/tools prefix is
+  written once and read by the closing inference). Trade-off: `two_step` gives the
+  model a dedicated look at the finalized extraction before scoring (often
+  better-calibrated confidence); `single_shot` is cheaper/faster but scores inline
+  as it extracts. For large/multi-step (patched) extractions where rows are added
+  after the combined call, the agent may still call `provide_field_assessment` once
+  at the end to (re)assess every row (rows never assessed are padded with neutral
+  `confidence: null`, same as today). Non-agentic (simple) integrated is always a
+  true single inference and is unaffected by this knob.
+
+**Standalone Assessment step bypass.** When in-shard (or integrated) assessment
+has already written `explainability_info` to the section result, the downstream
+Assessment Lambda detects it and **skips its own inference** (a cheap
+pass-through) — so no duplicate assessment cost and no state-machine change. When
+`extraction.confidence.enabled: false`, confidence scoring is skipped everywhere. The document status
+remains `EXTRACTING` while in-shard assessment runs (it *is* part of the extraction
+step).
+
+**List alignment guarantee.** Downstream consumers index
+`explainability_info[0][field][i]` against `inference_result[field][i]`, but an
+assessment LLM often returns a *different* number of row assessments than the
+table has rows (e.g. 44 assessments for 120 extracted rows). In-shard assessment
+**reconciles each list field's assessment to exactly match the extracted row
+count** (truncating extras, padding shortfalls with a neutral `confidence: null`
+"not individually assessed" entry) *before* the per-shard merge — so confidence is
+never misattributed to the wrong row and the drift never compounds across shards.
+
+**Reuse, not duplication.** In-shard assessment calls the **same**
+`AssessmentService.assess_results(...)` core the standalone step uses (extracted
+into a pure, S3-free method) and the same `ocr_grounding.ground_assessment_geometry`
+— so confidence scoring, thresholds, alerts, and geometry grounding are identical;
+only the *where it runs* differs. The output contract (`explainability_info[0]` +
+`section.confidence_threshold_alerts`) is unchanged, so HITL, the UI confidence
+display, evaluation, and reporting all consume it as before.
+
+### Configuration Options
+
+#### `max_empty_line_gap` (integer, 0-10, default: 3)
+Maximum consecutive empty lines to tolerate within a table before treating as table boundary. Higher values increase tolerance for OCR page breaks but may merge unrelated tables.
+
+**Tuning guidance**:
+- **High-quality OCR** (Textract LAYOUT): Use 2
+- **Standard quality**: Use 3 (default)
+- **Low-quality or complex documents**: Use 5-7
+- **Multiple similar tables close together**: Use 1-2
+
+#### `auto_merge_adjacent_tables` (boolean, default: true)
+Automatically merge consecutive tables with identical column structure. Recovers from table splits caused by OCR artifacts like page breaks.
+
+**When to disable**:
+- Documents contain multiple distinct tables with same columns
+- Need to preserve table boundaries for semantic reasons
+
+#### `min_confidence_threshold` (float, 0-100, default: 95.0)
+Minimum average OCR confidence (Textract scale) for agent to prefer table parsing over LLM extraction. Only applies when using Textract OCR backend.
+
+#### `min_parse_success_rate` (float, 0-1, default: 0.90)
+Minimum parse success rate for agent to trust parsed results. Below this threshold, agent should fall back to LLM extraction.
+
+### Schema-Constraint Validation and Model Escalation
+
+Agentic extraction always validates the agent's output against the **Pydantic
+model** generated from the class JSON Schema (`field_constraints=True`), so
+`enum`, `pattern`, numeric bounds and `minItems`/`maxItems` violations are fed
+back to the agent for self-correction during extraction.
+
+The `extraction.validation` block (moved up from `extraction.agentic.validation`
+in v0.7, since Simple extraction runs this path too; stored configs migrate
+automatically) adds **full JSON-Schema validation** of the final result — most importantly the `format` keyword
+(`date`, `date-time`, `email`, `uri`, `uuid`, ...), which the generated Pydantic
+model does **not** enforce — and an optional **bounded model escalation** when
+validation still fails.
+
+```yaml
+extraction:
+  agentic:
+    enabled: true
+    validation:
+      enabled: false          # Off by default (no behavior change on upgrade)
+      check_formats: true     # Enforce JSON-Schema 'format' keywords
+      fail_action: escalate   # warn | escalate | reject
+      escalation_model: "us.anthropic.claude-opus-4-8"  # stronger tier; "" = retry same model
+```
+
+How it works:
+
+1. After extraction, the merged result is validated against the full class
+   schema. All violations are collected at once (not one-at-a-time) with
+   human-readable field paths.
+2. `fail_action` controls the response when validation fails:
+   - **`warn`** — record a `validation` block in the result metadata and proceed.
+   - **`escalate`** — re-extract **only the failing top-level fields** with a
+     stronger model (`escalation_model`), then merge the corrected fields back
+     into the result. Scoping to the failing fields keeps the schema, prompt and
+     output small — far cheaper and faster than re-running the whole section —
+     and the fields that already validated are preserved untouched. The merged
+     result is merged field by field — an escalated field replaces the original only
+   if it lost no populated data and has fewer violations than before (#791); then
+     warn if it still fails. (When the failures can't be expressed as a field
+     subset — e.g. they're root-level only — it falls back to a whole-section
+     re-extraction.)
+   - **`reject`** — mark `parsing_succeeded=false`, which makes the processing
+     report read FAILED. The section and the document still complete.
+3. The outcome is recorded under `metadata.validation` (see *Audit metadata*
+   below).
+
+**Audit metadata.** Each section's extraction result records, under `metadata`:
+- `extraction_model` and `extraction_model_overridden` — the model that actually
+  ran the section and whether it came from a per-class override.
+- `metadata.validation` — `valid`, `error_count`, `failed_fields`, `errors`
+  (path + validator + message), `check_formats`, `fail_action`,
+  `initial_error_count` / `initial_failed_fields` (before any escalation), and —
+  when escalation ran — `escalated`, `escalation_model`, `escalation_scope`
+  (`field-subset` | `full-section`), `escalation_fields`,
+  `resolved_by_escalation`, and `escalation_kept` / `escalation_decision`:
+  whether the escalated result **replaced** the original, and why. An escalation
+  is kept only if it lost no populated data (a list that had rows must not come
+  back null, absent or shorter; a non-null value must not come back null) and
+  got better **per field** — never on total error count, because per-row errors
+  scale with row count while a whole-field error is always one, so totals favour
+  the result with less data (`validation.escalation_outcome`, #791).
+- `metadata.population_check` — completeness heuristic (advisory). Reports
+  `fields_defined`, `fields_populated`, `population_ratio`, `below_threshold`,
+  and `empty_fields` (dotted paths of unpopulated leaves). A warning is logged
+  when the ratio falls below `validation.min_population_ratio` (default `0.5`).
+  This catches *silent* extraction loss — e.g. nested fields returning null, or
+  a table that extracted zero rows — that schema validation alone cannot, since
+  sparse-but-valid output is still schema-valid. It never fails extraction (a
+  genuinely sparse document scores low too); set `min_population_ratio: 0` to
+  silence the warning.
+
+**Escalation model precedence:** per-class `x-aws-idp-extraction-escalation-model`
+schema extension → global `validation.escalation_model` → the extraction model
+itself (escalation becomes a plain second attempt).
+
+**Configuration UI.** The global `validation` block (enabled / check_formats /
+fail_action / escalation_model) is editable under **Extraction → Agentic
+Extraction → Schema Validation & Escalation** in the Configuration editor. The
+per-class `x-aws-idp-extraction-escalation-model` override is editable as
+"Escalation Model Override" in the **Document Schema** editor, next to the
+per-class extraction-model override.
+
+**An empty list with OCR evidence to the contrary is rejected.** `null = absent`
+(below) is the right convention for a scalar, but for a *list* it is also exactly
+what a total row loss looks like — and it breaks no schema constraint unless the
+config sets `minItems`, which most do not. So the in-loop validator adds one
+evidence-based check on the **single-agent path**: when the OCR pre-flight
+(`_analyze_ocr_for_tables`) finds a substantial table — its own `>30` pipe-table-row
+threshold, the same signal that drives the tool guidance — and **every** declared
+top-level array field comes back `null`, `[]`, or absent, the result is rejected and
+the agent gets a correction round naming the field and the row count
+(`validation.find_empty_declared_lists` / `build_empty_list_feedback`).
+
+Deliberately narrow:
+- **All-empty only.** A populated sibling list means the detected tables plausibly
+  belong to that one, and an empty sibling may be genuinely absent.
+- **Single-agent only.** Per-shard this inference is unsound — a shard legitimately
+  contains none of the whole document's rows. Sharded output is validated once
+  after merge, as it already was for `minItems`.
+- **Not a schema violation.** It does not enter `ValidationReport`, so escalation
+  behaviour is unchanged. `metadata.completeness_check` reports it separately as
+  `unexplained_empty_lists` (with a `complete` flag), leaving
+  `schema_constraints_met` meaning exactly what it says.
+- **Its effect is one more agent turn**, never a failure. After the last attempt
+  the loop keeps the best-effort result, so the worst case is one wasted turn on a
+  document that genuinely has no rows inside a detected table.
+
+⚠️ **Not gated on `validation.enabled`** — unlike the schema checks above, and that is
+a considered decision rather than an oversight. The first version of this check *was*
+gated on it, and live verification caught the mistake: the very config that produced
+the bug had `validation.enabled: false`, the documented default at the time, so the
+safety net was dead on exactly the configurations that needed it. A guard against
+**silent data loss** that is itself off by default reproduces the problem it was
+written to fix.
+
+v0.7 acted on that argument for schema validation too, by flipping
+`validation.enabled` to default **on** (`ValidationConfig.enabled` in
+`idp_common/config/models.py`). This check nevertheless stays ungated: its worst case
+is **one wasted agent turn** on a document that genuinely has no rows inside a
+detected table, and a config that explicitly turns validation off should not thereby
+turn off a guard whose whole effect is to ask the model to try again. So the two
+remain independently enabled, and `_build_schema_validator` returns `None` only when
+*neither* applies.
+
+The failure this closes: an agent declined the deterministic table parser because
+one column was OCR-corrupted (`tool_usage_decision.agent_stated_reason`: *"the
+Amount column was OCR-corrupted with jumbled text instead of numbers, so
+parse_table/map_table_to_schema couldn't cleanly map usable numeric values"*), then
+returned a 100-row `Transactions` list as `null`. Schema-valid, scalar accuracy
+1.000, status COMPLETED. `SYSTEM_PROMPT` and `TABLE_PARSING_PROMPT_ADDENDUM` now
+state the rule outright — declining the tool obliges direct extraction, and one
+unreadable column means that *cell* is null, not the row and not the list.
+
+**Null = absent.** Extraction follows the convention "return `null` if a field is
+not found". The generated Pydantic model makes every non-required property
+`Optional[...] = None`, and on the **agentic** path the transport model
+additionally makes every required *scalar* nullable (`X | None`, still required —
+`schema.nullable_leaves_for_transport`), so the agent can abstain on a cell it
+cannot read instead of inventing a value; arrays, groups and `required` itself are
+untouched, so an omitted key or a nulled list still fails the model (#782).
+Validation therefore treats a `null` property as **absent**: an optional field
+left null passes, while a *required* field left null surfaces as a `required`
+violation (not a confusing type error) — and is fed back to the agent with an
+explicit instruction to fill it only if readable. Abstentions are also counted,
+independently of `validation.enabled`, under `metadata.abstained_fields`. Enum /
+pattern / format / numeric / `minItems` checks on present values are unaffected.
+
+> **`format: date` caveat.** JSON-Schema `format: date` means ISO-8601
+> (`YYYY-MM-DD`). The default extraction prompt asks the model for `MM/DD/YYYY`,
+> which is **not** a valid `date` format and will fail format validation. If
+> your schema uses `format: date` for non-ISO dates, either set
+> `check_formats: false` or use a `pattern` instead of `format`.
+
+### Benefits
+
+- **Faster extraction**: Deterministic parsing is faster than LLM inference for well-structured tables
+- **Higher accuracy**: Eliminates LLM hallucination for tabular data
+- **Better completeness**: Intelligent recovery from OCR artifacts prevents data loss
+- **Cost reduction**: Reduces token usage for large tables
+- **Hybrid flexibility**: Agent intelligently chooses between parsing and LLM based on quality
+
+### OCR Backend Compatibility
+
+The table parsing tool works with any OCR backend producing Markdown tables:
+
+| OCR Backend | Markdown Support | Confidence Data | Notes |
+|-------------|-----------------|-----------------|-------|
+| **Textract** (TABLES) | ✅ Yes | ✅ Yes | Best for structured tables |
+| **Textract** (LAYOUT) | ✅ Yes | ✅ Yes | Handles complex layouts |
+| **Bedrock OCR** | ✅ Yes | ❌ No | Tool uses parse_success_rate only |
+| **Chandra OCR** | ✅ Yes (markdown mode) | ❌ No | High-quality Markdown output |
+
+When OCR confidence data is unavailable, the tool relies on `parse_success_rate` and column consistency for quality assessment.
+
+### Example: Bank Statement with 1000+ Transactions
+
+```yaml
+# config.yaml
+extraction:
+  model: "us.anthropic.claude-sonnet-5"
+  agentic:
+    enabled: true
+    table_parsing:
+      enabled: true
+      max_empty_line_gap: 5  # Handle multi-page statements
+      auto_merge_adjacent_tables: true
+
+classes:
+  - $id: BankStatement
+    type: object
+    properties:
+      account_number:
+        type: string
+      statement_period:
+        type: string
+      transactions:
+        type: array
+        minItems: 1000  # Completeness validation
+        items:
+          type: object
+          properties:
+            date: {type: string}
+            description: {type: string}
+            amount: {type: number}
+            balance: {type: number}
+```
+
+**Extraction flow**:
+1. Agent identifies transaction table in OCR text
+2. Calls `parse_table(table_text)` → Returns 1020 rows with quality metrics
+3. Tool warnings: "ℹ️ Successfully recovered 3 gaps in table data"
+4. Calls `map_table_to_schema(column_mapping={"Date": "date", "Description": "description", ...}, value_transforms={"amount": "strip_currency"})` → All 1020 rows transformed instantly
+5. Calls `finalize_table_extraction(table_array_field="transactions", scalar_fields={"account_number": "12345678", "statement_period": "January 2024"})` → Validated against Pydantic model
+6. Completeness check logs: "Extraction exceeds minimum constraint: 'transactions' has 1020 items (minimum: 1000)"
+
+### Troubleshooting
+
+**Problem**: Agent extracts only 900 records instead of 1020
+
+**Root causes & solutions**:
+1. **Table split by empty lines** → Increase `max_empty_line_gap` to 5
+2. **Multiple table fragments** → Ensure `auto_merge_adjacent_tables: true`
+3. **Agent stopped early** → Check extraction logs for timeout/retry issues
+4. **Schema constraint too strict** → Reduce `minItems` or make it optional
+
+**Problem**: Parse quality is low (< 0.90)
+
+**Solutions**:
+1. **Improve OCR quality** → Use Textract LAYOUT or Chandra OCR
+2. **Complex table structure** → Use LLM extraction instead of parse_table
+3. **Merged cells or nested headers** → Preprocess table or use LLM
+
+**Problem**: Unrelated tables being merged
+
+**Solutions**:
+1. Reduce `max_empty_line_gap` to 1-2
+2. Set `auto_merge_adjacent_tables: false`
+3. Add more context to distinguish tables semantically
+
+### Observability
+
+Extraction results include table parsing metadata when the tool is used:
+
+```json
+{
+  "metadata": {
+    "extraction_method": "agentic",
+    "table_parsing_tool_used": true,
+    "table_parsing_stats": {
+      "tables_parsed": 1,
+      "rows_parsed": 1020,
+      "parse_success_rate": 0.98,
+      "avg_confidence": 96.5,
+      "confidence_available": true,
+      "invocation_count": 1
+    }
+  }
+}
+```
+
+When a section is sharded across concurrent agents, each shard contributes its own
+`table_parsing_stats` and they are merged with quality-aware semantics (not summed):
+counts (`tables_parsed`, `rows_parsed`, `rows_mapped`, `invocation_count`) add up,
+while `parse_success_rate` and `avg_confidence` are combined as **row-weighted
+averages** so the reported values stay a real 0-1 rate / 0-100 confidence regardless
+of shard count.
+
+Use these metrics to:
+- Identify documents where table parsing is working well
+- Detect quality issues requiring configuration tuning
+- Measure cost savings vs LLM-only extraction
+
 ## Future Enhancements
 
 - ✅ Few-shot example support for improved accuracy and consistency
 - ✅ Class-specific example filtering for targeted extraction guidance
 - ✅ Multimodal example support with document images
-- ✅ Enhanced imagePath support for multiple images from directories and S3 prefixes
+- ✅ Enhanced x-aws-idp-image-path support for multiple images from directories and S3 prefixes
+- ✅ Agentic extraction with tool-based structured output
+- ✅ Deterministic table parsing tool for robust tabular data extraction
 - 🔲 Dynamic few-shot example selection based on document similarity
 - 🔲 Confidence scoring for extracted attributes
 - 🔲 Support for additional extraction backends (custom models)
 - 🔲 Automatic example quality assessment and recommendations
+- 🔲 Table structure detection for complex layouts (merged cells, nested headers)
+
+
+### Simple-mode large-document warnings (2026-09-10)
+
+With over-splitting fixed (#726) a Simple-mode section is ONE request, and the measured
+consequence is an 800-row / 17-page statement returning 43 rows with `COMPLETED` and no
+processing issue, and 25+ pages failing with Bedrock's bare *Input is too long*. These
+signals make both loud without changing what is extracted:
+
+- `extraction_rows_below_ocr_estimate` (warning; **error** under
+  `extraction.row_shortfall_action: fail`, which also fails the section; both modes) — rows extracted for the lists of
+  objects of one shape vs the rows in the section's OCR tables **of that shape** (`_ocr_tables`
+  counts only Markdown tables: lines that START with a pipe, in a run that holds a `|---|`
+  separator row; a separator starts a new table, a non-empty line without a leading pipe
+  ends one, more than 5 intervening empty lines or a change in cell count splits one, trailing
+  empty cells are ignored, runs under 3 rows are dropped — so a footer block with pipes, a
+  key/value block rendered with pipes but no separator, or prose containing "|" is never
+  evidence; `_expected_rows_for_width` keeps the tables whose column count equals the list item's
+  property count; `_object_list_targets` resolves `items` through `$ref` with `deref_schema`,
+  descends one level into an array of instances, skips a bare multi-instance wrapper, and
+  ignores lists of scalars). Lists of the same width are judged as one group — total rows
+  extracted vs total matched OCR rows — so complete sibling tables (Deposits, Withdrawals)
+  never warn against their shared evidence. Fires when the matched tables hold at least 30
+  rows and the group extracted fewer than half of them (`_OCR_ROW_ESTIMATE_MIN`,
+  `_OCR_ROW_SHORTFALL_RATIO`).
+
+  A declared **`maxItems`** bounds `expected`
+  (`_declared_max_items`, returned as the fourth element of each `_object_list_targets`
+  tuple): the schema's own ceiling on the row count is a ceiling on the evidence, since a
+  list extracted to its `maxItems` is complete by the config author's definition and
+  `validation.py` already treats trimming to it as a CORRECTION. The group ceiling is the
+  SUM over the group's members and applies only when EVERY member declares one, because
+  `extracted` is summed over the group and `expected` is shared, so one undeclared sibling
+  leaves the legitimate total unbounded — and declining to bound is the safe direction,
+  a bound can only ever suppress a firing. For an inner list the compared rows are the
+  concatenation across the outer list's instances, so a per-instance `maxItems` is not a
+  bound on them: the ceiling is the PRODUCT of the outer and inner ones and is absent
+  unless both are declared (multiplying by the instances actually extracted would shrink
+  the evidence in proportion to how many instances extraction lost). The reader itself
+  is `_declared_max_items`, which refuses `bool` before anything else (`True` is an `int`
+  and would read as a ceiling of 1), delegates the string form to
+  `coerce_numeric_schema_keywords` rather than re-implementing the #797 rule a sixth
+  time, and decides the rest by `int()` inside a deliberately broad `except` — it is
+  called from `_build_extraction_issues`, which `_save_results` invokes with no enclosing
+  `try`, so anything it raises costs the section its whole processing-issue list, and
+  `float()` raises `OverflowError` on an integer too large to convert.
+  ⚠️ A ceiling under `_OCR_ROW_ESTIMATE_MIN` takes the field out of the check entirely,
+  including a shortfall against the ceiling itself (2 rows of a declared 15 is silent),
+  and more generally an UNDER-declared ceiling weakens the check in proportion at any
+  size, because the ceiling becomes the denominator. That is the price of `maxItems`
+  being a usable per-field opt-out for a group-shaped array. `details` carries
+  `ocr_estimated_rows` (the compared figure, so `extracted / ocr_estimated_rows == ratio`
+  still holds), `ocr_matched_table_rows` (unbounded) and `declared_max_items`, and the
+  message and `root_cause` state the bound only when it binds — so every schema declaring
+  no `maxItems`, which is every shipped preset
+  (`TestMaxItemsBoundsTheEvidence::test_no_shipped_preset_declares_a_ceiling_so_nothing_shipped_changes`
+  walks the config library and asserts it), is byte-identical to before. It needs OCR that emits Markdown tables — Textract with the
+  `TABLES` feature (textractor always writes the separator row) or BDA — which is the SHIPPED
+  DEFAULT (`ocr.features: [TABLES, LAYOUT, SIGNATURES]`), so the check is live on every shipped
+  preset but the two `ocr-benchmark` ones; a config that drops `TABLES` has no pipe tables and
+  the check is inert by construction, the same precondition as the table-parsing tool.
+  ⚠️ **The exact-width rule is a trade, and `_expected_rows_for_width` sums matching tables
+  over the WHOLE section**, so the evidence is "every same-width table anywhere in this
+  section", not "the table this list came from". An item schema with a derived property the
+  table lacks is not compared at all; a two-property list beside a real two-column table
+  (a form rendered as a Textract TABLE, or a statement's Daily Balance table beside a
+  two-property `account_summary`) is compared against it. That trade is why
+  `row_shortfall_action` defaults to `warn`: a 2- or 3-property array modelling an entity
+  GROUP is structurally identical to one modelling table ROWS, and on the default preset a
+  fully correct extraction of `account_summary` scores 5/38 = 0.13. Four attribution shapes
+  are known to over-count — the section-wide sum, sibling lists whose property counts differ
+  (the same-width grouping keys on equality), a nested sub-list replacing its parent as the
+  compared target, and a list under a plain object property never being compared — and
+  narrowing them is what would let `fail` be a default (GitHub issue #1046). A declared
+  `maxItems` is not among them: it bounds `expected`, as described above. Note one narrowing is already ruled out by measurement: replacing the
+  sum with the LARGEST matching table neither fixes `account_summary` (the Daily Balance table
+  alone is 32 rows against 5 extracted) nor survives the true-positive case, because a table
+  reprinted per page is N tables of the same width and the sum is what lets the check see 800
+  rows at all. `tests/unit/extraction/test_truncation_warnings.py::TestWhyFailIsOptIn` pins the
+  misattribution against the real shipped schema and fails if the default is flipped first.
+  ⚠️ **`fail` does not cover a list that lost EVERY row, so a document losing 95% of its
+  rows fails and one losing 100% completes.** `_build_extraction_issues` skips a width
+  group in which every list is empty (`if not labels: continue`) and leaves it to
+  `extraction_incomplete`, a warning, which cannot change a document's status. (In
+  Advanced mode a `minItems` floor does reject `[]` at the agent's tool boundary — a
+  different mechanism with a different cost, see `extraction_list_truncated` below.) Of the
+  3,631 recorded `COMPLETED` benchmark runs that reach this check's population — the
+  section's OCR text evidences at least 30 table rows of the list's shape — 99
+  returned zero rows against 65 with partial loss, so the uncovered population is the
+  larger one. It is left that way because a genuinely empty list is common and legitimate
+  (an account with no fees, a period with no deposits) and indistinguishable from total
+  loss, where "43 of 800" has no innocent reading; because the over-attribution above
+  applies more strongly to an empty list, which scores 0 against whatever evidence is
+  attributed to it; and because the recorded corpus cannot bound the false-failure rate —
+  it holds no legitimately-empty-list document that also carries a same-width table, so
+  the case needs its own measurement. Tracked with the narrowing in GitHub issue #1046.
+- `extraction_partial_row_shortfall` (warning, **always**) — the band the half ratio left
+  silent, and the reason it was there to leave: ⚠️ **`_OCR_ROW_SHORTFALL_RATIO` goes quiet
+  well before half the document is gone.** Sweeping every extracted count from 1 to 800
+  against one 800-row / 17-page rendering, `extraction_rows_below_ocr_estimate` fires from
+  1 through 408 and stops at 409. The matched evidence is 817 rows — 800 data rows plus the
+  column heading reprinted once per page — and half of 817 is 408.5, so a section returning
+  **409 of 800 rows, having lost 48.9% of the document, carried no processing issue at all**
+  and `_generate_processing_report` wrote `Status: SUCCESS` over it (#1361, measured
+  2026-10-14). That is worse than the invisible loss #843 was built for: a reader who knows
+  about #843 reads the silence as a clean run.
+
+  The cause is a units mismatch rather than a badly chosen constant. The ratio is a
+  **multiplicative** slack standing in for an **additive** imprecision — one reprinted
+  heading row per page — so the tolerance scales with the document while the thing it
+  absorbs does not: at 17 pages the slack is ~24x the inflation, and the factor is
+  proportional to the page count. The inflation is computable exactly, because `_ocr_tables`
+  emits one entry per page-repeat and counts the row before each `|---|` separator as one of
+  that entry's rows: `_heading_rows_for_width` is the **number** of matched tables, and
+  `summed − that` is the OCR's data-row count (817 − 17 = 800, asserted against renderings
+  of known size in `TestTheDeductionIsExact` rather than assumed). A run whose separator is
+  its first line has no heading to deduct, so subtracting one under-states the body by one —
+  which lowers the bar and can only suppress a firing.
+
+  So this code compares `extracted` against the data-row count, with everything else
+  inherited unchanged: the same `_ocr_tables` evidence, the same exact-width matching and
+  section-wide sum, the same group-by-width, the same `maxItems` ceiling, the same
+  `_OCR_ROW_ESTIMATE_MIN` evidence floor, and the same skip for empty groups and lists of
+  scalars. The two codes are **mutually exclusive** on a group (the material one wins and
+  the branch `continue`s), which `test_the_two_codes_are_mutually_exclusive_across_the_whole_sweep`
+  holds over all 800 counts.
+
+  ⚠️ **The residual tolerance is a row GAP, not a ratio, and that is the point.**
+  `_OCR_ROW_GAP_MIN` is defined **as** `_OCR_ROW_ESTIMATE_MIN` rather than given its own
+  value: the smallest gap the check will speak about is the smallest table it will speak
+  about at all. What that buys is a silent band bounded in **absolute** rows — at most **29
+  rows missing, whatever the document's size** — where before it was a fraction, so the worst
+  undetected loss was 48.9% at 800 rows, at 1,600 and at 3,200 alike.
+  `TestTheSilentBandIsBoundedInAbsoluteRows` asserts that across five sizes, because a test at
+  one size passes on a mutation that restores a ratio with a different constant. Two
+  consequences worth knowing: the band only exists once half the evidence exceeds the gap
+  floor, so on a section whose matched evidence is under ~60 rows the two bars meet and this
+  code never fires; and the 29-row residual is real, so a silent section is not a complete
+  one.
+
+  Severity is `warning` **unconditionally** and `extraction.row_shortfall_action` does
+  **not** govern it — the same reasoning as `extraction_output_truncated`. A deployment that
+  set `fail` chose it against the half-ratio bar, and widening the knob to this band would
+  start failing documents that complete today; whether a materially short extraction ought to
+  fail at some other bar is a product question, and what this changes is only whether the
+  loss is reported. `_fail_on_row_shortfall` reads `ROW_SHORTFALL_CODE` at `error` severity
+  and nothing else, so the section completes — and the issue is still durable, which
+  `test_the_section_completes_and_the_issue_is_persisted` drives through the real
+  `_save_results` tail. The reader-facing effect is the report status line moving from
+  `SUCCESS` to `COMPLETED WITH WARNINGS`, which is also the fingerprint for "observable": a
+  variant that emitted this at a severity nothing reads would leave that line alone.
+
+  ⚠️ **It inherits the width-only attribution, so a firing is a shortfall to confirm.**
+  `_expected_rows_for_width` sums every same-width table in the section, which can only ever
+  **inflate** the evidence — nothing subtracts — so the bar is upward-biased and the message
+  says so in as many words. `details` carries `ocr_matched_table_rows` (the raw sum),
+  `ocr_heading_rows` (the deduction), `ocr_estimated_rows` (the bar the ratio is taken
+  against) and `missing_rows`, so `extracted + missing == estimated` and
+  `extracted / estimated == ratio` both hold and the denominator is auditable from the issue
+  alone. That matters here specifically: taken against `ocr_matched_table_rows` instead, the
+  #1361 case reads 0.501 rather than 0.511 and nothing else in the issue looks wrong.
+  `tests/unit/extraction/test_partial_row_shortfall.py` is the whole surface.
+- `extraction_list_truncated` (warning) — a non-empty list came back under its schema
+  `minItems`. The one completeness signal with no false positives by construction, because
+  the config author declared the floor rather than a heuristic inferring it. ⚠️ **What
+  `minItems` costs is NOT the same in the two modes, and in Advanced mode it is a hard
+  floor that discards the rows.**
+  - **Simple** — advisory, and this is the issue's normal home. The shortfall is reported
+    and the rows are kept; the same shortfall is also a JSON-Schema violation, so it shows
+    up in `metadata.validation` and `extraction_validation_failed` when
+    `extraction.validation.enabled` is on (the default since v0.7). The strongest thing
+    `extraction.validation.fail_action: reject` does with it is set
+    `parsing_succeeded=False`, which only `_generate_processing_report`'s status line and
+    `ProcessingReportTab.tsx` read. No `ProcessingIssue` changes a document's status *by
+    virtue of its severity*, `error` included — `extraction_rows_below_ocr_estimate` under
+    `fail` changes the outcome by **raising** (`_fail_on_row_shortfall`), not by being an
+    error — so `extraction.row_shortfall_action: fail` remains the only setting in this
+    module that turns an incompleteness detection into an outcome.
+  - **Advanced** — a hard floor, enforced where the rows are produced.
+    `_transport_model` passes the class schema through `nullable_leaves_for_transport`,
+    which nulls scalar **leaves** and leaves `minItems` in place, so a list under the floor
+    (and an empty list) is **rejected** inside `extraction_tool`. `current_extraction` is
+    never stored, `_invoke_agent_for_extraction` spends `max_extraction_retries` whole-
+    section agent turns, and `structured_output_async` then raises
+    `ValueError("Failed to generate valid structured output.")` — the section fails with no
+    rows and no diagnosis of what was short. Prefer
+    `extraction.row_shortfall_action`, which persists the partial rows, the error-severity
+    issue and the processing report *first*.
+  - ⚠️ **Sharded: the floor is enforced PER SHARD, so a whole-section floor is
+    unsatisfiable.** Both fan-out sites pass the **shard** transport model
+    (`_shard_transport_model`) as `data_format` —
+    `concurrent_structured_output_async(data_format=shard_model, ...)` in-process and
+    `run_section_shard`'s `extract_one_shard(data_format=shard_model)` for the Step
+    Functions route — `_run_shard_agent` forwards it unmodified, and
+    `structured_output_async` builds the agent's tools with
+    `create_dynamic_extraction_tool_and_patch_tool(data_format)`. That model relaxes
+    *presence* for a required container (see the next bullet) and keeps every **row-count
+    bound**, so each shard's `extraction_tool` carries the section's `minItems` while the
+    shard sees only its page range. `minItems: 100` over a 17-page section
+    (`max_pages_per_shard` 5) rejects every shard holding under 100 rows, and a
+    cover-page shard holds none — the document fails though it holds 800 rows.
+    `shard_validation_schema` (no `required`, no `minItems`) is the in-loop **feedback**
+    validator passed as `schema_validator` and consulted for the self-correction round; it
+    is NOT the tool boundary, so it does not relax this. Verified by driving
+    `_run_shard_agent` with a spy on the tool builder: the tool is built from the same
+    object the shard plan returned, a 17-row shard is rejected `too_short` at that
+    boundary, and the shard feedback validator reports the same 17 rows as satisfying every
+    constraint. **This is the default Advanced-mode configuration, not a tuned one:**
+    `max_concurrent_batches` ships at `10` in `base-extraction.yaml` and in the UI schema
+    in `patterns/unified/template.yaml`, so the `default=1` on the Pydantic field in
+    `config/models.py` is only the fallback for an absent key and a deployed stack does not
+    read it. Sharding engages once the section exceeds one shard's budget — over
+    `max_pages_per_shard` (shipped `5`) pages of ordinary text, fewer when the pages are
+    dense enough to fill the shard token budget — so a 17-page section plans four shards at
+    the shipped defaults. The only floor every shard can satisfy is none, so use
+    `extraction.row_shortfall_action`, which is evaluated once on the merged section.
+  - **`required` is shard-scoped at the tool boundary, and needs no equivalent warning.**
+    `nullable_leaves_for_transport` widens scalar *leaves*, which is what lets a shard
+    abstain on a cell, and it adds no null branch to an array or a nested object — so a
+    required list or group was the one shape for which `_run_shard_agent`'s instruction
+    ("if a field does not appear in your pages, leave it null — another shard will provide
+    it") named the answer the tool rejected, at `list_type` / `model_type`, costing the
+    shard a correction round whose feedback pointed nowhere because
+    `shard_validation_schema` reported the same payload as valid.
+    `_shard_transport_model` layers `nullable_required_containers_for_shard` on top, so a
+    **required array or nested object also accepts `null`** in the shard's tool and the two
+    shard-scoped boundaries now agree about presence. What does not relax is the structural
+    half: `required` is still present, so an omitted key, an empty tool call (`{}`) and a
+    misspelled key set still fail per shard — the #666 guard `nullable_leaves_for_transport`
+    deliberately kept — and row-count bounds are untouched. Presence is judged once on the
+    merged section by `extraction.validation` against the real schema, where a null property
+    reads as absent; the merge itself normalises a list field to `[]` regardless
+    (`runtime._merge_shard_results`), so for a list only the per-shard round is saved.
+    ⚠️ One residual: a required property that is a **bare `$ref`** (no `type`, no
+    `properties`, no `items` of its own) is not widened — there is no keyword to widen
+    without resolving the reference, and the `anyOf` alternative renders an array field as a
+    wrapper model, which breaks the shard merge's list detection. Such a property still
+    costs one correction round per shard. No shipped configuration uses that shape.
+  - ⚠️ **Reachability: treat this as a Simple-mode signal.** A short non-empty list does not
+    survive the tool boundary in Advanced mode, so the section fails instead of reporting
+    this. The string form the Web UI stores (`minItems: "100"`) is enforced there too — the
+    Pydantic generator coerces it, verified directly against `_transport_model` — so that is
+    not a gap either. No reachable Advanced-mode path to this issue has been identified;
+    `test_truncation_warnings.py` exercises the Advanced *wording* by calling
+    `_build_extraction_issues` directly and says so, rather than implying a flow reaches it.
+
+  Giving a `minItems` violation its own consequence in Simple mode is a product decision,
+  not a wording one, and is deliberately not taken here (GitHub issue #1048).
+- `extraction_output_truncated` (warning) — the model's response stopped before
+  it finished, so the result is a **prefix** of the answer. The only certain signal in this
+  list; every other one above is an estimate. Set from two sources, ORed, in
+  `_invoke_extraction_model`: the response's own `stopReason`
+  (`utils.bedrock_utils.is_output_token_truncation` — `max_tokens` on Converse, plus the
+  `incomplete` that `bedrock.openai_responses.translate_response` carries over verbatim
+  from the OpenAI Responses `status`, so it holds across model families; the third member
+  of that tuple, `max_output_tokens`, is that API's `incomplete_details.reason` spelling
+  and is defensive — nothing here writes it into `stopReason`), and
+  `repair_truncated_json`'s `was_truncated` on the parse-failure branch. The OR direction
+  matters: a ceiling can be hit where the text still parses — a complete JSON object
+  followed by cut-off commentary, or a repair that succeeds — and the `except` branch is
+  then never reached, which is why reading `stopReason` is not redundant with the repair
+  reader. It reaches `metadata["output_truncated"]`, which `_build_extraction_issues` now
+  reports; before that it was recorded there and read by no report, no status path and no
+  UI, so a section whose output was demonstrably cut off completed carrying nothing
+  (GitHub issue #1361).
+
+  ⚠️ **A clean `stopReason` is not evidence that the output is complete, and this is the
+  measurement to keep in mind.** On `benchmarks/corpus` `large_narrow` (800 rows, 17 pages)
+  at v0.6.11, the Simple-mode runs that returned 43 rows spent 2,289–2,477 extraction
+  output tokens where the complete runs on the **same model** spent 38,333–38,535, and
+  `_invoke_extraction_model` passes `max_tokens=None` so the client requests the model's
+  maximum — the model abbreviated and stopped with `end_turn`, and no stop-reason check can
+  see that. `extraction_rows_below_ocr_estimate` is what covers it, and the two are
+  deliberately independent: that one needs table-emitting OCR and a width match and is
+  silent above its half ratio, this one needs neither OCR nor a list. Both can fire on one
+  section and neither suppresses the other, because they say different things — this names
+  the cause, that one counts the rows. Severity is `warning` unconditionally:
+  `extraction.row_shortfall_action` governs `ROW_SHORTFALL_CODE` only, and widening it to
+  this code would start failing runs that complete today on a deployment that opted into
+  `fail` for a different check.
+
+  **Advanced mode reaches this** too, by a different route, and the two halves are worth
+  separating. `_build_extraction_issues` runs for both modes and reports whatever
+  `metadata["output_truncated"]` says, so the *reporting* half is mode-blind. The *setting*
+  half has one path per mode: on the Simple path the flag is assigned inside
+  `_invoke_extraction_model`'s Simple branch (the Advanced branch leaves it at its
+  initialiser, and `test_output_truncation_warning.py::TestReachability` pins that), and on
+  the Advanced path it arrives as a `_output_truncated` marker in the shard's **metering**,
+  which `_save_results` pops into the same metadata key. Metering is the carrier because it
+  is the one part of a shard's result that is persisted to S3 and merged, so the marker
+  survives the in-process runtime and the Step Functions Distributed Map alike — the same
+  reason `_integrated_field_assessment` and `_shard_scalar_conflicts` ride there.
+
+  What writes that marker is **the salvage** (GitHub issue #1363). On a `max_tokens` stop
+  the strands event loop raises `MaxTokensReachedException` rather than returning an
+  `AgentResult`; nothing in the ladder retries or swallows it
+  (`MaxTokensReachedException` is in no retry list and matches no message needle, so
+  `async_exponential_backoff_retry` makes one attempt and re-raises), and `runtime.py`'s
+  `asyncio.gather` over the shards passes no `return_exceptions`. So the exception used to
+  fail the section — including when the tool calls that had already succeeded left a
+  **validated** extraction in `agent.state`, which is the ordinary shape under
+  `extraction.confidence.mode: integrated`, because there the turn that overruns is the
+  `provide_field_assessment` one AFTER the data is safe. `_invoke_agent_for_extraction` now
+  recognises the error through `utils.bedrock_utils.is_max_tokens_agent_error` (one matcher,
+  shared with rules discovery) and, when `agent.state["current_extraction"]` validates
+  against the class model, keeps that extraction and returns an `agentic_idp.TruncatedAgentRun`
+  in place of the `AgentResult` Strands never produced — carrying `Agent.event_loop_metrics`
+  so the tokens the run really spent are still metered. The section completes with its rows
+  and this warning instead of failing.
+
+  Two bounds on that, both tested: it salvages **only** an output-ceiling stop (any other
+  exception still fails the section), and **only** an extraction the class model accepts. It
+  never synthesises an empty result — every leaf of the shard transport model is nullable
+  (#782/#1078), so `{}` validates, and a document that completed with no fields would be
+  worse than a failed one.
+
+  Note this is **not** the agent's tool boundary, which is a different control for a
+  different cause (`minItems` enforcement on `extraction_tool`'s input). And `minItems` is an
+  opt-in that **no shipped preset declares** — `grep -rn minItems config_library/` finds
+  nothing — so it guards a deployment only once a config author has set it.
+- `ExtractionOutputIncomplete` — the section's list came back under half the rows its own
+  OCR text evidences, and `extraction.row_shortfall_action` is `fail` (opt-in; see the trade
+  above). Raised by `_fail_on_row_shortfall`, which is the **last statement of
+  `_save_results`** — so the partial `inference_result`, the error-severity
+  `extraction_rows_below_ocr_estimate` issue and the processing report are already durable
+  in the section's `result.json`, and only the section's *outcome* changes. That ordering
+  is the point: the failure costs visibility, not data. It reads the persisted issue's
+  severity back rather than re-testing the config, so the issue a consumer can see and the
+  decision to fail are one decision and cannot disagree. `_save_results` is the single tail
+  shared by the in-process `process_document_section` path and the Step Functions
+  shard-merge entry point, which is why this lives there and not in either caller: the two
+  modes cannot drift apart on it. The class name is in no `Retry.ErrorEquals` in
+  `workflow.asl.json` and `is_transient_error` returns `False` for it, so a request that
+  would stop early again is not sent again.
+  Distinct from `ExtractionInputTooLarge` in cause and in remedy: that one is Bedrock
+  refusing a request that never ran, this one is the model accepting a request that
+  **fits** the window and then stopping. On the 25-page case in #1032 the request was
+  ~146K estimated input tokens against a 200K window, so no input-size gate could have
+  seen it. `process_document_section` re-raises it before the two Bedrock-error matchers
+  run, so a wording change can never reclassify a row shortfall as an overflow or an image
+  rejection and attach a remedy that does not apply.
+- `ExtractionInputTooLarge` — the "Input is too long" failure re-raised `from` Bedrock's
+  `ValidationException` (in the shard path, `from` the agentic `ValueError` whose cause is
+  that `ValidationException`; the transient check follows the whole chain) with the section size (from the logged pre-flight estimate,
+  `_simple_mode_input_preflight`: text chars/4 + images priced by
+  `bedrock.model_utils.estimate_image_tokens`, which is Claude's 28px-patch count capped
+  at the model's resolution tier — 1,568 tokens before Claude 4.7, 4,784 after. The older
+  uncapped `(w*h)/750` figure over-stated a 2550x3301 page 2.4x, 11,223 against a measured
+  4,761, which is how an image **rejection** came to be explained as a token overflow
+  (#994); non-Claude families keep the legacy figure, where over-stating is harmless) and the
+  remedy; the wording is mode-aware (`_explain_input_overflow`) and the matcher is the shared
+  `bedrock_utils.is_input_token_overflow` (also used by summarization). The class name is in
+  no retry list, so #787 keeps it hard. The matcher judges a `ClientError` by its code
+  first (only `ValidationException` can be an overflow; a throttle mentioning "input tokens
+  per minute" is not) and by text otherwise, and returns `False` outright for an image
+  rejection (below). When the failing request also had a shape Bedrock rejects on image
+  dimensions (>20 images, or any image over 2,000 px — both recorded by the pre-flight),
+  the message says so, so the reader does not spend the next hour lowering a page budget
+  that is not the binding limit. The Step Functions shard runtime raises it too
+  (`_run_shard_or_explain_overflow` is `async` and wraps the **await** of
+  `extract_one_shard`), with the Advanced-mode wording; when the agentic path has already
+  translated the overflow (`agentic_idp._is_context_overflow_error`, which also recognises
+  Strands' `ContextWindowOverflowException` by type name and so stays separate), its
+  remedies are kept and no second paragraph is added. The pre-flight is **not** a processing
+  issue: a
+  successful call proves the estimate wrong, and a failed section never reaches the record.
+- `ExtractionImageRejected` — Bedrock rejected the request over its **images**, not its
+  token count: an image over 8,000 px per side, over 2,000 px in a request carrying more
+  than 20 images, or over 5 MB base64. Matched by
+  `bedrock_utils.is_image_request_rejection`, which is checked **before**
+  `is_input_token_overflow` at both raise sites (`extract_from_section`'s handler and
+  `_run_shard_or_explain_overflow`) because Bedrock's wording overlaps enough that the
+  overflow matcher would otherwise claim it — the bug reported in #994, where users were
+  told to shard a request whose problem was pixel dimensions.
+  `_explain_image_rejection` names the request's image count and largest dimension and
+  gives the only remedy that applies: lower `extraction.image.target_width` /
+  `target_height`. Deterministic, so like `ExtractionInputTooLarge` the class name is in no
+  retry list.
+- `ModelInvalidToolUseSequence` — the same shape for a model whose tool-use sequence
+  Bedrock rejects: raised `from` Bedrock's `EventStreamError` /
+  `modelStreamErrorException` when `is_model_tool_use_sequence_error` matches
+  `Model produced invalid sequence as part of ToolUse`, on the **first** attempt (the
+  `max_extraction_retries` loop is for a model that answers badly, not one whose answer
+  the protocol rejects). `_explain_invalid_tool_use_sequence` names the model id —
+  threaded down from `structured_output_async`, because Strands puts the model id in the
+  exception's `__notes__`, which is not part of `str(e)` — says the failure reproduces on
+  retry with the same request and so is treated as deterministic rather than transient,
+  and lists three remedies: emit less per call
+  (`extraction.agentic.shard_token_budget` / `max_pages_per_shard`), switch to a model
+  measured on this path (`_AGENTIC_CAPABLE_EXAMPLE_MODELS`, taken from
+  `docs/extraction-and-confidence.md` and `config_library/pricing.yaml`), or
+  `extraction.mode: simple`, which needs no tool use in its default configuration
+  (`extraction.forced_tool` is the exception, and is off by default). The wording stops
+  short of "model capability limit" on purpose, but **not** because the inference
+  parameters are untried. AWS's
+  [Nova tool-use troubleshooting guide](https://docs.aws.amazon.com/nova/latest/userguide/tools-troubleshooting.html)
+  attributes this error largely to inference parameters, and its recommended greedy
+  decoding — `temperature 0` + `topP 1` + `topK 1` — was measured on Nova Lite at 160
+  direct Bedrock calls per arm and did not move the failure rate: 0.787 with no `topK`,
+  0.812 with `topK: 1` (Fisher exact *p* = 0.68), 0.838 with the full triple (*p* = 1.00
+  against the no-topK arm in the same batch). 80% power reaches only an 18% relative
+  improvement, so a small benefit is not excluded. What the same experiment did identify is that the trigger is the
+  request **shape**: a schema holding only a list succeeds where the same list with
+  sibling scalar properties fails, independently of schema size. Since neither the model
+  nor the schema shape is something the error handler can change, the remedies it names
+  stay the actionable ones. See the `top_k` subsection above and
+  `docs/benchmarking/studies/greedy-decoding-tool-use.md`. The class name is in
+  no retry list, and `transient_errors` independently classifies the underlying outcome
+  as deterministic, so neither the caller nor the state machine retries it. Before #895 a
+  Nova Lite grid logged 247 of these in three hours, each one surfaced as
+  `TransientError` and retried up to eight times per shard task.

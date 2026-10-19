@@ -1,12 +1,26 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
-import { Table, Button, SpaceBetween, ButtonDropdown, Pagination, Box, TextFilter, Flashbar } from '@cloudscape-design/components';
+import {
+  Table,
+  Button,
+  SpaceBetween,
+  ButtonDropdown,
+  Pagination,
+  Box,
+  TextFilter,
+  Flashbar,
+  Badge,
+  CollectionPreferences,
+  FormField,
+  Select,
+} from '@cloudscape-design/components';
 import type { IconProps } from '@cloudscape-design/components';
 import { useCollection } from '@cloudscape-design/collection-hooks';
-import { generateClient } from 'aws-amplify/api';
-import { getTestRuns, deleteTests } from '../../graphql/generated';
+import { generateClient } from '../../api/client-shim';
+import { getTestRuns, deleteTests, abortTestRuns } from '../../graphql/generated';
 import DeleteTestModal from './DeleteTestModal';
+import AbortTestModal from './AbortTestModal';
 import DateRangeModal from '../common/DateRangeModal';
 import { paginationLabels } from '../common/labels';
 import TestRunnerStatus from './TestRunnerStatus';
@@ -42,6 +56,12 @@ interface TestRunItem {
   completedAt: string | null;
   context: string;
   configVersion?: string | null;
+  /** Revision of that profile the run scored against, when one was pinned. */
+  configRevision?: number | null;
+  /** Test-set version pinned for scoring; null when the run scored current labels. */
+  testSetVersion?: number | null;
+  /** With current labels: the version an open annotation transition was heading toward. */
+  testSetDraftVersion?: number | null;
 }
 
 interface ActiveTestRun {
@@ -109,6 +129,19 @@ const TextCell = ({ text }: { text: string }): React.JSX.Element => (
 );
 
 const TIME_PERIOD_STORAGE_KEY = 'testResultsTimePeriodHours';
+const PREFERENCES_STORAGE_KEY = 'testResultsPreferences';
+
+// Server-side hard ceiling on getTestRuns (must match
+// ``_GET_TEST_RUNS_ABSOLUTE_MAX`` in the resolver). If a user chooses a
+// pageSize × pages product above this, we still cap the request here so
+// the UI accurately signals what the server will honor.
+const MAX_ITEMS_CEILING = 100;
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const NUM_PAGES_OPTIONS = [1, 2, 5, 10];
+
+const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_NUM_PAGES = 10; // 10 x 10 = 100, matches the historical cap
 
 const TestResultsList = ({
   timePeriodHours,
@@ -123,11 +156,26 @@ const TestResultsList = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [isAbortModalVisible, setIsAbortModalVisible] = useState(false);
   const [isDateRangeModalVisible, setIsDateRangeModalVisible] = useState(false);
   const [customDateRange, setCustomDateRange] = useState<DateRange | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [pageSize, setPageSize] = useState(10);
+  const [abortLoading, setAbortLoading] = useState(false);
+  // Persisted display preferences: pageSize (client-side rows per page)
+  // and numPages (how many pages worth of data to fetch). Their product,
+  // clamped at MAX_ITEMS_CEILING, is sent to the server as ``maxItems``.
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [numPages, setNumPages] = useState<number>(DEFAULT_NUM_PAGES);
+  // The server caps ``getTestRuns`` at MAX_ITEMS_CEILING rows (see
+  // ``_GET_TEST_RUNS_ABSOLUTE_MAX`` in
+  // ``nested/api-resolvers/src/lambda/test_results_resolver/index.py``).
+  // Surfacing it here so an operator whose window has more runs sees a
+  // "narrow your range" hint rather than silently wondering where an
+  // older run went.
+  const [truncated, setTruncated] = useState(false);
+  const maxItems = Math.min(MAX_ITEMS_CEILING, pageSize * numPages);
 
   // Load saved time period from localStorage on mount
   useEffect(() => {
@@ -136,6 +184,20 @@ const TestResultsList = ({
       const parsedPeriod = JSON.parse(savedTimePeriod);
       if (parsedPeriod !== timePeriodHours) {
         setTimePeriodHours(parsedPeriod);
+      }
+    }
+    const savedPrefs = localStorage.getItem(PREFERENCES_STORAGE_KEY);
+    if (savedPrefs) {
+      try {
+        const parsed = JSON.parse(savedPrefs);
+        if (typeof parsed.pageSize === 'number' && PAGE_SIZE_OPTIONS.includes(parsed.pageSize)) {
+          setPageSize(parsed.pageSize);
+        }
+        if (typeof parsed.numPages === 'number' && NUM_PAGES_OPTIONS.includes(parsed.numPages)) {
+          setNumPages(parsed.numPages);
+        }
+      } catch {
+        // Ignore malformed prefs — fall back to defaults.
       }
     }
   }, []);
@@ -169,12 +231,36 @@ const TestResultsList = ({
   };
 
   const getTestRunIdCell = (item: TestRunItem) => <TestRunIdCell item={item} onSelect={handleTestRunSelect} />;
-  const getTestSetNameCell = (item: TestRunItem) => <TextCell text={item.testSetName} />;
+  // Which labels the run scored against, beside the set: a pinned version, or
+  // current labels while a transition was open. Without it two runs of one set
+  // can differ for a reason nothing on this table shows.
+  const getTestSetNameCell = (item: TestRunItem) => (
+    <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+      <TextCell text={item.testSetName} />
+      {item.testSetVersion != null ? (
+        <Badge color="grey">v{item.testSetVersion}</Badge>
+      ) : item.testSetDraftVersion != null ? (
+        <Badge color="blue">current &rarr; v{item.testSetDraftVersion}</Badge>
+      ) : null}
+    </SpaceBetween>
+  );
   const getContextCell = (item: TestRunItem) => <TextCell text={item.context || 'N/A'} />;
 
   const getStatusCell = (item: TestRunItem) => {
-    if (item.isActive) {
-      return <TestRunnerStatus testRunId={item.testRunId} onComplete={() => onTestComplete(item.testRunId)} />;
+    const terminalStatuses = ['COMPLETE', 'PARTIAL_COMPLETE', 'FAILED', 'ABORTED'];
+
+    if (!terminalStatuses.includes(item.status || '')) {
+      return (
+        <TestRunnerStatus
+          testRunId={item.testRunId}
+          createdAt={item.createdAt}
+          onComplete={() => onTestComplete(item.testRunId)}
+          onAbort={() => {
+            setSelectedItems([item]);
+            setIsAbortModalVisible(true);
+          }}
+        />
+      );
     }
     return item.status;
   };
@@ -183,24 +269,25 @@ const TestResultsList = ({
     try {
       setLoading(true);
       const variables = customDateRange
-        ? { startDateTime: customDateRange.startDateTime, endDateTime: customDateRange.endDateTime }
-        : { timePeriodHours };
-      console.log('Fetching test runs with variables:', variables);
+        ? { startDateTime: customDateRange.startDateTime, endDateTime: customDateRange.endDateTime, maxItems }
+        : { timePeriodHours, maxItems };
       const result = (await client.graphql({
         query: getTestRuns,
         variables,
       })) as GqlResult;
-      console.log('Raw GraphQL result:', result);
-      console.log('getTestRuns data:', result.data.getTestRuns);
-      console.log('Number of test runs returned:', result.data.getTestRuns?.length || 0);
 
       const completedRuns = result.data.getTestRuns || [];
+      // Resolver returns at most ``maxItems`` rows (server clamps to
+      // MAX_ITEMS_CEILING). If we received exactly the requested count,
+      // there may be older runs the user can't see without either
+      // narrowing the date range or raising the preferences.
+      setTruncated(completedRuns.length >= maxItems);
 
       // Add active test runs with progress
       const activeRunsWithProgress = activeTestRuns.map((run) => ({
         testRunId: run.testRunId,
         testSetName: run.testSetName,
-        status: 'Running',
+        status: 'RUNNING',
         isActive: true,
         progress: Math.min(90, Math.floor(((Date.now() - run.startTime.getTime()) / 1000 / 60) * 10)), // Simulate progress
         filesCount: run.filesCount || 0,
@@ -221,11 +308,11 @@ const TestResultsList = ({
     } catch (err) {
       console.error('Error fetching test runs:', err);
       const typedErr = err as { errors?: Array<{ message: string }> };
-      const errorMessage =
+      const fetchErrorMsg =
         typedErr.errors?.length && typedErr.errors.length > 0
           ? typedErr.errors.map((e: { message: string }) => e.message).join('; ')
           : 'Failed to load test runs';
-      setError(errorMessage);
+      setError(fetchErrorMsg);
     } finally {
       setLoading(false);
     }
@@ -233,16 +320,16 @@ const TestResultsList = ({
 
   useEffect(() => {
     fetchTestRuns();
-  }, [timePeriodHours, activeTestRuns, customDateRange]);
+  }, [timePeriodHours, activeTestRuns, customDateRange, maxItems]);
 
   const downloadToExcel = () => {
     // Convert test runs data to CSV format
-    const headers = ['Test Run ID', 'Test Set', 'Context', 'Config Version', 'Status', 'Files Count', 'Created At', 'Completed At'];
+    const headers = ['Test Run ID', 'Test Set', 'Context', 'Config Profile', 'Status', 'Files Count', 'Created At', 'Completed At'];
     const csvData = testRuns.map((run) => [
       run.testRunId,
       run.testSetName || '',
       run.context || '',
-      formatConfigVersionText(run.configVersion, versions),
+      formatConfigVersionText(run.configVersion, versions, run.configRevision),
       run.status,
       run.filesCount || 0,
       run.createdAt || '',
@@ -278,13 +365,11 @@ const TestResultsList = ({
     try {
       setDeleteLoading(true);
       const testRunIds = selectedItems.map((item) => item.testRunId);
-      console.log('Attempting to delete test runs:', testRunIds);
 
       const result = (await client.graphql({
         query: deleteTests,
         variables: { testRunIds },
       })) as GqlResult;
-      console.log('Delete result:', result);
 
       const count = selectedItems.length;
       setSuccessMessage(`Successfully deleted ${count} test run${count > 1 ? 's' : ''}`);
@@ -305,6 +390,45 @@ const TestResultsList = ({
     }
   };
 
+  const confirmAbort = async () => {
+    try {
+      setAbortLoading(true);
+      const testRunIds = selectedItems.map((item) => item.testRunId);
+
+      const result = (await client.graphql({
+        query: abortTestRuns,
+        variables: { testRunIds },
+      })) as GqlResult;
+
+      const abortResult = result.data.abortTestRuns;
+      if (abortResult.success) {
+        const { abortedCount, failedCount } = abortResult;
+        let message = `Successfully aborted ${abortedCount} test run${abortedCount > 1 ? 's' : ''}`;
+        if (failedCount > 0) {
+          message += `, ${failedCount} failed`;
+        }
+        setSuccessMessage(message);
+        setSelectedItems([]);
+        setIsAbortModalVisible(false);
+        fetchTestRuns(); // Refresh the list
+
+        // Clear success message after 5 seconds
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        setErrorMessage(`Abort failed: ${abortResult.message}`);
+        setTimeout(() => setErrorMessage(null), 5000);
+      }
+
+      return abortResult;
+    } catch (err) {
+      setErrorMessage('Error aborting test runs');
+      setTimeout(() => setErrorMessage(null), 5000);
+      return null;
+    } finally {
+      setAbortLoading(false);
+    }
+  };
+
   if (loading) return <div>Loading test runs...</div>;
   if (error) return <div>Error loading test runs: {error}</div>;
 
@@ -322,8 +446,46 @@ const TestResultsList = ({
           ]}
         />
       )}
+      {errorMessage && (
+        <Flashbar
+          items={[
+            {
+              type: 'error',
+              content: errorMessage,
+              dismissible: true,
+              onDismiss: () => setErrorMessage(null),
+            },
+          ]}
+        />
+      )}
+      {truncated && (
+        <Flashbar
+          items={[
+            {
+              type: 'info',
+              header: `Showing the ${maxItems} most recent test runs`,
+              content:
+                maxItems >= MAX_ITEMS_CEILING
+                  ? `The selected time range contains more than ${MAX_ITEMS_CEILING} completed test runs. The server returns at most ${MAX_ITEMS_CEILING} — narrow the date range to see older runs.`
+                  : `You configured ${maxItems} rows in preferences (${numPages} pages × ${pageSize}). Raise page size or page count in preferences (max ${MAX_ITEMS_CEILING}), or narrow the date range, to see more.`,
+              dismissible: true,
+              onDismiss: () => setTruncated(false),
+            },
+          ]}
+        />
+      )}
       <TableHeader
-        title={`Test Results (${testRuns.length})`}
+        // ``Test Results (K of N)`` when any row is selected — matches
+        // Cloudscape's counter convention and makes the "why is this row
+        // already checked?" state legible after tab switches. The parent
+        // ``TestStudioLayout`` holds ``selectedTestItems`` in React state,
+        // so selections persist across the Sets / Executions / Results /
+        // Comparison tabs of Test Studio until the user clears them or
+        // the whole Test Studio unmounts. The "Clear selection" button
+        // below is the easy escape.
+        title={
+          selectedItems.length > 0 ? `Test Results (${selectedItems.length} of ${testRuns.length})` : `Test Results (${testRuns.length})`
+        }
         actionButtons={
           <SpaceBetween direction="horizontal" size="xs">
             <ButtonDropdown loading={loading} onItemClick={handleTimePeriodChange} items={TIME_PERIOD_OPTIONS}>
@@ -346,6 +508,18 @@ const TestResultsList = ({
               disabled={selectedItems.length === 0}
               loading={deleteLoading}
             />
+            {selectedItems.length > 0 && (
+              // Selections live in the parent ``TestStudioLayout``'s React
+              // state, so they survive tab changes within Test Studio (a
+              // deliberate UX choice — the user often selects on Executions
+              // then clicks through to Comparison). Give the user an easy
+              // escape hatch when the persisted selection is no longer
+              // wanted; without this the only ways to clear were the
+              // per-row checkboxes or reloading the page.
+              <Button variant="normal" onClick={() => setSelectedItems([])}>
+                Clear selection
+              </Button>
+            )}
             {selectedItems.length > 1 && (
               <Button iconName={'compare' as unknown as IconProps.Name} variant="normal" onClick={handleCompare}>
                 Test Comparison ({selectedItems.length})
@@ -388,8 +562,8 @@ const TestResultsList = ({
           },
           {
             id: 'configVersion',
-            header: 'Config Version',
-            cell: (item) => formatConfigVersionLink(item.configVersion, versions),
+            header: 'Config Profile',
+            cell: (item) => formatConfigVersionLink(item.configVersion, versions, undefined, item.configRevision),
             sortingField: 'configVersion',
             width: 150,
           },
@@ -448,14 +622,42 @@ const TestResultsList = ({
           />
         }
         preferences={
-          <Button
-            variant="icon"
-            iconName="settings"
-            ariaLabel="Page size settings"
-            onClick={() => {
-              if (pageSize === 10) setPageSize(20);
-              else if (pageSize === 20) setPageSize(50);
-              else setPageSize(10);
+          <CollectionPreferences
+            title="Preferences"
+            confirmLabel="Confirm"
+            cancelLabel="Cancel"
+            preferences={{ pageSize, custom: numPages }}
+            pageSizePreference={{
+              title: 'Rows per page',
+              options: PAGE_SIZE_OPTIONS.map((v) => ({ value: v, label: `${v} rows` })),
+            }}
+            customPreference={(customValue: number, setCustomValue) => (
+              <FormField
+                label="Number of pages to fetch"
+                description={`Sends maxItems = rows × pages to the server (capped at ${MAX_ITEMS_CEILING}). Narrow the date range if you need to see runs older than the fetched window.`}
+              >
+                <Select
+                  selectedOption={{
+                    value: String(customValue),
+                    label: `${customValue} pages`,
+                  }}
+                  options={NUM_PAGES_OPTIONS.map((v) => ({ value: String(v), label: `${v} pages` }))}
+                  onChange={({ detail }) => setCustomValue(Number(detail.selectedOption.value))}
+                />
+              </FormField>
+            )}
+            onConfirm={({ detail }) => {
+              // ``preferences.custom = numPages`` is seeded above, so
+              // detail.custom is guaranteed to be present. Validate the
+              // value against NUM_PAGES_OPTIONS anyway — a Cloudscape
+              // version bump or a stale localStorage read shouldn't be
+              // able to slip an out-of-range value into the setting.
+              const nextPageSize = detail.pageSize ?? pageSize;
+              const rawCustom = (detail as { custom: number }).custom;
+              const nextNumPages = NUM_PAGES_OPTIONS.includes(rawCustom) ? rawCustom : DEFAULT_NUM_PAGES;
+              setPageSize(nextPageSize);
+              setNumPages(nextNumPages);
+              localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({ pageSize: nextPageSize, numPages: nextNumPages }));
             }}
           />
         }
@@ -468,6 +670,14 @@ const TestResultsList = ({
         selectedItems={selectedItems}
         itemType="test run"
         loading={deleteLoading}
+      />
+
+      <AbortTestModal
+        visible={isAbortModalVisible}
+        onDismiss={() => setIsAbortModalVisible(false)}
+        onConfirm={confirmAbort}
+        selectedItems={selectedItems}
+        loading={abortLoading}
       />
 
       <DateRangeModal

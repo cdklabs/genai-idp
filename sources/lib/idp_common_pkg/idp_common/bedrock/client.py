@@ -26,13 +26,75 @@ from botocore.exceptions import (
 )
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
 
-from .model_utils import parse_model_id
+# The invocation's wall clock. Every ladder in this module backs off and retries
+# inside a Lambda that will be killed on a fixed deadline, so both of these are
+# needed here: a sleep must not outlive the invocation, and an attempt the size of
+# the one that just failed must not be BEGUN when what remains cannot hold it. The
+# rule has one implementation, in a standard-library-only leaf module, shared with
+# the streamed agentic ladder's decorators in ``utils.bedrock_utils``.
+#
+# It is not imported FROM ``utils.bedrock_utils``, which also exports it, because of
+# what that costs at cold start: ``utils/__init__`` imports
+# ``idp_common.config.models``, whose package ``__init__`` reaches back here through
+# ``configuration_manager`` -> ``merge_utils``. Measured, ``import idp_common.bedrock``
+# goes from 526 modules in 0.15 s to 968 in 1.00 s, and starts requiring
+# ``idp_common.config`` — which is the import a lean handler pays for before its
+# handler body runs, and one of the two chains
+# ``tests/unit/test_import_surface_region_free.py`` exists to keep thin.
+from idp_common.lambda_deadline import (
+    attempt_cannot_finish,
+    clamp_sleep_to_budgets,
+    remaining_invocation_seconds,
+)
+
+# The shard invocation's time budget. Imported rather than restated, because this
+# client's read timeout is one of its terms and a term written in two places is
+# exactly how the budget stopped adding up (#1014). ``timeout_budget`` is a leaf
+# module that imports nothing, for the same reason as above.
+from idp_common.timeout_budget import (
+    BOTOCORE_TOTAL_MAX_ATTEMPTS,
+    CONFIDENCE_READ_TIMEOUT_SECONDS,
+)
+
+from .model_utils import (
+    LONG_CONTEXT_SUFFIX,
+    REGION_PREFIXES,
+    get_model_max_output_tokens,
+    metering_model_id,
+    parse_max_tokens_limit_from_error,
+    parse_model_id,
+    resolve_model_id_from_arn,
+)
+from .openai_responses import invoke_responses_api, is_openai_responses_model
+from .session import get_bedrock_session
 
 # Sentinel value for LambdaHook model selection
 LAMBDA_HOOK_MODEL_ID = "LambdaHook"
 
 
+def numeric_usage(usage: Any) -> Dict[str, Any]:
+    """The numeric members of a Converse ``usage`` block, for metering.
+
+    Metering values are summed across calls (``merge_metering_data``) and priced
+    per unit (``save_reporting_data``), so every value must be a number. Bedrock's
+    ``usage`` has grown structured members — ``cacheDetails`` is a list of
+    ``{"ttl": "5m", "inputTokens": N}`` cache-write breakdowns — and spreading the
+    whole block into metering made every subsequent merge log
+    ``unsupported operand type(s) for +: 'int' and 'list'`` and stored the list
+    where a count belongs. Booleans are excluded too (they are ints in Python).
+    """
+    if not isinstance(usage, dict):
+        return {}
+    return {
+        k: v
+        for k, v in usage.items()
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+    }
+
+
 # Dummy exception classes for requests timeouts if requests is not available
+
+
 class _RequestsReadTimeout(Exception):
     """Fallback exception class when requests library is not available."""
 
@@ -66,54 +128,820 @@ DEFAULT_INITIAL_BACKOFF = 2  # seconds
 DEFAULT_MAX_BACKOFF = 300  # 5 minutes
 
 
-# Models that support cachePoint functionality
+# Claude 4.7 and later model base names that don't support
+# temperature/top_k/top_p parameters. These parameters are deprecated for these
+# models and cause runtime errors. The set covers Claude 4.7, 4.8, and any
+# future generations with the same behavior — add new base names here as
+# needed (e.g., sonnet-4-7, haiku-4-7, opus-4-9).
+#
+# NOTE: This set is consulted by BOTH the traditional Bedrock invocation path
+# (this file's BedrockClient.invoke_model) AND the agentic extraction path
+# (idp_common/extraction/agentic_idp.py::_get_inference_params).
+#
+# ⚠️ One other place must be decided at the same time, deliberately rather than by
+# default: model_utils._HIGH_RES_MODEL_PATTERN, which says whether a model uses
+# Claude's high-resolution vision tier (a 4,784-token per-image cap) or the
+# standard one (1,568). The two sets happen to be identical today, but they are
+# DIFFERENT properties — a future model could reject sampling parameters and still
+# tokenize on the standard tier, or the reverse — so neither derives from the
+# other. tests/unit/bedrock/test_visual_token_estimate.py fails when they diverge,
+# which forces the decision instead of letting a new name inherit whichever answer
+# happens to be the default (#994).
+_CLAUDE_4_7_BASE_NAMES = {
+    "anthropic.claude-opus-4-7",
+    "anthropic.claude-opus-4-8",
+    # Claude Opus 5 keeps the Opus 4.7/4.8 request surface: temperature/top_p/
+    # top_k are rejected (400). Thinking is ON by default on Opus 5 (unlike
+    # 4.7/4.8); the Converse path does not send a `thinking` field, so requests
+    # run adaptive thinking within max_tokens.
+    "anthropic.claude-opus-5",
+    # Claude Opus 5.5 keeps the same surface. Verified live on Bedrock Converse
+    # (us.anthropic.claude-opus-5-5, us-west-2, 2026-09-23): `temperature` is
+    # deprecated for this model, `top_p` is deprecated for this model. Note this
+    # set is matched EXACTLY on the base name, so "claude-opus-5" does not cover
+    # "claude-opus-5-5" — the entry is required, not decorative.
+    "anthropic.claude-opus-5-5",
+    # Claude Sonnet 5 shares the Opus-4.7+ request surface: it REJECTS non-default
+    # temperature/top_p/top_k (400). IDP's default decoding config sets top_k=5 /
+    # top_p=0.0, so Sonnet 5 must be treated like the sampling-param-stripped models
+    # (this is a deliberate deviation from Sonnet 4.6, which still accepts them).
+    "anthropic.claude-sonnet-5",
+    # Claude Sonnet 5.5. The entry is REQUIRED, not redundant: this set is matched
+    # EXACTLY on the base name (see is_claude_4_7_model), so "claude-sonnet-5" does
+    # not cover "claude-sonnet-5-5" — the same trap the Opus 5.5 comment above
+    # names. Verified live on Bedrock Converse (us.anthropic.claude-sonnet-5-5,
+    # us-east-1, 2026-10-14): each of `temperature`, `top_p` and `top_k` comes back
+    # "is deprecated for this model". IDP's default decoding config sets top_k=5 /
+    # top_p=0.0, so without this entry every Sonnet 5.5 request 400s.
+    "anthropic.claude-sonnet-5-5",
+    # Claude Haiku 5.5 joins the set, and this is the first Haiku to do so —
+    # Haiku 4.5 still accepts all three parameters, so "it's a Haiku" is not the
+    # rule. Verified live on Bedrock Converse (us.anthropic.claude-haiku-5-5,
+    # us-west-2, 2026-10-08): each of `temperature`, `top_p` and `top_k` comes
+    # back "is deprecated for this model". IDP's default decoding config sets
+    # top_k=5 / top_p=0.0, so without this entry every Haiku 5.5 request fails.
+    "anthropic.claude-haiku-5-5",
+}
+
+
+def is_claude_4_7_model(model_id: str) -> bool:
+    """Check if a model is a Claude 4.7+ variant that doesn't support temperature/top_k/top_p.
+
+    Handles region prefixes (us., eu., global.) and :1m suffix automatically.
+
+    Args:
+        model_id: Bedrock model ID (e.g., 'us.anthropic.claude-opus-4-7:1m')
+
+    Inference-profile ARNs are resolved first. Without this, a config naming
+    ``arn:...:inference-profile/us.anthropic.claude-sonnet-5`` — the form
+    docs/configuration.md recommends for cost allocation, and the only form
+    available in GovCloud — would not be recognized, so ``temperature`` would be
+    sent to a model that rejects it with a 400. Opaque
+    ``application-inference-profile`` ARNs still cannot be resolved offline.
+
+    Returns:
+        True if the model is a Claude 4.7+ variant
+    """
+    # Hand-rolled normalization here would be a second copy of
+    # _strip_region_and_1m's rule, and the copy is what went wrong: this branch
+    # listed three of the five region prefixes, so a `us-gov.` id kept its prefix,
+    # missed the set, and had `temperature` sent to a model that rejects it.
+    return _strip_region_and_1m(resolve_model_id_from_arn(model_id)) in (
+        _CLAUDE_4_7_BASE_NAMES
+    )
+
+
+# Backwards-compatible alias for internal callers that still reference the
+# private name. New code should import `is_claude_4_7_model`.
+_is_claude_4_7_model = is_claude_4_7_model
+
+
+# Claude models that accept the reasoning-effort control
+# (output_config.effort: low|medium|high|xhigh|max). Verified live on Bedrock
+# Converse: effort measurably changes output tokens on these; Sonnet 4.5 and
+# Haiku 4.5 REJECT effort (400). Kept as base names (region prefix + :1m stripped
+# by is_claude_effort_model). GPT-5.x reasoning models use the OpenAI Responses
+# `reasoning.effort` control instead (see openai_responses.py), not this path.
+_CLAUDE_EFFORT_BASE_NAMES = {
+    "anthropic.claude-sonnet-5",
+    "anthropic.claude-sonnet-4-6",
+    "anthropic.claude-opus-4-5",
+    "anthropic.claude-opus-4-6",
+    "anthropic.claude-opus-4-7",
+    "anthropic.claude-opus-4-8",
+    "anthropic.claude-opus-5",
+    # Opus 5.5 accepts effort (verified live on Converse at both "low" and
+    # "xhigh", us-west-2, 2026-09-23) and for it effort is the ONLY thinking
+    # control: thinking cannot be disabled at any effort level — see
+    # THINKING_ALWAYS_ON_BASE_NAMES below.
+    #
+    # Its default effort is "medium", one level below the "high" every other model
+    # here defaults to. That one is read off the Bedrock model card ("effort level
+    # configurable - low, medium, high, xhigh, max; default: medium"), NOT measured:
+    # a default cannot be observed from a response, since Converse reports no effort
+    # back. Treat it accordingly - it is the stated reason the opus55value benchmark
+    # pair measures the switch rather than the model, so if that matters to a
+    # decision, set effort explicitly rather than relying on this.
+    #
+    # This entry is also redundant-by-prefix and kept anyway: the lookup is
+    # `base.startswith(name)`, so "anthropic.claude-opus-5-5" already matched via
+    # "anthropic.claude-opus-5". Relying on that would make the set silently
+    # wrong for any future Opus 5.x that does NOT take effort.
+    "anthropic.claude-opus-5-5",
+    # Claude Sonnet 5.5, and redundant-by-prefix in the same way: the lookup is
+    # `base.startswith(name)`, so "anthropic.claude-sonnet-5-5" already matched via
+    # "anthropic.claude-sonnet-5". Listed for the same reason as Opus 5.5 — a future
+    # Sonnet 5.x that does NOT take effort has to be decided here rather than
+    # inheriting a match. Verified live on Bedrock Converse
+    # (us.anthropic.claude-sonnet-5-5, us-east-1, 2026-10-14): all five of
+    # low/medium/high/xhigh/max are accepted, and "max" measurably spent more output
+    # tokens on the same prompt. Its default is "high" per the Bedrock model card
+    # ("effort level configurable - low, medium, high, xhigh, max; default: high"),
+    # read rather than measured since Converse reports no effort back — note that is
+    # the ordinary default, NOT the "medium" that Opus 5.5 and Haiku 5.5 carry.
+    "anthropic.claude-sonnet-5-5",
+    "anthropic.claude-fable-5",
+    # Claude Haiku 5.5 is the FIRST Haiku to accept effort — Haiku 4.5 rejects it
+    # with a 400, and that rejection is the reason the comment above names Haiku
+    # 4.5 explicitly. Verified live on Bedrock Converse
+    # (us.anthropic.claude-haiku-5-5, us-west-2, 2026-10-08): accepted at both
+    # "low" and "max", and "max" measurably spent more output tokens on the same
+    # prompt. Its default is "medium" per the Bedrock model card, read rather than
+    # measured for the same reason Opus 5.5's is. Unlike Opus 5.5, thinking CAN be
+    # disabled here (see _THINKING_ALWAYS_ON_BASE_NAMES), and the model card adds
+    # one constraint this file does not model: with thinking disabled the effort
+    # level is capped at "high".
+    "anthropic.claude-haiku-5-5",
+}
+
+# Claude models on which extended thinking cannot be turned off. Verified live on
+# Bedrock Converse (us.anthropic.claude-opus-5-5, us-west-2, 2026-09-23):
+# ``additionalModelRequestFields.thinking = {"type": "disabled"}`` is rejected with
+# '"thinking.type.disabled" is not supported for this model. Use
+# "thinking.type.adaptive" and "output_config.effort" to control thinking
+# behavior.' Opus 5 accepts a disabled thinking block; Opus 5.5 does not, at any
+# effort level.
+#
+# This file's Converse path never sends a ``thinking`` field, so nothing here
+# currently constructs the rejected request — the set exists so that a future
+# caller that wants to disable thinking has one place to ask, instead of
+# discovering the 400 in production.
+#
+# Membership does NOT follow from "is a 5.5 model": Claude Haiku 5.5 accepts
+# ``thinking = {"type": "disabled"}`` (verified live, us.anthropic.claude-haiku-5-5,
+# us-west-2, 2026-10-08) and so is deliberately absent, even though it shares Opus
+# 5.5's sampling-parameter surface and its effort control.
+#
+# Claude Sonnet 5.5 is absent too, and for a THIRD reason that neither of the other
+# two illustrates: thinking can be turned off on it, but not with this payload — see
+# _THINKING_DISABLE_PAYLOAD_OVERRIDES below. Adding it here would read as "effort is
+# the only control", which is false for it.
+_THINKING_ALWAYS_ON_BASE_NAMES = {
+    "anthropic.claude-opus-5-5",
+}
+
+#: ``thinking`` payload that turns thinking off, for models where it is NOT the
+#: ordinary ``{"type": "disabled"}``.
+#:
+#: Claude Sonnet 5.5 is the first model here that needs this. Verified live on
+#: Bedrock Converse (us.anthropic.claude-sonnet-5-5, us-east-1, 2026-10-14):
+#: ``{"type": "disabled"}`` is rejected with 'To turn thinking off on this model,
+#: send "thinking": {"type": "between_tools"} instead of {"type": "disabled"}', and
+#: ``{"type": "between_tools"}`` is accepted. So the model is neither
+#: thinking-always-on (Opus 5.5) nor ordinary (Haiku 5.5): it is a third answer, and
+#: a boolean cannot carry it. ``thinking_can_be_disabled`` would be False for it
+#: under its own documented contract while being a misleading statement of fact, so
+#: the spelling lives here and the boolean keeps meaning what its name says.
+_THINKING_DISABLE_PAYLOAD_OVERRIDES: Dict[str, Dict[str, str]] = {
+    "anthropic.claude-sonnet-5-5": {"type": "between_tools"},
+}
+
+
+def thinking_can_be_disabled(model_id: str) -> bool:
+    """False if thinking cannot be turned off on ``model_id`` at all.
+
+    Lower ``output_config.effort`` is the only way to reduce thinking spend on
+    such a model.
+
+    ⚠️ A True answer does NOT mean ``{"type": "disabled"}`` is the payload to send —
+    on Claude Sonnet 5.5 that exact value is rejected and ``{"type":
+    "between_tools"}`` is what works. Call :func:`thinking_disable_payload` for the
+    value rather than constructing one.
+    """
+    if not model_id:
+        return True
+    return _strip_region_and_1m(resolve_model_id_from_arn(model_id)) not in (
+        _THINKING_ALWAYS_ON_BASE_NAMES
+    )
+
+
+def thinking_disable_payload(model_id: str) -> Optional[Dict[str, str]]:
+    """The ``thinking`` field that turns thinking off on ``model_id``.
+
+    Returns None when thinking cannot be turned off at any effort level (see
+    :func:`thinking_can_be_disabled`), otherwise the payload to put in
+    ``additionalModelRequestFields["thinking"]``.
+
+    This file's Converse path never sends a ``thinking`` field, so nothing here
+    currently builds such a request — this exists so a caller that wants to disable
+    thinking asks once instead of discovering the 400 in production.
+    """
+    if not model_id:
+        return {"type": "disabled"}
+    base = _strip_region_and_1m(resolve_model_id_from_arn(model_id))
+    if base in _THINKING_ALWAYS_ON_BASE_NAMES:
+        return None
+    return _THINKING_DISABLE_PAYLOAD_OVERRIDES.get(base, {"type": "disabled"})
+
+
+# Effort levels accepted by Claude models. There are now THREE vocabularies on
+# this file's paths and no two are the same — see GROK_EFFORT_LEVELS and
+# ASTRA_EFFORT_LEVELS. Relative to Claude's set: the OpenAI Responses models
+# (GPT-5.x) also allow "minimal" but not "xhigh"/"max"; Grok adds "none" and
+# rejects "max"; Astra adds "none" and keeps "max". So no constant here is a
+# superset of the others, and none may be reused across families.
+CLAUDE_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+
+#: Region / geo prefixes Bedrock cross-region inference profiles use. All five,
+#: deliberately — ``us-gov`` and ``apac`` used to be missing here, and their absence
+#: was silent in the worst possible direction: a ``us-gov.`` id fell through to the
+#: else-branch unchanged, so every base-name gate below reported the PERMISSIVE
+#: answer for it. ``is_claude_4_7_model("us-gov.anthropic.claude-opus-5")``
+#: returned False, which sends ``temperature`` to a model that rejects it, and
+#: ``supports_forced_tool_choice`` returned True for Opus 5.5, which forces a tool
+#: call the model refuses. GovCloud is precisely where this matters, because an
+#: account-scoped inference-profile ARN is the only way to name a model there —
+#: ``resolve_model_id_from_arn`` reduces such an ARN to a ``us-gov.`` id, which is
+#: then the input to this function.
+#:
+#: Imported from ``model_utils`` rather than restated, because a restated copy is
+#: exactly what went wrong: four sites hand-rolled this rule and three of them
+#: listed only three of the five prefixes.
+_REGION_PREFIXES = REGION_PREFIXES
+
+
+def _strip_region_and_1m(model_id: str) -> str:
+    """Normalize a model ID to its base name: strip the region/geo prefix and the
+    ``:1m`` suffix. Also tolerates Opus 4.5/4.6 dated/`-v1` foundation IDs by
+    matching on a prefix in is_claude_effort_model."""
+    parts = model_id.split(".", 1)
+    base = (
+        parts[1] if len(parts) == 2 and parts[0] in _REGION_PREFIXES else model_id
+    )
+    if base.endswith(":1m"):
+        base = base[:-3]
+    return base
+
+
+def lambda_hook_metering_name(lambda_arn: str) -> str:
+    """Reduce a Lambda hook reference to the bare function name for metering.
+
+    The metering key for a Lambda hook is ``{context}/lambda_hook/{name}`` and
+    ``name`` MUST be the bare function name, because that is the only part that
+    is stable enough to be a pricing key. ``model_lambda_hook_arn`` is normally
+    configured as a full ARN (every example in docs/lambda-hook-inference.md is),
+    and an ARN embeds the account id and region — so a pricing entry keyed on one
+    could never ship as a default, and would break on redeploy to another
+    account. Worse, an ARN delimits the function name with ``:``, not ``/``, so
+    the ``/``-suffix walk in ``reporting.save_reporting_data._get_unit_cost``
+    could never reach it: both shipped hook rows resolved to "unpriced" (see
+    GitHub issue #926 / PR #952).
+
+    Accepts, and returns the bare function name for, all four configurable
+    forms: a full ARN, a full ARN with an alias or version suffix
+    (``...:function:name:PROD``), an already-bare function name, and a bare
+    ``name:alias`` / ``name:version`` partial reference.
+
+    That last form is why the ``:``-split runs unconditionally rather than only
+    inside the ``:function:`` branch. Lambda accepts ``GENAIIDP-hook:PROD`` as an
+    invocation target and nothing in ``model_lambda_hook_arn``'s documentation
+    forbids configuring it, but it carries no ``:function:`` to key off — so it
+    used to pass through whole and produce the key
+    ``.../lambda_hook/GENAIIDP-hook:PROD``, which the '/'-only suffix walk cannot
+    split and which therefore resolved to NULL with an UNPRICED warning. The
+    unconditional split is safe because a Lambda function name may not contain a
+    colon, so there is no legal name for it to truncate.
+    """
+    name = lambda_arn
+    if ":function:" in name:
+        # Drop everything up to and including ':function:'.
+        name = name.split(":function:")[-1]
+    # Drop any alias/version qualifier. Applies to both an ARN-derived name and a
+    # bare 'name:alias' partial reference.
+    return name.split(":")[0]
+
+
+def is_claude_effort_model(model_id: str) -> bool:
+    """True if the Claude model accepts output_config.effort.
+
+    Handles region prefixes, :1m, and dated/versioned foundation IDs
+    (e.g. anthropic.claude-opus-4-6-v1, ...-4-5-20250514-v1:0) by prefix match.
+
+    Inference-profile ARNs are resolved first, for the same reason
+    :func:`is_claude_4_7_model` does it: an account-scoped inference-profile ARN is
+    the form ``docs/configuration.md`` recommends for cost allocation and the
+    **only** form available in GovCloud, so without this an ARN-named model would
+    silently lose its effort setting. That matters most on Claude Opus 5.5, where
+    effort is the only thinking control there is — thinking cannot be disabled — so
+    dropping it is not a small degradation. Opaque
+    ``application-inference-profile`` ARNs still cannot be resolved offline.
+    """
+    if not model_id:
+        return False
+    base = _strip_region_and_1m(resolve_model_id_from_arn(model_id))
+    return any(base.startswith(name) for name in _CLAUDE_EFFORT_BASE_NAMES)
+
+
+# ---------------------------------------------------------------------------
+# xAI Grok
+# ---------------------------------------------------------------------------
+# Grok is the first non-Anthropic/non-Nova family to reach the Converse API, so
+# several assumptions that held while only Claude and Nova used this path had to
+# be generalized. Everything below was verified live against
+# ``us.xai.grok-4.6`` on bedrock-runtime Converse in us-west-2 on 2026-09-02:
+#
+#   * ``inferenceConfig.temperature`` and ``inferenceConfig.topP`` are REJECTED
+#     ("This model doesn't support the temperature field"), so Grok joins the
+#     sampling-param-stripped set — see ``strips_sampling_params``.
+#   * ``maxTokens`` must ride in ``inferenceConfig``. Claude's
+#     ``additionalModelRequestFields.max_tokens`` is accepted but SILENTLY
+#     IGNORED (a request capped at 100 there returned 135 output tokens).
+#     Unknown ``additionalModelRequestFields`` keys are silently ignored too, so
+#     the exact carrier matters and a wrong one fails open, not loudly.
+#   * Reasoning is always on. The effort carrier is
+#     ``additionalModelRequestFields.reasoning.effort``; Claude's
+#     ``output_config.effort`` is silently ignored here.
+#   * ``document`` content blocks are REJECTED ("This model doesn't support
+#     documents") — see ``document_blocks_unsupported_reason``. Images work.
+#   * ``toolConfig`` works with all three ``toolChoice`` modes and emits
+#     ``toolUse``, so agentic extraction is supported (unlike GPT-5.x).
+#   * Explicit ``cachePoint`` blocks raise AccessDeniedException, so Grok is
+#     deliberately absent from CACHEPOINT_SUPPORTED_MODELS below. The model card
+#     advertises implicit caching, but 4 back-to-back identical 20,033-token
+#     prompts all reported ``cacheReadInputTokens=0``, so no caching benefit is
+#     claimed.
+#   * Flex/Priority service tiers are REJECTED ("The provided service tier is
+#     not supported for this model") despite the model card advertising both, so
+#     no tier-suffixed Grok IDs are offered.
+_GROK_BASE_PREFIX = "xai.grok"
+
+# Effort levels accepted by Grok. NOTE this is NOT the same vocabulary as
+# CLAUDE_EFFORT_LEVELS: Grok adds "none" and REJECTS "max" ("Unsupported value:
+# 'max' is not supported with the 'us.xai.grok-4.6' model").
+GROK_EFFORT_LEVELS = ("none", "low", "medium", "high", "xhigh")
+
+
+def is_grok_model(model_id: str) -> bool:
+    """True if ``model_id`` names an xAI Grok model.
+
+    Handles the ``us.``/``global.`` cross-region inference-profile prefixes.
+    Grok has no in-region form on bedrock-runtime — the bare ``xai.grok-4.6`` is
+    rejected ("Invocation of model ID xai.grok-4.6 with on-demand throughput
+    isn't supported") — but the bare name is matched anyway so the predicate is
+    about the family, not the routing.
+
+    Inference-profile **ARNs** are resolved first. This matters more here than
+    for the Claude predicates: docs/configuration.md actively recommends passing
+    an inference-profile ARN for cost-allocation tagging, and an ARN is the only
+    form available in GovCloud. Because Grok's rejections are unconditional (a
+    400 on temperature, a hard refusal of document blocks), missing the ARN form
+    would fail 100% of requests rather than degrade quietly.
+
+    LIMITATION: ``application-inference-profile/<uuid>`` ARNs are opaque — the
+    underlying foundation model cannot be determined without a
+    GetInferenceProfile call — so those still return False. A Grok application
+    inference profile will therefore bypass these gates.
+    """
+    if not model_id:
+        return False
+    resolved = resolve_model_id_from_arn(model_id)
+    return _strip_region_and_1m(resolved).startswith(_GROK_BASE_PREFIX)
+
+
+# ---------------------------------------------------------------------------
+# OpenAI GPT-6 Astra
+# ---------------------------------------------------------------------------
+# IMPORTANT: Astra is NOT on the code path the accelerator's other OpenAI models
+# use. GPT-5.4/5.5/5.6 are served ONLY by the ``bedrock-mantle`` Responses API
+# (see openai_responses.py); Astra reaches the ordinary ``bedrock-runtime``
+# Converse API, so its closest sibling in this file is xAI Grok, not GPT-5.x.
+# ``is_openai_responses_model`` matches on ``openai.gpt-5`` and therefore already
+# excludes Astra — test_bedrock_astra.py pins that so a future widening of the
+# GPT-5.x prefix cannot silently steal this model onto the mantle path.
+#
+# Everything below was verified live against ``us.openai.gpt-6-astra`` on
+# bedrock-runtime Converse in us-west-2 on 2026-09-10, and cross-checked against
+# the model card:
+#
+#   * ``inferenceConfig.temperature`` and ``inferenceConfig.topP`` are REJECTED
+#     ("This model doesn't support the temperature field"), so Astra joins the
+#     sampling-param-stripped set — see ``strips_sampling_params``.
+#   * ``maxTokens`` rides in ``inferenceConfig`` (the Converse-standard carrier,
+#     which is already the default for every non-Anthropic family here). The cap
+#     is 128,000: a request for 200,000 is rejected naming the real limit
+#     ("exceeds the model limit of 131072").
+#   * Reasoning is always on. The effort carrier is
+#     ``additionalModelRequestFields.reasoning.effort`` — same shape as Grok.
+#     Claude's ``output_config.effort`` is REJECTED here rather than ignored
+#     ("Unknown parameter: 'output_config'"), and so is a flat
+#     ``reasoning_effort`` key, so the carrier must be exactly right.
+#   * ``document`` content blocks are REJECTED ("This model doesn't support the
+#     document field for user messages") — see
+#     ``document_blocks_unsupported_reason``. Images work.
+#   * ``toolConfig`` works and emits ``toolUse`` under a forced ``toolChoice``,
+#     so agentic and forced-tool extraction are supported (unlike GPT-5.x).
+#   * Explicit ``cachePoint`` blocks raise AccessDeniedException, so Astra is
+#     absent from CACHEPOINT_SUPPORTED_MODELS below. Unlike Grok, though, its
+#     IMPLICIT caching demonstrably works on this path: a repeated 2,707-token
+#     prefix billed ``inputTokens=2`` with ``cacheReadInputTokens=2707``. No
+#     request change is needed to get it, and the existing metering already
+#     records ``cacheReadInputTokens``, so the discount shows up in cost reports
+#     without any code change here.
+#   * Flex/Priority service tiers are REJECTED ("The provided service tier is
+#     not supported for this model"), matching the model card (Standard only), so
+#     no tier-suffixed Astra IDs are offered.
+#   * There is NO in-region form on bedrock-runtime: the bare ``openai.gpt-6-astra``
+#     is rejected ("Invocation of model ID ... with on-demand throughput isn't
+#     supported"). Only ``us.`` (US geo) and ``global.`` (worldwide) CRIS profiles
+#     work. The bare ID IS valid on ``bedrock-mantle`` in us-west-2 only, which the
+#     accelerator deliberately does not use — see the module README.
+_ASTRA_BASE_PREFIX = "openai.gpt-6-astra"
+
+# Effort levels accepted by Astra. NOTE this is a THIRD vocabulary: it is
+# CLAUDE_EFFORT_LEVELS plus "none", and it differs from GROK_EFFORT_LEVELS at the
+# other end — Grok rejects "max" while Astra accepts it. Astra also REJECTS the
+# OpenAI Responses level "minimal" ("Unsupported value: 'minimal' is not
+# supported with the 'us.openai.gpt-6-astra' model. Supported values are:
+# 'none', 'low', 'medium', 'high', 'xhigh', and 'max'"), which is exactly the
+# kind of cross-family confusion this separate constant exists to prevent.
+ASTRA_EFFORT_LEVELS = ("none", "low", "medium", "high", "xhigh", "max")
+
+
+def is_astra_model(model_id: str) -> bool:
+    """True if ``model_id`` names the OpenAI GPT-6 Astra model.
+
+    Handles the ``us.``/``global.`` cross-region inference-profile prefixes and
+    resolves inference-profile **ARNs** first, for the same reason as
+    :func:`is_grok_model`: docs/configuration.md recommends the ARN form for
+    cost-allocation tagging, and Astra's rejections are unconditional (a 400 on
+    ``temperature``, a hard refusal of ``document`` blocks), so failing to
+    recognize the ARN form would fail 100% of requests rather than degrade
+    quietly.
+
+    LIMITATION: ``application-inference-profile/<uuid>`` ARNs are opaque — the
+    underlying foundation model cannot be determined without a
+    GetInferenceProfile call — so those still return False. An Astra application
+    inference profile will therefore bypass these gates.
+    """
+    if not model_id:
+        return False
+    resolved = resolve_model_id_from_arn(model_id)
+    return _strip_region_and_1m(resolved).startswith(_ASTRA_BASE_PREFIX)
+
+
+def strips_sampling_params(model_id: str) -> bool:
+    """True if the model REJECTS ``temperature`` / ``topP`` / ``top_k``.
+
+    Covers Claude 4.7+ (where these are deprecated) and the two Converse
+    families that return a 400 naming the offending field: xAI Grok and OpenAI
+    GPT-6 Astra. Callers must omit the whole ``inferenceConfig`` sampling group
+    for these models rather than passing defaults.
+    """
+    return (
+        is_claude_4_7_model(model_id)
+        or is_grok_model(model_id)
+        or is_astra_model(model_id)
+    )
+
+
+# Converse ``document`` content-block capability gate.
+#
+# Discovery and any other path that hands Bedrock a whole PDF relies on
+# ``document`` blocks. Two families cannot accept them and would otherwise
+# silently drop the document and hallucinate an answer, so callers fail loudly
+# instead. Kept beside ``tool_config_unsupported_reason`` (same shape) so every
+# per-model Converse capability gate lives in one place.
+DOCUMENT_BLOCK_UNSUPPORTED_ROUTES: Dict[str, str] = {
+    "openai-responses": (
+        "OpenAI GPT-5.x models are served by the bedrock-mantle Responses API, "
+        "which accepts only text and image input"
+    ),
+    "xai-grok": (
+        "xAI Grok models reject Converse document blocks (\"This model doesn't "
+        'support documents"); their input modalities are text and image only'
+    ),
+    "openai-astra": (
+        "OpenAI GPT-6 Astra rejects Converse document blocks (\"This model "
+        "doesn't support the document field for user messages\"); its input "
+        "modalities are text and image only"
+    ),
+}
+
+
+def document_blocks_unsupported_reason(model_id: Optional[str]) -> Optional[str]:
+    """Explain why ``model_id`` cannot accept Converse ``document`` blocks.
+
+    Returns None when the model can accept them.
+    """
+    if is_openai_responses_model(model_id):
+        return DOCUMENT_BLOCK_UNSUPPORTED_ROUTES["openai-responses"]
+    if model_id and is_grok_model(model_id):
+        return DOCUMENT_BLOCK_UNSUPPORTED_ROUTES["xai-grok"]
+    if model_id and is_astra_model(model_id):
+        return DOCUMENT_BLOCK_UNSUPPORTED_ROUTES["openai-astra"]
+    return None
+
+
+def supports_document_blocks(model_id: Optional[str]) -> bool:
+    """True if ``model_id`` can accept whole-PDF Converse ``document`` blocks."""
+    return document_blocks_unsupported_reason(model_id) is None
+
+
+# Base model names that support cachePoint (without region prefix)
+# Used to check inference profiles by resolving their underlying foundation model
+_CACHEPOINT_BASE_MODELS = set()
+
+# Models that support cachePoint functionality.
+# NOTE: OpenAI GPT-5.x models (openai.gpt-5.*) are intentionally NOT listed here.
+# They are served via the bedrock-mantle Responses API (see openai_responses.py)
+# and do not support Bedrock prompt-prefix caching; <<CACHEPOINT>> markers are
+# stripped for them during request translation.
+# NOTE: OpenAI GPT-6 Astra (openai.gpt-6-astra) is absent for a different reason —
+# it reaches Converse, but an explicit cachePoint block raises
+# AccessDeniedException. Its IMPLICIT caching works with no request change and is
+# already reflected in cacheReadInputTokens metering, so listing it here would
+# only break requests, not unlock a discount.
 CACHEPOINT_SUPPORTED_MODELS = [
-    "us.anthropic.claude-3-5-haiku-20241022-v1:0",
     "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
     "us.anthropic.claude-opus-4-5-20251101-v1:0",
     "us.anthropic.claude-opus-4-6-v1",
     "us.anthropic.claude-opus-4-6-v1:1m",
+    "us.anthropic.claude-opus-4-7",
+    "us.anthropic.claude-opus-4-7:1m",
+    "us.anthropic.claude-opus-4-8",
+    "us.anthropic.claude-opus-4-8:1m",
+    "us.anthropic.claude-opus-5",
+    "us.anthropic.claude-opus-5:1m",
+    "us.anthropic.claude-opus-5-5",
+    "us.anthropic.claude-opus-5-5:1m",
     "us.anthropic.claude-opus-4-1-20250805-v1:0",
-    "us.anthropic.claude-opus-4-20250514-v1:0",
-    "us.anthropic.claude-sonnet-4-20250514-v1:0",
-    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
     "us.anthropic.claude-sonnet-4-6",
     "us.anthropic.claude-sonnet-4-6:1m",
+    "us.anthropic.claude-sonnet-5",
+    "us.anthropic.claude-sonnet-5:1m",
+    # Claude Sonnet 5.5. Explicit caching confirmed live rather than read off the
+    # card: a cachePoint after a 513-token text block wrote 513 tokens
+    # (cacheWriteInputTokens), and 508 tokens wrote nothing (us-east-1,
+    # 2026-10-14) — so the card's 512-token minimum is the real floor, which is
+    # HALF Sonnet 5's 1,024 (see prompt_cache.py; measured as a pair, Sonnet 5 wrote
+    # nothing at 825 tokens and 1,223 at 1,223). Like Haiku 5.5 the id carries no
+    # date or ``-v1:0`` suffix and has no ``:1m`` twin:
+    # ``us.anthropic.claude-sonnet-5-5:1m`` is not an id Bedrock knows ("The
+    # provided model identifier is invalid"), because the 1M window is this model's
+    # default rather than an opt-in.
+    "us.anthropic.claude-sonnet-5-5",
     "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    # Claude Haiku 5.5. Explicit caching confirmed live rather than inferred from
+    # the model card: a >512-token system prefix followed by a cachePoint block
+    # returned cacheWriteInputTokens=4683 on the first call and
+    # cacheReadInputTokens=4683 on the next two (us-west-2, 2026-10-08). The card
+    # publishes a 512-token minimum and 4 checkpoints — see prompt_cache.py.
+    # Note the id carries no date or ``-v1:0`` suffix and has no ``:1m`` variant:
+    # the 1M window is the default on this model, not an opt-in.
+    "us.anthropic.claude-haiku-5-5",
     "us.amazon.nova-lite-v1:0",
     "us.amazon.nova-pro-v1:0",
     "us.amazon.nova-2-lite-v1:0",
     "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    "eu.anthropic.claude-sonnet-4-20250514-v1:0",
     "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
     "eu.anthropic.claude-sonnet-4-6",
     "eu.anthropic.claude-sonnet-4-6:1m",
+    "eu.anthropic.claude-sonnet-5",
+    "eu.anthropic.claude-sonnet-5:1m",
+    "eu.anthropic.claude-sonnet-5-5",
     "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "eu.anthropic.claude-haiku-5-5",
     "eu.anthropic.claude-opus-4-5-20251101-v1:0",
     "eu.anthropic.claude-opus-4-6-v1",
     "eu.anthropic.claude-opus-4-6-v1:1m",
+    "eu.anthropic.claude-opus-4-7",
+    "eu.anthropic.claude-opus-4-7:1m",
+    "eu.anthropic.claude-opus-4-8",
+    "eu.anthropic.claude-opus-4-8:1m",
+    "eu.anthropic.claude-opus-5",
+    "eu.anthropic.claude-opus-5:1m",
+    "eu.anthropic.claude-opus-5-5",
+    "eu.anthropic.claude-opus-5-5:1m",
     "eu.amazon.nova-lite-v1:0",
     "eu.amazon.nova-pro-v1:0",
     "eu.amazon.nova-2-lite-v1:0",
     "eu.amazon.nova-2-lite-v1:0:priority",
     "eu.amazon.nova-2-lite-v1:0:flex",
+    # Canada geo profile of Nova Lite. Measured in ca-central-1 on 2026-10-12: a
+    # 7,530-token system prompt followed by a cachePoint wrote 7,530 tokens
+    # (cacheWriteInputTokens) and an identical second call read 7,530
+    # (cacheReadInputTokens).
+    "ca.amazon.nova-lite-v1:0",
     "global.amazon.nova-2-lite-v1:0",
     "global.amazon.nova-2-lite-v1:0:priority",
     "global.amazon.nova-2-lite-v1:0:flex",
     "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "global.anthropic.claude-haiku-5-5",
     "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
     "global.anthropic.claude-sonnet-4-6",
     "global.anthropic.claude-sonnet-4-6:1m",
+    "global.anthropic.claude-sonnet-5",
+    "global.anthropic.claude-sonnet-5:1m",
+    "global.anthropic.claude-sonnet-5-5",
     "global.anthropic.claude-opus-4-5-20251101-v1:0",
     "global.anthropic.claude-opus-4-6-v1",
     "global.anthropic.claude-opus-4-6-v1:1m",
+    "global.anthropic.claude-opus-4-7",
+    "global.anthropic.claude-opus-4-7:1m",
+    "global.anthropic.claude-opus-4-8",
+    "global.anthropic.claude-opus-4-8:1m",
+    "global.anthropic.claude-opus-5",
+    "global.anthropic.claude-opus-5:1m",
+    "global.anthropic.claude-opus-5-5",
+    "global.anthropic.claude-opus-5-5:1m",
 ]
+
+# Converse tool-use (``toolConfig`` / ``toolChoice``) capability gate.
+#
+# ⚠️ These are now TWO questions, not one, and a model can answer them
+# differently: "can this model carry a ``toolConfig`` at all" (this gate) and "can
+# the ``toolChoice`` be FORCED to ``any``/``tool``" (FORCED_TOOL_CHOICE_UNSUPPORTED
+# below). Claude Opus 5.5 is the model that split them — it takes a toolConfig and
+# emits ``toolUse`` under ``toolChoice: auto``, and rejects both forcing modes with
+# a 400. Before it, every Converse-reachable family accepted all three modes, so
+# one gate covered both and this comment said so.
+#
+# ⚠️ Nor is the forcing answer a property of the FAMILY, which is the next thing a
+# reader assumes once one model splits the two questions. Claude Sonnet 5.5 rejects
+# forcing while Claude Sonnet 5 accepts it, so the Sonnet family now spans both
+# answers exactly as the Opus family does, and only an exact base-name lookup gets
+# that right (``FORCED_TOOL_CHOICE_UNSUPPORTED`` below).
+#
+# Verified live across the other currently selectable families (Claude
+# 3.5/3.7/4.x/5 and Nova Lite / Pro / 2-Lite): all of them accept a ``toolConfig``
+# AND all three ``toolChoice`` modes (``auto`` / ``any`` / ``tool``) on the
+# Converse API, and actually emit the ``toolUse`` block. The two 5.5 models above
+# are the exceptions to the forcing half of that, and to that half only: both still
+# carry a ``toolConfig``. So for THIS gate the only real question remains "does this
+# model reach Converse at all", and exactly two routes in invoke_model do not. They
+# are named here so the exclusions are discoverable and testable rather than buried
+# in an `if`.
+#
+# NOTE: OpenAI GPT-6 Astra is deliberately NOT one of them. It reaches Converse
+# and emits ``toolUse`` under a forced ``toolChoice`` (verified live), so it is
+# tool-capable even though its GPT-5.x stablemates on the Responses API are not.
+#
+# NOTE: there is no hard-grammar/strict mode available on bedrock-runtime.
+# ``toolSpec.strict``, ``output_config.format`` and ``response_format`` are all
+# rejected ("Extra inputs are not permitted") on BOTH Converse and InvokeModel,
+# so a forced ``toolChoice`` is the strongest schema enforcement available.
+TOOL_CONFIG_UNSUPPORTED_ROUTES: Dict[str, str] = {
+    "LambdaHook": (
+        "the LambdaHook route posts a Converse-shaped payload to a customer-owned "
+        "Lambda function, which is not required to implement tool use"
+    ),
+    "openai-responses": (
+        "OpenAI GPT-5.x models are served by the bedrock-mantle Responses API, "
+        "which does not accept a Converse toolConfig (it has its own tools schema)"
+    ),
+}
+
+
+def tool_config_unsupported_reason(model_id: str) -> Optional[str]:
+    """Explain why ``model_id`` cannot carry a Converse ``toolConfig``.
+
+    Args:
+        model_id: Bedrock model ID, the ``LambdaHook`` sentinel, or an
+            inference profile ARN.
+
+    Returns:
+        A human-readable reason string if this model is routed somewhere other
+        than the Converse API, or None if a ``toolConfig`` can be used.
+    """
+    if model_id == LAMBDA_HOOK_MODEL_ID:
+        return TOOL_CONFIG_UNSUPPORTED_ROUTES["LambdaHook"]
+    if is_openai_responses_model(model_id):
+        return TOOL_CONFIG_UNSUPPORTED_ROUTES["openai-responses"]
+    return None
+
+
+def supports_tool_config(model_id: str) -> bool:
+    """True if ``model_id`` reaches the Converse API and can carry a toolConfig.
+
+    Callers that want to degrade gracefully (e.g. fall back to a prose schema in
+    the prompt) should check this first; passing a ``tool_config`` for a model
+    that returns False raises a ValueError rather than silently dropping the
+    schema.
+
+    A True answer here does NOT mean the tool call can be FORCED — see
+    :func:`forced_tool_choice_unsupported_reason`.
+    """
+    return tool_config_unsupported_reason(model_id) is None
+
+
+# Models that accept a Converse ``toolConfig`` but REJECT a forced ``toolChoice``.
+#
+# Keyed on the base name (region prefix and ``:1m`` stripped) so the us./eu./global.
+# profiles and the extended-context variant all resolve to one entry.
+#
+# Claude Opus 5.5, verified live on Bedrock Converse (us.anthropic.claude-opus-5-5,
+# us-west-2, 2026-09-23):
+#
+#   * ``toolChoice: {"auto": {}}``           -> stopReason ``tool_use``, toolUse emitted.
+#   * ``toolChoice: {"any": {}}``            -> ValidationException: 'tool_choice: type
+#     "tool" and "any" are not supported for this model.'
+#   * ``toolChoice: {"tool": {"name": ...}}`` -> the same ValidationException.
+#
+# This matters beyond the error message because a forced ``toolChoice`` is the
+# strongest schema enforcement bedrock-runtime offers (``toolSpec.strict``,
+# ``output_config.format`` and ``response_format`` are all rejected on Converse and
+# InvokeModel alike). So on this model the extraction forced-tool path has no
+# equivalent and must fall back to the prose schema — which
+# ``forced_tool.should_force_tool`` already knows how to do, recording the reason in
+# the section's audit metadata rather than skipping silently.
+# Claude Sonnet 5.5 is the second entry, and the one that shows this is not an
+# Opus-only quirk. Verified live on Bedrock Converse
+# (us.anthropic.claude-sonnet-5-5, us-east-1, 2026-10-14) with the same three
+# requests: ``auto`` answered with stopReason ``tool_use`` and a toolUse block,
+# while ``{"any": {}}`` and ``{"tool": {"name": ...}}`` both returned the identical
+# ValidationException Opus 5.5 gives. The key is an EXACT base name, so
+# "anthropic.claude-sonnet-5" does not shadow it and Sonnet 5 — which does accept
+# both forcing modes — keeps the permissive answer.
+FORCED_TOOL_CHOICE_UNSUPPORTED: Dict[str, str] = {
+    "anthropic.claude-opus-5-5": (
+        "Claude Opus 5.5 accepts a Converse toolConfig but rejects a forced "
+        'toolChoice: \'tool_choice: type "tool" and "any" are not supported for '
+        "this model.' Use toolChoice auto and steer from the prompt"
+    ),
+    "anthropic.claude-sonnet-5-5": (
+        "Claude Sonnet 5.5 accepts a Converse toolConfig but rejects a forced "
+        'toolChoice: \'tool_choice: type "tool" and "any" are not supported for '
+        "this model.' Use toolChoice auto and steer from the prompt"
+    ),
+}
+
+
+def forced_tool_choice_unsupported_reason(model_id: str) -> Optional[str]:
+    """Explain why ``model_id`` cannot take a forced ``toolChoice``.
+
+    Returns None when ``any``/``tool`` forcing is available — including for every
+    model this function knows nothing about, because a model that does not reach
+    Converse at all is already refused by
+    :func:`tool_config_unsupported_reason` and would otherwise be reported twice
+    with two different reasons.
+    """
+    if not model_id:
+        return None
+    base = _strip_region_and_1m(resolve_model_id_from_arn(model_id))
+    return FORCED_TOOL_CHOICE_UNSUPPORTED.get(base)
+
+
+def supports_forced_tool_choice(model_id: str) -> bool:
+    """True if ``model_id`` accepts ``toolChoice`` ``any`` or ``tool``.
+
+    ``toolChoice: auto`` is unaffected and available wherever
+    :func:`supports_tool_config` is True.
+    """
+    return forced_tool_choice_unsupported_reason(model_id) is None
+
+
+# Build set of base model names (without region/tier prefixes) for inference profile resolution.
+# e.g., "us.anthropic.claude-sonnet-4-6" -> "anthropic.claude-sonnet-4-6"
+# and "eu.amazon.nova-2-lite-v1:0:priority" -> "amazon.nova-2-lite-v1:0"
+#
+# The prefix set is _REGION_PREFIXES, not a local tuple. A hand-rolled ("us",
+# "eu", "global") here silently ignored every other geo an entry can carry, so
+# the `ca.`, `apac.`, `au.`, `jp.` or `us-gov.` spelling of a cachePoint-capable
+# model contributed no base name — and BedrockClient._is_model_cachepoint_supported
+# resolves an inference-profile ARN to its foundation model and looks the result
+# up in THIS set, so such a model would quietly lose prompt caching when it is
+# named by ARN.
+#
+# Latent when ca.amazon.nova-lite-v1:0 was added (its base is already seeded by
+# the us. twin, so the set is the same 23 names either way); the first model
+# offered under a geo prefix with no us. twin is what would have made it real.
+#
+# The tier/version suffix handling is deliberately NOT _strip_region_and_1m():
+# that helper strips `:1m`, which here must be KEPT, since a 1m profile is a
+# separate entry in the list above.
+for _model_id in CACHEPOINT_SUPPORTED_MODELS:
+    _parts = _model_id.split(".", 1)
+    if len(_parts) == 2 and _parts[0] in _REGION_PREFIXES:
+        _base = _parts[1]
+        # Strip tier suffixes (:priority, :flex) but keep version suffixes (:0, :1m)
+        if _base.endswith(":priority") or _base.endswith(":flex"):
+            _base = _base.rsplit(":", 1)[0]
+        _CACHEPOINT_BASE_MODELS.add(_base)
+
+# Module-level cache for inference profile -> cachepoint support resolution
+_inference_profile_cachepoint_cache: Dict[str, bool] = {}
 
 
 class BedrockClient:
@@ -143,18 +971,41 @@ class BedrockClient:
         self.max_backoff = max_backoff
         self.metrics_enabled = metrics_enabled
         self._client = None
+        self._bedrock_control_client = None
         self._lambda_client = None
         self._s3_client = None
 
     @property
     def client(self):
         """Lazy-loaded Bedrock client."""
+        # ``read_timeout`` is generous because ``converse`` here is NON-streaming:
+        # it bounds the whole response, not a gap between events, so a large
+        # extraction or assessment inference legitimately occupies it. That makes it
+        # the LARGEST single stall a shard invocation can absorb — in ``separate``
+        # confidence mode this client runs inside the 900 s shard Lambda — so the
+        # value is named in the shard time budget rather than written here (#1014).
+        #
+        # The attempt count is pinned to one. botocore treats a read timeout as
+        # transient and retries it itself, and with no ``retries`` override this
+        # client ran in legacy mode, whose default multiplied the timeout above by
+        # five inside ONE call to ``_invoke_with_retry`` — which already has its own
+        # ladder over exactly the same errors. Two stacked retry layers is what put
+        # 600 + 300 = 900 s inside a 900 s function in the first place.
+        #
+        # Spelled ``total_max_attempts``: in client config botocore's
+        # ``max_attempts`` is a RETRY count and is normalised to that key plus one,
+        # so ``max_attempts=1`` would still permit two attempts and two read
+        # timeouts. See the note in ``idp_common.timeout_budget``.
         config = Config(
             connect_timeout=10,
-            read_timeout=300,  # allow plenty of time for large extraction or assessment inferences
+            read_timeout=CONFIDENCE_READ_TIMEOUT_SECONDS,
+            retries={
+                "total_max_attempts": BOTOCORE_TOTAL_MAX_ATTEMPTS,
+                "mode": "standard",
+            },
         )
         if self._client is None:
-            self._client = boto3.client(
+            self._client = get_bedrock_session(self.region).client(
                 "bedrock-runtime", region_name=self.region, config=config
             )
         return self._client
@@ -162,20 +1013,156 @@ class BedrockClient:
     @property
     def lambda_client(self):
         """Lazy-loaded Lambda client for LambdaHook invocations."""
+        # Lambda invocations stay in the calling account, so this client
+        # uses default credentials regardless of BEDROCK_ASSUME_ROLE_ARN.
         if self._lambda_client is None:
+            # A hook may legitimately run for its whole Lambda timeout — up to
+            # the 900s maximum — because it is free to call a slow third-party
+            # service (an OCR hook wrapping a hosted VLM API takes tens of
+            # seconds per page). boto3 defaults to a 60s read timeout, which
+            # abandoned the in-flight invocation and retried it: the hook kept
+            # running, a *second* invocation started the same paid work, and the
+            # step made no progress. Measured on the Cohere Parse hook, whose
+            # pages take 75s at the median, one 5-page document produced 44
+            # invocations and zero completed pages.
+            #
+            # So: wait as long as a hook can possibly run, and turn botocore's
+            # own retries off. Retrying an invocation is not free — every
+            # attempt re-runs whatever the hook charges for — so it belongs to
+            # `_invoke_lambda_hook_with_retry`, which backs off, logs, and knows
+            # which errors are worth another attempt.
+            # 840s, not the full 900s Lambda maximum: the *calling* function is
+            # itself capped at 900s (OCRFunction is), so waiting the same 900
+            # would let the caller be killed before botocore ever raises — and
+            # Step Functions then retries the whole OCR task, re-running every
+            # page's paid call. Leaving 60s of headroom means the timeout
+            # surfaces as an error inside the caller, which can log it and fail
+            # the page cleanly. A hook is expected to keep its own timeout (and
+            # therefore its internal retry budget) below this.
+            #
+            # ``total_max_attempts``, not ``max_attempts``: the latter is a RETRY
+            # count in client config and normalises to one more than it says, so
+            # ``max_attempts=1`` permitted a SECOND 840 s invocation — 1,680 s inside
+            # a 900 s caller, re-running the hook's paid work, which is precisely
+            # what this block exists to prevent.
+            config = Config(
+                connect_timeout=10,
+                read_timeout=840,
+                retries={
+                    "total_max_attempts": BOTOCORE_TOTAL_MAX_ATTEMPTS,
+                    "mode": "standard",
+                },
+                # OCR fans pages out across worker threads that share this
+                # client; the default pool of 10 would serialize them.
+                max_pool_connections=50,
+            )
             self._lambda_client = boto3.client(
-                "lambda", region_name=self.region
+                "lambda", region_name=self.region, config=config
             )
         return self._lambda_client
+
+    @property
+    def bedrock_control_client(self):
+        """Lazy-loaded Bedrock control plane client for GetInferenceProfile etc."""
+        if self._bedrock_control_client is None:
+            self._bedrock_control_client = get_bedrock_session(self.region).client(
+                "bedrock", region_name=self.region
+            )
+        return self._bedrock_control_client
 
     @property
     def s3_client(self):
         """Lazy-loaded S3 client for LambdaHook image uploads."""
         if self._s3_client is None:
-            self._s3_client = boto3.client(
-                "s3", region_name=self.region
-            )
+            self._s3_client = boto3.client("s3", region_name=self.region)
         return self._s3_client
+
+    def _is_model_cachepoint_supported(self, model_id: str) -> bool:
+        """
+        Check if a model supports cachePoint, including inference profile resolution.
+
+        For standard model IDs (e.g., "us.anthropic.claude-sonnet-4-6"), checks
+        the CACHEPOINT_SUPPORTED_MODELS list directly.
+
+        For inference profile ARNs (containing "inference-profile" or
+        "application-inference-profile"), resolves the underlying foundation
+        model via the GetInferenceProfile API and checks if that base model
+        supports cachePoint. Results are cached to avoid repeated API calls.
+
+        Args:
+            model_id: Bedrock model ID or inference profile ARN
+
+        Returns:
+            True if the model (or underlying model for inference profiles) supports cachePoint
+        """
+        # Fast path: direct match against the known list
+        if model_id in CACHEPOINT_SUPPORTED_MODELS:
+            return True
+
+        # Check if this is an inference profile ARN
+        if "inference-profile" not in model_id:
+            return False
+
+        # Check module-level cache
+        if model_id in _inference_profile_cachepoint_cache:
+            cached = _inference_profile_cachepoint_cache[model_id]
+            logger.debug(
+                f"Inference profile cachepoint support (cached): {model_id} -> {cached}"
+            )
+            return cached
+
+        # Resolve the inference profile to its underlying foundation model
+        try:
+            response = self.bedrock_control_client.get_inference_profile(
+                inferenceProfileIdentifier=model_id
+            )
+            models = response.get("models", [])
+            if not models:
+                logger.warning(
+                    f"Inference profile {model_id} has no models listed. "
+                    "Cannot determine cachePoint support."
+                )
+                _inference_profile_cachepoint_cache[model_id] = False
+                return False
+
+            # Extract the base model name from the first model's ARN.
+            # Model ARN format: arn:aws:bedrock:<region>::foundation-model/<base-model-name>
+            # e.g., "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6"
+            first_model_arn = models[0].get("modelArn", "")
+            if "foundation-model/" in first_model_arn:
+                base_model_name = first_model_arn.split("foundation-model/")[-1]
+            else:
+                logger.warning(
+                    f"Cannot parse foundation model from ARN: {first_model_arn}"
+                )
+                _inference_profile_cachepoint_cache[model_id] = False
+                return False
+
+            supported = base_model_name in _CACHEPOINT_BASE_MODELS
+            _inference_profile_cachepoint_cache[model_id] = supported
+
+            logger.info(
+                f"Resolved inference profile {model_id} -> "
+                f"foundation model '{base_model_name}' -> "
+                f"cachePoint {'supported' if supported else 'not supported'}"
+            )
+            return supported
+
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            logger.warning(
+                f"Failed to resolve inference profile {model_id} for cachePoint check "
+                f"({error_code}): {e}. Disabling cachePoint for this model."
+            )
+            _inference_profile_cachepoint_cache[model_id] = False
+            return False
+        except Exception as e:
+            logger.warning(
+                f"Unexpected error resolving inference profile {model_id} "
+                f"for cachePoint check: {e}. Disabling cachePoint for this model."
+            )
+            _inference_profile_cachepoint_cache[model_id] = False
+            return False
 
     def __call__(
         self,
@@ -190,7 +1177,9 @@ class BedrockClient:
         context: str = "Unspecified",
         service_tier: Optional[str] = None,
         model_lambda_hook_arn: Optional[str] = None,
-        page_output_uri: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
+        tool_config: Optional[Dict[str, Any]] = None,
+        tool_choice: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Make the instance callable with the same signature as the original function.
@@ -198,7 +1187,7 @@ class BedrockClient:
         This allows instances to be used as drop-in replacements for the function.
 
         Args:
-            model_id: The Bedrock model ID (e.g., 'anthropic.claude-3-sonnet-20240229-v1:0')
+            model_id: The Bedrock model ID (e.g., 'us.anthropic.claude-sonnet-4-6')
             system_prompt: The system prompt as string or list of content objects
             content: The content for the user message (can include text and images)
             temperature: The temperature parameter for model inference (float or string)
@@ -207,9 +1196,8 @@ class BedrockClient:
             max_tokens: Optional max_tokens parameter (int or string)
             max_retries: Optional override for the instance's max_retries setting
             service_tier: Optional service tier (priority, standard, flex)
-            model_lambda_hook_arn: Lambda function ARN (required when model_id is 'LambdaHook')
-            page_output_uri: Optional S3 prefix pointing to the page's output directory
-                            in the output bucket where the previous pipeline step wrote artifacts
+            tool_config: Optional Converse toolConfig (see invoke_model)
+            tool_choice: Optional Converse toolChoice (see invoke_model)
 
         Returns:
             Bedrock response object with metering information
@@ -231,7 +1219,9 @@ class BedrockClient:
             context=context,
             service_tier=service_tier,
             model_lambda_hook_arn=model_lambda_hook_arn,
-            page_output_uri=page_output_uri,
+            reasoning_effort=reasoning_effort,
+            tool_config=tool_config,
+            tool_choice=tool_choice,
         )
 
     def _preprocess_content_for_cachepoint(
@@ -296,7 +1286,9 @@ class BedrockClient:
                 content_type = (
                     "text"
                     if "text" in item
-                    else "image" if "image" in item else "other"
+                    else "image"
+                    if "image" in item
+                    else "other"
                 )
                 logger.debug(
                     f"No cachepoint tags in {content_type} content, passing through unchanged"
@@ -309,6 +1301,174 @@ class BedrockClient:
             )
 
         return processed_content
+
+    @staticmethod
+    def _reject_invalid_tool_property_names(tool_config: Dict[str, Any]) -> None:
+        """Fail locally on property names Bedrock will reject, naming the fix.
+
+        Bedrock enforces ``^[a-zA-Z0-9_.-]{1,64}$`` on ``inputSchema`` property
+        keys, so a document class authored for humans (``"Account Number"``) is
+        rejected — four shipped presets contain such names (GitHub #709). Left to
+        the service, that surfaces as a ``ValidationException`` from deep inside a
+        retry ladder, naming a JSON path rather than a config field.
+
+        This does NOT sanitize on the caller's behalf. Renaming here would hand
+        back a response keyed by names the caller never asked for, with no map to
+        reverse it — silently renaming every field of every extraction. The caller
+        must sanitize *and* keep the map, so it can restore the authored names:
+
+            from idp_common.bedrock.tool_schema import (
+                restore_names, sanitize_tool_schema,
+            )
+            clean, name_map = sanitize_tool_schema(class_schema)
+            ...  # send `clean` as the toolSpec inputSchema
+            fields = restore_names(model_output, name_map)
+
+        Raises:
+            ValueError: naming the offending property paths and the helper.
+        """
+        from idp_common.bedrock.tool_schema import (
+            find_document_metadata_keywords,
+            find_invalid_property_names,
+        )
+
+        offenders: List[str] = []
+        metadata: List[str] = []
+        for tool in tool_config.get("tools") or []:
+            if not isinstance(tool, dict):
+                continue
+            spec = tool.get("toolSpec")
+            if not isinstance(spec, dict):
+                continue
+            schema = (spec.get("inputSchema") or {}).get("json")
+            for path in find_invalid_property_names(schema):
+                offenders.append(f"{spec.get('name', '?')}::{path}")
+            for path in find_document_metadata_keywords(schema):
+                metadata.append(f"{spec.get('name', '?')}::{path}")
+
+        if metadata:
+            # Bedrock meta-validates the schema itself: `$id` must be an RFC 3986
+            # URI-reference, and an IDP class schema sets `$id` to the class NAME,
+            # so a class like "Policy Application Form" fails on the spaces. That
+            # surfaced as a ValidationException naming a JSON path, from inside the
+            # retry ladder, after the request was already billed.
+            raise ValueError(
+                f"tool_config carries schema-DOCUMENT metadata that Bedrock "
+                f"meta-validates and will reject: {', '.join(metadata[:8])}. "
+                f"These keywords ($id/$schema/$anchor/$comment and x-aws-idp-* "
+                f"extensions) constrain nothing, so strip them with "
+                f"idp_common.bedrock.tool_schema.strip_non_wire_keywords() (already "
+                f"applied by sanitize_tool_schema)."
+            )
+
+        if offenders:
+            shown = ", ".join(offenders[:8])
+            more = f" (+{len(offenders) - 8} more)" if len(offenders) > 8 else ""
+            raise ValueError(
+                f"tool_config contains {len(offenders)} name(s) that cannot go on "
+                f"the wire as-is (must match ^[a-zA-Z0-9_.-]{{1,64}}$): {shown}{more}. "
+                f"Property names Bedrock rejects outright; a $defs definition name "
+                f"Bedrock accepts but Claude Sonnet 5 will not resolve the $ref to "
+                f"(#783). "
+                f"Run idp_common.bedrock.tool_schema.sanitize_tool_schema() on the "
+                f"class schema and idp_common.bedrock.tool_schema.restore_names() "
+                f"on the response — refusing to rename fields silently, which "
+                f"would change every extracted field name with no way back. Note "
+                f"Bedrock only validates the TOP level, so nested offenders listed "
+                f"here would be accepted today and break later."
+            )
+
+    @staticmethod
+    def _resolve_tool_config(
+        model_id: str,
+        tool_config: Optional[Dict[str, Any]],
+        tool_choice: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Validate and merge the tool-use parameters into one ``toolConfig``.
+
+        Returns None when neither parameter was supplied, so the Converse request
+        is left exactly as it was before tool support existed.
+
+        Args:
+            model_id: The model ID (or ``LambdaHook`` sentinel) being invoked.
+            tool_config: Converse ``toolConfig`` dict, or None.
+            tool_choice: Converse ``toolChoice`` dict to merge in, or None.
+
+        Returns:
+            The effective ``toolConfig`` to put on the wire, or None.
+
+        Raises:
+            ValueError: If the model does not reach the Converse API, if the
+                model rejects a forced ``toolChoice``, or if ``tool_choice`` was
+                given without ``tool_config``.
+        """
+        if tool_config is None and tool_choice is None:
+            return None
+
+        reason = tool_config_unsupported_reason(model_id)
+        if reason:
+            raise ValueError(
+                f"tool_config/tool_choice is not supported for model "
+                f"'{model_id}': {reason}. Refusing to drop the tool schema "
+                f"silently — check supports_tool_config(model_id) first and use "
+                f"a prompt-based schema for this model."
+            )
+
+        if tool_config is None:
+            raise ValueError(
+                "tool_choice was provided without tool_config. The Converse API "
+                "rejects a toolChoice with no tools; pass the toolConfig that "
+                "declares the tool being chosen."
+            )
+
+        BedrockClient._reject_invalid_tool_property_names(tool_config)
+
+        # A forced choice (``any``/``tool``) is a separate capability from carrying a
+        # toolConfig at all, and Claude Opus 5.5 has the first without the second.
+        # Refuse rather than let Bedrock answer with a ValidationException: the 400
+        # arrives only after the retry budget has been spent on a request that can
+        # never succeed, and its message does not say what to do instead.
+        # ``auto`` is always allowed.
+        #
+        # Checked against the EFFECTIVE choice, before the `tool_choice is None`
+        # return below, because a ``toolChoice`` may arrive either as the parameter
+        # or embedded in ``tool_config`` — the conflict warning further down exists
+        # precisely because both shapes are supported. Guarding only the parameter
+        # would leave the embedded form going to the wire unchecked, which is the
+        # shape a caller outside this repository is most likely to use, since
+        # ``toolChoice`` is a member of ``toolConfig`` in the Converse API itself.
+        effective_choice = (
+            tool_choice if tool_choice is not None else tool_config.get("toolChoice")
+        )
+        if effective_choice and not {"any", "tool"}.isdisjoint(effective_choice):
+            forced_reason = forced_tool_choice_unsupported_reason(model_id)
+            if forced_reason:
+                raise ValueError(
+                    f"A forced toolChoice ({sorted(effective_choice)}) is not "
+                    f"supported for model '{model_id}': {forced_reason}. Check "
+                    f"supports_forced_tool_choice(model_id) first — "
+                    f"toolChoice {{'auto': {{}}}} works on this model, and the "
+                    f"extraction forced-tool path falls back to the prose schema."
+                )
+
+        if tool_choice is None:
+            return tool_config
+
+        # Shallow copy: callers are expected to reuse one deterministic,
+        # per-class toolConfig object (see the prompt-cache note in
+        # invoke_model), so never mutate what we were handed.
+        merged = dict(tool_config)
+        existing_choice = merged.get("toolChoice")
+        if existing_choice is not None and existing_choice != tool_choice:
+            logger.warning(
+                "Both tool_config['toolChoice'] (%s) and the tool_choice "
+                "parameter (%s) were provided; the tool_choice parameter wins.",
+                existing_choice,
+                tool_choice,
+            )
+
+        merged["toolChoice"] = tool_choice
+        return merged
 
     def invoke_model(
         self,
@@ -323,7 +1483,9 @@ class BedrockClient:
         context: str = "Unspecified",
         service_tier: Optional[str] = None,
         model_lambda_hook_arn: Optional[str] = None,
-        page_output_uri: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
+        tool_config: Optional[Dict[str, Any]] = None,
+        tool_choice: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Invoke a Bedrock model or custom Lambda hook with retry logic.
@@ -333,7 +1495,7 @@ class BedrockClient:
         payload and must return a Converse API-compatible response.
 
         Args:
-            model_id: The Bedrock model ID (e.g., 'anthropic.claude-3-sonnet-20240229-v1:0')
+            model_id: The Bedrock model ID (e.g., 'us.anthropic.claude-sonnet-4-6')
                       Use 'LambdaHook' to invoke a custom Lambda function instead.
             system_prompt: The system prompt as string or list of content objects
             content: The content for the user message (can include text and images)
@@ -344,14 +1506,72 @@ class BedrockClient:
             max_retries: Optional override for the instance's max_retries setting
             service_tier: Optional service tier (priority, standard, flex)
             model_lambda_hook_arn: Lambda function ARN (required when model_id is 'LambdaHook')
-            page_output_uri: Optional S3 prefix pointing to the page's output directory
-                            in the output bucket. Enables hooks to access page artifacts
-                            (image, textract JSON, etc.) written by the previous pipeline
-                            step without embedding them in the payload.
+            reasoning_effort: Reasoning effort for OpenAI Responses models
+                (minimal/low/medium/high). Ignored by other model families.
+            tool_config: Optional Converse ``toolConfig`` dict, passed through
+                verbatim, e.g.::
+
+                    {"tools": [{"toolSpec": {
+                        "name": "extract_fields",
+                        "description": "...",
+                        "inputSchema": {"json": {...JSON Schema...}},
+                    }}]}
+
+                Omitted from the request entirely when None (the default), so the
+                request is byte-identical to a call that never passed it.
+            tool_choice: Optional Converse ``toolChoice`` dict, e.g.
+                ``{"tool": {"name": "extract_fields"}}``, ``{"any": {}}`` or
+                ``{"auto": {}}``. This is a *member of* ``toolConfig`` in the
+                Converse API; it is accepted separately here purely as a
+                convenience and is merged into a shallow copy of ``tool_config``
+                (the caller's dict is never mutated). If ``tool_config`` already
+                carries a ``toolChoice``, this parameter wins and a warning is
+                logged. Requires ``tool_config``: passing ``tool_choice`` alone
+                raises ValueError, because Converse rejects a ``toolChoice``
+                with no tools.
 
         Returns:
             Response object with metering information (same format for both Bedrock and Lambda)
+
+        Raises:
+            ValueError: If ``tool_config``/``tool_choice`` is passed for a model
+                that does not reach the Converse API — the ``LambdaHook``
+                sentinel or an OpenAI GPT-5.x Responses model. The schema is
+                never silently dropped; use ``supports_tool_config(model_id)``
+                to branch beforehand if you need a text fallback.
+
+        Tool-use notes (read before adding a caller):
+            * **Response may still be text.** Even with a forced ``toolChoice``,
+              treat a text answer as possible: use
+              ``extract_tool_use_from_response()`` and fall back to
+              ``extract_text_from_response()`` when it returns None.
+            * **No strict mode exists on bedrock-runtime.** ``toolSpec.strict``,
+              ``output_config.format`` and ``response_format`` are all rejected
+              ("Extra inputs are not permitted") on both Converse and
+              InvokeModel. A forced ``toolChoice`` is best-effort constrained
+              decoding, not a grammar guarantee — validate the result.
+            * **Property names must be sanitized by the caller.** Converse
+              rejects *top-level* ``inputSchema.json.properties`` keys that do
+              not match ``^[a-zA-Z0-9_.-]{1,64}$`` — so a key like
+              ``"Account Number"`` fails with
+              ``Property keys should match pattern ...``. Several shipped class
+              schemas contain such names. This method does NOT sanitize; the
+              caller must rename and map back (a shared sanitizer is planned).
+              Sanitize recursively even though only the top level is enforced
+              today.
+            * **Keep the toolConfig deterministic per class.** Tools render
+              *before* ``system`` in the prompt-cache prefix, so changing the
+              tool schema invalidates the entire cached prefix (system prompt
+              included). A per-class, stable ``toolConfig`` caches fine; a
+              per-request one destroys cache hits silently.
         """
+        # Resolve tool-use plumbing BEFORE any routing, so that a caller who
+        # passes a schema to a non-Converse route fails loudly here instead of
+        # getting a plausible-looking free-text answer with no schema applied.
+        effective_tool_config = self._resolve_tool_config(
+            model_id=model_id, tool_config=tool_config, tool_choice=tool_choice
+        )
+
         # Route to Lambda hook if model_id is LambdaHook
         if model_id == LAMBDA_HOOK_MODEL_ID:
             return self._invoke_lambda_hook(
@@ -364,16 +1584,36 @@ class BedrockClient:
                 max_tokens=max_tokens,
                 max_retries=max_retries,
                 context=context,
-                page_output_uri=page_output_uri,
             )
-
-        # Track total requests
-        self._put_metric("BedrockRequestsTotal", 1)
 
         # Use instance max_retries if not overridden
         effective_max_retries = (
             max_retries if max_retries is not None else self.max_retries
         )
+
+        # Route OpenAI GPT-5.x models to the bedrock-mantle Responses API. These
+        # models do NOT support the Converse API used below; they are served via
+        # an OpenAI-compatible REST endpoint. The backend translates the same
+        # (system_prompt, content) inputs and returns the identical
+        # {"response": ..., "metering": ...} structure, so callers are unaffected.
+        # Prompt caching is handled inside openai_responses.py: GPT-5.4/5.5 cache
+        # automatically (markers stripped); GPT-5.6 translates <<CACHEPOINT>>
+        # markers into explicit prompt_cache_breakpoint fields. (This is separate
+        # from CACHEPOINT_SUPPORTED_MODELS, which governs the Converse path only.)
+        if is_openai_responses_model(model_id):
+            return invoke_responses_api(
+                client=self,
+                model_id=model_id,
+                system_prompt=system_prompt,
+                content=content,
+                max_tokens=max_tokens,
+                max_retries=effective_max_retries,
+                context=context,
+                reasoning_effort=reasoning_effort,
+            )
+
+        # Track total requests
+        self._put_metric("BedrockRequestsTotal", 1)
 
         # Format system prompt if needed
         if isinstance(system_prompt, str):
@@ -390,7 +1630,7 @@ class BedrockClient:
         )
 
         if has_cachepoint_tags:
-            if model_id in CACHEPOINT_SUPPORTED_MODELS:
+            if self._is_model_cachepoint_supported(model_id):
                 # Process content for cachePoint tags with supported model
                 processed_content = self._preprocess_content_for_cachepoint(content)
                 logger.info(
@@ -409,7 +1649,9 @@ class BedrockClient:
                         clean_text = item["text"].replace("<<CACHEPOINT>>", "")
                         processed_content.append({"text": clean_text})
                         logger.warning(
-                            f"Removed <<CACHEPOINT>> tags for unsupported model: {model_id}. CachePoint is only supported for: {', '.join(CACHEPOINT_SUPPORTED_MODELS)}"
+                            f"Removed <<CACHEPOINT>> tags for unsupported model: {model_id}. "
+                            "CachePoint is supported for standard cross-region inference profiles "
+                            "and application inference profiles that wrap supported foundation models."
                         )
                     else:
                         # Pass through unchanged
@@ -432,33 +1674,46 @@ class BedrockClient:
                 )
                 temperature = 0.0
 
-        # Initialize inference config with temperature
-        inference_config = {"temperature": temperature}
+        # Claude 4.7+, xAI Grok and OpenAI GPT-6 Astra don't support temperature,
+        # top_k, or top_p: deprecated on Claude, hard-rejected with a 400 on the
+        # other two.
+        is_claude_4_7 = _is_claude_4_7_model(model_id)
+        if strips_sampling_params(model_id):
+            inference_config = {}
+            logger.info(
+                f"Skipping temperature/top_p for {model_id} "
+                "(these parameters are rejected or deprecated for this model)"
+            )
+        else:
+            # Initialize inference config with temperature
+            inference_config = {"temperature": temperature}
 
-        # Handle top_p parameter - use top_p if it's positive, otherwise use temperature
-        # Some models don't allow both temperature and top_p to be specified
-        # This allows temperature=0.0 for deterministic output (recommended by Anthropic)
-        if top_p is not None:
-            # Convert top_p to float if it's a string
-            if isinstance(top_p, str):
-                try:
-                    top_p = float(top_p)
-                except ValueError:
-                    logger.warning(
-                        f"Failed to convert top_p value '{top_p}' to float. Not using top_p."
+            # Handle top_p parameter - use top_p if it's positive, otherwise use temperature
+            # Some models don't allow both temperature and top_p to be specified
+            # This allows temperature=0.0 for deterministic output (recommended by Anthropic)
+            if top_p is not None:
+                # Convert top_p to float if it's a string
+                if isinstance(top_p, str):
+                    try:
+                        top_p = float(top_p)
+                    except ValueError:
+                        logger.warning(
+                            f"Failed to convert top_p value '{top_p}' to float. Not using top_p."
+                        )
+                        top_p = None
+
+                # Only use top_p if it's positive (greater than 0)
+                if top_p is not None and top_p > 0:
+                    inference_config["topP"] = top_p
+                    # Remove temperature when using top_p to avoid conflicts
+                    del inference_config["temperature"]
+                    logger.debug(
+                        f"Using top_p={top_p} for inference (temperature ignored)"
                     )
-                    top_p = None
-
-            # Only use top_p if it's positive (greater than 0)
-            if top_p is not None and top_p > 0:
-                inference_config["topP"] = top_p
-                # Remove temperature when using top_p to avoid conflicts
-                del inference_config["temperature"]
-                logger.debug(f"Using top_p={top_p} for inference (temperature ignored)")
-            else:
-                logger.debug(
-                    f"Using temperature={temperature} for inference (top_p is 0 or None)"
-                )
+                else:
+                    logger.debug(
+                        f"Using temperature={temperature} for inference (top_p is 0 or None)"
+                    )
 
         # Handle max_tokens parameter
         if max_tokens is not None:
@@ -472,9 +1727,41 @@ class BedrockClient:
                     )
                     max_tokens = None
 
-            # Add to inferenceConfig as maxTokens for Nova models
-            if max_tokens is not None and "amazon" in model_id.lower():
-                inference_config["maxTokens"] = max_tokens
+        # Always request the model's maximum output when no explicit value is
+        # given. Bedrock's default-when-omitted is a small truncating value
+        # (measured 4096 for Claude, 2000 for Nova) — there is no "use model max"
+        # sentinel in the Converse API, so we set it explicitly from the single
+        # source of truth (model_config_limits.yaml). Completeness matters more
+        # than an output cap for this accelerator's extraction/confidence passes.
+        if max_tokens is None:
+            try:
+                max_tokens = get_model_max_output_tokens(model_id)
+            except (ValueError, FileNotFoundError):
+                # Unknown model, or limits file unavailable in this runtime: leave
+                # max_tokens unset. If Bedrock truncates or rejects, the over-limit
+                # retry below recovers the real cap.
+                logger.warning(
+                    "Could not resolve maxTokens for %s (missing entry or "
+                    "model_config_limits.yaml unavailable); Bedrock default "
+                    "applies.",
+                    model_id,
+                )
+
+        # Place maxTokens on the carrier the model actually honors.
+        #
+        # ``inferenceConfig.maxTokens`` is the Converse-standard field and is the
+        # DEFAULT for every family, so a newly added model caps correctly without
+        # a code change. Claude is the exception: it takes the value via
+        # ``additionalModelRequestFields.max_tokens`` (set further below), which
+        # is long-verified behavior and left untouched.
+        #
+        # Getting this wrong fails OPEN, not loudly: Grok accepts
+        # ``additionalModelRequestFields.max_tokens`` and silently ignores it
+        # (verified live 2026-09-02 — a request capped at 100 there returned 135
+        # output tokens), so an unsupported carrier means uncapped output rather
+        # than an error.
+        if max_tokens is not None and "anthropic" not in model_id.lower():
+            inference_config["maxTokens"] = max_tokens
 
         # Add additional model fields if needed
         additional_model_fields = {}
@@ -494,11 +1781,41 @@ class BedrockClient:
         # Handle model-specific parameters
         if "anthropic" in model_id.lower():
             # Add parameters to additionalModelRequestFields for Claude (snake_case)
-            if top_k is not None:
+            # Skip top_k for Claude 4.7+ models (deprecated parameter)
+            if top_k is not None and not is_claude_4_7:
                 additional_model_fields["top_k"] = int(top_k)
+            elif top_k is not None and is_claude_4_7:
+                logger.info(
+                    f"Skipping top_k for Claude 4.7+ model: {model_id} "
+                    "(this parameter is deprecated for this model)"
+                )
 
             if max_tokens is not None:
                 additional_model_fields["max_tokens"] = max_tokens
+
+            # Reasoning effort (output_config.effort) for effort-capable Claude
+            # models. Controls thinking depth / output-token spend
+            # (low|medium|high|xhigh|max). Ignored/omitted for models that don't
+            # support it (Sonnet 4.5, Haiku 4.5) to avoid a 400.
+            if reasoning_effort and is_claude_effort_model(model_id):
+                effort = str(reasoning_effort).lower().strip()
+                if effort in CLAUDE_EFFORT_LEVELS:
+                    additional_model_fields["output_config"] = {"effort": effort}
+                    logger.info("Using reasoning effort '%s' for %s", effort, model_id)
+                else:
+                    logger.warning(
+                        "Ignoring unsupported Claude reasoning effort '%s' for %s "
+                        "(valid: %s)",
+                        reasoning_effort,
+                        model_id,
+                        ", ".join(CLAUDE_EFFORT_LEVELS),
+                    )
+            elif reasoning_effort and not is_claude_effort_model(model_id):
+                logger.debug(
+                    "Model %s does not support reasoning effort; ignoring '%s'",
+                    model_id,
+                    reasoning_effort,
+                )
 
         # Handle Nova-specific parameters
         elif "amazon" in model_id.lower():
@@ -510,10 +1827,59 @@ class BedrockClient:
                     additional_model_fields["inferenceConfig"] = {}
                 additional_model_fields["inferenceConfig"]["topK"] = int(top_k)
 
-        # Add 1M context headers if needed
+        # Handle xAI Grok-specific parameters
+        elif is_grok_model(model_id):
+            # Reasoning is always on for Grok; effort rides in
+            # additionalModelRequestFields.reasoning.effort. Claude's
+            # output_config.effort is silently ignored here, and so is any other
+            # unrecognized key — so an unsupported effort value must be dropped
+            # rather than passed through, or the request quietly loses the
+            # setting instead of failing. top_k is deliberately not forwarded
+            # (Grok rejects the sampling group).
+            if reasoning_effort:
+                effort = str(reasoning_effort).lower().strip()
+                if effort in GROK_EFFORT_LEVELS:
+                    additional_model_fields["reasoning"] = {"effort": effort}
+                    logger.info("Using reasoning effort '%s' for %s", effort, model_id)
+                else:
+                    logger.warning(
+                        "Ignoring unsupported Grok reasoning effort '%s' for %s "
+                        "(valid: %s)",
+                        reasoning_effort,
+                        model_id,
+                        ", ".join(GROK_EFFORT_LEVELS),
+                    )
+
+        # Handle OpenAI GPT-6 Astra-specific parameters
+        elif is_astra_model(model_id):
+            # Astra shares Grok's effort CARRIER
+            # (additionalModelRequestFields.reasoning.effort) but not Grok's
+            # vocabulary — see ASTRA_EFFORT_LEVELS. Unlike Grok, Astra REJECTS an
+            # unknown value with a 400 naming the supported set rather than
+            # ignoring it, so dropping out-of-vocabulary values here is what keeps
+            # a stale config from failing every request. top_k is deliberately not
+            # forwarded (Astra rejects the sampling group).
+            if reasoning_effort:
+                effort = str(reasoning_effort).lower().strip()
+                if effort in ASTRA_EFFORT_LEVELS:
+                    additional_model_fields["reasoning"] = {"effort": effort}
+                    logger.info("Using reasoning effort '%s' for %s", effort, model_id)
+                else:
+                    logger.warning(
+                        "Ignoring unsupported Astra reasoning effort '%s' for %s "
+                        "(valid: %s)",
+                        reasoning_effort,
+                        model_id,
+                        ", ".join(ASTRA_EFFORT_LEVELS),
+                    )
+
+        # Add 1M context headers if needed. ``:1m`` is not a model ID Bedrock
+        # knows, so it is replaced by the beta header here; metering_model_id()
+        # removes the same suffix for the metering key below, which keeps the key
+        # naming exactly what was invoked.
         use_model_id = model_id
-        if model_id and model_id.endswith(":1m"):
-            use_model_id = model_id[:-3]  # Remove ':1m'
+        if model_id and model_id.endswith(LONG_CONTEXT_SUFFIX):
+            use_model_id = metering_model_id(model_id)
             if additional_model_fields is None:
                 additional_model_fields = {}
             additional_model_fields["anthropic_beta"] = ["context-1m-2025-08-07"]
@@ -552,6 +1918,18 @@ class BedrockClient:
         # Get guardrail configuration if available
         guardrail_config = self.get_guardrail_config()
 
+        # Enforce Bedrock's many-image dimension cap (#994). This is the only
+        # point that sees the WHOLE request, and the cap binds on the request's
+        # image count — a 29-page section whose pages are each individually
+        # legal fails as a whole — so the per-image guard at
+        # prepare_bedrock_image_attachment structurally cannot catch it. Covers
+        # every service that goes through this client (classification,
+        # assessment, summarization, OCR, evaluation, few-shot examples); the
+        # extraction page-image pool is additionally clamped at load time so the
+        # reduction is recorded in section metadata and reaches the Strands
+        # agentic path, which does not route through here.
+        messages = self._fit_request_images(messages)
+
         # Build converse parameters
         converse_params: Dict[str, Any] = {
             "modelId": use_model_id,
@@ -560,6 +1938,11 @@ class BedrockClient:
             "inferenceConfig": inference_config,
             "additionalModelRequestFields": additional_model_fields,
         }
+
+        # Add the tool configuration if one was supplied. Left absent otherwise,
+        # so requests without tool use are unchanged.
+        if effective_tool_config is not None:
+            converse_params["toolConfig"] = effective_tool_config
 
         # Add service tier if specified
         if normalized_service_tier:
@@ -585,6 +1968,75 @@ class BedrockClient:
 
         return result
 
+    @staticmethod
+    def _fit_request_images(messages: Any) -> Any:
+        """Downscale this request's images to Bedrock's many-image cap (#994).
+
+        Delegates to ``idp_common.image.fit_images_in_request``, which is a
+        no-op unless the request carries more than 20 image/document blocks.
+        Imported lazily: Pillow is not in the ``[core]`` extra, and an install
+        without it cannot be attaching images in the first place. Never raises —
+        the guard exists to stop a request failing, so it must not become a new
+        way for one to fail.
+
+        Returns the message list to send, which is a COPY whenever an image was
+        actually downscaled. ``invoke_model`` is frequently handed the caller's
+        own ``content`` list (when no ``<<CACHEPOINT>>`` tag is present,
+        ``processed_content is content``), so fitting in place would rewrite the
+        caller's block dicts — permanently downscaling, say, a cached few-shot
+        example image or a page-image list a later pass reuses at a point where
+        the tighter cap does not apply. ``deepcopy`` is cheap here: it treats
+        ``bytes`` and ``str`` as atomic, so only the dict/list spine is
+        duplicated, not the image payloads. The count is taken first so a request
+        under the threshold — the overwhelming majority — copies nothing.
+        """
+        try:
+            from idp_common import image
+        except ImportError:
+            return messages
+        try:
+            counted = image.count_request_image_blocks(messages)
+            if (
+                image.max_dimension_for_image_count(counted)
+                >= image.BEDROCK_IMAGE_MAX_DIMENSION
+            ):
+                return messages
+            candidate = copy.deepcopy(messages)
+            return candidate if image.fit_images_in_request(candidate) else messages
+        except Exception as e:  # noqa: BLE001 - best-effort guard
+            logger.warning(
+                "Skipped the Bedrock many-image dimension fit (%s); sending the "
+                "request unchanged.",
+                e,
+            )
+            return messages
+
+    @staticmethod
+    def _apply_max_tokens_limit(converse_params: Dict[str, Any], limit: int) -> bool:
+        """Clamp the request's maxTokens to `limit` in place, if it exceeds it.
+
+        Handles both carriers: the Converse-standard ``inferenceConfig.maxTokens``
+        (Nova, xAI Grok, and any other non-Claude family) and Claude's
+        ``additionalModelRequestFields.max_tokens``. Returns True if a value was
+        actually lowered (so a retry is warranted), False otherwise — the False
+        case prevents an infinite retry when no maxTokens was set or it's already
+        at/below the limit.
+        """
+        changed = False
+        inference_config = converse_params.get("inferenceConfig")
+        if isinstance(inference_config, dict):
+            current = inference_config.get("maxTokens")
+            if isinstance(current, int) and current > limit:
+                inference_config["maxTokens"] = limit
+                changed = True
+        amrf = converse_params.get("additionalModelRequestFields")
+        if isinstance(amrf, dict):
+            current = amrf.get("max_tokens")
+            if isinstance(current, int) and current > limit:
+                amrf["max_tokens"] = limit
+                changed = True
+        return changed
+
     def _invoke_with_retry(
         self,
         model_id: str,
@@ -594,6 +2046,7 @@ class BedrockClient:
         request_start_time: float,
         last_exception: Optional[Exception] = None,
         context: str = "Unspecified",
+        worst_attempt_seconds: float = 0.0,
     ) -> Dict[str, Any]:
         """
         Recursive helper method to handle retries for Bedrock invocation.
@@ -604,6 +2057,11 @@ class BedrockClient:
             max_retries: Maximum number of retry attempts
             request_start_time: Time when the original request started
             last_exception: The last exception encountered (for final error reporting)
+            worst_attempt_seconds: The costliest attempt this ladder has measured so
+                far. Threaded through the recursion because the budget gate below is
+                asked about the worst attempt rather than the last one -- a cheap
+                failure in the middle of a ladder must not re-license an expensive
+                attempt. See lambda_deadline.attempt_cannot_finish.
 
         Returns:
             Bedrock response object with metering information
@@ -611,6 +2069,10 @@ class BedrockClient:
         Raises:
             Exception: The last exception encountered if max retries are exceeded
         """
+        # Bound before the try, so the except handlers can always measure how long
+        # the attempt they are handling cost. Reassigned immediately before the API
+        # call, which is the duration the budget gate below is about.
+        attempt_start_time = time.time()
         try:
             # Create a copy of the messages to sanitize for logging
             sanitized_params = copy.deepcopy(converse_params)
@@ -628,6 +2090,11 @@ class BedrockClient:
             logger.info(
                 f"  - additionalModelRequestFields: {converse_params['additionalModelRequestFields']}"
             )
+
+            # Log the tool configuration when tool use is in play. Only emitted
+            # for tool-enabled calls, so existing log output is unchanged.
+            if "toolConfig" in converse_params:
+                logger.info(f"  - toolConfig: {converse_params['toolConfig']}")
 
             # Log guardrail usage if configured
             if "guardrailConfig" in converse_params:
@@ -678,11 +2145,22 @@ class BedrockClient:
                 "BedrockTotalLatency", total_duration * 1000, "Milliseconds"
             )
 
-            # Create metering data
+            # Create metering data. Keep only NUMERIC usage entries: Bedrock now
+            # returns structured members too (e.g. ``cacheDetails``, a list of
+            # per-TTL cache-write breakdowns) and metering values are summed
+            # (merge_metering_data) and priced (save_reporting_data) as numbers.
+            # The key names what was actually invoked, so a ``:1m`` suffix is
+            # dropped (metering_model_id) — it is a beta header, not a model, and
+            # the 1M context window it selects is priced at the standard rates.
             usage = response.get("usage", {})
             response_with_metering = {
                 "response": response,
-                "metering": {f"{context}/bedrock/{model_id}": {**usage, "requests": 1}},
+                "metering": {
+                    f"{context}/bedrock/{metering_model_id(model_id)}": {
+                        **numeric_usage(usage),
+                        "requests": 1,
+                    }
+                },
             }
 
             return response_with_metering
@@ -699,12 +2177,30 @@ class BedrockClient:
                 "TooManyRequestsException",
                 "ServiceUnavailableException",
                 "ModelErrorException",
+                "InternalServerException",
+                "InternalServerError",
                 "RequestTimeout",
                 "RequestTimeoutException",
             ]
 
             if error_code in retryable_errors:
                 self._put_metric("BedrockThrottles", 1)
+
+                # Emit circuit-breaker specific metrics by error category.
+                # BedrockThrottling is a combined generation+embedding signal
+                # that feeds BedrockServiceOutageAlarm (the circuit breaker
+                # trigger). For per-path counts use BedrockThrottles
+                # (generation, above) or BedrockEmbeddingThrottles (embedding).
+                if error_code == "ServiceUnavailableException":
+                    self._put_metric("BedrockServiceUnavailable", 1)
+                elif error_code in (
+                    "ThrottlingException",
+                    "TooManyRequestsException",
+                    "RequestLimitExceeded",
+                ):
+                    self._put_metric("BedrockThrottling", 1)
+                elif error_code == "ServiceQuotaExceededException":
+                    self._put_metric("BedrockQuotaLimit", 1)
 
                 # Check if we've reached max retries
                 if retry_count >= max_retries:
@@ -715,8 +2211,20 @@ class BedrockClient:
                     self._put_metric("BedrockMaxRetriesExceeded", 1)
                     raise
 
-                # Calculate backoff time
-                backoff = self._calculate_backoff(retry_count)
+                # Calculate backoff time, never sleeping past the end of this
+                # invocation.
+                backoff = self._backoff_within_invocation(retry_count)
+
+                # Refuse to begin an attempt this invocation cannot hold. The cost is
+                # the WORST attempt measured so far, not the last one, plus the backoff
+                # about to be slept -- both come out of the same budget, and a cheap
+                # throttle between two expensive stalls must not reset the comparison.
+                worst = max(worst_attempt_seconds, time.time() - attempt_start_time)
+                if attempt_cannot_finish(worst + backoff, "Bedrock converse"):
+                    self._put_metric("BedrockRequestsFailed", 1)
+                    self._put_metric("BedrockRetryAbandonedOutOfTime", 1)
+                    raise
+
                 logger.warning(
                     f"Bedrock throttling occurred (attempt {retry_count + 1}/{max_retries}). "
                     f"Error: {error_message}. "
@@ -735,10 +2243,57 @@ class BedrockClient:
                     request_start_time=request_start_time,
                     last_exception=e,
                     context=context,
+                    worst_attempt_seconds=worst,
                 )
             else:
+                # Self-heal an over-limit maxTokens request. There is no AWS API
+                # for the per-model output cap, so when model_config_limits.yaml
+                # is stale/missing for a model we requested too many tokens for,
+                # Bedrock's ValidationException states the true limit — parse it,
+                # clamp, and retry once. This keeps a newly-added model working
+                # before its YAML entry is corrected.
+                discovered_limit = (
+                    parse_max_tokens_limit_from_error(error_message)
+                    if error_code == "ValidationException"
+                    else None
+                )
+                if discovered_limit is not None and self._apply_max_tokens_limit(
+                    converse_params, discovered_limit
+                ):
+                    # Deliberately NOT gated on the invocation budget. The attempt it
+                    # repeats is a ValidationException refused in milliseconds, so the
+                    # gate could only ever fire here with the deadline already past —
+                    # and the thing it would refuse is the clamp that makes a
+                    # newly-added model work at all, re-raised as a ValidationException
+                    # the caller classifies as deterministic. A cheap retry that
+                    # usually succeeds is worth more than a marginally earlier failure.
+                    logger.warning(
+                        "maxTokens exceeded model limit for %s; Bedrock reports "
+                        "%d. Clamping and retrying. Update model_config_limits.yaml.",
+                        model_id,
+                        discovered_limit,
+                    )
+                    return self._invoke_with_retry(
+                        model_id=model_id,
+                        converse_params=converse_params,
+                        retry_count=retry_count,
+                        max_retries=max_retries,
+                        request_start_time=request_start_time,
+                        last_exception=e,
+                        context=context,
+                        worst_attempt_seconds=max(
+                            worst_attempt_seconds,
+                            time.time() - attempt_start_time,
+                        ),
+                    )
+
+                # Include model_id: errors like ResourceNotFoundException
+                # ("model version has reached the end of its life") do not name
+                # the model, so logging it here makes the offending model
+                # explicit in the function logs for troubleshooting.
                 logger.error(
-                    f"Non-retryable Bedrock error: {error_code} - {error_message}"
+                    f"Non-retryable Bedrock error for model {model_id}: "
+                    f"{error_code} - {error_message}"
                 )
                 self._put_metric("BedrockRequestsFailed", 1)
                 self._put_metric("BedrockNonRetryableErrors", 1)
@@ -766,8 +2321,21 @@ class BedrockClient:
                 self._put_metric("BedrockMaxRetriesExceeded", 1)
                 raise
 
-            # Calculate backoff time
-            backoff = self._calculate_backoff(retry_count)
+            # Calculate backoff time, never sleeping past the end of this invocation.
+            backoff = self._backoff_within_invocation(retry_count)
+
+            # This is the branch the ladder spent a whole invocation in: a read
+            # timeout costs the client's full read_timeout, and three of those fill a
+            # 900 s function, so by the third the remaining time cannot hold a fourth.
+            # Refuse it and raise the timeout, which the handlers classify as
+            # transient and the state machine retries with its own budget — rather
+            # than starting an attempt that can only end on the wall clock.
+            worst = max(worst_attempt_seconds, time.time() - attempt_start_time)
+            if attempt_cannot_finish(worst + backoff, "Bedrock converse"):
+                self._put_metric("BedrockRequestsFailed", 1)
+                self._put_metric("BedrockRetryAbandonedOutOfTime", 1)
+                raise
+
             logger.warning(
                 f"Bedrock timeout occurred (attempt {retry_count + 1}/{max_retries}). "
                 f"Error: {error_message}. "
@@ -786,6 +2354,7 @@ class BedrockClient:
                 request_start_time=request_start_time,
                 last_exception=e,
                 context=context,
+                worst_attempt_seconds=worst,
             )
 
         except Exception as e:
@@ -827,22 +2396,32 @@ class BedrockClient:
 
     def generate_embedding(
         self,
-        text: str,
+        text: Optional[str] = None,
         model_id: str = "amazon.titan-embed-text-v1",
         max_retries: Optional[int] = None,
+        image_bytes: Optional[bytes] = None,
+        input_type: Optional[str] = "search_document",
     ) -> List[float]:
         """
-        Generate an embedding vector for the given text using Amazon Bedrock.
+        Generate an embedding vector for text and/or image using Amazon Bedrock.
+
+        Supports multiple embedding models:
+        - Amazon Titan Embed Text (text only)
+        - Amazon Titan Multimodal Embedding (text + image)
+        - Cohere Embed v3/v4 (text + image, multimodal)
 
         Args:
-            text: The text to generate embeddings for
+            text: The text to generate embeddings for (optional if image_bytes provided)
             model_id: The embedding model ID to use (default: amazon.titan-embed-text-v1)
             max_retries: Optional override for the instance's max_retries setting
+            image_bytes: Optional image bytes for multimodal embedding models
+            input_type: Input type for Cohere models (search_document, search_query,
+                       classification, clustering). Defaults to search_document.
 
         Returns:
             List of floats representing the embedding vector
         """
-        if not text or not isinstance(text, str):
+        if not text and image_bytes is None:
             # Return an empty vector for empty input
             return []
 
@@ -854,24 +2433,164 @@ class BedrockClient:
         # Track total embedding requests
         self._put_metric("BedrockEmbeddingRequestsTotal", 1)
 
-        # Normalize whitespace and prepare the input text
-        normalized_text = " ".join(text.split())
+        # Normalize whitespace if text provided
+        normalized_text = " ".join(text.split()) if text else None
 
         # Prepare the request body based on the model
-        if "amazon.titan-embed" in model_id:
-            request_body = json.dumps({"inputText": normalized_text})
-        else:
-            # Default format for other models
-            request_body = json.dumps({"text": normalized_text})
+        request_body = self._build_embedding_request_body(
+            model_id=model_id,
+            text=normalized_text,
+            image_bytes=image_bytes,
+            input_type=input_type,
+        )
 
         # Call the recursive embedding function
         return self._generate_embedding_with_retry(
             model_id=model_id,
             request_body=request_body,
-            normalized_text=normalized_text,
+            normalized_text=normalized_text or "(image-only)",
             retry_count=0,
             max_retries=effective_max_retries,
         )
+
+    def generate_embeddings_batch(
+        self,
+        items: List[Dict[str, Any]],
+        model_id: str = "amazon.titan-embed-text-v1",
+        max_retries: Optional[int] = None,
+        max_concurrent: int = 5,
+        input_type: Optional[str] = "search_document",
+        progress_callback: Optional[Any] = None,
+    ) -> List[Optional[List[float]]]:
+        """
+        Generate embeddings for a batch of items with concurrency control.
+
+        Each item in the batch can contain text, image_bytes, or both.
+
+        Args:
+            items: List of dicts with optional 'text' and 'image_bytes' keys
+            model_id: The embedding model ID to use
+            max_retries: Optional override for retry count
+            max_concurrent: Maximum concurrent embedding requests
+            input_type: Input type for Cohere models
+            progress_callback: Optional callable(completed, total) for progress updates
+
+        Returns:
+            List of embedding vectors (None for failed items)
+        """
+        import concurrent.futures
+
+        total = len(items)
+        results: List[Optional[List[float]]] = [None] * total
+        completed = 0
+
+        def _embed_single(index: int, item: Dict[str, Any]) -> tuple:
+            """Embed a single item and return (index, embedding)."""
+            try:
+                embedding = self.generate_embedding(
+                    text=item.get("text"),
+                    model_id=model_id,
+                    max_retries=max_retries,
+                    image_bytes=item.get("image_bytes"),
+                    input_type=input_type,
+                )
+                return (index, embedding)
+            except Exception as e:
+                logger.warning(f"Failed to generate embedding for item {index}: {e}")
+                return (index, None)
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=max_concurrent
+        ) as executor:
+            futures = {
+                executor.submit(_embed_single, i, item): i
+                for i, item in enumerate(items)
+            }
+            for future in concurrent.futures.as_completed(futures):
+                idx, embedding = future.result()
+                results[idx] = embedding
+                completed += 1
+                if progress_callback:
+                    try:
+                        progress_callback(completed, total)
+                    except Exception:
+                        pass
+
+        return results
+
+    def _build_embedding_request_body(
+        self,
+        model_id: str,
+        text: Optional[str] = None,
+        image_bytes: Optional[bytes] = None,
+        input_type: Optional[str] = "search_document",
+    ) -> str:
+        """
+        Build the JSON request body for an embedding model.
+
+        Supports:
+        - Amazon Titan Embed Text v1/v2: text-only via inputText
+        - Amazon Titan Multimodal Embedding: text + image via inputText/inputImage
+        - Cohere Embed v3/v4: text + image via texts/images arrays
+
+        Args:
+            model_id: The embedding model ID
+            text: Optional text input
+            image_bytes: Optional image bytes
+            input_type: Input type for Cohere models
+
+        Returns:
+            JSON string for the request body
+        """
+        import base64
+
+        model_lower = model_id.lower()
+
+        if "cohere" in model_lower:
+            # Cohere Embed v3/v4 format
+            body: Dict[str, Any] = {
+                "input_type": input_type or "search_document",
+            }
+            # Detect v4 models (embed-v4) vs v3 (embed-english-v3, embed-multilingual-v3)
+            is_v4 = "embed-v4" in model_lower
+            if is_v4:
+                # Cohere v4 requires explicit embedding type and supports output_dimension
+                body["embedding_types"] = ["float"]
+                body["output_dimension"] = 1024
+            if text:
+                body["texts"] = [text]
+            if image_bytes is not None:
+                img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+                if is_v4:
+                    # Cohere v4 requires data URI format for images
+                    body["images"] = [f"data:image/png;base64,{img_b64}"]
+                else:
+                    # Cohere v3 uses raw base64
+                    body["images"] = [img_b64]
+            return json.dumps(body)
+
+        elif "titan-embed-image" in model_lower or (
+            "titan-embed" in model_lower and image_bytes is not None
+        ):
+            # Amazon Titan Multimodal Embedding G1 format
+            body = {}
+            if text:
+                body["inputText"] = text
+            if image_bytes is not None:
+                img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+                body["inputImage"] = img_b64
+            return json.dumps(body)
+
+        elif "titan-embed" in model_lower:
+            # Amazon Titan Embed Text v1/v2 (text-only)
+            return json.dumps({"inputText": text or ""})
+
+        else:
+            # Default format
+            body = {}
+            if text:
+                body["text"] = text
+            return json.dumps(body)
 
     def _generate_embedding_with_retry(
         self,
@@ -881,6 +2600,7 @@ class BedrockClient:
         retry_count: int,
         max_retries: int,
         last_exception: Optional[Exception] = None,
+        worst_attempt_seconds: float = 0.0,
     ) -> List[float]:
         """
         Recursive helper method to handle retries for embedding generation.
@@ -899,6 +2619,9 @@ class BedrockClient:
         Raises:
             Exception: The last exception encountered if max retries are exceeded
         """
+        # Bound before the try so the handler can measure the attempt it is handling;
+        # reassigned immediately before the API call.
+        attempt_start_time = time.time()
         try:
             logger.info(
                 f"Bedrock embedding request attempt {retry_count + 1}/{max_retries}:"
@@ -921,8 +2644,17 @@ class BedrockClient:
             # Handle different response formats based on the model
             if "amazon.titan-embed" in model_id:
                 embedding = response_body.get("embedding", [])
+            elif "cohere" in model_id.lower() and "embed-v4" in model_id.lower():
+                # Cohere Embed v4 returns {"embeddings": {"float": [[...]]}}
+                embeddings_obj = response_body.get("embeddings", {})
+                if isinstance(embeddings_obj, dict):
+                    float_embeddings = embeddings_obj.get("float", [])
+                    embedding = float_embeddings[0] if float_embeddings else []
+                else:
+                    # Fallback for unexpected format
+                    embedding = embeddings_obj[0] if embeddings_obj else []
             else:
-                # Default extraction format
+                # Default extraction format (Cohere v3 and others)
                 embedding = response_body.get("embedding", [])
 
             # Track successful requests and latency
@@ -944,6 +2676,8 @@ class BedrockClient:
                 "RequestLimitExceeded",
                 "TooManyRequestsException",
                 "ServiceUnavailableException",
+                "InternalServerException",
+                "InternalServerError",
                 "RequestTimeout",
                 "ReadTimeout",
                 "TimeoutError",
@@ -952,6 +2686,22 @@ class BedrockClient:
 
             if error_code in retryable_errors:
                 self._put_metric("BedrockEmbeddingThrottles", 1)
+
+                # Emit circuit-breaker specific metrics by error category.
+                # BedrockThrottling is a combined generation+embedding signal
+                # that feeds BedrockServiceOutageAlarm (the circuit breaker
+                # trigger). For per-path counts use BedrockEmbeddingThrottles
+                # (embedding, above) or BedrockThrottles (generation).
+                if error_code == "ServiceUnavailableException":
+                    self._put_metric("BedrockServiceUnavailable", 1)
+                elif error_code in (
+                    "ThrottlingException",
+                    "TooManyRequestsException",
+                    "RequestLimitExceeded",
+                ):
+                    self._put_metric("BedrockThrottling", 1)
+                elif error_code == "ServiceQuotaExceededException":
+                    self._put_metric("BedrockQuotaLimit", 1)
 
                 # Check if we've reached max retries
                 if retry_count >= max_retries:
@@ -962,8 +2712,23 @@ class BedrockClient:
                     self._put_metric("BedrockEmbeddingMaxRetriesExceeded", 1)
                     raise
 
-                # Calculate backoff time
-                backoff = self._calculate_backoff(retry_count)
+                # Calculate backoff time, never sleeping past the end of this
+                # invocation. An embedding request is short, so what bites on this
+                # ladder is the sleep rather than the attempt: seven retries at a
+                # 300 s cap is most of a Lambda spent asleep on a throttle.
+                backoff = self._backoff_within_invocation(retry_count)
+
+                # The same gate as the generation ladder, on the same rule. It is
+                # unlikely to fire here precisely because the attempts are cheap, and
+                # an exemption would be the wrong shape: this ladder also retries
+                # ``ReadTimeout`` and ``TimeoutError``, and an embedding call that
+                # does stall gets the same protection as a generation one.
+                worst = max(worst_attempt_seconds, time.time() - attempt_start_time)
+                if attempt_cannot_finish(worst + backoff, "Bedrock embedding"):
+                    self._put_metric("BedrockEmbeddingRequestsFailed", 1)
+                    self._put_metric("BedrockEmbeddingRetryAbandonedOutOfTime", 1)
+                    raise
+
                 logger.warning(
                     f"Bedrock throttling occurred (attempt {retry_count + 1}/{max_retries}). "
                     f"Error: {error_message}. "
@@ -981,10 +2746,12 @@ class BedrockClient:
                     retry_count=retry_count + 1,
                     max_retries=max_retries,
                     last_exception=e,
+                    worst_attempt_seconds=worst,
                 )
             else:
                 logger.error(
-                    f"Non-retryable Bedrock error for embedding: {error_code} - {error_message}"
+                    f"Non-retryable Bedrock error for embedding model {model_id}: "
+                    f"{error_code} - {error_message}"
                 )
                 self._put_metric("BedrockEmbeddingRequestsFailed", 1)
                 self._put_metric("BedrockEmbeddingNonRetryableErrors", 1)
@@ -1009,7 +2776,85 @@ class BedrockClient:
             Extracted text content
         """
         response_obj = response.get("response", response)
-        return response_obj["output"]["message"]["content"][0].get("text", "")
+        content = response_obj["output"]["message"].get("content", [])
+        if not content or len(content) == 0:
+            logger = logging.getLogger(__name__)
+            logger.error(
+                "LLM returned empty content array",
+                extra={"response": response_obj},
+            )
+            return ""
+        # Reasoning models (Claude Sonnet 5 / 4.6+, and any model with extended
+        # thinking on) prepend one or more `reasoningContent` blocks BEFORE the
+        # answer `text` block, so content[0] is often not the text. Concatenate
+        # every `text` block (skipping reasoningContent) so we return the actual
+        # answer regardless of block ordering. Falls back to the old behavior for
+        # single-block responses.
+        text_parts = [
+            item["text"]
+            for item in content
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+        ]
+        return "".join(text_parts)
+
+    def extract_tool_use_from_response(
+        self, response: Dict[str, Any], tool_name: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Extract the structured ``toolUse.input`` dict from a Bedrock response.
+
+        Accepts either the metering-wrapped response returned by
+        ``invoke_model`` or a raw Converse response, matching
+        ``extract_text_from_response``.
+
+        Like that method, this scans **every** content block rather than
+        indexing ``content[0]``: reasoning models (Claude Sonnet 5 / 4.6+, and
+        any model with extended thinking on) emit one or more
+        ``reasoningContent`` blocks BEFORE the answer block, so the ``toolUse``
+        block is frequently not first.
+
+        A None return is a normal, expected outcome — a model can accept a
+        ``toolConfig`` and still answer in prose (``stopReason`` ``end_turn``
+        rather than ``tool_use``), so callers should fall back to
+        ``extract_text_from_response()`` and parse/validate from there.
+
+        Args:
+            response: Bedrock response object (wrapped or raw).
+            tool_name: Optional tool name to match. When given, ``toolUse``
+                blocks for other tools are skipped — useful when the request
+                declared more than one tool.
+
+        Returns:
+            The tool's ``input`` dict, or None if the response contains no
+            matching ``toolUse`` block with a dict input.
+        """
+        response_obj = response.get("response", response)
+        try:
+            content = response_obj["output"]["message"].get("content", []) or []
+        except (KeyError, TypeError):
+            logger.warning(
+                "Response has no output.message.content; cannot extract toolUse"
+            )
+            return None
+
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            tool_use = item.get("toolUse")
+            if not isinstance(tool_use, dict):
+                continue
+            if tool_name is not None and tool_use.get("name") != tool_name:
+                continue
+            tool_input = tool_use.get("input")
+            if isinstance(tool_input, dict):
+                return tool_input
+            logger.warning(
+                "toolUse block for '%s' had a non-dict input (%s); skipping",
+                tool_use.get("name"),
+                type(tool_input).__name__,
+            )
+
+        return None
 
     def format_prompt(
         self,
@@ -1062,7 +2907,6 @@ class BedrockClient:
         max_tokens: Optional[Union[int, str]] = None,
         max_retries: Optional[int] = None,
         context: str = "Unspecified",
-        page_output_uri: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Invoke a custom Lambda function instead of Bedrock for LLM inference.
@@ -1081,8 +2925,6 @@ class BedrockClient:
             max_tokens: Optional max_tokens parameter
             max_retries: Optional override for retry count
             context: Context prefix for metering key
-            page_output_uri: Optional S3 prefix pointing to the page's output directory
-                in the output bucket where the previous pipeline step wrote its artifacts
 
         Returns:
             Response object with metering information (same format as Bedrock responses)
@@ -1097,12 +2939,14 @@ class BedrockClient:
                 "Configure the Lambda function ARN in the configuration."
             )
 
-        # Validate Lambda function name starts with GENAIIDP-
-        # Extract function name from ARN (last segment after ':function:')
+        # Validate Lambda function name starts with GENAIIDP-.
+        # The ARN -> function-name parse is lambda_hook_metering_name's, not a
+        # second copy of it: two copies of one rule is how the UI's copy of the
+        # pricing lookup drifted from the backend's (see PR #952). The
+        # ':function:' guard is kept so this validation's scope is unchanged — a
+        # bare function name is still not checked here.
         if ":function:" in lambda_arn:
-            func_name_part = lambda_arn.split(":function:")[-1]
-            # Handle alias/version suffix (function:name:alias)
-            func_name = func_name_part.split(":")[0]
+            func_name = lambda_hook_metering_name(lambda_arn)
             if not func_name.startswith("GENAIIDP-"):
                 raise ValueError(
                     f"Lambda function name must start with 'GENAIIDP-'. "
@@ -1180,13 +3024,10 @@ class BedrockClient:
             "context": context,
         }
 
-        # Include pageOutputUri if provided — enables hooks to access
-        # page artifacts (image, textract JSON, etc.) from the output bucket
-        if page_output_uri:
-            lambda_payload["pageOutputUri"] = page_output_uri
-
         # Invoke Lambda with retry logic
-        effective_max_retries = max_retries if max_retries is not None else self.max_retries
+        effective_max_retries = (
+            max_retries if max_retries is not None else self.max_retries
+        )
         request_start_time = time.time()
 
         return self._invoke_lambda_hook_with_retry(
@@ -1255,7 +3096,9 @@ class BedrockClient:
                 try:
                     img_bytes = base64.b64decode(img_bytes)
                 except Exception:
-                    logger.warning("Failed to decode base64 image data, passing through")
+                    logger.warning(
+                        "Failed to decode base64 image data, passing through"
+                    )
                     converted_content.append(item)
                     continue
 
@@ -1268,7 +3111,9 @@ class BedrockClient:
                     "gif": "image/gif",
                     "webp": "image/webp",
                 }
-                content_type = content_type_map.get(img_format, "application/octet-stream")
+                content_type = content_type_map.get(
+                    img_format, "application/octet-stream"
+                )
 
                 self.s3_client.put_object(
                     Bucket=working_bucket,
@@ -1287,14 +3132,16 @@ class BedrockClient:
                 if account_id and len(account_id) == 12:
                     s3_location["bucketOwner"] = account_id
 
-                converted_content.append({
-                    "image": {
-                        "format": img_format,
-                        "source": {
-                            "s3Location": s3_location,
-                        },
+                converted_content.append(
+                    {
+                        "image": {
+                            "format": img_format,
+                            "source": {
+                                "s3Location": s3_location,
+                            },
+                        }
                     }
-                })
+                )
 
                 logger.debug(f"Uploaded image to S3: {s3_uri} ({len(img_bytes)} bytes)")
 
@@ -1321,6 +3168,7 @@ class BedrockClient:
         request_start_time: float,
         last_exception: Optional[Exception] = None,
         context: str = "Unspecified",
+        worst_attempt_seconds: float = 0.0,
     ) -> Dict[str, Any]:
         """
         Invoke Lambda hook with retry logic for transient failures.
@@ -1340,6 +3188,9 @@ class BedrockClient:
         Raises:
             Exception: If invocation fails after all retries
         """
+        # Bound before the try so the handlers can measure the attempt they are
+        # handling; reassigned immediately before the invoke.
+        attempt_start_time = time.time()
         try:
             logger.info(
                 f"LambdaHook request attempt {retry_count + 1}/{max_retries}: "
@@ -1372,7 +3223,24 @@ class BedrockClient:
 
                 # Retry on unhandled errors (transient issues)
                 if function_error == "Unhandled" and retry_count < max_retries:
-                    backoff = self._calculate_backoff(retry_count)
+                    backoff = self._backoff_within_invocation(retry_count)
+                    # A hook invocation is the most expensive attempt this client
+                    # makes: ``lambda_client`` waits 840 s for one, so two of them
+                    # exceed the 900 s caller, and every attempt re-runs whatever the
+                    # hook charges for. Raising here is caught by this method's own
+                    # ``except Exception`` below, which does not retry a
+                    # ``RuntimeError`` — the same route the exhausted path takes.
+                    worst = max(worst_attempt_seconds, duration)
+                    if attempt_cannot_finish(worst + backoff, "LambdaHook"):
+                        # ``LambdaHookRequestsFailed`` is NOT emitted here: this raise
+                        # is caught by this method's own ``except Exception`` below,
+                        # which declines to retry a ``RuntimeError`` and emits it on
+                        # the way out. Emitting it at both points counted one failed
+                        # request twice.
+                        self._put_metric("LambdaHookRetryAbandonedOutOfTime", 1)
+                        raise RuntimeError(
+                            f"LambdaHook function error: {error_message}"
+                        )
                     logger.warning(
                         f"LambdaHook transient error, retrying in {backoff:.2f}s"
                     )
@@ -1384,12 +3252,11 @@ class BedrockClient:
                         max_retries=max_retries,
                         request_start_time=request_start_time,
                         context=context,
+                        worst_attempt_seconds=worst,
                     )
 
                 self._put_metric("LambdaHookRequestsFailed", 1)
-                raise RuntimeError(
-                    f"LambdaHook function error: {error_message}"
-                )
+                raise RuntimeError(f"LambdaHook function error: {error_message}")
 
             # Parse response payload
             response_payload = json.loads(response["Payload"].read().decode("utf-8"))
@@ -1411,17 +3278,27 @@ class BedrockClient:
 
             # Track metrics
             self._put_metric("LambdaHookRequestsSucceeded", 1)
-            self._put_metric("LambdaHookRequestLatency", duration * 1000, "Milliseconds")
+            self._put_metric(
+                "LambdaHookRequestLatency", duration * 1000, "Milliseconds"
+            )
 
             total_duration = time.time() - request_start_time
-            self._put_metric("LambdaHookTotalLatency", total_duration * 1000, "Milliseconds")
+            self._put_metric(
+                "LambdaHookTotalLatency", total_duration * 1000, "Milliseconds"
+            )
 
-            # Build response in the same format as Bedrock responses
+            # Build response in the same format as Bedrock responses (numeric
+            # usage entries only — see the Bedrock site).
             response_with_metering = {
                 "response": response_payload,
                 "metering": {
-                    f"{context}/lambda_hook/{lambda_arn}": {
-                        **usage,
+                    # Keyed on the bare FUNCTION NAME, never the raw ARN: an ARN
+                    # embeds account id and region, so no shipped pricing entry
+                    # could ever match it, and its ':function:' delimiter is not
+                    # a '/' so the pricing suffix walk cannot split it either.
+                    # See lambda_hook_metering_name.
+                    f"{context}/lambda_hook/{lambda_hook_metering_name(lambda_arn)}": {
+                        **numeric_usage(usage),
                         "requests": 1,
                     }
                 },
@@ -1442,7 +3319,12 @@ class BedrockClient:
 
             if error_code in retryable_errors and retry_count < max_retries:
                 self._put_metric("LambdaHookThrottles", 1)
-                backoff = self._calculate_backoff(retry_count)
+                backoff = self._backoff_within_invocation(retry_count)
+                worst = max(worst_attempt_seconds, time.time() - attempt_start_time)
+                if attempt_cannot_finish(worst + backoff, "LambdaHook"):
+                    self._put_metric("LambdaHookRequestsFailed", 1)
+                    self._put_metric("LambdaHookRetryAbandonedOutOfTime", 1)
+                    raise
                 logger.warning(
                     f"LambdaHook throttled ({error_code}), retrying in {backoff:.2f}s"
                 )
@@ -1455,18 +3337,25 @@ class BedrockClient:
                     request_start_time=request_start_time,
                     last_exception=e,
                     context=context,
+                    worst_attempt_seconds=worst,
                 )
             else:
-                logger.error(
-                    f"LambdaHook error: {error_code} - {error_message}"
-                )
+                logger.error(f"LambdaHook error: {error_code} - {error_message}")
                 self._put_metric("LambdaHookRequestsFailed", 1)
                 raise
 
         except Exception as e:
             error_message = str(e)
             if "RuntimeError" not in type(e).__name__ and retry_count < max_retries:
-                backoff = self._calculate_backoff(retry_count)
+                backoff = self._backoff_within_invocation(retry_count)
+                # This is the branch a read timeout lands in, and ``lambda_client``
+                # waits 840 s for one. Nominally eight of those is 6,720 s inside a
+                # 900 s caller, each re-running the hook's paid work.
+                worst = max(worst_attempt_seconds, time.time() - attempt_start_time)
+                if attempt_cannot_finish(worst + backoff, "LambdaHook"):
+                    self._put_metric("LambdaHookRequestsFailed", 1)
+                    self._put_metric("LambdaHookRetryAbandonedOutOfTime", 1)
+                    raise
                 logger.warning(
                     f"LambdaHook unexpected error, retrying in {backoff:.2f}s: {error_message}"
                 )
@@ -1479,6 +3368,7 @@ class BedrockClient:
                     request_start_time=request_start_time,
                     last_exception=e,
                     context=context,
+                    worst_attempt_seconds=worst,
                 )
 
             logger.error(f"LambdaHook failed: {error_message}", exc_info=True)
@@ -1499,9 +3389,51 @@ class BedrockClient:
         backoff_seconds = min(self.max_backoff, self.initial_backoff * (2**retry_count))
 
         # Add jitter (random value between 0 and 1 second)
-        jitter = random.random()
+        jitter = random.random()  # nosec B311 - retry jitter
 
         return backoff_seconds + jitter
+
+    def _backoff_within_invocation(self, retry_count: int) -> float:
+        """:meth:`_calculate_backoff`, shortened so the sleep stays in this invocation.
+
+        The ladder is seven retries deep doubling from ``initial_backoff``, so its
+        sleeps run 2, 4, 8, 16, 32, 64, 128 s plus up to a second of jitter each —
+        254.0 to 261.0 s in total, more than a quarter of a 900 s Lambda and spent
+        making no progress. (``max_backoff`` is 300 s and never binds at seven
+        retries: it would first apply at the eighth, one past the end. It bounds the
+        ladder only if ``max_retries`` is raised.) Sleeping past the deadline is worse
+        than useless: the function is killed mid-sleep, which Step Functions
+        classifies as deterministic (``Sandbox.Timedout``, ``MaxAttempts: 1`` since
+        #917) rather than as the transient failure it is.
+
+        Returns 0.0 when nothing is left to spend, which means the next attempt goes
+        out immediately. That is the deliberate asymmetry the deadline bound has
+        everywhere in this codebase: proximity to the wall shortens sleeps, it does
+        not by itself end a ladder, because a cheap attempt may still succeed. What
+        ends a ladder is an attempt whose own measured cost no longer fits
+        (:func:`~idp_common.lambda_deadline.attempt_cannot_finish`), and the callers
+        below ask that separately.
+
+        Outside Lambda, and in any invocation where no handler published a deadline,
+        this returns :meth:`_calculate_backoff` unchanged.
+        """
+        requested = self._calculate_backoff(retry_count)
+        allowed = clamp_sleep_to_budgets(requested)
+        if allowed < requested:
+            remaining = remaining_invocation_seconds()
+            # Says what it did and nothing about what happens next. This line is
+            # emitted BEFORE the caller asks whether the next attempt fits, so any
+            # sentence about where the saved time goes is a claim this function is not
+            # in a position to make — and it sat directly above "another one cannot
+            # finish" in the log whenever the gate then refused.
+            logger.warning(
+                "Shortening Bedrock retry backoff from %.1fs to %.1fs to stay inside "
+                "this invocation (%s left).",
+                requested,
+                allowed,
+                f"{remaining:.1f}s" if remaining is not None else "unknown",
+            )
+        return allowed
 
     def _put_metric(
         self, metric_name: str, value: Union[int, float], unit: str = "Count"
@@ -1612,7 +3544,7 @@ invoke_model.__doc__ = """
 Invoke a Bedrock model with retry logic.
 
 Args:
-    model_id: The Bedrock model ID (e.g., 'anthropic.claude-3-sonnet-20240229-v1:0')
+    model_id: The Bedrock model ID (e.g., 'us.anthropic.claude-sonnet-4-6')
     system_prompt: The system prompt as string or list of content objects
     content: The content for the user message (can include text and images)
     temperature: The temperature parameter for model inference (float or string)
@@ -1621,7 +3553,9 @@ Args:
     max_tokens: Optional max_tokens parameter (int or string)
     max_retries: Optional override for the instance's max_retries setting
     context: Context prefix for metering key (default: "Unspecified")
-    
+    tool_config: Optional Converse toolConfig dict (see BedrockClient.invoke_model)
+    tool_choice: Optional Converse toolChoice dict (see BedrockClient.invoke_model)
+
 Returns:
     Bedrock response object with metering information
 """

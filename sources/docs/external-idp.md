@@ -1,0 +1,806 @@
+---
+title: "External Identity Provider (Federation)"
+---
+
+# External Identity Provider (Federation)
+
+This guide covers how to configure an external SAML or OIDC identity provider to federate authentication through Amazon Cognito for the GenAI IDP solution. Federated users sign in through their organization's identity provider and are automatically mapped to Cognito groups (Admin, Author, Reviewer, Annotator, Viewer) based on group claims from the IdP.
+
+## Overview
+
+The GenAI IDP solution supports optional federation with external identity providers including:
+
+- **PingOne** (SAML or OIDC)
+- **Okta** (SAML or OIDC)
+- **Microsoft Entra ID (Azure AD)** (SAML or OIDC)
+
+When federation is enabled:
+1. Users see a "Sign in with [IdP Name]" button on the Cognito hosted UI
+2. Clicking it redirects to the external IdP for authentication
+3. After successful authentication, the IdP sends group claims back to Cognito
+4. A post-authentication Lambda automatically maps IdP groups to Cognito groups
+5. The user is redirected to the GenAI IDP web UI with appropriate permissions
+
+Native Cognito username/password authentication remains available alongside federation.
+
+## SAML vs OIDC — Which to Choose?
+
+| Consideration | SAML | OIDC |
+|---------------|------|------|
+| Protocol maturity | Older, widely supported in enterprise | Modern, lightweight |
+| Setup complexity | Slightly more involved (metadata XML, certificates) | Simpler (client ID/secret + issuer URL) |
+| Group claims | Sent as SAML attributes in assertion | Sent as claims in ID token |
+| Token format | XML-based assertions | JSON Web Tokens (JWT) |
+| Best for | Enterprise SSO with existing SAML infrastructure | Modern apps, simpler integration |
+
+Both work equally well with this solution. Choose based on what your IdP team prefers or what's already configured in your organization.
+
+## CloudFormation Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `ExternalIdPType` | Yes | `SAML` or `OIDC` (leave empty to disable) |
+| `ExternalIdPName` | Yes | Display name (e.g., `PingOne`, `Okta`) — alphanumeric and hyphens only |
+| `ExternalIdPMetadataURL` | SAML only | SAML metadata document URL from your IdP |
+| `ExternalIdPOIDCIssuer` | OIDC only | OIDC issuer URL (e.g., `https://auth.pingone.com/<env-id>/as`) |
+| `ExternalIdPOIDCClientId` | OIDC only | OIDC client ID from your IdP |
+| `ExternalIdPOIDCClientSecretArn` | OIDC only | ARN of a Secrets Manager secret containing the OIDC client secret (see [Storing the OIDC Client Secret](#storing-the-oidc-client-secret) below) |
+| `ExternalIdPGroupAttributeName` | Optional | Attribute/claim name carrying group membership |
+| `ExternalIdPAdminGroupName` | Optional | IdP group name that maps to Cognito Admin role |
+| `ExternalIdPAuthorGroupName` | Optional | IdP group name that maps to Cognito Author role |
+| `ExternalIdPReviewerGroupName` | Optional | IdP group name that maps to Cognito Reviewer role |
+| `ExternalIdPAnnotatorGroupName` | Optional | IdP group name that maps to Cognito Annotator role. Leaving it empty keeps `Annotator` under manual control — see [Annotators and the `allowedTestSets` Scope](#annotators-and-the-allowedtestsets-scope) |
+| `ExternalIdPViewerGroupName` | Optional | IdP group name that maps to Cognito Viewer role |
+| `ExternalIdPAutoLogin` | Optional | `true` to auto-redirect to IdP, `false` (default) to show login page |
+| `ExternalIdPEmailMutable` | **Yes, for every new federated stack** | Set `true` when creating a stack that uses an external IdP. Makes the `email` attribute mutable so Cognito can rewrite it on each federated sign-in; with the default `false` a federated user can sign in **only once**. Fixed at User Pool creation — **never change it on an existing stack** (the update fails and can wedge the stack). `idp-cli deploy` sets it to `true` automatically when creating a stack with `ExternalIdPType` set. See [Federated `email` Attribute Mutability](#federated-email-attribute-mutability). |
+
+> **`ExternalIdPEmailMutable` is not in the `idp-cli deploy` examples below on purpose.**
+> When the CLI *creates* a stack with `ExternalIdPType` set it adds
+> `ExternalIdPEmailMutable=true` itself. Do **not** add it to an *update* of an
+> existing stack: the flag is fixed at User Pool creation, and the CLI/SDK now refuse
+> an update that tries to change it (CloudFormation would otherwise fail the update
+> and can leave the stack in `UPDATE_ROLLBACK_FAILED`). Deploying through the
+> CloudFormation console instead? Set the parameter to `true` in the *External
+> Identity Provider (Federation)* section **when creating** the stack.
+
+## Annotators and the `allowedTestSets` Scope
+
+`Annotator` maps from an IdP claim exactly like the other four roles, but it is the
+only role where group membership alone grants nothing. An Annotator's access is
+scoped per-object by an `allowedTestSets` list, and that list is assigned in the Web
+UI's User Management screen — the IdP has no way to set it. So a claim-driven
+Annotator arrives with the role and an empty scope, which
+[`testset_scope.py`](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/blob/develop/lib/idp_common_pkg/idp_common/testset_scope.py)
+treats as *denied everything*, until an Admin assigns them a test set. See
+[rbac.md](rbac.md) for the full role.
+
+Whether to set `ExternalIdPAnnotatorGroupName` at all is therefore a real choice:
+
+- **Leave it empty** to keep `Annotator` under manual control. The trigger only
+  removes a user from groups it manages, and a group with no configured IdP name is
+  not managed — so an Annotator you assign by hand in User Management or the Cognito
+  console keeps the role across every subsequent federated sign-in. This is the
+  default, and it is what an existing stack keeps doing after an upgrade.
+- **Set it** to make the IdP authoritative for the role, the same as Admin, Author,
+  Reviewer and Viewer. Membership is then synced on each fresh federated sign-in in
+  both directions: a user whose claim gains the annotator group is added, and a user
+  whose claim still maps to some other role but no longer names the annotator group
+  is **removed** from `Annotator`. Do not set it and also assign Annotator by hand —
+  the hand-assigned membership is stripped the next time that user signs in afresh.
+
+### Removal by claim is not a way to revoke access
+
+Removal happens only on a sign-in that still maps to **at least one** group, for
+`Annotator` and for the other four roles alike. A fresh federated sign-in whose
+claim maps to nothing — because every group was stripped in the IdP, or the claim
+is absent altogether — leaves the user's existing Cognito groups exactly as they
+were. The trigger returns before the sync so that a missing or unreadable claim
+cannot silently strip a user's access, which means clearing someone's IdP groups
+is **not** a way to deprovision them here. Remove them from the application by
+deleting or disabling the Cognito user, or by moving them to a lower-privileged
+IdP group rather than none.
+
+Two further points of timing, once the IdP is authoritative:
+
+- A change in the IdP takes effect at the user's next **fresh** sign-in, not
+  immediately and not at a refresh. `TokenGeneration_RefreshTokens` is deliberately
+  not a trusted trigger source, so a token refresh neither maps nor re-maps groups.
+  Until that fresh sign-in the user keeps the role in Cognito and in their token.
+- At that fresh sign-in the token is correct straight away — the trigger overrides
+  the group claim as well as updating Cognito. What lags is a session that is
+  *already open* when membership changes by some other route (an Admin editing it in
+  User Management, or the same person signing in elsewhere): that session's token
+  keeps the old groups until its next refresh. Server-side checks read the token, so
+  for those few minutes the API and the page can disagree. Signing out and back in
+  resolves it.
+- The **Role** shown in User Management is written when a user's record is first
+  created and is not rewritten afterwards, so for any IdP-mapped role it can show
+  what the user had at their first sign-in rather than what they hold now.
+  Authorization is unaffected: every check reads the groups in the caller's token,
+  never that stored value. The Cognito console, or `admin-list-groups-for-user`, is
+  the authoritative view of current membership.
+
+## Storing the OIDC Client Secret
+
+For OIDC federation, the client secret must be stored in AWS Secrets Manager **before** deploying the stack. This ensures the secret never passes through CloudFormation parameters (which are visible via the `describe-stacks` API).
+
+**Create the secret:**
+
+```bash
+aws secretsmanager create-secret \
+  --name "my-idp-oidc-client-secret" \
+  --description "OIDC client secret for GenAI IDP federation" \
+  --secret-string "YOUR_CLIENT_SECRET_HERE" \
+  --region us-east-1
+```
+
+Note the ARN from the output — you'll pass it as the `ExternalIdPOIDCClientSecretArn` parameter during deployment.
+
+**To rotate the secret later:**
+
+```bash
+aws secretsmanager update-secret \
+  --secret-id "my-idp-oidc-client-secret" \
+  --secret-string "NEW_CLIENT_SECRET_HERE"
+```
+
+Then redeploy the stack to pick up the new value.
+
+## Prerequisites (All Providers)
+
+Before configuring any external IdP, you need:
+
+1. A deployed GenAI IDP stack (deploy first with Cognito-only, then update with federation parameters)
+2. From the stack outputs, note:
+   - **User Pool ID** — e.g., `us-east-1_aBcDeFgHi`
+   - **Cognito Domain** — e.g., `idp-1234567890.auth.us-east-1.amazoncognito.com`
+3. Administrator access to your identity provider
+
+The Cognito values you'll need for IdP configuration:
+
+- **SAML ACS URL**: `https://<cognito-domain>/saml2/idpresponse`
+- **SAML Entity ID**: `urn:amazon:cognito:sp:<user-pool-id>`
+- **OIDC Redirect URI**: `https://<cognito-domain>/oauth2/idpresponse`
+
+> **Custom domain in front of the Web UI?** The redirect URIs you register in the IdP are still the Cognito URLs above — they do **not** change when the application is fronted by a custom domain (e.g. `https://idp.your-org.com`). In this architecture Cognito brokers the federation, so the IdP only ever sees Cognito's `idpresponse` endpoint. The custom domain is configured separately via the `CustomDomainUrl` stack parameter, which adds it to the Cognito App Client's `CallbackURLs` and to all S3 bucket CORS origins. See [API Gateway Hosting → OAuth / Cognito callbacks](./apigateway-hosting.md#oauth--cognito-callbacks).
+
+---
+
+## PingOne
+
+### Option A: PingOne SAML Setup
+
+#### Step 1: Create a SAML Application in PingOne
+
+1. Log in to the **PingOne Admin Console**
+2. Navigate to **Connections** → **Applications**
+3. Click **+ Add Application**
+4. Select **Web App**, then choose **SAML**
+5. Enter an application name (e.g., `GenAI IDP`)
+6. Click **Configure**
+
+#### Step 2: Configure SAML Settings
+
+In the SAML configuration:
+
+1. **ACS URL**:
+   ```
+   https://<cognito-domain>/saml2/idpresponse
+   ```
+2. **Entity ID**:
+   ```
+   urn:amazon:cognito:sp:<user-pool-id>
+   ```
+3. **Binding Type**: Select `HTTP POST`
+4. **Signing**: Enable response signing
+5. Click **Save**
+
+#### Step 3: Configure Attribute Mappings
+
+In the application's **Attribute Mappings** section, add:
+
+| PingOne Attribute | SAML Attribute |
+|-------------------|----------------|
+| `Email Address` | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress` |
+| `Group Names` | `http://schemas.xmlsoap.org/claims/Group` |
+
+The Group Names attribute sends the user's PingOne group memberships in the SAML assertion.
+
+#### Step 4: Create Groups and Assign Users
+
+1. Navigate to **Identities** → **Groups**
+2. Create groups that will map to GenAI IDP roles:
+   - `IDP-Admins`
+   - `IDP-Authors`
+   - `IDP-Reviewers`
+   - `IDP-Viewers`
+3. Assign users to the appropriate groups
+4. Ensure the application has access to these groups (check **Policies** if needed)
+
+#### Step 5: Enable and Get Metadata URL
+
+1. Toggle the application to **Enabled**
+2. Go to **Configuration** → **Connection Details**
+3. Copy the **SAML Metadata URL** — it looks like:
+   ```
+   https://auth.pingone.com/<environment-id>/saml20/metadata/<application-id>
+   ```
+
+#### Step 6: Deploy with SAML Parameters
+
+```bash
+idp-cli deploy \
+    --stack-name my-idp-stack \
+    --from-code . \
+    --parameters "\
+ExternalIdPType=SAML,\
+ExternalIdPName=PingOne,\
+ExternalIdPMetadataURL=https://auth.pingone.com/<env-id>/saml20/metadata/<app-id>,\
+ExternalIdPGroupAttributeName=http://schemas.xmlsoap.org/claims/Group,\
+ExternalIdPAdminGroupName=IDP-Admins,\
+ExternalIdPAuthorGroupName=IDP-Authors,\
+ExternalIdPReviewerGroupName=IDP-Reviewers,\
+ExternalIdPAnnotatorGroupName=IDP-Annotators,\
+ExternalIdPViewerGroupName=IDP-Viewers" \
+    --wait
+```
+
+---
+
+### Option B: PingOne OIDC Setup
+
+#### Step 1: Create an OIDC Application in PingOne
+
+1. Log in to the **PingOne Admin Console**
+2. Navigate to **Connections** → **Applications**
+3. Click **+ Add Application**
+4. Select **Web App**, then choose **OIDC**
+5. Enter an application name (e.g., `GenAI IDP`)
+6. Click **Configure**
+
+#### Step 2: Configure OIDC Settings
+
+1. **Grant Type**: Select `Authorization Code`
+2. **Redirect URI**:
+   ```
+   https://<cognito-domain>/oauth2/idpresponse
+   ```
+3. **Token Endpoint Authentication Method**: `Client Secret Post` or `Client Secret Basic`
+4. **Scopes**: Enable `openid`, `email`, `profile`
+5. Click **Save**
+
+#### Step 3: Add a Custom Groups Scope (if needed)
+
+PingOne may not include group membership in tokens by default. To add it:
+
+1. Go to the application's **Resources** tab
+2. Under **Scopes**, add a custom scope or enable the `groups` scope
+3. Alternatively, configure a custom claim:
+   - Navigate to **Resources** → **Custom Attributes** or **Token Customization**
+   - Add a claim named `groups` that maps to the user's group memberships
+
+#### Step 4: Create Groups and Assign Users
+
+Same as SAML Step 4 above — create `IDP-Admins`, `IDP-Authors`, `IDP-Reviewers`, `IDP-Viewers` groups and assign users.
+
+#### Step 5: Enable and Get OIDC Details
+
+1. Toggle the application to **Enabled**
+2. From the application's **Configuration** tab, note:
+   - **Client ID**
+   - **Client Secret**
+   - **Issuer URL** — typically:
+     ```
+     https://auth.pingone.com/<environment-id>/as
+     ```
+   You can verify the issuer by checking the well-known endpoint:
+   ```
+   https://auth.pingone.com/<environment-id>/as/.well-known/openid-configuration
+   ```
+
+#### Step 6: Deploy with OIDC Parameters
+
+```bash
+idp-cli deploy \
+    --stack-name my-idp-stack \
+    --from-code . \
+    --parameters "\
+ExternalIdPType=OIDC,\
+ExternalIdPName=PingOne,\
+ExternalIdPOIDCIssuer=https://auth.pingone.com/<env-id>/as,\
+ExternalIdPOIDCClientId=<your-client-id>,\
+ExternalIdPOIDCClientSecretArn=arn:aws:secretsmanager:us-east-1:123456789012:secret:my-pingone-oidc-secret-AbCdEf,\
+ExternalIdPGroupAttributeName=groups,\
+ExternalIdPAdminGroupName=IDP-Admins,\
+ExternalIdPAuthorGroupName=IDP-Authors,\
+ExternalIdPReviewerGroupName=IDP-Reviewers,\
+ExternalIdPAnnotatorGroupName=IDP-Annotators,\
+ExternalIdPViewerGroupName=IDP-Viewers" \
+    --wait
+```
+
+---
+
+## Okta
+
+### Option A: Okta SAML Setup
+
+#### Step 1: Create a SAML Application in Okta
+
+1. Log in to the **Okta Admin Console**
+2. Navigate to **Applications** → **Applications**
+3. Click **Create App Integration**
+4. Select **SAML 2.0**, click **Next**
+5. Enter an app name (e.g., `GenAI IDP`), click **Next**
+
+#### Step 2: Configure SAML Settings
+
+1. **Single sign-on URL**:
+   ```
+   https://<cognito-domain>/saml2/idpresponse
+   ```
+2. **Audience URI (SP Entity ID)**:
+   ```
+   urn:amazon:cognito:sp:<user-pool-id>
+   ```
+3. **Name ID format**: `EmailAddress`
+4. **Application username**: `Email`
+
+#### Step 3: Configure Attribute Statements
+
+Add the following attribute statements in the **Attribute Statements** section:
+
+| Name | Value |
+|------|-------|
+| `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress` | `user.email` |
+| `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname` | `user.firstName` |
+| `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname` | `user.lastName` |
+
+> **Note:** The `givenname` and `surname` attributes enable user display names in the IDP web portal. These standard SAML claim URIs work consistently across all identity providers (Okta, Entra ID, PingOne).
+
+Add a **Group Attribute Statement**:
+
+| Name | Filter |
+|------|--------|
+| `http://schemas.xmlsoap.org/claims/Group` | Matches regex: `IDP-.*` (or adjust to match your group naming) |
+
+#### Step 4: Create Groups and Assign Users
+
+1. Navigate to **Directory** → **Groups**
+2. Create groups: `IDP-Admins`, `IDP-Authors`, `IDP-Reviewers`, `IDP-Viewers`
+3. Assign users to groups
+4. Go back to the application → **Assignments** tab → assign the groups to the app
+
+#### Step 5: Get Metadata URL
+
+1. Go to the application's **Sign On** tab
+2. Under **SAML Signing Certificates**, find the **Metadata URL** — or use:
+   ```
+   https://<your-okta-domain>/app/<app-id>/sso/saml/metadata
+   ```
+
+#### Step 6: Deploy with SAML Parameters
+
+```bash
+idp-cli deploy \
+    --stack-name my-idp-stack \
+    --from-code . \
+    --parameters "\
+ExternalIdPType=SAML,\
+ExternalIdPName=Okta,\
+ExternalIdPMetadataURL=https://<okta-domain>/app/<app-id>/sso/saml/metadata,\
+ExternalIdPGroupAttributeName=http://schemas.xmlsoap.org/claims/Group,\
+ExternalIdPAdminGroupName=IDP-Admins,\
+ExternalIdPAuthorGroupName=IDP-Authors,\
+ExternalIdPReviewerGroupName=IDP-Reviewers,\
+ExternalIdPAnnotatorGroupName=IDP-Annotators,\
+ExternalIdPViewerGroupName=IDP-Viewers" \
+    --wait
+```
+
+---
+
+### Option B: Okta OIDC Setup
+
+#### Step 1: Create an OIDC Application in Okta
+
+1. Log in to the **Okta Admin Console**
+2. Navigate to **Applications** → **Applications**
+3. Click **Create App Integration**
+4. Select **OIDC - OpenID Connect**, then **Web Application**, click **Next**
+5. Enter an app name (e.g., `GenAI IDP`)
+
+#### Step 2: Configure OIDC Settings
+
+1. **Grant type**: `Authorization Code`
+2. **Sign-in redirect URI**:
+   ```
+   https://<cognito-domain>/oauth2/idpresponse
+   ```
+3. **Sign-out redirect URI**: Your web UI URL
+4. **Assignments**: Select the groups or users who should have access
+
+#### Step 3: Configure Groups Claim
+
+1. Navigate to **Security** → **API** → **Authorization Servers**
+2. Select the `default` authorization server (or your custom one)
+3. Go to the **Claims** tab → **Add Claim**:
+   - **Name**: `groups`
+   - **Include in token type**: `ID Token` (Always)
+   - **Value type**: `Groups`
+   - **Filter**: Matches regex `IDP-.*` (or adjust to your naming)
+
+#### Step 4: Get OIDC Details
+
+From the application's **General** tab:
+- **Client ID**
+- **Client Secret**
+- **Issuer URL**: `https://<your-okta-domain>/oauth2/default`
+
+#### Step 5: Deploy with OIDC Parameters
+
+```bash
+idp-cli deploy \
+    --stack-name my-idp-stack \
+    --from-code . \
+    --parameters "\
+ExternalIdPType=OIDC,\
+ExternalIdPName=Okta,\
+ExternalIdPOIDCIssuer=https://<okta-domain>/oauth2/default,\
+ExternalIdPOIDCClientId=<your-client-id>,\
+ExternalIdPOIDCClientSecretArn=arn:aws:secretsmanager:us-east-1:123456789012:secret:my-okta-oidc-secret-AbCdEf,\
+ExternalIdPGroupAttributeName=groups,\
+ExternalIdPAdminGroupName=IDP-Admins,\
+ExternalIdPAuthorGroupName=IDP-Authors,\
+ExternalIdPReviewerGroupName=IDP-Reviewers,\
+ExternalIdPAnnotatorGroupName=IDP-Annotators,\
+ExternalIdPViewerGroupName=IDP-Viewers" \
+    --wait
+```
+
+---
+
+## Microsoft Entra ID (Azure AD)
+
+### Option A: Entra ID SAML Setup
+
+#### Step 1: Create an Enterprise Application
+
+1. Log in to the **Azure Portal**
+2. Navigate to **Microsoft Entra ID** → **Enterprise applications**
+3. Click **New application** → **Create your own application**
+4. Enter a name (e.g., `GenAI IDP`), select **Integrate any other application**, click **Create**
+
+#### Step 2: Configure SAML SSO
+
+1. Go to **Single sign-on** → select **SAML**
+2. Edit **Basic SAML Configuration**:
+   - **Identifier (Entity ID)**:
+     ```
+     urn:amazon:cognito:sp:<user-pool-id>
+     ```
+   - **Reply URL (ACS URL)**:
+     ```
+     https://<cognito-domain>/saml2/idpresponse
+     ```
+3. Click **Save**
+
+#### Step 3: Configure Attributes and Claims
+
+1. Click **Edit** on **Attributes & Claims**
+2. Verify the email claim exists:
+   - **Claim name**: `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress`
+   - **Source attribute**: `user.mail`
+3. Add a group claim:
+   - Click **Add a group claim**
+   - Select **Security groups** or **Groups assigned to the application**
+   - Under **Advanced options**, check **Customize the name of the group claim**
+   - **Name**: `http://schemas.xmlsoap.org/claims/Group`
+   - **Source**: `Group ID` (or `Display Name` if you prefer readable names)
+
+> **Note**: If using Group IDs, your `ExternalIdPAdminGroupName` etc. parameters must use the Entra group object IDs (GUIDs) rather than display names.
+
+#### Step 4: Create Groups and Assign Users
+
+1. Navigate to **Microsoft Entra ID** → **Groups**
+2. Create groups: `IDP-Admins`, `IDP-Authors`, `IDP-Reviewers`, `IDP-Viewers`
+3. Add users to groups
+4. Go back to the Enterprise Application → **Users and groups** → assign the groups
+
+#### Step 5: Get Metadata URL
+
+1. Go to **Single sign-on** → **SAML Certificates** section
+2. Copy the **App Federation Metadata Url** — it looks like:
+   ```
+   https://login.microsoftonline.com/<tenant-id>/federationmetadata/2007-06/federationmetadata.xml?appid=<app-id>
+   ```
+
+#### Step 6: Deploy with SAML Parameters
+
+```bash
+idp-cli deploy \
+    --stack-name my-idp-stack \
+    --from-code . \
+    --parameters "\
+ExternalIdPType=SAML,\
+ExternalIdPName=EntraID,\
+ExternalIdPMetadataURL=https://login.microsoftonline.com/<tenant-id>/federationmetadata/2007-06/federationmetadata.xml?appid=<app-id>,\
+ExternalIdPGroupAttributeName=http://schemas.xmlsoap.org/claims/Group,\
+ExternalIdPAdminGroupName=IDP-Admins,\
+ExternalIdPAuthorGroupName=IDP-Authors,\
+ExternalIdPReviewerGroupName=IDP-Reviewers,\
+ExternalIdPAnnotatorGroupName=IDP-Annotators,\
+ExternalIdPViewerGroupName=IDP-Viewers" \
+    --wait
+```
+
+---
+
+### Option B: Entra ID OIDC Setup
+
+#### Step 1: Register an Application
+
+1. Log in to the **Azure Portal**
+2. Navigate to **Microsoft Entra ID** → **App registrations**
+3. Click **New registration**
+4. Enter a name (e.g., `GenAI IDP`)
+5. **Redirect URI**: Select `Web` and enter:
+   ```
+   https://<cognito-domain>/oauth2/idpresponse
+   ```
+6. Click **Register**
+
+#### Step 2: Configure Client Secret
+
+1. Go to **Certificates & secrets** → **New client secret**
+2. Add a description and expiration
+3. Copy the **Value** (this is your client secret — it's only shown once)
+
+#### Step 3: Configure Token Claims
+
+1. Go to **Token configuration** → **Add groups claim**
+2. Select **Security groups** (or **Groups assigned to the application**)
+3. For **ID token**, select **Group ID**
+4. Click **Add**
+
+#### Step 4: Configure API Permissions
+
+1. Go to **API permissions**
+2. Ensure these are granted:
+   - `openid`
+   - `email`
+   - `profile`
+
+#### Step 5: Get OIDC Details
+
+- **Client ID**: From the app's **Overview** page
+- **Client Secret**: From Step 2
+- **Issuer URL**:
+  ```
+  https://login.microsoftonline.com/<tenant-id>/v2.0
+  ```
+
+#### Step 6: Deploy with OIDC Parameters
+
+```bash
+idp-cli deploy \
+    --stack-name my-idp-stack \
+    --from-code . \
+    --parameters "\
+ExternalIdPType=OIDC,\
+ExternalIdPName=EntraID,\
+ExternalIdPOIDCIssuer=https://login.microsoftonline.com/<tenant-id>/v2.0,\
+ExternalIdPOIDCClientId=<your-client-id>,\
+ExternalIdPOIDCClientSecretArn=arn:aws:secretsmanager:us-east-1:123456789012:secret:my-entraid-oidc-secret-AbCdEf,\
+ExternalIdPGroupAttributeName=groups,\
+ExternalIdPAdminGroupName=<admin-group-object-id>,\
+ExternalIdPAuthorGroupName=<author-group-object-id>,\
+ExternalIdPReviewerGroupName=<reviewer-group-object-id>,\
+ExternalIdPAnnotatorGroupName=<annotator-group-object-id>,\
+ExternalIdPViewerGroupName=<viewer-group-object-id>" \
+    --wait
+```
+
+> **Note**: Entra ID OIDC sends group object IDs (GUIDs) by default, not display names. Use the group object IDs from the Azure Portal as your mapping values.
+
+---
+
+## Verifying the Integration
+
+After deploying with federation parameters:
+
+1. Navigate to the GenAI IDP web UI
+2. The Cognito hosted UI should show a button labeled with your IdP name (e.g., "PingOne")
+3. Click it to be redirected to your IdP for authentication
+4. After signing in, you should be redirected back to the GenAI IDP web UI
+5. Verify your role matches your IdP group membership by checking the user profile
+
+## Removing Federation
+
+To revert to Cognito-only authentication, update the stack and set `ExternalIdPType` back to empty:
+
+```bash
+idp-cli deploy \
+    --stack-name my-idp-stack \
+    --from-code . \
+    --parameters "ExternalIdPType=" \
+    --wait
+```
+
+This removes the external identity provider, the group mapping Lambda, and reverts the User Pool Client to Cognito-only. Existing Cognito-native users are unaffected.
+
+## Troubleshooting
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| "Invalid saml_response" error | ACS URL or Entity ID mismatch | Verify they match exactly between your IdP and Cognito |
+| User signs in but has no permissions | Group claim not mapped or group names don't match | Check `ExternalIdPGroupAttributeName` matches the IdP attribute name, and group names are case-sensitive exact matches |
+| Redirect loop after sign-in | Callback URL mismatch | Ensure the Cognito User Pool Client callback URL includes your web UI URL (with and without trailing slash) |
+| "Invalid_grant" error (OIDC) | Client secret incorrect or expired | Regenerate the client secret in your IdP and update the stack parameter |
+| Groups not appearing in token | IdP not configured to send groups | Check IdP group claim configuration (see provider-specific steps above) |
+| "Application is not enabled" (PingOne) | PingOne app is disabled | Toggle the application to Enabled in PingOne admin console |
+| "Unsupported authentication method" (PingOne OIDC) | Token endpoint auth method mismatch | Set PingOne OIDC app to Client Secret Post |
+| "RedirectUri is not registered" | Callback URL trailing slash mismatch | Ensure both with and without trailing slash variants are registered |
+| User disabled but can still sign in | IdP SSO session still active in browser | Revoke the user's active sessions in the IdP admin console, or wait for the SSO session to expire |
+| Sign out signs user back in (auto-login) | IdP SSO session persists after Cognito logout | Expected behavior with auto-login enabled — see Auto-Login Behavior below |
+| `error_description=user.email%3A+Attribute+cannot+be+updated` after first login | The pool's `email` schema attribute is immutable (`ExternalIdPEmailMutable` was `false`, the default, when the stack was created). Cognito rewrites the mapped `email` attribute on every federated login, so the second login is rejected. Schema flags are fixed at pool creation and cannot be changed in place. | **New deployments:** set `ExternalIdPEmailMutable=true` at creation (the CLI does this automatically when `ExternalIdPType` is set). **Existing deployments:** do **not** flip the parameter on the running stack — the update fails and can leave the stack in `UPDATE_ROLLBACK_FAILED`. Deploy a **new** stack with the flag set; federated users re-federate against the new pool (no migration path for `EXTERNAL_PROVIDER` records). As a one-shot bridge, an admin can `aws cognito-idp admin-delete-user` the affected user — buys exactly one additional login. **Note:** per-user state in DynamoDB keyed on the old Cognito `sub` (`UsersTable` preferences, `AllowedConfigVersions`) is orphaned by a pool replacement; an admin can re-key those records to the new `sub` after re-federation if continuity matters. See [Federated `email` Attribute Mutability](#federated-email-attribute-mutability). |
+| A federated user signs in but is not added to any Cognito group | The trigger only honours `custom:idp_groups` for a user linked to the provider named by `ExternalIdPName`, and only on a fresh sign-in. Check the trigger's CloudWatch logs for `has no federated identities`, `is not federated through`, or `is not a fresh sign-in`. | Confirm the user signed in through the external IdP (not as a Cognito-native user), and that `ExternalIdPName` matches the provider name in the pool. See "How Group Mapping Decides What to Trust" below. |
+
+## How Group Mapping Decides What to Trust
+
+`ExternalIdPGroupAttributeName` tells Cognito to map your IdP's group claim onto
+the `custom:idp_groups` User Pool attribute. `ExternalIdPGroupMappingFunction` — the
+pre-token-generation trigger — reads that attribute and assigns the corresponding
+Cognito group (`Admin`, `Author`, `Reviewer`, `Annotator`, `Viewer`). A claim value
+that matches none of the configured `ExternalIdP*GroupName` parameters is discarded,
+and the trigger logs a warning naming it — see
+[Checking Lambda Logs](#checking-lambda-logs).
+
+The attribute itself is not a trustworthy signal on its own. It is `Mutable: true`,
+and because Cognito applies IdP attribute mapping *as the app client*, a mapped
+attribute must also appear in the client's `WriteAttributes` — which means a user's
+own access token can write it with `UpdateUserAttributes`. Nothing about the stored
+value records who put it there.
+
+The trigger therefore requires two things before it grants any group:
+
+1. **Provenance.** The signing-in user must be linked to the provider named by
+   `ExternalIdPName`. The trigger reads the Cognito-managed `identities` attribute
+   via `AdminGetUser` — a field no client can write — and ignores
+   `custom:idp_groups` entirely for anyone who is not federated through that
+   provider. A Cognito-native user who sets the attribute on their own profile
+   gains nothing.
+2. **Freshness.** Only a fresh sign-in is honoured, never a token refresh. At a
+   fresh federated sign-in Cognito has just rewritten the mapped attribute from the
+   assertion, so the value the trigger reads is the IdP's. On a refresh the stored
+   attribute could be whatever the user last wrote, so the trigger leaves group
+   membership alone and the token carries the membership already synced to Cognito.
+
+Both checks fail closed: if the provenance read fails, or the trigger source is not
+a fresh sign-in, no group is added or removed and no token override is emitted.
+
+**Assert the group claim for every federated user.** One case remains where a
+self-set value could be read as authoritative: a user who is already federated
+through the trusted provider sets `custom:idp_groups` themselves, and their next
+fresh sign-in arrives with the group claim *absent* from the assertion, so Cognito
+has no value to overwrite it with. Configuring the IdP to send the group attribute
+for all users — including users in no group, as an empty value — removes that case.
+
+The `WriteAttributes` list on `UserPoolClient` names only the attributes that must
+be writable: the IdP-mapped ones. Left unset, Cognito's default lets a user write
+every mutable attribute, so naming the set explicitly keeps everything else
+read-only to end users. The Web UI writes no user attributes.
+
+## Federated `email` Attribute Mutability
+
+Cognito's IdP attribute-mapping pipeline writes mapped attributes (`email`,
+`given_name`, `family_name`, `custom:idp_groups`) on **every** federated sign-in, not
+only when the user record is created, and an immutable attribute cannot be rewritten
+even with an identical value. Whether the pool's `email` attribute is mutable is set by
+the **`ExternalIdPEmailMutable`** parameter when the stack is created:
+
+| `ExternalIdPEmailMutable` at stack creation | Native sign-in | Federated sign-in |
+|---|---|---|
+| `false` (template default) | Works | **Exactly one sign-in per user.** The second attempt is rejected with `user.email: Attribute cannot be updated`; IdP-driven role changes cannot reach an existing federated user. |
+| `true` (**required for federated deployments**) | Works | Works repeatedly; a changed group claim is applied on the next sign-in. |
+
+- **Set it to `true` for every new stack that configures an external IdP.**
+  `idp-cli deploy` does this automatically when it creates a stack with
+  `ExternalIdPType` set. In the CloudFormation console the parameter is in the
+  *External Identity Provider (Federation)* section.
+- **Never change it on an existing stack.** A Cognito schema flag is fixed at User
+  Pool creation. Changing it in place fails the update with a misleading
+  `Required custom attributes are not supported` error and can leave the stack in
+  `UPDATE_ROLLBACK_FAILED`. This is why the template default remains `false`: an
+  unconditional `Mutable: true` was shipped once and reverted because it broke every
+  existing stack's next update. Keep whatever value the stack was created with.
+- `Required: true` is retained either way: every user record (native or federated)
+  must have an email, and the app keys user-scoped settings on it.
+- **Self-service email changes are verification-gated when the attribute is mutable.**
+  `email` is in the app client's `WriteAttributes` because it is IdP-mapped, so on a
+  mutable pool a native user's own token could rewrite it — and the API resolves
+  config-version scope from the token's `email` claim. Pools created with
+  `ExternalIdPEmailMutable=true` therefore also set
+  `UserAttributeUpdateSettings.AttributesRequireVerificationBeforeUpdate: [email]`, so
+  a user-initiated change takes effect only after a code sent to the *new* address is
+  confirmed; a user cannot adopt an address they do not control.
+- **A changed address no longer moves a user out of their own scope.**
+  `allowedConfigVersions` is resolved from the **immutable Cognito `sub`** first — via a
+  `SUB#<sub>` pointer item on `UsersTable` — and from the `email` claim second, so an
+  address that diverges from the row it should match no longer reads as "no row", and
+  "no row" is what means *unrestricted*. On a mutable pool this closes the case that
+  mattered most: a non-admin *native* user whose scope was restricted could call
+  `UpdateUserAttributes` directly (the Web UI offers no such control), verify a fresh
+  address they control, and on their next token find no row — losing the restriction,
+  though never gaining a role. Their `sub` does not change, so the pointer still finds
+  their row. The same applies to Cognito re-applying the IdP `AttributeMapping` on every
+  federated sign-in, and to a case difference, which exact matching used to miss. See
+  [Resolving *whose* Scope](./rbac.md#resolving-whose-scope--two-keys-and-the-lookup-fails-closed).
+- ⚠️ **It closes for rows that record a `sub`, and not before.** The `sub` is written by
+  `createUser` and back-filled for pre-existing rows by the Cognito sync that runs on
+  every Admin `listUsers` — the workflow an administrator has to go through to set a
+  scope at all. A row the back-fill has not reached still resolves on email alone and
+  keeps the original exposure. After upgrading a federated deployment, open **User
+  Management** once as an Admin to run the back-fill, and keep managing scoped users
+  through the IdP.
+- ⚠️ **The back-fill cannot reach a row whose address already changed beyond case.** It
+  matches a Cognito account to its row on the recorded `sub`, the exact address, or the
+  case-folded address. A user who was re-mapped or renamed *before* this code ever ran
+  matches none of those, so the sync writes them a fresh, unscoped row — as it has
+  always done — and their original scoped row keeps the email-only exposure
+  indefinitely. Re-applying their scope to the row their current address resolves to is
+  the fix; `docs/rbac.md` has a one-line scan that lists every row still lacking a
+  `cognitoSub`.
+  Tracked as a follow-up to
+  [#835](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/835).
+  This is also why the flag stays opt-in for federated deployments rather than
+  defaulting on for every new stack.
+
+**Existing deployments created with `false`:** the only way to a mutable attribute is a
+new User Pool, which in this solution means a new stack. Pre-existing
+`EXTERNAL_PROVIDER` user records cannot be migrated and users must re-federate; their
+new Cognito `sub` orphans per-user rows in `UsersTable` / `AllowedConfigVersions`,
+which an admin can re-key. (A new pool means new `sub` values. The old pool's pointers
+still name rows that exist, but no account in the new pool can present those `sub`
+values, so nothing reads them; re-running the sync from User Management writes the new
+ones.) As a one-shot bridge an admin can
+`aws cognito-idp admin-delete-user` the affected user, which buys exactly one
+additional login. Tracked in [#835](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/835).
+
+## Auto-Login Behavior
+
+When `ExternalIdPAutoLogin` is enabled:
+
+- Users are automatically redirected to the external IdP when visiting the app
+- Sign-out clears the Cognito session and redirects through Cognito's logout endpoint
+- If the IdP SSO session is still active, the user may be automatically signed back in on the next visit
+- This is standard SSO behavior — the IdP controls session lifetime, not the app
+- To fully sign out, users must also sign out of their IdP (e.g., PingOne, Okta, Entra ID)
+- Organizations can control this by configuring SSO session timeouts in their IdP
+- Set `ExternalIdPAutoLogin` to `false` if your organization requires explicit sign-in on each visit
+
+### Checking Lambda Logs
+
+The `ExternalIdPGroupMappingFunction` logs every federated sign-in with group mapping details. Check CloudWatch Logs for the function to debug group mapping issues:
+
+```bash
+aws logs tail /aws/lambda/<stack-name>-ExternalIdPGroupMappingFunction-<id> --follow
+```
+
+If a federated user signs in with fewer permissions than expected, the line to look
+for names the claim values the trigger discarded:
+
+```
+Ignoring IdP group(s) with no Cognito mapping for user alice@example.com:
+['IDP-Annotators']. Set the matching ExternalIdP*GroupName stack parameter to map them.
+```
+
+That is almost always a mismatch between the group name your IdP asserts and the
+value in the corresponding `ExternalIdP*GroupName` parameter — the names must match
+exactly, and Entra ID sends group **object IDs** rather than display names. It also
+appears when the claim names a group that has no role in this solution at all, which
+is expected and harmless.
+
+The warning is emitted per sign-in whenever any claim value goes unmapped, including
+when other values in the same claim map successfully. Only group names are logged;
+the token and the rest of the claim set are not.

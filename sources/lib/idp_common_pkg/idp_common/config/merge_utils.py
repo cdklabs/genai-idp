@@ -12,21 +12,26 @@ This module provides utilities for:
 
 import logging
 import os
-import re
 import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import yaml
-from copy import deepcopy
+
+from idp_common.bedrock.model_utils import (
+    get_model_max_output_tokens,
+    resolve_model_id_from_arn,
+)
+from idp_common.config.retired_models import retirement_of
 
 # Use importlib.resources for Python 3.9+
 if sys.version_info >= (3, 9):
-    from importlib.resources import files as importlib_files
-    from importlib.resources import as_file
+    from importlib.resources import (
+        files as importlib_files,  # nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2
+    )
 else:
     from importlib_resources import files as importlib_files
-    from importlib_resources import as_file
 
 logger = logging.getLogger(__name__)
 
@@ -402,6 +407,7 @@ def merge_config_with_defaults(
     user_config: Dict[str, Any],
     pattern: str = "pattern-2",
     validate: bool = False,
+    migrate: bool = True,
 ) -> Dict[str, Any]:
     """
     Merge a user's config with system defaults.
@@ -413,6 +419,8 @@ def merge_config_with_defaults(
         user_config: User's configuration dictionary (may be partial)
         pattern: Pattern to use for defaults (pattern-1, pattern-2)
         validate: If True, validate the merged config with Pydantic
+        migrate: If True (default), migrate ``user_config`` to the current config
+            format (e.g. v0.5 -> v0.6) BEFORE merging onto the defaults.
 
     Returns:
         Complete configuration dictionary with defaults applied
@@ -424,7 +432,25 @@ def merge_config_with_defaults(
         }
         result = merge_config_with_defaults(user_config, "pattern-2")
         # Result has all fields populated from defaults, with user's model override
+
+    IMPORTANT -- migrate BEFORE merge:
+        The system defaults are already in the current (v0.6) shape. If a v0.5-shaped
+        ``user_config`` (e.g. a top-level ``assessment`` block, or
+        ``extraction.assessment_integration``) is merged onto the v0.6 defaults FIRST,
+        the merged dict carries BOTH the v0.6 default keys and the legacy keys. A later
+        migration then applies its "explicit v0.6 keys win over migrated legacy values"
+        rule and the v0.6 DEFAULTS silently beat the user's migrated legacy
+        customizations (a pinned assessment model / list_batch_size / geometry_mode
+        reverts to default). Migrating ``user_config`` first keeps the merge a clean
+        v0.6-over-v0.6 deep_update where user values win. The migration is idempotent,
+        so this is a no-op for already-v0.6 input.
     """
+    # Migrate the user config to the current format BEFORE merging (see docstring).
+    if migrate:
+        from idp_common.config.migrations import migrate_config
+
+        user_config = migrate_config(deepcopy(user_config))
+
     # Load system defaults
     defaults = load_system_defaults(pattern)
 
@@ -561,12 +587,26 @@ def validate_config(
         - errors: List[str] - validation errors if any
         - warnings: List[str] - validation warnings
         - merged_config: Dict - the merged config (if valid)
+        - ignored_keys: List[Dict] - one {path, kind, suggestion} per key the
+          configuration models will not read, at any depth. The same findings the
+          warnings above describe in prose, in the form a caller can act on: this is
+          what `idp-cli config-validate --strict` keys on, and what the SDK's
+          `deprecated_fields` / `unknown_fields` are built from.
+
+    Raises:
+        ImportError: when a component the checks themselves need is not importable.
+            The configuration is then not examined at all, so it is reported as the
+            environment problem it is rather than as a finding about the document —
+            see the note above the merge step. `idp_sdk`'s
+            `ConfigOperation.validate` turns this into a result whose
+            `validation_available` is False.
     """
     result = {
         "valid": True,
         "errors": [],
         "warnings": [],
         "merged_config": None,
+        "ignored_keys": [],
     }
 
     # Check pattern is valid
@@ -577,10 +617,48 @@ def validate_config(
         )
         return result
 
+    # Keys the models will drop, at every depth. Reported against the config as
+    # SUBMITTED rather than against `merged`, so every path named is one the author
+    # actually wrote and can go and fix — which is the whole value of catching it
+    # here, while they are still present, rather than in a Lambda log later.
+    #
+    # ⚠️ Above the two failure returns below, and that position is the point. This
+    # asks a question about the submitted document alone: it needs neither `merged`
+    # nor a successful `model_validate`, and it is the ONLY reporter of an unread key
+    # that `idp-cli config-validate` and `idp_sdk`'s `validate` have — both consume
+    # `ignored_keys` rather than computing a set difference of their own. Called after
+    # those returns, it produced nothing whenever validation failed, so neither of
+    # them said anything at all about an unread key for an invalid configuration.
+    # That is the reader who needs it most: a key at the wrong depth is accepted in
+    # silence while its correctly-nested sibling raises (`ocr.dpi: "abc"` versus
+    # `ocr.image.dpi: "abc"`), so "the models will not read `ocr.dpi`, did you mean
+    # `ocr.image.dpi`?" is frequently the explanation for the error printed beside it.
+    #
+    # The pattern check stays above this one: a bad pattern name is a fault in the
+    # call rather than in the document, and there is no document question worth
+    # answering until it names a real pattern.
+    _validate_ignored_keys(config, result)
+
     # Try to merge with defaults
+    #
+    # ⚠️ An ImportError is re-raised rather than described, in both blocks below. The
+    # steps here import lazily — the merge reaches `idp_common.config.migrations`, and
+    # `IDPConfig.model_validate` reaches `idp_common.schema.multi_instance` for a
+    # multi-instance class — so a component missing from the
+    # installation arrives at these handlers as an ordinary exception and was
+    # reported as a finding about the document: "Pydantic validation failed: No
+    # module named 'idp_common.schema.multi_instance'" is a verdict on a
+    # configuration nothing examined, which is the one answer worse than no answer.
+    # Nothing about the submitted document can produce an ImportError, so the
+    # exception type is a sufficient test, and letting it out is what lets a caller
+    # tell "this configuration is wrong" from "this installation cannot check it" —
+    # `idp_sdk`'s `ConfigOperation.validate` catches it and reports the second as
+    # such.
     try:
         merged = merge_config_with_defaults(config, pattern, validate=False)
         result["merged_config"] = merged
+    except ImportError:
+        raise
     except Exception as e:
         result["valid"] = False
         result["errors"].append(f"Failed to merge with defaults: {str(e)}")
@@ -591,6 +669,8 @@ def validate_config(
         from idp_common.config.models import IDPConfig
 
         IDPConfig.model_validate(merged)
+    except ImportError:
+        raise
     except Exception as e:
         result["valid"] = False
         result["errors"].append(f"Pydantic validation failed: {str(e)}")
@@ -602,10 +682,1036 @@ def validate_config(
             "No document classes defined - you must add at least one class"
         )
 
-    assessment = merged.get("assessment", {})
-    if assessment.get("granular", {}).get("enabled") and not assessment.get("enabled"):
-        result["warnings"].append(
-            "assessment.granular.enabled=true but assessment.enabled=false - granular assessment won't run"
-        )
+    # Enhanced validation checks
+    _validate_model_ids(merged, result)
+    _validate_max_tokens(merged, result)
+    _validate_task_prompt_placeholders(merged, result)
+    _validate_schema_fields(config.get("classes", []), result)
+    _validate_agentic_openai(merged, result)
+    _validate_simple_integrated_lists(merged, result)
+    _validate_prompt_cache_prefix(merged, result)
+    _validate_discovery_openai(merged, result)
+    _validate_multi_doc_discovery_forced_tool(merged, result)
+    _validate_pipeline_hook_reachability(merged, result)
 
     return result
+
+
+def _validate_ignored_keys(config: Dict[str, Any], result: Dict[str, Any]) -> None:
+    """Warn about every key in a submitted config that the models will not read.
+
+    A warning rather than an error, matching what ``IDPConfig`` does with the same
+    keys: they are dropped, not rejected, so a configuration that deploys today
+    still validates. What changes is that the author is told, at the one moment
+    fixing a typo is cheap, and told *where* — the dotted path, plus the declared
+    field the key most plausibly meant when there is one.
+
+    **Every depth, and this is now the only reporter at any of them.** ``idp_cli``'s
+    ``config-validate`` and ``idp_sdk``'s ``ConfigOperation.validate`` each used to
+    compute their own top-level extras as
+    ``set(config) - set(IDPConfig.model_fields)``, which put two differently-worded
+    warnings about one key in front of the same reader and — because a raw set
+    difference knows nothing about the tree — told the operator that two keys the
+    loader honours would be ignored: ``description``, which
+    ``update_configuration`` pops and stores, and ``rule_classes``, which is renamed
+    to ``policy_classes`` on load. Both now consume these findings instead, so the
+    knowledge that fixes those two lives in one place that production code can read.
+
+    The findings are also returned structurally as ``result["ignored_keys"]``, which
+    is what ``--strict`` keys on: its contract is about top-level fields and is left
+    exactly as it was, deliberately, because widening it would fail configurations
+    that pass today.
+
+    The migration chain runs first, on a copy — defensively: measured today,
+    ``migrate_config`` returns new containers and mutates nothing, so dropping the
+    copy changes no behaviour and no input can tell the difference. The property
+    worth keeping is that a caller's configuration dict is an input rather than
+    scratch space, and that is what the test asserts. A legacy-shaped key is relocated on
+    load rather than dropped — ``extraction.agentic.validation`` becomes
+    ``extraction.validation`` — so reporting it against the pre-migration shape
+    would name a key that works as one that does not. The cost is one duplicated
+    ``Migrated config ...`` line at INFO on this path for a legacy config, since the
+    validation above migrates the merged copy for its own purposes; the alternative
+    is asking this question of the merged configuration, which would attribute a
+    system default's key to the author.
+    """
+    from idp_common.config.migrations import migrate_config
+    from idp_common.config.models import IDPConfig, collect_ignored_config_keys
+
+    findings = collect_ignored_config_keys(
+        migrate_config(deepcopy(config)), IDPConfig, include_top_level=True
+    )
+    result["ignored_keys"] = [
+        {"path": f.path, "kind": f.kind, "suggestion": f.suggestion} for f in findings
+    ]
+    for finding in findings:
+        if finding.kind == "deprecated":
+            result["warnings"].append(
+                f"Deprecated configuration key '{finding.path}' is no longer used "
+                "and will be ignored"
+            )
+        else:
+            hint = (
+                f" Did you mean '{finding.suggestion}'?" if finding.suggestion else ""
+            )
+            result["warnings"].append(
+                f"Unknown configuration key '{finding.path}' is not defined in the "
+                "configuration model and will be ignored, leaving the default in "
+                f"force.{hint}"
+            )
+
+
+def _validate_pipeline_hook_reachability(
+    merged_config: Dict[str, Any], result: Dict[str, Any]
+) -> None:
+    """Reject a pipeline hook that gates at a point this mode never reaches.
+
+    `postOcr`, `postClassification` and `postExtraction` exist only on the
+    Pipeline branch of the state machine — BDA does OCR, classification and
+    extraction in one invocation, so there is no separate step to hook after. A
+    config with ``use_bda: true`` and a hook at one of those points describes a
+    hook that never runs: the dispatcher is not invoked there, so nothing
+    executes, nothing fails, and nothing reaches the execution history (#982).
+
+    An ``onError: fail`` registration is an ERROR, because that policy is a
+    declared gate and this configuration cannot honour it. Any other policy is
+    advisory, so it is a WARNING — a config may legitimately carry an observing
+    hook for the mode it will be switched to later.
+    """
+    from .hook_reachability import unreachable_hook_registrations
+
+    for finding in unreachable_hook_registrations(merged_config):
+        if finding["gating"]:
+            result["valid"] = False
+            result["errors"].append(finding["message"])
+        else:
+            result["warnings"].append(finding["message"])
+
+
+def _load_valid_bedrock_models() -> set:
+    """
+    Load valid Bedrock model IDs from pricing.yaml.
+
+    Returns:
+        Set of valid model IDs, or empty set if pricing.yaml not found
+    """
+    try:
+        # Try to find pricing.yaml relative to this file
+        # merge_utils.py is at: lib/idp_common_pkg/idp_common/config/merge_utils.py
+        # Need to walk up 5 parents to reach repo root
+        pricing_paths = [
+            # Development: from lib/idp_common_pkg/idp_common/config/ (5 parents to repo root)
+            Path(__file__).parent.parent.parent.parent.parent
+            / "config_library"
+            / "pricing.yaml",
+            # Fallback: use IDP_PROJECT_ROOT or current working directory
+            Path(os.environ.get("IDP_PROJECT_ROOT", "."))
+            / "config_library"
+            / "pricing.yaml",
+        ]
+
+        pricing_file = None
+        for path in pricing_paths:
+            if path.exists():
+                pricing_file = path
+                break
+
+        if not pricing_file:
+            logger.warning(
+                "pricing.yaml not found - model ID validation disabled. "
+                "Ensure idp-cli is run from repository root or set IDP_PROJECT_ROOT environment variable."
+            )
+            return set()
+
+        with open(pricing_file) as f:
+            pricing_config = yaml.safe_load(f)
+
+        model_ids = set()
+        for entry in pricing_config.get("pricing", []):
+            name = entry.get("name", "")
+            if name.startswith("bedrock/"):
+                model_id = name.replace("bedrock/", "")
+                model_ids.add(model_id)
+
+        # Add special cases
+        model_ids.add("LambdaHook")
+
+        # Also add base model IDs (without region prefix) for GovCloud compatibility
+        # e.g., "us.amazon.nova-pro-v1:0" -> also allow "amazon.nova-pro-v1:0"
+        base_models = set()
+        for model_id in list(model_ids):
+            if "." in model_id:
+                # Extract base model (remove region prefix)
+                parts = model_id.split(".", 1)
+                if len(parts) == 2:
+                    base_model = parts[1]
+                    base_models.add(base_model)
+
+        model_ids.update(base_models)
+
+        logger.debug(
+            "Loaded %d valid Bedrock model IDs from pricing.yaml", len(model_ids)
+        )
+        return model_ids
+
+    except Exception as e:
+        logger.warning("Could not load pricing.yaml for model validation: %s", e)
+        return set()
+
+
+def _validate_model_ids(merged_config: Dict[str, Any], result: Dict[str, Any]) -> None:
+    """
+    Validate Bedrock model IDs against pricing.yaml.
+
+    Checks that model IDs in config are valid and recognized.
+
+    A model may be named by ARN rather than by bare model ID — GovCloud
+    requires an account-scoped inference-profile ARN, and provisioned-throughput
+    or application-inference-profile deployments are ARN-only everywhere. ARNs
+    are reduced to the model ID they name before the catalog lookup.
+
+    Three outcomes for a value that doesn't match the catalog:
+
+    - **Bare model ID → error.** That's a typo; nothing else it could be.
+    - **ARN whose resolved resource has model-ID *shape*** (contains a ``.``
+      and isn't a UUID) **→ error.** It looks like a model ID and still doesn't
+      match, so the likely cause is a typo in the ARN's resource-id, partition
+      or account. It is also, by construction, a model with no
+      ``config_library/pricing.yaml`` entry — so cost reporting would be broken
+      for it regardless. To use a model newer than this release, add it to
+      ``config_library/pricing.yaml`` (see ``.claude/skills/add-model.md``,
+      which requires that entry anyway).
+    - **ARN whose resolved resource is opaque** (an application-inference-profile
+      UUID, a provisioned-model name — no ``.``, or UUID-shaped) **→ warning.**
+      Its underlying model can't be determined without a Bedrock API call, so
+      it's unverifiable, not wrong.
+
+    Note this whole function is a no-op when ``config_library/pricing.yaml``
+    isn't on disk: ``_load_valid_bedrock_models`` returns an empty set and we
+    return early. So the strict paths above only fire from a repository
+    checkout — the CLI/SDK run from source, and CI — not from a
+    pip-installed ``idp_common`` in a Lambda.
+    """
+    valid_models = _load_valid_bedrock_models()
+    if not valid_models:
+        # Can't validate - skip silently
+        return
+
+    sections_with_models = {
+        "ocr": "model_id",
+        "classification": "model",
+        "extraction": "model",
+        "assessment": "model",
+        "summarization": "model",
+    }
+
+    for section, field_name in sections_with_models.items():
+        if section not in merged_config:
+            continue
+
+        model_id = merged_config[section].get(field_name)
+        if not model_id:
+            continue
+
+        resolved = resolve_model_id_from_arn(model_id)
+
+        # Retired first, and on its own merits. A model past its AWS end-of-life
+        # date is inaccessible in every region, so pinning it is a pre-flight
+        # error rather than something to discover two stages into a document
+        # (#708). This used to work only as a side effect: the retired model was
+        # deleted from pricing.yaml, so it fell out of `valid_models` below. That
+        # coupling cannot survive a model whose pricing entry must be RETAINED so
+        # historical cost reports still resolve its rate — see
+        # config/retired_models.py.
+        retirement = retirement_of(resolved)
+        if retirement is not None:
+            result["valid"] = False
+            result["errors"].append(
+                f"{section}.{field_name} has invalid model ID: {model_id} reached "
+                f"end of life on {retirement['eol']} and is no longer available in "
+                f"any region — every call returns ResourceNotFoundException. "
+                f"Choose a current model. Verify with: {retirement['verify']}"
+            )
+            continue
+
+        if resolved in valid_models:
+            continue
+
+        if model_id.startswith("arn:"):
+            # Distinguish an unverifiable opaque resource (a legitimate
+            # application-inference-profile UUID / provisioned-throughput ARN
+            # whose underlying model can only be known via a Bedrock API call)
+            # from a probably-typo'd ARN whose resource DOES look like a
+            # model ID but doesn't match anything in valid_models. Round-7
+            # review fix; round-9 cleanup: dropped dead
+            # ``resolved.startswith("application-inference-profile/")`` and
+            # ``"provisioned-model/"`` guards — ``resolve_model_id_from_arn``
+            # strips those type prefixes, so ``resolved`` never carries
+            # them. UUIDs (which lack dots) fall through to the warning
+            # path naturally via the ``"." in resolved`` check.
+            _looks_like_model_id_shape = "." in resolved and not _looks_like_uuid(
+                resolved
+            )
+            if _looks_like_model_id_shape:
+                # The ARN resolved to a string that looks like a model ID
+                # (has family.name shape) but doesn't match — treat as a typo.
+                result["valid"] = False
+                result["errors"].append(
+                    f"{section}.{field_name} names a Bedrock ARN whose resolved "
+                    f"model ID ({resolved!r}) is not a known Bedrock model. This is "
+                    f"most likely a typo in the ARN's resource-id, partition, or "
+                    f"account. Full ARN: {model_id}"
+                )
+                continue
+            result["warnings"].append(
+                f"{section}.{field_name} names a Bedrock ARN whose underlying "
+                f"model can't be determined offline: {model_id}. Cost reporting "
+                f"needs a matching entry in config_library/pricing.yaml."
+            )
+            continue
+
+        result["valid"] = False
+        result["errors"].append(
+            f"{section}.{field_name} has invalid model ID: {model_id}. "
+            f"Verify the model name is correct and ensure it's enabled in the Bedrock console. "
+            f"Check config_library/pricing.yaml for valid model IDs."
+        )
+
+
+def _looks_like_uuid(value: str) -> bool:
+    """Heuristic — reject values that look like a UUID (opaque application
+    inference profile IDs) from being treated as typo'd model IDs."""
+    import re
+
+    return bool(
+        re.match(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            value,
+            re.I,
+        )
+    )
+
+
+def _validate_agentic_openai(
+    merged_config: Dict[str, Any], result: Dict[str, Any]
+) -> None:
+    """Error when an OpenAI GPT-5.x model is paired with agentic extraction.
+
+    OpenAI Responses models (openai.gpt-5.*) are served via the bedrock-mantle
+    endpoint and are incompatible with the Converse-based agentic (Strands)
+    extraction path. This is a hard validation error (rather than a silent
+    runtime fallback) so the misconfiguration surfaces at config time instead
+    of failing obscurely mid-processing.
+
+    NOTE this gate is about the ROUTE, not the vendor: ``openai.gpt-6-astra``
+    reaches Converse and emits ``toolUse``, so it is allowed for agentic
+    extraction. The predicate is ``is_openai_responses_model`` precisely so it
+    tracks the mantle route rather than the "openai." prefix.
+    """
+    from idp_common.bedrock.openai_responses import is_openai_responses_model
+    from idp_common.config.schema_constants import X_AWS_IDP_EXTRACTION_MODEL
+
+    extraction = merged_config.get("extraction", {})
+    if not isinstance(extraction, dict):
+        return
+
+    # NOTE: reads the raw merged dict, where `agentic.enabled` may disagree with
+    # `mode` (reconcile_mode_and_agentic makes `mode` authoritative in IDPConfig).
+    # Behaviour deliberately unchanged here; see _extraction_is_simple for the
+    # mode-first rule.
+    agentic_enabled = bool(extraction.get("agentic", {}).get("enabled"))
+    if not agentic_enabled:
+        return
+
+    # Global extraction model
+    global_model = extraction.get("model")
+    if global_model and is_openai_responses_model(global_model):
+        result["valid"] = False
+        result["errors"].append(
+            f"extraction.model '{global_model}' is an OpenAI Responses model, which "
+            "is NOT compatible with agentic extraction (extraction.agentic.enabled=true). "
+            "Set agentic.enabled=false or choose a Converse model — Claude, Amazon "
+            "Nova Pro (not Nova Lite, which fails mid-stream on this path; "
+            "see docs/extraction-and-confidence.md), xAI Grok, or OpenAI GPT-6 "
+            "Astra support agentic extraction."
+        )
+
+    # Per-class extraction model overrides
+    for cls in merged_config.get("classes", []) or []:
+        if not isinstance(cls, dict):
+            continue
+        override = cls.get(X_AWS_IDP_EXTRACTION_MODEL)
+        if override and is_openai_responses_model(override):
+            class_name = cls.get("x-aws-idp-document-type", "<unnamed>")
+            result["valid"] = False
+            result["errors"].append(
+                f"Class '{class_name}' overrides extraction with OpenAI Responses "
+                f"model '{override}', which is NOT compatible with agentic extraction "
+                "(extraction.agentic.enabled=true). Set agentic.enabled=false or "
+                "choose a Converse model for this class — Claude, Amazon Nova "
+                "Premier/Pro (not Nova Lite, which fails mid-stream on this path; "
+                "see docs/extraction-and-confidence.md), xAI Grok, or OpenAI GPT-6 "
+                "Astra support agentic extraction."
+            )
+
+
+def _validate_discovery_openai(
+    merged_config: Dict[str, Any], result: Dict[str, Any]
+) -> None:
+    """Error when a model that can't take ``document`` blocks is set for discovery.
+
+    Discovery ingests whole PDFs via Converse ``document`` content blocks. Three
+    families accept text + image only — OpenAI GPT-5.x (bedrock-mantle Responses
+    API), xAI Grok and OpenAI GPT-6 Astra (both reject the block outright on
+    Converse) — so routing any of them here would silently drop the document.
+    Reject at config time. (None are offered in the discovery picklists.)
+    """
+    from idp_common.bedrock.client import document_blocks_unsupported_reason
+
+    discovery = merged_config.get("discovery", {})
+    if not isinstance(discovery, dict):
+        return
+
+    # Sub-sections that carry a per-section model: model_id for the class/auto
+    # discovery sections, model for rules discovery.
+    checks = [
+        (
+            "discovery.without_ground_truth.model_id",
+            discovery.get("without_ground_truth", {}),
+            "model_id",
+        ),
+        (
+            "discovery.with_ground_truth.model_id",
+            discovery.get("with_ground_truth", {}),
+            "model_id",
+        ),
+        ("discovery.auto_split.model_id", discovery.get("auto_split", {}), "model_id"),
+        ("discovery.rules.model", discovery.get("rules", {}), "model"),
+    ]
+    for label, section, field in checks:
+        if not isinstance(section, dict):
+            continue
+        model_id = section.get(field)
+        reason = document_blocks_unsupported_reason(model_id) if model_id else None
+        if reason:
+            result["valid"] = False
+            result["errors"].append(
+                f"{label} is set to '{model_id}', which is NOT supported for "
+                f"discovery — {reason}, but discovery sends whole-PDF document "
+                "blocks. Choose an Anthropic or Nova model."
+            )
+
+
+def _validate_multi_doc_discovery_forced_tool(
+    merged_config: Dict[str, Any], result: Dict[str, Any]
+) -> None:
+    """Error when a model that rejects a forced ``toolChoice`` is set for cluster analysis.
+
+    ``discovery.multi_document.analysis_model_id`` drives the one path in this
+    repository that asks Strands for structured output
+    (``discovery_agent.py``: ``agent(message, structured_output_model=...)``). Strands
+    tries ``toolChoice: auto`` first and, when the model answers in prose instead of
+    calling the tool, **retries with** ``toolChoice: {"any": {}}``
+    (``event_loop.py`` -> ``set_forced_mode()``). A model that rejects forcing gets a
+    400 on that retry.
+
+    That failure mode is why this is a config-time error rather than a runtime
+    fallback: it is **intermittent by construction**. Whether a given cluster needs the
+    forced retry depends on how the model chose to answer, so the model would appear to
+    work, then lose one cluster's analysis with a message that does not say why. There
+    is also nothing to fall back to here — unlike extraction's forced tool, which has a
+    prose schema behind it, structured output *is* the interface.
+
+    Kept separate from :func:`_validate_discovery_openai` rather than folded into it
+    because the two ask different questions about different config keys. That function
+    is about ``document`` blocks on the whole-PDF discovery sections; this one is about
+    tool forcing on the clustering section, which takes neither documents nor the same
+    key. One function answering both would have to state a reason true of neither.
+    """
+    from idp_common.bedrock.client import forced_tool_choice_unsupported_reason
+
+    discovery = merged_config.get("discovery", {})
+    if not isinstance(discovery, dict):
+        return
+    multi_doc = discovery.get("multi_document", {})
+    if not isinstance(multi_doc, dict):
+        return
+
+    model_id = multi_doc.get("analysis_model_id")
+    reason = forced_tool_choice_unsupported_reason(model_id) if model_id else None
+    if reason:
+        result["valid"] = False
+        result["errors"].append(
+            f"discovery.multi_document.analysis_model_id is set to '{model_id}', "
+            f"which is NOT supported for multi-document discovery — {reason}. Cluster "
+            "analysis requests structured output, and the agent framework forces the "
+            "tool call when the model answers in prose, so this would fail "
+            "intermittently rather than consistently. Choose another Anthropic or Nova "
+            "model."
+        )
+
+
+def _validate_task_prompt_placeholders(
+    merged_config: Dict[str, Any], result: Dict[str, Any]
+) -> None:
+    """
+    Validate task_prompt placeholders for all pipeline sections.
+
+    Checks for missing required placeholders that would cause silent failures
+    when custom task_prompts are provided.
+
+    Required placeholders by section:
+    - ocr: {DOCUMENT_IMAGE}
+    - classification: {DOCUMENT_TEXT} or {DOCUMENT_IMAGE}
+    - extraction: {DOCUMENT_TEXT} or {DOCUMENT_IMAGE}
+    - assessment: {DOCUMENT_IMAGE}, {OCR_TEXT_CONFIDENCE}, {EXTRACTION_RESULTS}
+    - summarization: {DOCUMENT_TEXT}, {EXTRACTION_RESULTS}
+    """
+    # Validation rules: section -> (required_placeholders, require_all_flag)
+    # require_all_flag: True = ALL placeholders required, False = ANY one required
+    validation_rules = {
+        "ocr": (
+            ["{DOCUMENT_IMAGE}"],
+            True,  # Must have DOCUMENT_IMAGE
+            "ocr.task_prompt must include {DOCUMENT_IMAGE} placeholder. "
+            "Without this placeholder, the OCR model will not receive the document image, "
+            "resulting in OCR failures. "
+            "Either add the required placeholder or remove task_prompt to use system defaults.",
+        ),
+        "classification": (
+            ["{DOCUMENT_TEXT}", "{DOCUMENT_IMAGE}"],
+            False,  # Must have at least one
+            "classification.task_prompt must include {DOCUMENT_TEXT} or {DOCUMENT_IMAGE} placeholder. "
+            "Without these placeholders, the classification model will not receive document content, "
+            "resulting in classification failures. "
+            "Either add at least one required placeholder or remove task_prompt to use system defaults.",
+        ),
+        "extraction": (
+            ["{DOCUMENT_TEXT}", "{DOCUMENT_IMAGE}"],
+            False,  # Must have at least one
+            "extraction.task_prompt must include {DOCUMENT_TEXT} or {DOCUMENT_IMAGE} placeholder. "
+            "Without these placeholders, the LLM will not receive document content from OCR, "
+            "resulting in silent extraction failures. "
+            "Either add at least one required placeholder or remove task_prompt to use system defaults.",
+        ),
+        "assessment": (
+            ["{DOCUMENT_IMAGE}", "{OCR_TEXT_CONFIDENCE}", "{EXTRACTION_RESULTS}"],
+            True,  # Must have all three
+            "assessment.task_prompt must include {DOCUMENT_IMAGE}, {OCR_TEXT_CONFIDENCE}, and {EXTRACTION_RESULTS} placeholders. "
+            "Without these placeholders, the assessment model cannot evaluate extraction quality or provide bounding boxes. "
+            "Either add all required placeholders or remove task_prompt to use system defaults.",
+        ),
+        "summarization": (
+            ["{DOCUMENT_TEXT}", "{EXTRACTION_RESULTS}"],
+            True,  # Must have both
+            "summarization.task_prompt must include {DOCUMENT_TEXT} and {EXTRACTION_RESULTS} placeholders. "
+            "Without these placeholders, the summarization model cannot generate accurate summaries. "
+            "Either add all required placeholders or remove task_prompt to use system defaults.",
+        ),
+    }
+
+    # Check each section that has validation rules
+    for section_name, (
+        required_placeholders,
+        require_all,
+        error_message,
+    ) in validation_rules.items():
+        section = merged_config.get(section_name, {})
+        task_prompt = section.get("task_prompt", "")
+
+        # Special case: OCR task_prompt is only used when backend is 'bedrock'
+        if section_name == "ocr":
+            ocr_backend = section.get("backend", "textract")
+            if ocr_backend != "bedrock":
+                # Skip OCR validation for non-bedrock backends (Textract doesn't use prompts)
+                continue
+
+        # Skip validation for disabled sections (assessment, summarization)
+        if section_name in ["assessment", "summarization"]:
+            if not section.get("enabled", True):
+                # Section is explicitly disabled, skip validation
+                continue
+
+        if task_prompt:
+            # Check which placeholders are present
+            present_placeholders = [
+                placeholder
+                for placeholder in required_placeholders
+                if placeholder in task_prompt
+            ]
+
+            # Determine if validation passes
+            if require_all:
+                # ALL placeholders must be present
+                validation_passed = len(present_placeholders) == len(
+                    required_placeholders
+                )
+            else:
+                # At least ONE placeholder must be present
+                validation_passed = len(present_placeholders) > 0
+
+            if not validation_passed:
+                result["valid"] = False
+                result["errors"].append(error_message)
+
+
+def _validate_schema_fields(
+    classes: List[Dict[str, Any]], result: Dict[str, Any]
+) -> None:
+    """
+    Validate JSON Schema fields in document class definitions.
+
+    Checks for:
+    - Non-standard JSON Schema keywords that may be ignored
+    - Use of 'data_type' field (not in JSON Schema spec)
+    """
+    # Standard JSON Schema keywords (Draft 2020-12)
+    ALLOWED_KEYWORDS = {
+        # Core keywords
+        "$schema",
+        "$id",
+        "$ref",
+        "$defs",
+        "$anchor",
+        "$dynamicRef",
+        "$dynamicAnchor",
+        "$vocabulary",
+        "$comment",
+        # Type keywords
+        "type",
+        "enum",
+        "const",
+        # Structure keywords
+        "properties",
+        "patternProperties",
+        "additionalProperties",
+        "propertyNames",
+        "items",
+        "prefixItems",
+        "contains",
+        "additionalItems",
+        "unevaluatedProperties",
+        "unevaluatedItems",
+        # Validation keywords
+        "required",
+        "dependentRequired",
+        "dependentSchemas",
+        "if",
+        "then",
+        "else",
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "not",
+        # String validation
+        "minLength",
+        "maxLength",
+        "pattern",
+        "format",
+        # Numeric validation
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        # Array validation
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "minContains",
+        "maxContains",
+        # Object validation
+        "minProperties",
+        "maxProperties",
+        # Metadata
+        "title",
+        "description",
+        "default",
+        "examples",
+        "readOnly",
+        "writeOnly",
+        "deprecated",
+        # Content keywords
+        "contentMediaType",
+        "contentEncoding",
+        "contentSchema",
+    }
+
+    # AWS IDP-specific extensions (allowed)
+    IDP_EXTENSIONS = {
+        "x-aws-idp-confidence-threshold",
+        "x-aws-idp-evaluation-method",
+        "x-aws-idp-evaluation-threshold",
+        "x-aws-idp-evaluation-weight",
+        "x-aws-idp-document-type",
+        "x-aws-idp-list-item-description",
+        "x-aws-idp-page-types",
+        "x-aws-idp-source-page-types",
+        "x-aws-idp-instance-array",
+    }
+
+    non_standard_fields = {}
+
+    for class_idx, doc_class in enumerate(classes):
+        _check_schema_properties(
+            doc_class.get("properties", {}),
+            f"classes[{class_idx}]",
+            ALLOWED_KEYWORDS,
+            IDP_EXTENSIONS,
+            non_standard_fields,
+        )
+
+        # Also check $defs
+        for def_name, def_schema in doc_class.get("$defs", {}).items():
+            _check_schema_properties(
+                def_schema.get("properties", {}),
+                f"classes[{class_idx}].$defs.{def_name}",
+                ALLOWED_KEYWORDS,
+                IDP_EXTENSIONS,
+                non_standard_fields,
+            )
+
+    # Report non-standard fields as warnings (they're harmless but non-standard)
+    if non_standard_fields:
+        for field, locations in non_standard_fields.items():
+            result["warnings"].append(
+                f"Non-standard field '{field}' found in {len(locations)} properties. "
+                f"This field is not part of the JSON Schema specification and will be ignored. "
+                f"Locations: {', '.join(locations[:3])}"
+                + (f" (and {len(locations) - 3} more)" if len(locations) > 3 else "")
+            )
+
+
+def _check_schema_properties(
+    properties: Dict[str, Any],
+    path: str,
+    allowed_keywords: set,
+    idp_extensions: set,
+    non_standard_fields: Dict[str, List[str]],
+) -> None:
+    """
+    Recursively check schema properties for non-standard fields.
+
+    Args:
+        properties: Properties dictionary from JSON Schema
+        path: Current path in schema (for error reporting)
+        allowed_keywords: Set of allowed JSON Schema keywords
+        idp_extensions: Set of allowed AWS IDP extensions
+        non_standard_fields: Dictionary to collect non-standard fields and their locations
+    """
+    for prop_name, prop_def in properties.items():
+        if not isinstance(prop_def, dict):
+            continue
+
+        prop_path = f"{path}.{prop_name}"
+
+        for key in prop_def.keys():
+            # Skip allowed JSON Schema keywords
+            if key in allowed_keywords:
+                continue
+
+            # Skip known IDP extensions explicitly
+            if key in idp_extensions:
+                continue
+
+            # Skip any other x-* extensions (custom extensions allowed by JSON Schema spec)
+            # This catches x-* fields not in our explicit IDP_EXTENSIONS set
+            if key.startswith("x-"):
+                continue
+
+            # Found non-standard field
+            if key not in non_standard_fields:
+                non_standard_fields[key] = []
+            non_standard_fields[key].append(prop_path)
+
+        # Recurse into nested objects
+        if "properties" in prop_def:
+            _check_schema_properties(
+                prop_def["properties"],
+                prop_path,
+                allowed_keywords,
+                idp_extensions,
+                non_standard_fields,
+            )
+
+        # Recurse into array items if they have properties
+        if "items" in prop_def and isinstance(prop_def["items"], dict):
+            items_def = prop_def["items"]
+            if "properties" in items_def:
+                _check_schema_properties(
+                    items_def["properties"],
+                    f"{prop_path}[]",
+                    allowed_keywords,
+                    idp_extensions,
+                    non_standard_fields,
+                )
+
+
+def _validate_max_tokens(merged_config: Dict[str, Any], result: Dict[str, Any]) -> None:
+    """
+    Validate max_tokens against model-specific limits.
+
+    Checks that max_tokens in each service config does not exceed the
+    maximum output tokens supported by the configured model.
+
+    This prevents runtime failures when the Bedrock API rejects requests
+    with max_tokens values that exceed model limits.
+    """
+    # Services that still expose a max_tokens knob. extraction + confidence
+    # (assessment) no longer do — their output is always requested at the model
+    # maximum and clamped at request time — so they cannot be over-limit and are
+    # excluded here.
+    sections_with_tokens = {
+        "classification": {"model_field": "model", "max_tokens_field": "max_tokens"},
+        "summarization": {"model_field": "model", "max_tokens_field": "max_tokens"},
+    }
+
+    for section_name, config in sections_with_tokens.items():
+        section = merged_config.get(section_name, {})
+
+        # Skip disabled sections
+        if section_name in ["assessment", "summarization"]:
+            if not section.get("enabled", True):
+                continue
+
+        model_id = section.get(config["model_field"])
+        max_tokens_raw = section.get(config["max_tokens_field"])
+
+        # Skip if the model is missing. max_tokens is an OPTIONAL cap: empty
+        # string / None / a value that coerces to <= 0 all mean "unset" (use the
+        # model's max output), so there is nothing to validate.
+        if not model_id or max_tokens_raw in (None, ""):
+            continue
+
+        # Config stores numbers as strings (DynamoDB); coerce before comparing
+        # against the int model limit. A non-numeric value is treated as unset.
+        try:
+            max_tokens = int(max_tokens_raw)
+        except (TypeError, ValueError):
+            continue
+        if max_tokens <= 0:
+            continue
+
+        # Get model's max output tokens limit
+        try:
+            model_limit = get_model_max_output_tokens(model_id)
+
+            if max_tokens > model_limit:
+                result["valid"] = False
+                result["errors"].append(
+                    f"{section_name}.max_tokens ({max_tokens}) exceeds model limit ({model_limit:,}) "
+                    f"for {model_id}. "
+                    f"Reduce max_tokens to {model_limit:,} or less, or choose a different model. "
+                    f"Model limits: Claude 4.x=64,000, Nova=10,000, Claude 3.x=8,192"
+                )
+        except Exception as e:
+            logger.warning(
+                "Could not validate max_tokens for %s: %s", section_name, str(e)
+            )
+
+
+def _extraction_is_simple(extraction: Dict[str, Any]) -> bool:
+    """Whether the merged (un-reconciled) extraction block means Simple mode.
+
+    `extraction.mode` is authoritative when present — `reconcile_mode_and_agentic`
+    in the config model sets `agentic.enabled = (mode == "advanced")`, and the UI
+    writes only `mode` — so a stale `agentic.enabled` must not flip the answer.
+    `agentic.enabled` is the fallback for a legacy config with no `mode`.
+    """
+    mode = extraction.get("mode")
+    if isinstance(mode, str) and mode.strip():
+        return mode.strip().lower() == "simple"
+    return not bool((extraction.get("agentic") or {}).get("enabled"))
+
+
+def _class_declares_list(cls: Dict[str, Any]) -> bool:
+    """Top-level array property, multi-instance wrapper, or a legacy
+    `attributes` entry of `attributeType: list` (the merged dict is not migrated;
+    the runtime path is, so the runtime downgrade WOULD fire for that class)."""
+    from idp_common.config.schema_constants import (
+        ATTRIBUTE_TYPE_LIST,
+        LEGACY_ATTRIBUTE_TYPE,
+        LEGACY_ATTRIBUTES,
+    )
+    from idp_common.schema.multi_instance import is_multi_instance
+
+    if is_multi_instance(cls):  # tolerant of "true"/"false" strings, like the runtime
+        return True
+    props = cls.get("properties") or {}
+    if isinstance(props, dict) and any(
+        isinstance(s, dict) and s.get("type") == "array" for s in props.values()
+    ):
+        return True
+    legacy = cls.get(LEGACY_ATTRIBUTES)
+    return isinstance(legacy, list) and any(
+        isinstance(a, dict) and a.get(LEGACY_ATTRIBUTE_TYPE) == ATTRIBUTE_TYPE_LIST
+        for a in legacy
+    )
+
+
+def _validate_simple_integrated_lists(
+    merged_config: Dict[str, Any], result: Dict[str, Any]
+) -> None:
+    """Warn (never error) when Simple + integrated confidence meets a class that
+    declares list fields.
+
+    At run time such a section is scored in a separate pass instead — a routing
+    decision, not a failure — but it costs more than the single inference the user
+    configured at Sonnet 5 (~2.5x per 100-row document, since long lists are
+    scored in batches) and the 1S-TopK prompt is not used for that class. Saying
+    so at config time is free. A hard error would wedge a stored config that
+    validated yesterday (the rollback trap), so this is a warning only.
+
+    Surfaces wherever `validate_config` runs: `idp-cli config-validate` and the SDK
+    validate operation. The web UI does NOT validate on save; its Prompt Preview
+    pane shows the same decision per class.
+    """
+    from idp_common.config.flags import flag_is_true
+    from idp_common.config.schema_constants import (
+        X_AWS_IDP_ALLOW_INTEGRATED_LISTS,
+        X_AWS_IDP_EXTRACTION_TASK_PROMPT,
+    )
+
+    extraction = merged_config.get("extraction", {})
+    if not isinstance(extraction, dict) or not _extraction_is_simple(extraction):
+        return
+    confidence = extraction.get("confidence") or {}
+    if not isinstance(confidence, dict) or confidence.get("mode") != "integrated":
+        return
+    if not flag_is_true(confidence.get("enabled"), default=True):
+        return  # reconciles to mode "off": no confidence runs at all ("false" too)
+    affected: List[str] = []
+    for cls in merged_config.get("classes") or []:
+        if not isinstance(cls, dict):
+            continue
+        if cls.get(X_AWS_IDP_EXTRACTION_TASK_PROMPT):
+            continue  # a per-class prompt override opts the class out
+        if flag_is_true(cls.get(X_AWS_IDP_ALLOW_INTEGRATED_LISTS)):
+            continue  # explicit opt-in: the author verified list completeness
+        if _class_declares_list(cls):
+            affected.append(str(cls.get("$id") or cls.get("name") or "?"))
+    if affected:
+        result["warnings"].append(
+            "extraction.confidence.mode is 'integrated' with simple extraction, but "
+            f"these classes declare list fields: {', '.join(affected)}. Their "
+            "sections will be scored in a separate confidence pass instead "
+            "(Simple + integrated loses list rows silently); the cost relative to "
+            "the single inference depends on the model (about 2.5x at Sonnet 5 on "
+            "a 100-row document, cheaper at Sonnet 4.6). Set "
+            "confidence.mode: separate to make this explicit, use Advanced "
+            "extraction to keep integrated confidence, or set "
+            f"{X_AWS_IDP_ALLOW_INTEGRATED_LISTS}: true on a class whose lists you "
+            "have verified come back complete."
+        )
+
+
+def _prompt_cache_is_off(value: Any) -> bool:
+    """``extraction.prompt_cache`` as stored: the string, or the YAML/DynamoDB boolean."""
+    if value is False:
+        return True
+    return isinstance(value, str) and value.strip().lower() in (
+        "off",
+        "false",
+        "no",
+        "disabled",
+        "0",
+    )
+
+
+def _validate_prompt_cache_prefix(
+    merged_config: Dict[str, Any], result: Dict[str, Any]
+) -> None:
+    """Warn (never error) when a class's Simple-mode prompt prefix is shorter than
+    the extraction model's minimum cacheable prefix (#780).
+
+    A ``<<CACHEPOINT>>`` below the minimum creates no cache entry: Bedrock reports
+    ``cacheWrite = 0`` and ``cacheRead = 0``, raises nothing, and bills the prefix
+    at full input price on every request. Measured across the shipped presets, 25%
+    of classes never cache on the Sonnet tier (1,024-token minimum) and none cache
+    on Haiku 4.5 (4,096). Nothing else in the product reports it, so say so here,
+    naming both numbers.
+
+    The estimate is chars/4 with a measured error of about +-10%, so a class whose
+    estimate lands inside that band of the minimum is reported as "may not cache"
+    rather than declared safe. The prompt estimated is the one the service would
+    send: the 1S-TopK confidence prompt under Simple + integrated confidence, else
+    ``task_prompt``; a class with its own ``x-aws-idp-extraction-task-prompt`` is
+    estimated with that. Not counted (both default off, both push the real prefix
+    UP): the forced-tool toolSpec and the multi-instance probe. Classification,
+    assessment and rule-validation prompts are out of scope.
+    """
+    from idp_common.bedrock.prompt_cache import (
+        CACHEPOINT_MARKER,
+        ESTIMATE_TOLERANCE,
+        estimate_prefix_tokens,
+        min_cacheable_prefix_tokens,
+    )
+    from idp_common.config.flags import flag_is_true
+    from idp_common.config.schema_constants import (
+        ID_FIELD,
+        X_AWS_IDP_DOCUMENT_TYPE,
+        X_AWS_IDP_EXTRACTION_TASK_PROMPT,
+    )
+
+    extraction = merged_config.get("extraction", {})
+    if not isinstance(extraction, dict) or not _extraction_is_simple(extraction):
+        return  # the Advanced path's prefix is the agentic system prompt, not this
+    if _prompt_cache_is_off(extraction.get("prompt_cache")):
+        return
+    minimum = min_cacheable_prefix_tokens(extraction.get("model"))
+    if minimum is None:
+        return  # unknown model or no published minimum (Nova): nothing to warn about
+
+    # The template the service actually sends (prompt_assembly.select_extraction_task_prompt).
+    confidence = extraction.get("confidence") or {}
+    integrated = (
+        isinstance(confidence, dict)
+        and confidence.get("mode") == "integrated"
+        and flag_is_true(confidence.get("enabled"), default=True)
+    )
+    default_prompt = (
+        (
+            extraction.get("task_prompt_extraction_with_confidence_topk")
+            or extraction.get("task_prompt")
+        )
+        if integrated
+        else extraction.get("task_prompt")
+    ) or ""
+
+    system_prompt = extraction.get("system_prompt") or ""
+    never: List[str] = []
+    near: List[str] = []
+    for cls in merged_config.get("classes") or []:
+        if not isinstance(cls, dict):
+            continue
+        cid = str(cls.get(ID_FIELD) or cls.get(X_AWS_IDP_DOCUMENT_TYPE) or "?")
+        task_prompt = cls.get(X_AWS_IDP_EXTRACTION_TASK_PROMPT) or default_prompt
+        if CACHEPOINT_MARKER not in task_prompt:
+            continue  # nothing would cache for this class either way
+        est = estimate_prefix_tokens(system_prompt, task_prompt, cls, cid)
+        if est is None:
+            continue
+        if est < minimum:
+            never.append(f"{cid} (~{est} tokens)")
+        elif est < minimum * (1 + ESTIMATE_TOLERANCE):
+            near.append(f"{cid} (~{est} tokens)")
+    model = extraction.get("model")
+    if never:
+        result["warnings"].append(
+            f"Prompt caching will never engage for {len(never)} class(es) on "
+            f"{model}, whose minimum cacheable prefix is {minimum} tokens: "
+            f"{', '.join(never)}. Every request pays full input price on the "
+            "prefix. Add real field descriptions to the class (which also helps "
+            "extraction), pick a model with a lower minimum (512 on Claude Opus 5 / "
+            "Fable 5), or set extraction.prompt_cache: off to stop paying the "
+            "1.25x cache-write premium for nothing."
+        )
+    if near:
+        pct = int(ESTIMATE_TOLERANCE * 100)
+        result["warnings"].append(
+            f"{len(near)} class(es) MAY not cache on {model}: their estimated prompt "
+            f"prefix is within {pct}% of the {minimum}-token minimum, and the estimate "
+            f"itself is only accurate to about {pct}%: {', '.join(near)}. Check "
+            "cacheReadInputTokens on a processed document, or add field descriptions "
+            "to move them clear of the boundary."
+        )

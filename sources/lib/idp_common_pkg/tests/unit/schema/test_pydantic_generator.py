@@ -6,12 +6,14 @@ Comprehensive tests for Pydantic model generation from JSON Schema.
 """
 
 import pytest
+from pydantic import BaseModel, ValidationError
+
 from idp_common.schema.pydantic_generator import (
     clean_schema_for_generation,
     create_pydantic_model_from_json_schema,
+    nullable_required_containers_for_shard,
     validate_json_schema_for_pydantic,
 )
-from pydantic import BaseModel, ValidationError
 
 
 class TestCleanSchemaForGeneration:
@@ -405,8 +407,16 @@ class TestCreatePydanticModelFromJsonSchema:
         instance = Model(field="value")
         assert instance.field == "value"
 
-    def test_circular_reference_detection(self):
-        """Test that circular references are handled (may or may not raise)."""
+    def test_self_referential_defs_resolve_to_a_usable_model(self):
+        """A `$defs` entry that refers to itself generates a working model.
+
+        datamodel-code-generator emits a forward reference for the recursive
+        property, so the recursion has to survive both generation and the
+        `model_rebuild()` this module performs afterwards. Both the base case
+        (no `next`) and one level of nesting are asserted, because a forward
+        reference that was generated but never resolved builds the class fine
+        and only fails when the nested value is actually validated.
+        """
         schema = {
             "type": "object",
             "title": "CircularModel",
@@ -422,31 +432,38 @@ class TestCreatePydanticModelFromJsonSchema:
             "properties": {"root": {"$ref": "#/$defs/Node"}},
         }
 
-        # datamodel-code-generator can handle some circular refs with forward references
-        # This test just ensures it doesn't crash completely
-        try:
-            Model = create_pydantic_model_from_json_schema(schema, "CircularModel")
-            # If it succeeds, verify we can create an instance
-            instance = Model(root={"value": "test"})
-            assert instance.root.value == "test"
-        except Exception:
-            # If it fails, that's also acceptable behavior
-            pass
+        Model = create_pydantic_model_from_json_schema(schema, "CircularModel")
 
-    def test_invalid_schema(self):
-        """Test handling of invalid schema."""
+        leaf = Model(root={"value": "test"})
+        assert leaf.root.value == "test"
+        assert leaf.root.next is None
+
+        nested = Model(root={"value": "a", "next": {"value": "b"}})
+        assert nested.root.next.value == "b"
+
+    def test_an_unrecognised_type_keyword_yields_a_permissive_model(self):
+        """An unusable `type` keyword does not raise; it degrades to `Any`.
+
+        The previous version of this test accepted either outcome, which made
+        it unable to fail (#1129). The measured behaviour is that neither
+        datamodel-code-generator nor this module validates the schema against
+        the JSON Schema metaschema, so generation succeeds and the caller gets
+        a model that accepts anything. That is worth pinning in either
+        direction: if a dependency upgrade starts rejecting such a schema, the
+        callers that today get a permissive model would start seeing an
+        exception, and this test is what says so.
+        """
         schema = {
-            "type": "invalid_type",  # Invalid type
+            "type": "invalid_type",  # not a JSON Schema type
             "properties": {},
         }
 
-        # datamodel-code-generator may or may not raise for invalid types
-        # Just ensure it doesn't crash silently
-        try:
-            create_pydantic_model_from_json_schema(schema, "InvalidModel")
-        except Exception:
-            # Expected - invalid schema should raise some exception
-            pass
+        Model = create_pydantic_model_from_json_schema(schema, "InvalidModel")
+
+        assert issubclass(Model, BaseModel)
+        assert "root" in Model.model_fields
+        # Nothing is constrained, so an arbitrary payload validates.
+        assert Model(root={"anything": 1}).root == {"anything": 1}
 
     def test_empty_properties(self):
         """Test model with empty properties."""
@@ -1317,6 +1334,95 @@ class TestNestedObjectAliases:
         assert TestModel.model_config.get("populate_by_name") is True
         assert TestModel.model_config.get("serialize_by_alias") is True
 
+    def test_nested_spaced_field_names_round_trip(self):
+        """Regression: nested object/array properties whose names contain spaces
+        must validate from and serialize back to their spaced aliases — not the
+        underscore-sanitized field names.
+
+        Previously the alias config was applied only to the top-level model, so
+        nested fields like "Date of Birth" round-tripped as "Date_of_Birth" and
+        agentic extraction silently lost nested values (real-world Homeowners
+        Insurance Application regression).
+        """
+        schema = {
+            "type": "object",
+            "title": "HomeApp",
+            "properties": {
+                "Policy Number": {"type": "string"},
+                "Primary Applicant Information": {
+                    "type": "object",
+                    "properties": {
+                        "Name": {"type": "string"},
+                        "Date of Birth": {"type": "string"},
+                        "Marital Status": {"type": "string"},
+                        "Drivers License Number": {"type": "string"},
+                    },
+                },
+                "Auto Claims": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"Number of Accidents": {"type": "string"}},
+                    },
+                },
+            },
+        }
+
+        Model = create_pydantic_model_from_json_schema(
+            schema, "HomeApp", clean_schema=False
+        )
+
+        # The LLM/document produces the spaced (alias) keys.
+        data = {
+            "Policy Number": "123456",
+            "Primary Applicant Information": {
+                "Name": "Ziggy Starpixel",
+                "Date of Birth": "02/20/2000",
+                "Marital Status": "S",
+                "Drivers License Number": "1234567A",
+            },
+            "Auto Claims": [{"Number of Accidents": "2"}],
+        }
+
+        out = Model.model_validate(data).model_dump(mode="json")
+
+        # Nested values survive (the core regression: these were dropped to null).
+        pai = out["Primary Applicant Information"]
+        assert pai["Date of Birth"] == "02/20/2000"
+        assert pai["Marital Status"] == "S"
+        assert pai["Drivers License Number"] == "1234567A"
+        # Keys are the spaced aliases, NOT the underscore field names.
+        assert "Date_of_Birth" not in pai
+        assert "Marital_Status" not in pai
+        # Array-of-object nested fields round-trip too.
+        assert out["Auto Claims"][0]["Number of Accidents"] == "2"
+        assert "Number_of_Accidents" not in out["Auto Claims"][0]
+
+    def test_deeply_nested_spaced_names_round_trip(self):
+        """Three-level nesting with spaced names must also round-trip by alias."""
+        schema = {
+            "type": "object",
+            "title": "Deep",
+            "properties": {
+                "Outer Group": {
+                    "type": "object",
+                    "properties": {
+                        "Inner Group": {
+                            "type": "object",
+                            "properties": {"Deep Field": {"type": "string"}},
+                        }
+                    },
+                }
+            },
+        }
+        Model = create_pydantic_model_from_json_schema(
+            schema, "Deep", clean_schema=False
+        )
+        out = Model.model_validate(
+            {"Outer Group": {"Inner Group": {"Deep Field": "hello"}}}
+        ).model_dump(mode="json")
+        assert out["Outer Group"]["Inner Group"]["Deep Field"] == "hello"
+
     def test_array_contains_constraints(self):
         """Test that array contains, minContains, and maxContains constraints are supported."""
         schema = {
@@ -1371,6 +1477,121 @@ class TestNestedObjectAliases:
         # at runtime, as these are JSON Schema validation constraints. The test verifies that
         # the schema can be converted to a Pydantic model without errors, even if the constraints
         # aren't enforced during validation.
+
+
+class TestNullableRequiredContainersForShard:
+    """The shard-scoped half of the transport transform (#1078).
+
+    ``nullable_leaves_for_transport`` widens scalar leaves; this widens a **required**
+    array or nested object as well, for the one caller that needs it — a shard agent
+    that is told to leave an out-of-shard field null. Its contract as a pure schema
+    function is pinned here; what the service does with it is in
+    ``tests/unit/extraction/test_truncation_warnings.py``.
+    """
+
+    _SCHEMA = {
+        "type": "object",
+        "properties": {
+            "Scalar": {"type": "string"},
+            "Rows": {"type": "array", "minItems": 5, "items": {"type": "string"}},
+            "Group": {"type": "object", "properties": {"A": {"type": "string"}}},
+            "OptionalRows": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["Scalar", "Rows", "Group"],
+    }
+
+    def test_only_required_containers_gain_a_null_branch(self):
+        out = nullable_required_containers_for_shard(self._SCHEMA)
+        props = out["properties"]
+        assert props["Rows"]["type"] == ["array", "null"]
+        assert props["Group"]["type"] == ["object", "null"]
+        # A scalar is this transform's business only through the other one.
+        assert props["Scalar"]["type"] == "string"
+        # Already optional: nothing to relax.
+        assert props["OptionalRows"]["type"] == "array"
+        # required itself is untouched — the key must still be present.
+        assert out["required"] == ["Scalar", "Rows", "Group"]
+
+    def test_row_count_bounds_are_left_alone(self):
+        """Presence and row counts are separate decisions; only presence relaxes."""
+        out = nullable_required_containers_for_shard(self._SCHEMA)
+        assert out["properties"]["Rows"]["minItems"] == 5
+
+    def test_the_input_is_not_mutated(self):
+        """The caller keeps validating the merged section against the real schema."""
+        import copy
+
+        before = copy.deepcopy(self._SCHEMA)
+        nullable_required_containers_for_shard(self._SCHEMA)
+        assert self._SCHEMA == before
+
+    def test_it_is_idempotent(self):
+        once = nullable_required_containers_for_shard(self._SCHEMA)
+        assert nullable_required_containers_for_shard(once) == once
+
+    def test_it_reaches_required_lists_at_every_level(self):
+        """One rule for the whole schema, including ``$defs`` and ``items``."""
+        schema = {
+            "type": "object",
+            "$defs": {
+                "Item": {
+                    "type": "object",
+                    "properties": {"Tags": {"type": "array", "items": {}}},
+                    "required": ["Tags"],
+                }
+            },
+            "properties": {
+                "Items": {"type": "array", "items": {"$ref": "#/$defs/Item"}},
+                "Nested": {
+                    "type": "object",
+                    "properties": {"Inner": {"type": "array", "items": {}}},
+                    "required": ["Inner"],
+                },
+            },
+            "required": ["Items", "Nested"],
+        }
+        out = nullable_required_containers_for_shard(schema)
+        assert out["properties"]["Items"]["type"] == ["array", "null"]
+        assert out["properties"]["Nested"]["type"] == ["object", "null"]
+        assert out["properties"]["Nested"]["properties"]["Inner"]["type"] == [
+            "array",
+            "null",
+        ]
+        assert out["$defs"]["Item"]["properties"]["Tags"]["type"] == ["array", "null"]
+
+    def test_a_container_with_no_declared_type_is_recognised_by_shape(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "Group": {"properties": {"A": {"type": "string"}}},
+                "Rows": {"items": {"type": "string"}},
+            },
+            "required": ["Group", "Rows"],
+        }
+        out = nullable_required_containers_for_shard(schema)
+        assert out["properties"]["Group"]["type"] == ["object", "null"]
+        assert out["properties"]["Rows"]["type"] == ["array", "null"]
+
+    def test_a_bare_ref_property_is_the_documented_residual(self):
+        """A required property that is only a ``$ref`` is NOT widened.
+
+        There is no keyword to widen without resolving the reference, and the
+        ``anyOf`` form the generator would need turns an array field into a wrapper
+        model — which breaks the shard merge's list detection, a worse outcome than
+        the one correction round this leaves in place. Pinned so the limitation is a
+        recorded decision rather than an accident, and so a later fix has a test to
+        flip.
+        """
+        schema = {
+            "type": "object",
+            "$defs": {
+                "Sum": {"type": "object", "properties": {"T": {"type": "number"}}}
+            },
+            "properties": {"G": {"$ref": "#/$defs/Sum"}},
+            "required": ["G"],
+        }
+        out = nullable_required_containers_for_shard(schema)
+        assert out["properties"]["G"] == {"$ref": "#/$defs/Sum"}
 
 
 if __name__ == "__main__":

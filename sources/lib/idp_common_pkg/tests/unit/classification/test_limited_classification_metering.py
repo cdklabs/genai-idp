@@ -6,6 +6,7 @@ Tests for metering data transfer in limited classification scenarios.
 """
 
 import pytest
+
 from idp_common.classification.service import ClassificationService
 from idp_common.models import Document, Page, Section
 
@@ -91,7 +92,11 @@ def test_apply_limited_classification_transfers_metering():
     # Verify all pages have the classification
     for page in result_doc.pages.values():
         assert page.classification == "invoice"
-        assert page.confidence == 1.0
+        # maxPagesForClassification extrapolates the class from a sample to pages
+        # the model never saw, so no page here carries a confidence — it used to
+        # claim 1.0 for all five (GitHub #673).
+        assert page.confidence is None
+    assert result_doc.sections[0].confidence is None
 
 
 @pytest.mark.unit

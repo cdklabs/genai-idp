@@ -8,6 +8,7 @@ Unit tests for the SaveReportingData class.
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from idp_common.models import Document
 from idp_common.reporting.save_reporting_data import SaveReportingData
 
@@ -100,14 +101,25 @@ class TestSaveReportingData:
         assert bucket == "test-bucket"
         assert key == "path/to/file.json"
 
-        # Test S3 URI with leading slash in key
+        # Key containing '#' must not be truncated (urlparse treated '#' as a
+        # URL fragment delimiter and silently dropped the rest of the key)
+        bucket, key = reporter._parse_s3_uri("s3://test-bucket/path/file #99.json")
+        assert bucket == "test-bucket"
+        assert key == "path/file #99.json"
+
+        # A double slash now denotes a key that genuinely starts with '/'
+        # (previously lstrip'd away, which made the key unretrievable)
         bucket, key = reporter._parse_s3_uri("s3://test-bucket//path/to/file.json")
         assert bucket == "test-bucket"
-        assert key == "path/to/file.json"
+        assert key == "/path/to/file.json"
 
         # Test invalid S3 URI
         with pytest.raises(ValueError):
             reporter._parse_s3_uri("http://test-bucket/path/to/file.json")
+
+        # Bucket-only URI (no key) raises rather than returning an empty key
+        with pytest.raises(ValueError):
+            reporter._parse_s3_uri("s3://test-bucket")
 
     def test_save_with_empty_data_to_save(
         self, mock_s3_client, document_with_evaluation_uri
@@ -446,3 +458,327 @@ class TestSaveReportingDataSections:
         mock_save_metering.assert_called_once_with(document_with_sections)
         mock_save_sections.assert_called_once_with(document_with_sections)
         assert len(results) == 2
+
+    def test_config_version_in_schemas_and_records(self, mock_s3_client):
+        """Test that config_version is included in schemas and populated in records."""
+        import pyarrow as pa
+
+        # Test metering schema
+        metering_schema = pa.schema(
+            [
+                ("document_id", pa.string()),
+                ("context", pa.string()),
+                ("service_api", pa.string()),
+                ("unit", pa.string()),
+                ("value", pa.float64()),
+                ("number_of_pages", pa.int32()),
+                ("unit_cost", pa.float64()),
+                ("estimated_cost", pa.float64()),
+                ("timestamp", pa.timestamp("ms")),
+                ("config_version", pa.string()),
+            ]
+        )
+        assert "config_version" in [field.name for field in metering_schema]
+
+        # Test document evaluation schema (check in save_evaluation_results source)
+        # Create a test document with config_version
+        doc_with_config = Document(
+            id="test-doc", input_key="test/doc.pdf", config_version="test-v1.0"
+        )
+        doc_without_config = Document(id="test-doc2", input_key="test/doc2.pdf")
+
+        # Verify config_version fallback behavior
+        assert doc_with_config.config_version == "test-v1.0"
+        assert doc_without_config.config_version is None
+
+        # Simulate record creation with fallback
+        record_with_config = {
+            "config_version": doc_with_config.config_version or "default"
+        }
+        record_without_config = {
+            "config_version": doc_without_config.config_version or "default"
+        }
+
+        assert record_with_config["config_version"] == "test-v1.0"
+        assert record_without_config["config_version"] == "default"
+
+
+# ---------------------------------------------------------------------------
+# Metering write-time partitioning (docs/reporting-sql-layer.md §2.3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestMeteringWriteTimePartitioning:
+    """Metering rows partition by write time (=completion time), not by
+    ``initial_event_time`` (queue time). ``initial_event_time`` is preserved
+    as a column on each row.
+
+    The rollup Lambda relies on this invariant: every metering row lands in
+    the current-hour partition, so hourly rollups are trivially append-only
+    with no trailing re-materialization window.
+    """
+
+    @pytest.fixture
+    def reporting(self):
+        with patch("boto3.client"):
+            return SaveReportingData(reporting_bucket="test-bucket")
+
+    def _doc_with_metering(self, initial_event_time: str = "2020-01-01T00:00:00Z"):
+        """Build a doc whose ``initial_event_time`` is well in the past so
+        we can tell it apart from ``datetime.now()`` in assertions.
+        """
+        doc = Document(id="doc-late-finish", input_key="test/late-doc.pdf")
+        doc.initial_event_time = initial_event_time
+        doc.metering = {
+            "extraction/bedrock/converse": {
+                "inputTokens": 100.0,
+                "outputTokens": 50.0,
+            }
+        }
+        doc.num_pages = 3
+        return doc
+
+    def test_metering_partitions_use_write_time_not_queue_time(self, reporting):
+        """A doc queued years ago that finishes now must land in *today's*
+        partition. This is the whole point of the write-time change —
+        otherwise late completions would land in past partitions and
+        rollups would need a trailing re-materialization window.
+        """
+        import datetime as dt
+
+        doc = self._doc_with_metering("2020-01-01T00:00:00Z")  # ancient queue time
+
+        with patch.object(reporting, "_save_records_as_parquet") as mock_save:
+            reporting.save_metering_data(doc)
+
+        assert mock_save.called, "save_metering_data must write records"
+        s3_key = mock_save.call_args[0][1]
+        today = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+        assert f"date={today}" in s3_key, (
+            f"Expected today's date ({today}) in S3 key, got {s3_key!r} — "
+            f"partitioning may have regressed to initial_event_time"
+        )
+        assert "date=2020-01-01" not in s3_key, (
+            f"Old initial_event_time bled through into partition path: {s3_key!r}"
+        )
+
+    def test_metering_key_includes_hour_partition(self, reporting):
+        """Path must be ``date=YYYY-MM-DD/hour=HH/`` so the tier picker's
+        current-hour tail query can partition-prune to ~40 MB instead of
+        scanning the whole day."""
+        import datetime as dt
+
+        doc = self._doc_with_metering()
+        with patch.object(reporting, "_save_records_as_parquet") as mock_save:
+            reporting.save_metering_data(doc)
+
+        s3_key = mock_save.call_args[0][1]
+        current_hour = dt.datetime.now(dt.timezone.utc).strftime("%H")
+        assert f"hour={current_hour}" in s3_key, (
+            f"Expected hour={current_hour} in S3 key, got {s3_key!r}"
+        )
+
+    def test_initial_event_time_preserved_as_column(self, reporting):
+        """``initial_event_time`` is not in the partition anymore, but it
+        MUST still exist as a queryable column on each metering row so
+        consumers who need queue-time semantics can filter on it.
+        """
+        doc = self._doc_with_metering("2024-06-15T10:30:00Z")
+
+        with patch.object(reporting, "_save_records_as_parquet") as mock_save:
+            reporting.save_metering_data(doc)
+
+        records = mock_save.call_args[0][0]
+        assert records, "Expected at least one metering record"
+        for r in records:
+            assert "initial_event_time" in r, (
+                "initial_event_time must be preserved as a column"
+            )
+            assert r["initial_event_time"].year == 2024
+            assert r["initial_event_time"].month == 6
+
+    def test_missing_initial_event_time_falls_back_to_write_time(self, reporting):
+        """Docs without ``initial_event_time`` (should be rare — probably
+        only failure paths) fall back to using write time for the column
+        too. The row still exists; no data loss.
+        """
+        doc = self._doc_with_metering()
+        doc.initial_event_time = None
+
+        with patch.object(reporting, "_save_records_as_parquet") as mock_save:
+            reporting.save_metering_data(doc)
+
+        records = mock_save.call_args[0][0]
+        assert records
+        for r in records:
+            # Fallback: initial_event_time equals timestamp (both = write time)
+            assert r["initial_event_time"] == r["timestamp"]
+
+    def test_unparseable_initial_event_time_falls_back(self, reporting):
+        """Malformed ``initial_event_time`` (e.g., legacy garbage) must
+        not fail the write — falls back to write time for the column."""
+        doc = self._doc_with_metering("not a valid iso timestamp")
+
+        with patch.object(reporting, "_save_records_as_parquet") as mock_save:
+            reporting.save_metering_data(doc)
+
+        records = mock_save.call_args[0][0]
+        assert records
+        for r in records:
+            assert r["initial_event_time"] == r["timestamp"]
+
+    # Round-12 cleanup: removed test_glue_table_declares_date_and_hour_partitions
+    # — the `_create_or_update_metering_glue_table` method it exercised was
+    # dead code (metering table is now managed by CFN in template.yaml as
+    # `MeteringTable`). The partition-keys invariant is now guarded by
+    # CloudFormation lint on the template rather than by a Python-side unit
+    # test. See docs/reporting-database.md for the authoritative shape.
+
+
+# ---------------------------------------------------------------------------
+# document_class column on metering rows (docs/reporting-sql-layer.md §10)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestMeteringDocumentClass:
+    """save_metering_data derives ``document_class`` from ``document.sections``
+    using the same 0/1/N rule the read-side widget previously computed at
+    query time from ``document_sections_*``, with one improvement:
+    ``Section.excluded`` sections (instruction/legal boilerplate) are
+    filtered out so a W2 with an instructions page does not read as 'mixed'.
+    """
+
+    @pytest.fixture
+    def reporting(self):
+        with patch("boto3.client"):
+            return SaveReportingData(reporting_bucket="test-bucket")
+
+    def _doc(self, sections):
+        doc = Document(id="doc-x", input_key="test/doc-x.pdf", sections=sections)
+        doc.initial_event_time = "2026-09-21T00:00:00Z"
+        doc.metering = {"ocr/textract/analyze_document": {"pages": 1.0}}
+        doc.num_pages = 1
+        return doc
+
+    def _write(self, reporting, doc):
+        with patch.object(reporting, "_save_records_as_parquet") as mock_save:
+            reporting.save_metering_data(doc)
+        assert mock_save.called
+        return mock_save.call_args[0][0]
+
+    def test_no_sections_gives_unknown(self, reporting):
+        """FAILED or in-flight docs with no sections bucket as 'unknown' —
+        matches the current read-side LEFT JOIN semantics."""
+        from idp_common.models import Document
+
+        doc = Document(id="doc-failed", input_key="test/failed.pdf", sections=[])
+        doc.initial_event_time = "2026-09-21T00:00:00Z"
+        doc.metering = {"ocr/textract/analyze_document": {"pages": 1.0}}
+        doc.num_pages = 1
+        records = self._write(reporting, doc)
+        assert all(r["document_class"] == "unknown" for r in records)
+
+    def test_single_class_gives_that_class(self, reporting):
+        """A doc whose sections are all one class reads as that class."""
+        from idp_common.models import Section
+
+        sections = [
+            Section(section_id="s1", classification="w2", page_ids=["p1"]),
+            Section(section_id="s2", classification="w2", page_ids=["p2"]),
+        ]
+        records = self._write(reporting, self._doc(sections))
+        assert all(r["document_class"] == "w2" for r in records)
+
+    def test_multiple_classes_gives_mixed(self, reporting):
+        """A packet document (multiple distinct section classes) reads as 'mixed'."""
+        from idp_common.models import Section
+
+        sections = [
+            Section(section_id="s1", classification="w2", page_ids=["p1"]),
+            Section(section_id="s2", classification="1099", page_ids=["p2"]),
+            Section(section_id="s3", classification="invoice", page_ids=["p3"]),
+        ]
+        records = self._write(reporting, self._doc(sections))
+        assert all(r["document_class"] == "mixed" for r in records)
+
+    def test_excluded_section_filtered_from_class_derivation(self, reporting):
+        """Section.excluded=True sections (instruction/legal boilerplate)
+        must NOT push a single-class doc into 'mixed'. This is the
+        semantic improvement over the current read-side query, which
+        would count the instruction page's classification and report
+        'mixed' — see docs/reporting-sql-layer.md §10 and PR description."""
+        from idp_common.models import Section
+
+        sections = [
+            Section(section_id="s1", classification="w2", page_ids=["p1"]),
+            Section(
+                section_id="s2",
+                classification="instructions",
+                page_ids=["p2"],
+                excluded=True,
+                exclusion_reason="instructions",
+            ),
+        ]
+        records = self._write(reporting, self._doc(sections))
+        assert all(r["document_class"] == "w2" for r in records)
+
+    def test_empty_classification_string_ignored(self, reporting):
+        """A section with an empty-string classification (edge case from a
+        classifier that returned no confident label) is not counted."""
+        from idp_common.models import Section
+
+        sections = [
+            Section(section_id="s1", classification="w2", page_ids=["p1"]),
+            Section(section_id="s2", classification="", page_ids=["p2"]),
+        ]
+        records = self._write(reporting, self._doc(sections))
+        assert all(r["document_class"] == "w2" for r in records)
+
+    def test_all_sections_excluded_gives_unknown(self, reporting):
+        """A pathological doc where every section is excluded — no signal
+        to bucket by, so 'unknown' is the safe answer."""
+        from idp_common.models import Section
+
+        sections = [
+            Section(
+                section_id="s1",
+                classification="instructions",
+                page_ids=["p1"],
+                excluded=True,
+            ),
+            Section(
+                section_id="s2",
+                classification="legal",
+                page_ids=["p2"],
+                excluded=True,
+            ),
+        ]
+        records = self._write(reporting, self._doc(sections))
+        assert all(r["document_class"] == "unknown" for r in records)
+
+    def test_document_class_same_value_on_every_row_of_doc(self, reporting):
+        """document_class is a per-DOCUMENT property. Every metering row
+        for one document must carry the same value — otherwise a rollup
+        that groups by document_class would fan out spuriously."""
+        from idp_common.models import Section
+
+        doc = Document(
+            id="multi-row",
+            input_key="test/multi.pdf",
+            sections=[Section(section_id="s1", classification="w2", page_ids=["p1"])],
+        )
+        doc.initial_event_time = "2026-09-21T00:00:00Z"
+        doc.num_pages = 1
+        doc.metering = {
+            "ocr/textract/analyze_document": {"pages": 1.0},
+            "extraction/bedrock/converse": {
+                "inputTokens": 100.0,
+                "outputTokens": 50.0,
+            },
+        }
+        records = self._write(reporting, doc)
+        assert len(records) > 1  # sanity
+        assert len({r["document_class"] for r in records}) == 1
+        assert records[0]["document_class"] == "w2"

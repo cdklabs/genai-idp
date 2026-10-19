@@ -18,7 +18,9 @@ The GenAI IDP Accelerator can be deployed using either the AWS CloudFormation co
 **Important**: Deploying the GenAI IDP Accelerator requires administrator access to your AWS account. However, for organizations that want to enable non-administrator users to deploy and manage IDP stacks, we provide an optional CloudFormation service role approach:
 
 - **For Administrators**: Use the deployment options below with your existing administrator privileges
-- **For Delegated Access**: See [iam-roles/cloudformation-management/README.md](../iam-roles/cloudformation-management/README.md) for instructions on provisioning a CloudFormation service role that allows non-administrator users to deploy and maintain IDP stacks without requiring administrator permissions
+- **For Delegated Access**: See [iam-roles/cloudformation-management/README.md](../iam-roles/cloudformation-management/README.md) for instructions on provisioning a CloudFormation service role that allows non-administrator users to deploy and maintain IDP stacks without requiring administrator permissions. That role requires an IAM **permissions boundary policy** (`CreatedRolePermissionsBoundaryArn`, no default) and a shared stack-name prefix (`ManagedStackNamePrefix`); the boundary is what stops a delegated deployer from creating a role more powerful than the boundary allows, so the same ARN must be passed to the IDP stack itself as its `PermissionsBoundaryArn`. A separate optional parameter, `ServiceRolePermissionsBoundaryArn`, caps the deployment role itself and must be left blank or set to a wide policy — the two are not interchangeable. It is a deployment role, not a least-privilege one — read the README's "Read This Before Granting the Role" section first, and "Updating an Existing Deployment" if the IDP stack already exists.
+
+For the full breakdown of AWS services and the IAM permission scopes required for deployment and runtime, see [AWS Services and IAM Role Requirements](./aws-services-and-roles.md).
 
 ### Option 1: One-Click CloudFormation Console Deployment (Recommended for First-Time Users)
 
@@ -29,12 +31,24 @@ The GenAI IDP Accelerator can be deployed using either the AWS CloudFormation co
 | US West (Oregon) | us-west-2 | [![Launch Stack](https://cdn.rawgit.com/buildkite/cloudformation-launch-stack-button-svg/master/launch-stack.svg)](https://us-west-2.console.aws.amazon.com/cloudformation/home?region=us-west-2#/stacks/create/review?templateURL=https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main.yaml&stackName=IDP) |
 | US East (N.Virginia) | us-east-1 | [![Launch Stack](https://cdn.rawgit.com/buildkite/cloudformation-launch-stack-button-svg/master/launch-stack.svg)](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/create/review?templateURL=https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main.yaml&stackName=IDP) |
 | EU Central (Frankfurt)      | eu-central-1   | [![Launch Stack](https://cdn.rawgit.com/buildkite/cloudformation-launch-stack-button-svg/master/launch-stack.svg)](https://eu-central-1.console.aws.amazon.com/cloudformation/home?region=eu-central-1#/stacks/create/review?templateURL=https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main.yaml&stackName=IDP) |
+| Canada (Central)      | ca-central-1   | [![Launch Stack](https://cdn.rawgit.com/buildkite/cloudformation-launch-stack-button-svg/master/launch-stack.svg)](https://ca-central-1.console.aws.amazon.com/cloudformation/home?region=ca-central-1#/stacks/create/review?templateURL=https://s3.ca-central-1.amazonaws.com/aws-bigdata-blog-replica-ca-central-1/artifacts/genai-idp/idp-main.yaml&stackName=IDP) |
+
+> ⚠️ The **Canada (Central)** button serves artifacts from v0.6.12 onward. Until that release is published it answers a CloudFormation "template not found" error; deploy an earlier release from source instead (see [Canada (Central) Region Model Support](./canada-region-model-support.md)).
 
 2. Review the template parameters and provide values as needed
 3. Check the acknowledgment box and click **Create stack**
 4. Wait for the stack to reach the `CREATE_COMPLETE` state (10-15 minutes)
 
 > **Note**: When the stack is deploying for the first time, it will send an email with a temporary password to the address specified in the AdminEmail parameter. You will need to use this temporary password to log into the UI and set a permanent password.
+
+> **Also confirm the alerts subscription.** The stack subscribes the same
+> `AdminEmail` address to the CloudWatch alerts topic, so a **second** email
+> arrives titled *"AWS Notification - Subscription Confirmation"*. Until someone
+> clicks its confirmation link the subscription stays in `PendingConfirmation`
+> and **no alarm notification is delivered** — the alarms still fire, they just
+> reach nobody, and nothing about the deployment reports a problem. See
+> [Who receives the alerts](./monitoring.md#who-receives-the-alerts) for how to
+> check the status and how to alert a team or a pager rather than one mailbox.
 
 ---
 
@@ -45,8 +59,8 @@ For programmatic deployment, updates, and batch processing, use the IDP CLI.
 #### Install the CLI
 
 ```bash
-cd lib/idp_cli_pkg
-pip install -e .
+make setup-venv
+source .venv/bin/activate
 ```
 
 #### Deploy a New Stack
@@ -63,6 +77,9 @@ idp-cli deploy \
 - Creates all CloudFormation resources (~120 resources)
 - Waits for deployment to complete (10-15 minutes)
 - Sends email with temporary admin password
+- Subscribes the same address to the CloudWatch alerts topic — this needs a
+  confirmation click before any alarm notification is delivered, see
+  [Who receives the alerts](./monitoring.md#who-receives-the-alerts)
 - Returns stack outputs including Web UI URL and bucket names
 
 #### Deploy with Custom Configuration
@@ -114,10 +131,11 @@ You need to have the following packages installed on your computer:
 1. bash shell (Linux, MacOS, Windows-WSL)
 2. aws (AWS CLI)
 3. [sam (AWS SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
-4. python 3.11 or later
-5. A local Docker daemon
-6. Python packages: `pip install boto3 rich typer PyYAML botocore setuptools ruff build cfn-lint`
-7. **Node.js 22.12+** and **npm** (required for UI validation in publish script)
+4. python 3.12 or later
+5. Python packages: `pip install boto3 rich typer PyYAML botocore setuptools ruff build cfn-lint`
+6. **Node.js 22.12+** and **npm** (required for UI validation in publish script)
+
+> **Docker is NOT required on your workstation.** Lambda functions are packaged as source code by `idp-cli publish` and uploaded to S3; AWS CodeBuild builds the container images during stack deployment.
 
 For guidance on setting up a development environment, see:
 
@@ -132,13 +150,13 @@ Copy the repo to your computer. Either:
 
 ### Option A: IDP CLI `--from-code` (Recommended)
 
-The easiest way to build, publish, and deploy from source in a single command is using the IDP CLI with the `--from-code` option. This builds all artifacts using `publish.py`, publishes them to S3, and deploys the CloudFormation stack — all in one step.
+The easiest way to build, publish, and deploy from source in a single command is using the IDP CLI with the `--from-code` option. This builds all artifacts, publishes them to S3, and deploys the CloudFormation stack — all in one step.
 
 #### Install the CLI
 
 ```bash
-cd lib/idp_cli_pkg
-pip install -e .
+make setup-venv
+source .venv/bin/activate
 ```
 
 #### Deploy a New Stack from Source
@@ -161,7 +179,7 @@ idp-cli deploy \
 ```
 
 **What `--from-code` does:**
-- Runs `publish.py` to build SAM templates, Lambda layers, container images, and the UI
+- Builds SAM templates, Lambda layers, container images, and the UI
 - Publishes all artifacts to an S3 bucket in your account
 - Creates or updates the CloudFormation stack with the newly published template
 - With `--wait`, monitors the deployment until completion
@@ -174,48 +192,57 @@ idp-cli deploy \
 
 ### Option B: Publish Templates + Deploy Separately
 
-If you prefer to publish artifacts first and then deploy as a separate step, use `publish.py` to build and publish, then deploy using the AWS CloudFormation console or CLI.
+If you prefer to publish artifacts first and then deploy as a separate step, use `idp-cli publish` to build and publish, then deploy using the AWS CloudFormation console or CLI.
 
-#### Step 1: Build and Publish with publish.py
+#### Step 1: Build and Publish with `idp-cli publish`
 
 ```bash
-python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [--verbose] [--no-validate] [--clean-build] [--max-workers N]
+idp-cli publish --source-dir . --region <region> [--bucket-basename <bucket>] [--prefix <prefix>] [--verbose] [--no-validate] [--clean-build] [--max-workers N]
 ```
 
 **Parameters:**
 
-- `cfn_bucket_basename`: A prefix for the S3 bucket name (e.g., `idp-1234567890` to ensure global uniqueness)
-- `cfn_prefix`: S3 prefix for artifacts (e.g., `idp` or `idp-dev`)
-- `region`: AWS region for deployment (e.g., `us-east-1`)
+- `--source-dir`: Path to the IDP project root directory (default: `.`)
+- `--region`: AWS region for deployment (e.g., `us-east-1`)
+- `--bucket-basename`: (Optional) S3 bucket basename for artifacts (auto-generated if not provided)
+- `--prefix`: (Optional) S3 key prefix for artifacts (default: `idp-cli`)
 - `--verbose` or `-v`: (Optional) Enable detailed error output for debugging build failures
 - `--clean-build`: (Optional) Force a clean rebuild of all artifacts
 - `--max-workers N`: (Optional) Number of parallel build workers
+- `--headless`: (Optional) Also generate a **headless (no-UI) template variant**. Useful for API-only / pipeline integrations. See [Headless Deployment](./headless-deployment.md).
+- `--govcloud`: (Optional) Also generate a **GovCloud template variant** that keeps the full Web UI: removes all `AWS::CloudFront::*` resources and Lambda Function URLs (unavailable in GovCloud) and forces API Gateway UI hosting. Mutually exclusive with `--headless`. See [GovCloud Deployment](./govcloud-deployment.md).
 
 **Example:**
 
 ```bash
-python3 publish.py idp-1234567890 idp us-east-1
+idp-cli publish --source-dir . --region us-east-1
 ```
 
-The publish script:
+With custom bucket and prefix:
+
+```bash
+idp-cli publish --source-dir . --bucket-basename idp-1234567890 --prefix idp --region us-east-1
+```
+
+The publish command:
 
 - Checks your system dependencies for required packages
 - Builds SAM templates, Lambda layers, and container images
 - Packages and uploads the UI
-- Publishes all templates and assets to an S3 bucket (`<cfn_bucket_basename>-<region>`, created if it doesn't exist)
+- Publishes all templates and assets to an S3 bucket (auto-created if it doesn't exist)
 
-When completed, the script displays:
+When completed, the command displays:
 
 - The CloudFormation template's S3 URL
 - A 1-click URL for launching the stack creation in the CloudFormation console
 
-> **Note**: Ensure Docker is running — Lambda functions are deployed as container images built during the publish process.
+> **Note**: Docker is **not required** on your workstation for `idp-cli publish`. The publish script packages source code and uploads it to S3; AWS CodeBuild builds the Lambda container images in the cloud during the subsequent CloudFormation stack deployment.
 
 **Troubleshooting Build Issues:**
 If the build fails, use the `--verbose` flag to see detailed error messages:
 
 ```bash
-python3 publish.py idp-1234567890 idp us-east-1 --verbose
+idp-cli publish --source-dir . --region us-east-1 --verbose
 ```
 
 This will show:
@@ -257,13 +284,7 @@ aws cloudformation update-stack \
   --parameters ParameterKey=AdminEmail,ParameterValue="<your-email>"
 ```
 
-#### Using publish.sh (Legacy)
-
-`publish.sh` is a Bash wrapper around `publish.py`. Use `publish.py` directly for new deployments.
-
-```bash
-./publish.sh <cfn_bucket_basename> <cfn_prefix> <region>
-```
+> **Note**: The legacy `publish.py` script is deprecated. Use `idp-cli publish` for all new deployments.
 
 ---
 
@@ -282,8 +303,8 @@ The solution **automatically** deploys all Lambda functions as container images 
 
 ### Prerequisites
 
-- **Docker** must be running on your build machine (for local builds via `publish.py` or `idp-cli --from-code`)
-- Your AWS credentials must have **ECR permissions**
+- **Docker is NOT required on your workstation** — `idp-cli publish` packages source code and uploads it to S3; AWS CodeBuild builds all Lambda container images in the cloud during stack deployment.
+- Your AWS credentials must have **ECR permissions** (for CodeBuild to push images during deployment)
 
 ### How It Works
 
@@ -322,6 +343,7 @@ To update an existing GenAIIDP deployment to a new version:
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main.yaml`
    - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main.yaml`
    - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main.yaml`
+   - ca-central-1: `https://s3.ca-central-1.amazonaws.com/aws-bigdata-blog-replica-ca-central-1/artifacts/genai-idp/idp-main.yaml`
 7. Click "Next"
 8. Review the parameters and make any necessary changes
    - The update will preserve your existing parameter values
@@ -334,6 +356,15 @@ To update an existing GenAIIDP deployment to a new version:
 
 > **Note**: Updating the stack may cause some resources to be replaced, which could lead to brief service interruptions. Consider updating during a maintenance window if the solution is being used in production.
 
+> **Note**: When you upgrade to a release that includes the alerts subscription,
+> the update subscribes the address already in your `AdminEmail` parameter to the
+> CloudWatch alerts topic, so an *"AWS Notification - Subscription Confirmation"*
+> email arrives at that address. The update succeeds either way, but **alarm
+> notifications are not delivered until someone clicks that confirmation link**.
+> See [Who receives the alerts](./monitoring.md#who-receives-the-alerts) for how
+> to check the subscription status and how to notify a team or a pager instead of
+> one mailbox.
+
 ## Testing the Solution
 
 ### Method 1: CLI-Based Batch Testing (Recommended for Automation)
@@ -343,8 +374,10 @@ For batch processing, evaluation workflows, or automated testing:
 #### Quick Batch Test
 
 ```bash
-# Install CLI
-cd lib/idp_cli_pkg && pip install -e .
+# Install the CLI, from the repository root. All three first-party packages go in
+# ONE pip invocation, so the sibling names they require resolve from this checkout.
+# `make setup` does the same thing. See docs/dependency-confusion.md.
+pip install -e lib/idp_common_pkg -e lib/idp_sdk -e lib/idp_cli_pkg
 
 # Process sample documents
 idp-cli run-inference \

@@ -8,6 +8,17 @@ query ListDiscoveryJobs {
       createdAt
       updatedAt
       errorMessage
+      version
+      discoveredClassName
+      statusMessage
+      pageRange
+      multiInstanceHint
+      jobType
+      currentStep
+      totalDocuments
+      clustersFound
+      discoveredClasses
+      reflectionReport
     }
     nextToken
   }

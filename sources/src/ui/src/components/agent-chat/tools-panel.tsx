@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
-import { generateClient } from 'aws-amplify/api';
+import { generateClient } from '../../api/client-shim';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import {
   HelpPanel,
@@ -150,11 +150,29 @@ const ToolsPanel = (): React.JSX.Element => {
           <ul>
             <li>
               <a
-                href="https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/blob/main/README.md"
+                href="https://aws-solutions-library-samples.github.io/accelerated-intelligent-document-processing-on-aws/agent-companion-chat/"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                GenAI IDP Accelerator Documentation
+                Agent Companion Chat
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://aws-solutions-library-samples.github.io/accelerated-intelligent-document-processing-on-aws/custom-MCP-agent/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Custom MCP Agents
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://aws-solutions-library-samples.github.io/accelerated-intelligent-document-processing-on-aws/mcp-server/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                MCP Server
               </a>
             </li>
           </ul>

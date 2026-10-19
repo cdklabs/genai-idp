@@ -3,11 +3,75 @@ SPDX-License-Identifier: MIT-0
 
 # Assessment Service for IDP Accelerator
 
-This module provides assessment capabilities for evaluating document extraction confidence using LLMs within the IDP Accelerator project.
+This module provides the **standalone confidence assessment step** for the IDP
+Accelerator. As of config **v0.6**, confidence is an **output of extraction**:
+its settings live under `extraction.confidence.*` (and geometry under
+`extraction.geometry.*`), not a top-level `assessment.*` block. This service
+implements the standalone step that runs on the Simple (non-agentic) path when
+`extraction.confidence.mode: separate` (the default). On the agentic path, and
+for `integrated` mode, confidence is produced inside extraction and this
+standalone step auto-skips.
+
+> **Granular assessment is retired.** The former `GranularAssessmentService` /
+> `granular_service.py` and the `extraction.confidence.granular` config field
+> have been **deleted**. Large lists are handled by the standalone large-list
+> batching described below (plus a bounded missing-row retry). Any leftover
+> `granular.*` keys still validate but are ignored. See
+> `docs/migration-granular-retirement.md`.
+
+> **A list row with a nested group or an inner list is not "unscored."**
+> `batching._row_confidence_missing` used to look exactly one level down, so a
+> nested group inside a list row was mistaken for a confidence leaf (a group has no
+> `confidence` key, so the lookup returned `None`) and an inner list was skipped by
+> the `isinstance(v, dict)` filter entirely. Measured live on a 3-record pay
+> statement whose rows carry an `Employee` group and an `Earnings` list: every leaf
+> came back at 0.99–1.0 with OCR geometry and `truncated_calls: 0`, and the section
+> still reported `assessment_incomplete` (**error**) for all 3 rows after burning a
+> `claude-sonnet-5:1m` escalation that recovered 0 — a stronger model reproduces
+> the identical shape, so the ladder had no way out. The predicate now recurses
+> (`_iter_confidence_leaves`). Pre-existing for any list-of-object attribute whose
+> rows contain a group or an inner list; multi-instance sections (GitHub #715) make
+> every record a row, so it became universal there.
+>
+> Two consequences worth knowing: a row whose group carries no leaves at all, next
+> to at least one scored scalar leaf, now counts as scored (the old predicate
+> flagged it); and for a wrapped class the retry unit is the whole record, so one
+> unscored leaf anywhere re-runs that entire record.
+
+> **Multi-instance (#715).** `_get_class_schema` returns the **effective** schema,
+> so a flagged class's `instances` array is a real top-level array property here:
+> the `attr_type == "list"` branch produces `instances[i]` row keys,
+> `resolve_array_item_thresholds` resolves per-record sub-field thresholds, and
+> `batching._schema_field_mismatch_reason` does not blacklist the section. Without
+> the wrap, `instances` is an unknown key and the whole section collapses to one
+> `{"confidence": 0.5}` leaf that the escalation ladder then skips permanently.
+> Two known granularity losses for a flagged class: `_format_property_descriptions`
+> descends one level under an array, so a nested group/list *inside* a record loses
+> its sub-field descriptions in the confidence prompt; and
+> `assessment_function/assessment_validator.py` compares one top-level attribute
+> (`instances`) rather than per-field.
+
+> **Compact reasons (default prompts).** The shipped confidence prompts ask the
+> model to emit `confidence_reason` **only for leaves below 0.9 confidence**;
+> confident leaves emit just `{"confidence": <score>}`. Because output tokens
+> dominate assessment cost, this materially cuts cost with no effect on the
+> scores or threshold/alert logic (`_enhance_dict_assessment` spreads whatever
+> leaf keys are present). The many `confidence_reason`-on-every-field examples
+> below predate this and are illustrative of the *structure*, not the
+> reason-frequency. Widen the 0.9 threshold in the confidence `task_prompt` to
+> get a reason on every field.
+
+> **Integrated (simple-path) response shapes.** In `integrated` mode the single
+> extraction inference returns values **and** confidence. The service prefers a
+> `{"extraction": {...}, "confidence": {...}}` envelope, but also lifts a
+> `field_assessment` (or `confidence`) **sibling** key emitted next to the
+> extracted fields — stripping it from `inference_result` and promoting it to
+> `explainability_info` so the standalone step auto-skips (avoids a redundant
+> second Bedrock pass). See `ExtractionService._split_inline_confidence`.
 
 ## Overview
 
-The Assessment service is designed to assess the confidence and accuracy of extraction results by analyzing them against source documents using LLMs. It supports both text and image content analysis and provides detailed confidence scores and explanations for each extracted attribute.
+The Assessment service is designed to assess the confidence and accuracy of extraction results by analyzing them against source documents using LLMs. It supports both text and image content analysis and provides detailed confidence scores and explanations for each extracted attribute, applying configured confidence thresholds (threshold enrichment) to each field.
 
 ## Features
 
@@ -22,7 +86,7 @@ The Assessment service is designed to assess the confidence and accuracy of extr
 - **Fallback mechanisms** for robust error handling
 - **Metering integration** for usage tracking
 - **Direct Document model integration**
-- **Both regular and granular assessment support** with identical bounding box capabilities
+- **Automatic large-list batching** for long tables (see *Large-list batching* below)
 
 ## Usage Example
 
@@ -62,33 +126,45 @@ assessment_info = extraction_data.get("explainability_info", {})
 
 ## Configuration
 
-The assessment service uses configuration-driven prompts and model parameters:
+The assessment service uses configuration-driven prompts and model parameters,
+under `extraction.confidence` in v0.6:
 
 ```yaml
-assessment:
-  enabled: true                         # Enable/disable assessment processing
-  model: "us.amazon.nova-pro-v1:0"
-  temperature: 0
-  top_k: 5
-  top_p: 0.1
-  max_tokens: 4096
-  system_prompt: "You are an expert document analyst..."
-  task_prompt: |
-    Assess the confidence of extraction results for this {DOCUMENT_CLASS} document.
-    
-    Text Confidence Data:
-    {OCR_TEXT_CONFIDENCE}
-    
-    Extraction Results:
-    {EXTRACTION_RESULTS}
-    
-    Attributes Definition:
-    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
-    
-    Document Images:
-    {DOCUMENT_IMAGE}
-    
-    Respond with confidence assessments in JSON format.
+extraction:
+  confidence:
+    enabled: true                       # Enable/disable confidence processing
+    mode: separate                      # off | separate (default) | integrated
+    model: "us.amazon.nova-pro-v1:0"
+    temperature: 0
+    top_k: 5
+    top_p: 0.1
+    reasoning_effort: low               # only if a reasoning-capable model is selected
+    list_batch_size: 25                 # CEILING on rows per batch; the size used is
+                                        # derived from the confidence model's output
+                                        # cap, column count and geometry mode
+    # NOTE: no max_tokens knob — each confidence call requests an OUTPUT BUDGET:
+    # what a correct answer over its fields needs (one leaf per scalar and per list
+    # cell, ~40 tokens each, x3 with LLM bounding boxes, plus 1,500 overhead),
+    # floored at 2,000 and capped at the model's maximum from
+    # config_library/model_config_limits.yaml (`bedrock.sizing.confidence_output_budget`).
+    # A response that overruns it is handled by the truncation-aware splitting below.
+    system_prompt: "You are an expert document analyst..."
+    task_prompt: |
+      Assess the confidence of extraction results for this {DOCUMENT_CLASS} document.
+
+      Text Confidence Data:
+      {OCR_TEXT_CONFIDENCE}
+
+      Extraction Results:
+      {EXTRACTION_RESULTS}
+
+      Attributes Definition:
+      {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+
+      Document Images:
+      {DOCUMENT_IMAGE}
+
+      Respond with confidence assessments in JSON format.
 ```
 
 ### `enabled` Configuration Property
@@ -102,11 +178,12 @@ The assessment service supports runtime enable/disable control via the `enabled`
 
 **Example - Disabling Assessment:**
 ```yaml
-assessment:
-  enabled: false  # Disables all assessment processing
-  # Other properties can remain but will be ignored
-  model: us.amazon.nova-lite-v1:0
-  temperature: 0.0
+extraction:
+  confidence:
+    enabled: false  # Disables all confidence processing (equivalent to mode: off)
+    # Other properties can remain but will be ignored
+    model: us.amazon.nova-lite-v1:0
+    temperature: 0.0
 ```
 
 **Behavior When Disabled:**
@@ -115,6 +192,577 @@ assessment:
 - Document processing continues to completion
 - Minimal performance impact (early return)
 
+## Large-list batching (`assessment/batching.py`)
+
+A single confidence inference over a large list field (e.g. a 120-row transaction
+table) is unreliable: the model under-enumerates or omits the list, leaving most
+rows unassessed. The standalone Assessment step handles this itself — it does **not**
+depend on granular assessment for large lists.
+
+`process_document_section` runs the assessment through the shared
+`idp_common.assessment.batching.assess_results_batched`, which:
+
+1. Finds the single largest list field whose length exceeds the effective batch
+   size (derived from the confidence model's output cap, the row's column count and
+   the geometry mode; never larger than the `extraction.confidence.list_batch_size`
+   ceiling, default 25; and never larger than a **per-family loop ceiling** where one
+   was measured — 12 rows for Amazon Nova Lite/Micro, see
+   `bedrock.sizing._MODEL_LIST_BATCH_CEILINGS`).
+2. Slices that list into `list_batch_size` chunks and assesses each chunk
+   **sequentially**, passing the SAME scalars/context every time so scalar
+   assessments and the document context are preserved (scalars come from the first
+   batch). Sequential, not a thread pool, is intentional: the historical granular
+   path's 20-way fan-out caused a Bedrock prompt-cacheWrite storm — batching
+   sequentially avoids it and is why retiring granular is a net cost win.
+3. Concatenates the per-row assessments in order and calls
+   `reconcile_assessment_to_data` to force the assessment to index-align with the
+   extracted data — truncating over-long lists, padding short/omitted ones with
+   per-sub-field placeholders (so every un-assessed row is still groundable), and
+   fanning any per-row scalar confidence out to per-column leaves.
+4. Runs a **bounded missing-row retry**: any rows the model dropped within a
+   batch are re-scored in a follow-up pass (missing rows only), so large-list
+   coverage reaches 100% without re-scoring rows that already have confidence.
+
+Both `assess_results_batched` and `reconcile_assessment_to_data` are shared with
+the agentic in-shard assessment path (`ExtractionService`), so there is exactly one
+implementation of large-list assessment. When no list exceeds the batch size the
+helper makes a single (still reconciled) call — identical to the previous behavior.
+
+### Truncation-aware adaptive batch splitting
+
+> **Why the Nova Lite ceiling is 12, not a token count.** Live and in 4/4 offline
+> replays of the same inputs, Nova Lite at temperature 0 asked to score a 25-row,
+> 3-column batch emitted the same `{"Date": {"confidence": 1.0}, ...}` object 189
+> times until it hit its 10,000-token cap — ~60 s and 10,000 output tokens per
+> document before the splitter recovered the rows at 12. The token math allows 41
+> rows for that shape; 13 rows looped 1/5, 8 rows 0/8. Greedy decoding on a long
+> run of near-identical objects is the trigger, not input size (it still looped with
+> no images, with no OCR text, and 2/3 with no text-confidence block). Two guards now apply: the
+> family ceiling above, and — on those two models only — a per-call output budget
+> (a loop is now cut off at the budget, ~2,000–4,600 tokens, instead of the cap, and
+> recovered the same way). Other confidence models keep requesting their maximum.
+
+A configured `list_batch_size` is a *row* count, but the model's real limit is
+its **max output tokens**. When per-row output is large — most notably with
+`extraction.geometry.mode: llm`, which asks the model to emit a bounding box for
+every cell — even a modest batch can exceed a small-cap model's ceiling (e.g.
+Amazon Nova Lite caps at 10,000 output tokens). A truncated response
+(`stopReason == "max_tokens"`) is unparseable JSON, and previously the service
+silently fell back to a default `0.5` for every field / null-confidence
+placeholders for every row — with no signal that anything went wrong.
+
+The core now detects truncation (`AssessmentCoreResult.truncated`) and the
+batcher recovers automatically: any slice the model truncates is **recursively
+halved and re-assessed** until it parses or bottoms out at a single row —
+instead of accepting the placeholder. The recursive splitter
+(`_assess_slice_adaptive`) runs in the initial batch loop and in **every**
+missing-row retry, so it protects all four confidence code paths uniformly:
+the standalone Assessment step (`separate`), the agentic single-agent and
+sharded in-shard passes, and the simple/agentic `integrated` path's inline-row
+retry (`ExtractionService._retry_missing_integrated_rows`). Simple `separate`
+extraction — the granular-assessment replacement — goes through the standalone
+step and is fully covered.
+
+The activity is surfaced for visibility (only when a run actually had to shrink):
+
+- **`metadata.assessment_batch_split_stats`** on the section result — a dict with
+  `truncated_calls`, `splits`, `min_batch_size_used`, `rows_recovered_by_retry`,
+  `unrecoverable_rows`, `derived_batch_size`, `configured_batch_size`,
+  `escalation_model`, `escalation_rounds`, and `rows_recovered_by_escalation`,
+  plus `oversized_row_fields` / `oversized_row_model` /
+  `oversized_row_output_cap` / `oversized_row_chars` / `oversized_row_class` when
+  the give-up guard below fired.
+- An **`⚠ Assessment Batch Splitting`** block in the agentic extraction
+  **processing report**.
+
+### Self-healing: token-aware sizing + model escalation
+
+Adaptive splitting recovers a truncated batch by *shrinking* it against the
+**same** model. When the model's output cap is the real bottleneck, shrinking
+alone can bottom out at a single row and still recover nothing (the failure that
+left 34/68 transaction rows with `confidence: null`). Two additions make advanced
+mode complete correctly on the first try:
+
+1. **Token-aware first-pass sizing** (`compute_token_aware_batch_size`). Before
+   the first call the batch size is derived from three inputs: the confidence
+   model's output cap (`bedrock.model_utils.get_model_max_output_tokens`), the
+   **column count** of the list's widest sampled row, and whether `geometry.mode`
+   is `llm`/`llm_grounded` (a per-cell bounding box roughly triples per-row
+   output). The estimator itself lives in `bedrock.sizing`
+   (`confidence_rows_per_call`) so this module and `compute_sizing_plan` cannot
+   drift apart. Recorded as `derived_batch_size`.
+
+   There is no correct fixed value. On a 10,000-token-cap model without a loop
+   ceiling (Nova Pro) with bounding boxes the batch that fits is 41 rows for a
+   1-column list, 13 for 3 columns and 5 for 8 (Nova Lite: 12, 12 and 5, because
+   its measured loop ceiling binds first); on a 128K-output model the reliability cap of 50 bounds the derivation
+   instead of the token math. `list_batch_size` is therefore a **ceiling** on the
+   derived size (default 25), never a target — and an *explicit* ceiling is honoured
+   in full, so a deliberate pin above 50 is not clamped.
+
+   Two behaviours changed after v0.6.7, both in the safe direction. The column
+   count is measured across a sample of rows rather than off `rows[0]`, because a
+   first row missing a key made a wide list look narrow and inflated the batch.
+   And an unknown model, or a row shape whose width cannot be measured, now sizes
+   from a conservative fallback cap instead of returning the configured value —
+   silently trusting a permissive configured value on a small-cap model is how a
+   25-row batch reached Nova Lite in the first place.
+
+2. **Model-escalation ladder** (`extraction.confidence.escalation_*`). When rows
+   are *still* unscored after token-aware shrink + same-model retries, the
+   still-missing rows (only those) are re-assessed on a **stronger confidence
+   model** with a bigger output cap — the rung that actually fixes small-cap
+   truncation. Cheapest-first and bounded by `max_escalation_rounds`; a round
+   that recovers nothing stops early. Configure with:
+
+   ```yaml
+   extraction:
+     confidence:
+       escalation_enabled: true          # ON by default
+       escalation_model: "us.anthropic.claude-sonnet-5:1m"
+       max_escalation_rounds: 2
+   ```
+
+   Per-class override: `x-aws-idp-confidence-escalation-model` (mirrors
+   `x-aws-idp-extraction-escalation-model`). `escalation_model: null` skips the
+   model rung (ladder stays at shrink + retry). Escalation applies uniformly to
+   the standalone `separate` step and the `integrated` in-shard/inline retry.
+
+If rows remain unscored even after escalation, `unrecoverable_rows` is non-zero —
+reduce per-row output, e.g. switch `extraction.geometry.mode` from `llm` to
+`ocr_only` (the default), which derives boxes from OCR value-matching instead of
+the model.
+
+**Schema-mismatch guard.** Some "unscored" rows are not a truncation problem at
+all: if extraction returns a **list** for an attribute the class schema does *not*
+declare as `type: array` (an off-schema/hallucinated field, or one typed as a
+scalar), the confidence enhancer collapses it to a single default `{"confidence":
+0.5}` leaf, and reconciliation pads the data rows with null placeholders that no
+model can fill — escalating them just burns a slow large-model call to re-collapse
+the same list. When a `class_schema` is threaded into `assess_results_batched`
+(both the standalone and in-shard paths pass it), the ladder detects this via
+`_schema_field_mismatch_reason`, **skips both retry and escalation** for the
+offending field, records it in `split_stats["schema_mismatch_fields"]`, and emits
+an `assessment_schema_mismatch` **error** naming the field and the real fix:
+correct the class schema or the extraction prompt so the attribute is defined (as
+an array where it should be). A validly array-typed field is never blocked.
+
+The property is dereferenced (`config/schema_utils.deref_schema`) before its
+`type` is read, since a property declared as `{"$ref": "#/$defs/Foo"}` carries
+none — so a `$defs` group is reported as `declared as 'object'` rather than
+mislabelled `'scalar'` (a type the schema contains nowhere).
+
+An **array** declared as a bare `$ref` (hand-authored configs can do this; the
+UI's schema editor only emits objects into `$defs`) used to be a genuine
+dead-end for the same reason one level down: `_assess_core` also read `type` off
+the raw property, treated the attribute as a scalar, and collapsed the model's
+per-row list into one default leaf. That read is dereferenced too, so such a
+field is now row-scored normally — and only because of that is it correct for
+this guard to stop skipping it. Note the two reads are deliberately split: the
+**type** is taken from the dereferenced subschema, while the property's own
+`x-aws-idp-confidence-threshold` is still read from the raw property, because
+honoring a threshold declared on the `$defs` definition instead of the property
+is a change to threshold *inheritance* and belongs with `threshold_resolver`'s
+rules.
+
+**Oversized-row guard (give up instead of retrying, [#894](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/894)).**
+Halving a truncated batch converges only while a *smaller* batch can fit. If the
+model still returns `stopReason=max_tokens` with a **single row** in the call,
+that one row's confidence output exceeds the model's cap and **no batch size can
+work**. The ladder now stops there: it records the terminal condition in
+`split_stats["oversized_row_fields"]` (with the model, its output cap, the
+offending row's approximate serialized size and the class), **skips the same-model
+retry rung entirely**, allows at most **one** escalation round (a bigger output
+cap is the only remedy that can legitimately succeed), and emits
+`assessment_row_too_large` (**error**).
+
+Before this guard there was no terminal condition for that case: the ladder kept
+re-running the impossible call through the retry rounds and the bisection tree, and
+the section ended up reporting the generic `assessment_incomplete`. Measured on a
+shape that batches (8 rows at batch 4) the guard halves the primary calls, 28 → 14;
+32 rows go 112 → 56, and with escalation 42 → 28 total. On the single-outer-row shape
+#894 reports, `len(rows) <= batch_size` means `assess_results_batched` takes its
+`if not list_fields:` branch and calls the model directly, so
+`_assess_slice_adaptive` is not reached on the first pass and the pre-rung skip
+cannot fire; the condition is detected inside the first retry round instead. The call
+count there is unchanged (2 before, 2 after) and the gain is purely diagnostic.
+
+The observed trigger is a class marked `x-aws-idp-multi-instance: true`: the wrapper
+makes the *instance list* the outer list field, so one "row" is a whole document
+instance carrying its own long inner list (a 100-row `Transactions` table). The
+sizer reports that row as `cols=2 per_row~80` and derives a 12-row batch, which is
+wrong by orders of magnitude — **that sizing bug is not fixed** and #894 stays open
+for it.
+
+⚠️ **The 900s timeout reported on #894 is not explained by this loop.** The observed
+failure was an Assessment Lambda hitting its 900s wall three times
+(`Sandbox.Timedout` x3) after a 45s extraction, with the document stuck in
+`ASSESSING`. This guard is not known to fix that, and it should not be cited as its
+resolution: `_retry_missing_rows` already broke on no progress (both the retry and
+escalation rungs), and the wall-clock deadline guard plus its threading from
+`context.get_remaining_time_in_millis()` in the Assessment Lambda were already
+present in the release where those timeouts were observed.
+
+The one ladder path that the wall-clock guard did **not** cover — the most concrete
+lead on that timeout — has since been closed (#958): the same-model retry **round**
+loop had no round-level deadline check, only the escalation loop and further
+bisection did, so a sequence of rounds that each recovered *something* while never
+bisecting was bounded only by `max_retries`, at a real model call per round. All
+three rungs now consult the deadline before starting work. Whether that was the
+cause of the observed 900s timeouts is still **not established** — no reproduction
+exists — so #894 remains open for it, and for the batch sizer.
+
+> This is an **extraction/schema** defect surfaced at assessment time — note that
+> traditional (non-agentic) extraction has no schema-validation step, and even the
+> agentic `validation` gate won't catch *extra* attributes unless the class schema
+> sets `additionalProperties: false` (unknown properties pass JSON-Schema
+> validation by default). So an off-schema attribute can reach assessment
+> unflagged; this guard is where it becomes visible.
+
+### Structured processing issues + completeness gate
+
+The ladder's `split_stats` are translated into user-surfacing
+`ProcessingIssue`s (`idp_common.models.ProcessingIssue`) by
+`build_assessment_issues`, so a run that healed (or couldn't heal) is visible
+without reading raw metadata. Severity ladder:
+
+| Condition | code | severity |
+|-----------|------|----------|
+| List extracted for a non-array/off-schema attribute (retry+escalation skipped) | `assessment_schema_mismatch` | **error** |
+| A single row still truncated the model — no batch size can fit it (#894) | `assessment_row_too_large` | **error** |
+| Rows still unscored after the full ladder | `assessment_incomplete` | **error** |
+| Wall-clock guard stopped recovery, but every row ended up scored anyway | `assessment_deadline_reached` | **warning** |
+| Wall-clock guard stopped recovery with rows still unscored | `assessment_incomplete` (message names the time budget) | **error** |
+| Healed, but needed shrinking/escalation | `assessment_recovered_with_retries` | **info** |
+
+`assessment_schema_mismatch` takes precedence over `assessment_incomplete`: when
+both fire, the schema mismatch is the true root cause and is emitted alone.
+`assessment_row_too_large` ranks next for the same reason — the generic "rows could
+not be scored" message sends an operator to shrink `list_batch_size`, which is the
+one remedy that provably cannot work when the batch was already a single row.
+
+A **completeness gate** (`audit_explainability`) runs after the ladder on both
+the standalone and in-shard paths: it confirms every extracted value has a real
+(non-null), in-range confidence and — when `geometry.mode != "off"` — a bounding
+box, emitting `assessment_confidence_out_of_range` / `assessment_geometry_incomplete`
+for anything structurally wrong.
+
+It also reports **partial coverage**
+([#901](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/901)
+item 3). The gate already computed which rows carry no confidence, but every
+caller discarded that, so a section could return a fraction of its rows scored and
+still report unqualified success (one run scored 1,146 leaves where 5-page shards
+scored 4,807 — ~24% coverage, no issue raised; the *reason* coverage fell rather
+than failing was never established, and this issue makes no claim about it). When
+unscored rows exceed **5%** of the extracted list rows the gate emits
+`assessment_coverage_incomplete` — **warning** up to 25% unscored, **error** at or
+above 25% **and** at least **10 unscored rows**, and **error** at any list length
+when *no* row was scored — carrying `expected_rows`, `scored_rows`,
+`unscored_rows` and a per-field breakdown of both the unscored rows and the
+expected ones.
+
+Four deliberate choices in those thresholds:
+
+- **5%, not 0%.** Reconciliation pads one assessment entry per extracted row, so a
+  run whose model scored every row lands at 0%. Small residual shortfalls are also
+  already named precisely by `assessment_incomplete`, so a 1-2 row gap on an 800-row
+  table is that issue's business rather than a second document-level alarm. What the
+  fraction means on a *short* list is arithmetic and worth stating outright: a single
+  unscored row is a shortfall of `1/N`, so **one unscored row fires the warning for
+  any section totalling 20 list rows or fewer**. Whether a healthy run ever produces
+  that single unscored row is measured, not reasoned, and the answer is that it does
+  not — see *Coverage: measured* below.
+- **An absolute floor of 10 unscored rows on the error rung.** A fraction alone makes
+  short lists fire hardest: one unscored row in a four-row list is 25%, and an error
+  renders the section red ("Incomplete") in the Sections panel. Short list attributes
+  are ordinary (a two-entry `ENDORSEMENTS` array in `lending-package-sample`). Below
+  the floor the shortfall is still reported, as a warning. The floor bounds this
+  class for the error rung only; the warning rung still fires on a short list.
+- **The floor does not apply when nothing was scored.** `scored_rows == 0` is not a
+  short list with a gap in it — the section has no confidence surface anywhere, and
+  the message the gate emits at that point says confidence-based review "does not
+  apply to any of it". Over the committed grids, every run that crossed 25% with
+  fewer than 10 unscored rows — the class the floor exists to hold at warning — had
+  `scored_rows == 0`, and the partial case the floor was written for occurred zero
+  times, so the floor as shipped only ever downgraded a total absence of coverage.
+  Zero scored rows is therefore an error at any list length, and the floor keeps
+  governing the partial shortfalls it was argued for. No constant was added: this is
+  an exact boundary the gate already computes.
+- **Suppressed when the ladder already reported an error.** `build_assessment_issues`
+  and this gate run on the same section, and the ladder's error rungs describe the
+  same unscored rows *with a cause attached*. Emitting both doubles
+  `ProcessingIssueCount` with two counts that can legitimately disagree
+  (`unrecoverable_rows` tracks only the largest list field; this gate counts every
+  list field), and it would break `assessment_schema_mismatch`'s "emitted alone"
+  contract by appending a coverage note under it. Callers pass the ladder's issues in
+  as `audit_explainability(..., ladder_issues=...)`; a `warning`/`info` ladder issue
+  does not suppress it.
+
+Issues are attached to each `Section`
+(`section.processing_issues`), rolled up to `Document.processing_issue_count`,
+and rendered in the extraction processing report.
+
+#### Coverage: measured
+
+`confidence_coverage(assessment, extraction_results)` returns the figure —
+`scored_rows` over `expected_rows`, plus the per-field breakdown — for one section.
+It calls `audit_explainability` rather than re-deriving "is this row scored?", so a
+measurement and the guard that ships are one computation; `audit_explainability`
+puts the very same dict in the issue's `details`. Use it whenever you want the
+number unconditionally, because the issue only carries it once the shortfall has
+already crossed 5%, which is the reason nothing recorded coverage on healthy runs
+before it existed.
+
+`expected_rows == 0` (a section with no list attribute) means coverage is
+**undefined**, not perfect: `scored_fraction` is `None` so an aggregate drops it. A
+corpus mean that scored those as 1.0 would be reporting the share of list-free
+documents. The gate declines to fire there for the same reason — there is nothing to
+score, and in the committed grids every such run also records `rows_extracted == 0`,
+i.e. extraction returned no list at all, which is an extraction finding rather than
+a coverage one.
+
+The benchmark harness records it per document
+(`benchmarks/harness/analyze.py::score_confidence_coverage` → `conf_rows_expected`,
+`conf_rows_scored`, `conf_rows_unscored`, `conf_coverage`,
+`conf_unscored_by_field`, `conf_rows_expected_by_field`), and `aggregate.cell_stats`
+rolls up the **distribution** per cell — min, max, stdev and CV, not only the mean,
+because a mean of 0.99 is equally consistent with every document at 0.99 and with
+one document at 0.
+
+##### The observed distribution
+
+Computed over every committed `benchmarks/results/*/*/summary.json` row that
+carries the metric — 6,672 coverage-bearing document-runs across 38 grids,
+v0.6.8 → v0.6.11, on Claude and Nova extraction and confidence models — and
+re-derived on every test run by
+`benchmarks/tests/test_coverage_threshold_evidence.py`, which classifies each
+recorded `(expected, unscored)` pair by calling `audit_explainability` itself rather
+than re-stating the rungs:
+
+| Shortfall | Runs | Share |
+|---|---|---|
+| exactly 0 unscored rows — no issue | 6,493 | 97.32% |
+| above 0 but below the 5% rung — no issue | 135 | 2.02% |
+| the rung fires | 44 | 0.66% |
+| …of those, at **warning** severity | 16 | 0.24% |
+| …of those, at **error** severity | 28 | 0.42% |
+| ……by the fraction **and** the 10-row floor | 7 | 0.10% |
+| ……by having no scored row at all | 21 | 0.31% |
+
+The two error paths are disjoint on this corpus, and together they account for
+every run at or above 25%. The median, p90 and p95 are all exactly 0; p99 is
+0.0164 and the maximum is 1.0.
+So the premise the rungs were argued from — a healthy run lands at 0% because
+reconciliation pads one assessment entry per extracted row — holds as an observed
+property, not only a code-path reading.
+
+**On short lists, which is the regime #997 asked about, the warning rung has not
+been observed firing on a partial gap at all.** 2,452 single-section runs extracted
+20 rows or fewer, the range where one unscored row crosses 5%. The number of those
+showing a *partial* shortfall — some rows scored, at least one not — is **zero**.
+The 21 that do fire there have `scored_rows == 0`: no confidence anywhere in the
+section, each one `realkie`'s `LineItems` with the document's scalar block scored
+and the list not. Those are the strongest true positives the gate can report, and
+they are why `scored_rows == 0` is now an error rather than being held at warning by
+the absolute floor.
+
+Two artifact checks worth repeating before reading any of the above as data. The 21
+total-shortfall runs each carry six confidence leaves and a mean confidence near
+0.97, so the assessment *existed* and simply scored no list row — the figure is not
+a missing-artifact artifact. And none of the out-of-range `mean_confidence` rows
+identified in #1395 and #1411 is among the coverage outliers: six of them fall in
+coverage-bearing grids and all six sit at exactly 0 shortfall.
+
+##### What the denominator counts, and what it does not
+
+`expected_rows` counts rows of **top-level list-valued attributes** of the section's
+`inference_result`, and a row counts as scored exactly when
+`_row_confidence_missing` says so — which requires **every** confidence leaf in the
+row, including leaves inside a nested group or an inner list, to be non-`None`. That
+is stricter than a per-cell ratio, not laxer: a column that is `None` on every row
+makes every row unscored and reads as 0% coverage, where a cell-counting metric
+would score the same section at `(cells − 1) / cells`. A list nested *inside* a
+group attribute is not a top-level list and so contributes to neither the numerator
+nor the denominator.
+
+##### The shape of the warning fraction, and the residual it leaves
+
+The 5% rung is purely multiplicative, and one half of its justification is not: "a
+1-2 row gap on an 800-row table is `assessment_incomplete`'s business" names an
+**absolute** quantity, which a ratio then scales with the list. The number of
+unscored rows that emits no coverage issue is therefore 0 at `N ≤ 20`, 19 at
+`N = 400`, 39 at `N = 800` and 199 at `N = 4,000`. Measured, 135 runs sit in that
+band and the largest is **24 unscored rows of 800** (3.0%).
+
+The additive backstop the sentence relies on is real but narrower than it reads:
+`split_stats["unrecoverable_rows"]` is computed for the **largest** list field only,
+so a residual confined to a smaller list attribute reaches neither
+`assessment_incomplete` nor — being divided by the section-wide total — the 5% rung.
+`expected_rows_by_field` exists so a recorded run can be read for that case.
+
+That residual is left as-is rather than fixed with a second constant, because
+choosing an absolute warning ceiling would mean picking a number the available data
+cannot distinguish: the committed grids do not say whether those 135 runs were
+already reported by the ladder. `processing_issues` postdates every one of them
+(null on all rows), so the recorded shortfall is the symptom without the product's
+verdict beside it, and the firing shares in the table are an **upper bound** on how
+often the rung actually spoke — `_ladder_reported_error` suppresses it whenever the
+ladder got there first. The `processing_issues`/`processing_issue_codes` columns
+added in #1378 answer this directly on the next grid, at no extra cost.
+
+##### The other limits on the figures above
+
+- **A document-level ratio can dilute a per-section one.** The harness sums over a
+  document's sections; the gate runs per section. 6,228 of the 6,672 runs are
+  single-section (or record no section count), where the two coincide, and a 0
+  aggregate implies 0 in every section — so the 97.32% figure is exact rather than
+  averaged. For the 179 nonzero runs the recorded ratio is a *lower* bound on the
+  worst section's.
+- **No multi-record corpus has been run.** The measured row shapes are flat (three
+  or eight scalar cells from
+  `benchmarks/corpus/generators/bank_statement.py::_row`, plus `realkie`'s
+  `LineItems`). The nested-row shape that the any-leaf-`None` rule is hardest on —
+  and that a multi-instance section (#715) makes universal — is covered by
+  `test_a_healthy_nested_row_is_scored_not_unscored` rather than by a corpus. That
+  unit test is what retired the sharpest form of the original concern:
+  `_row_confidence_missing` recurses, so the known-awkward pay-statement shape
+  scores clean, and the 100%-unscored figure quoted for it belongs to the one-level
+  implementation that rule replaced.
+- **Pre-v0.6.8 grids carry no row denominator**, which is why the corpus starts
+  there: `conf_rows_expected` was added with the instrument, and the earlier
+  artifacts retain only `n_conf_leaves`.
+
+### Lambda wall-clock budget & resume safety
+
+The escalation ladder adds sequential model calls inside the 900s
+Extraction/Assessment Lambdas. To avoid a hard timeout, both handlers thread the
+Lambda's `context.get_remaining_time_in_millis()` down as an absolute
+`deadline_epoch`. Every path that can spend a model call consults it, and all of
+them price a call at `_ESTIMATED_MODEL_CALL_SECONDS` (60s) or the last measured
+duration, whichever is larger, against the remaining time minus a 90s safety
+reserve:
+
+| Where | Granularity | Added |
+|---|---|---|
+| Further bisection of a truncated slice (`_assess_slice_adaptive`) | per split | 1.5 |
+| Every recovery call, retry **and** escalation (`_splice_missing_rows`) | **per chunk** | #958 |
+| Before an escalation *round* (`_retry_missing_rows` rung 2) | per round | 1.5 |
+
+When a check fails the ladder stops, keeps everything already recovered, and sets
+`deadline_reached` — converting a would-be timeout into a soft, flagged, complete
+document.
+
+The retry rung was the last to be covered: until #958 it stopped only after
+`max_retries` rounds or on a round that recovered nothing, so rounds that each made
+partial progress were unbounded in wall-clock terms. Note **why that check is per
+chunk and not per round.** A round-level check has to price a whole round before
+making any of its calls, and the only safe price is a worst case — chunks × 60s.
+That is not a bound on time, it is a cap on chunk COUNT: with 800s remaining it
+refuses any round past 11 chunks however fast the model actually is, which for a
+200-row list at a token-aware batch size of 4 discarded recovery that measurably
+took under a second and turned a clean section into an error-severity
+`assessment_incomplete`. Pricing one call at a time bounds the wall clock exactly,
+keeps every row the budget did cover, and treats both rungs alike — before #958 the
+cheap same-model rung could be refused while the slower, dearer escalation rung
+proceeded, because the two sized their chunks differently.
+
+**What an operator sees.** With rows still unscored the section reports
+`assessment_incomplete` (**error**) whose message names the time budget and its
+remedy — more Lambda time, or less work per section. It does **not** report
+`assessment_deadline_reached`: that rung sits below `assessment_incomplete` in the
+severity ladder and the guard only fires while rows are missing, so the warning is
+reachable only when a later rung went on to score every row anyway. As defense in depth, the Step Functions
+`ExtractionStep`/`AssessmentStep`/`ShardExtractionStep` retry sets include
+`States.Timeout` / `Lambda.Unknown`, so a genuine timeout is retried and resumes
+via the per-shard S3 persistence and the Assessment step's "skip if
+`explainability_info` already present" short-circuit.
+
+### What to alarm on when a section ends up with no confidence at all
+
+The rungs above degrade *within* a successful pass. A section can also come out
+of this module with **no confidence scores whatsoever**, and there are two ways
+that happens. Both live in `assessment/degradation.py`, and both leave the same
+trace, by construction rather than by convention:
+
+| Cause | Entry point | Issue code |
+|---|---|---|
+| The pass ran and failed **deterministically** — the confidence model rejecting the input outright, most often `ValidationException: Input is too long for requested model.` (#901) | `degrade_section_to_no_confidence`, called from the Assessment Lambda's non-transient branch | `assessment_failed_confidence_unavailable` |
+| The pass **never ran**: the section had no `extraction_result_uri`, no `page_ids`, an extraction result whose `inference_result` was empty, or none of its pages present in the document (#1006) | `skip_section_no_confidence`, called from `process_document_section`'s early returns | `assessment_skipped_confidence_unavailable` |
+
+Neither fails the document. For the first that is #901's deliberate trade — the
+extraction already succeeded and was already paid for, so losing the advisory
+half must not discard it. For the second there is nothing to fail *over*: the
+confidence model was never called.
+
+That has an observability consequence worth knowing when reading this module's
+behaviour operationally. Because such a document **completes**, a systemic
+confidence gap moves none of the failure alarms — no failed executions, no
+DLQ messages — and `ProcessingIssueCount` is a DynamoDB attribute rather than a
+metric, so nothing aggregates it. Both paths therefore publish
+`AssessmentConfidenceUnavailable` (value 1 per section) into the parent stack's
+metric namespace, and the parent template alarms on ten or more in fifteen
+minutes — deliberately on volume, because one such section is an expected outcome
+and a steady stream is not (issue #996). **The metric does not distinguish the two
+causes**, because the alarm's question is whether sections are coming back without
+confidence; the issue `code` and `root_cause` on the section are what separate
+them for whoever opens the document.
+
+Two details that are load-bearing rather than tidy. The metric put is wrapped in
+its own `try`: these paths exist to avoid failing a document whose extraction
+succeeded, so a lost telemetry point is the cheaper failure. And appending to
+`document.errors` is **not** a substitute for the issue —
+`processresults_function` reads a section document's `errors` only inside its
+`Status.FAILED` branch, so on a completing document nothing reads it, which is
+exactly how the skip paths stayed silent before #1006.
+
+Three returns from `process_document_section` deliberately record nothing, and
+getting that set right is what keeps the alarm's volume threshold meaningful:
+
+- a section whose class is **excluded** — extraction never ran, so no confidence
+  is missing;
+- a section whose extraction result is flagged `skipped_due_to_empty_attributes`
+  *and* whose `metadata.empty_schema_reason` is one of the two deliberate causes
+  below. `ExtractionService` skips the model for an empty effective schema
+  (`_handle_empty_schema`) and still sets `extraction_result_uri`, so the stub
+  arrives here with an empty `inference_result` and is indistinguishable from a
+  real gap without the flag;
+- a configuration with `extraction.confidence.enabled: false`.
+
+That second bullet covers three situations, which extraction distinguishes at the
+producer (`idp_common.empty_schema`) because only one of them is a fault:
+
+| `empty_schema_reason` | What it is | Reported here? |
+|---|---|---|
+| `class_has_no_attributes` | The class is in configuration and declares no attributes — an authoring choice. Nothing was expected from the section | No |
+| `class_unclassified` | Classification determined no class, so the label is the `unclassified` sentinel: a blank page, a page whose classification failed, or a deployment with no document types configured. Routine — one cover sheet in an otherwise normal document lands here, and a dozen such documents in fifteen minutes would clear the default alarm threshold on their own | No. The **classification** stage records it, with the severity only it can judge, and a `root_cause` written from here would send the operator to an Extraction step where nothing is wrong |
+| `class_not_configured` | The section carries a **named** class the configuration in force does not contain: renamed or deleted while documents were in flight, or an old document reprocessed under a newer configuration | **Yes**, with a `root_cause` naming the configuration rather than the confidence model. Extraction records the extraction-stage half (`extraction_class_not_configured`) at the same time. Bounded by operator configuration changes rather than by document content, so it cannot reach the threshold on throughput |
+
+A stub written before `empty_schema_reason` existed carries no reason at all and
+is read as `class_has_no_attributes`, so stored results keep reading back exactly
+as they did — and reassessing a backlog of old documents cannot manufacture a
+fleet of new alarm points.
+
+An empty `inference_result` **without** the flag is still reported: the class had
+a schema, the model returned nothing, and those values now have no confidence.
+
+A `section_id` that is not in the document, or a document with no sections,
+**raises** instead: there is no section on which to record anything, so a quiet
+return would leave the caller with no signal at all.
+
+**Pages the document does not contain.** The page loop skips a `page_id` absent
+from `document.pages`. When *every* page of the section is absent there is no page
+text and no page image, and the confidence pass used to run anyway and return a
+score per field derived from nothing — a fabricated number, indistinguishable in
+the UI, in HITL routing and in the reporting lake from one the model read off the
+page. The pass is now skipped for that case, through
+`skip_section_no_confidence` like the others. When only *some* pages are absent it
+still runs — partial evidence is not no evidence — and records a warning-severity
+`assessment_pages_missing` issue naming the absent pages. That one publishes **no**
+metric: the section does have confidence scores, so the metric's question is
+answered no.
+
+See [Monitoring](../../../../docs/monitoring.md#confidence-assessment-degraded).
+
 ## Prompt Template Placeholders
 
 The assessment service supports the following placeholders in prompt templates:
@@ -122,14 +770,23 @@ The assessment service supports the following placeholders in prompt templates:
 ### Standard Placeholders
 - `{DOCUMENT_TEXT}` - Parsed document text (markdown format)
 - `{DOCUMENT_CLASS}` - Document classification (e.g., "invoice", "contract")
-- `{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}` - Formatted list of attributes to extract
+- `{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}` - Formatted list of attributes to extract,
+  including nested group members and list-item columns. Subschemas declared as a
+  local `$ref` into the class's `$defs` (what the UI's schema editor emits) are
+  dereferenced first, so `$ref`-based groups/lists render their real descriptions.
 - `{EXTRACTION_RESULTS}` - JSON of extraction results to assess
 
 ### OCR Confidence Data
 - `{OCR_TEXT_CONFIDENCE}` - **NEW** - Optimized text confidence data with 80-90% token reduction
 
 ### Image Positioning
-- `{DOCUMENT_IMAGE}` - Placeholder for precise image positioning in multimodal prompts
+- `{DOCUMENT_IMAGE}` - Placeholder for precise image positioning in multimodal prompts.
+  Presence of this placeholder is the **only** switch for image attachment: the
+  section's page images are attached when it is present and omitted when it is not,
+  independent of `extraction.geometry.mode`. Visually-evidenced fields (signature /
+  checkbox / stamp booleans, handwriting) can only be judged from the image, so the
+  page images are sent even when the model is not asked for bounding boxes. Drop the
+  placeholder from the prompt for a cheaper text-only confidence pass.
 
 ## Text Confidence Data Integration
 
@@ -249,30 +906,33 @@ The assessment service now includes **automatic spatial localization** capabilit
 To enable spatial localization, include these instructions in your `task_prompt`:
 
 ```yaml
-assessment:
-  task_prompt: |
-    <spatial-localization-guidelines>
-    For each field, provide bounding box coordinates:
-    - bbox: [x1, y1, x2, y2] coordinates in normalized 0-1000 scale
-    - page: Page number where the field appears (starting from 1)
-    
-    Coordinate system:
-    - Use normalized scale 0-1000 for both x and y axes
-    - x1, y1 = top-left corner of bounding box
-    - x2, y2 = bottom-right corner of bounding box
-    - Ensure x2 > x1 and y2 > y1
-    - Make bounding boxes tight around the actual text content
-    </spatial-localization-guidelines>
-    
-    For each attribute, provide:
-    {
-      "attribute_name": {
-        "confidence": 0.95,
-        "confidence_reason": "Clear explanation",
-        "bbox": [100, 200, 300, 250],
-        "page": 1
+extraction:
+  geometry:
+    mode: llm_grounded
+  confidence:
+    task_prompt: |
+      <spatial-localization-guidelines>
+      For each field, provide bounding box coordinates:
+      - bbox: [x1, y1, x2, y2] coordinates in normalized 0-1000 scale
+      - page: Page number where the field appears (starting from 1)
+
+      Coordinate system:
+      - Use normalized scale 0-1000 for both x and y axes
+      - x1, y1 = top-left corner of bounding box
+      - x2, y2 = bottom-right corner of bounding box
+      - Ensure x2 > x1 and y2 > y1
+      - Make bounding boxes tight around the actual text content
+      </spatial-localization-guidelines>
+
+      For each attribute, provide:
+      {
+        "attribute_name": {
+          "confidence": 0.95,
+          "confidence_reason": "Clear explanation",
+          "bbox": [100, 200, 300, 250],
+          "page": 1
+        }
       }
-    }
 ```
 
 ### Benefits
@@ -280,7 +940,95 @@ assessment:
 - **No Configuration Required**: Works automatically when LLM provides bbox data
 - **Backward Compatible**: Existing assessments without bbox continue working
 - **UI Ready**: Geometry format works immediately with existing visualizations
-- **All Services Supported**: Both regular and granular assessment include this capability
+- **Consistent**: applies uniformly across the standalone step and the agentic in-shard path
+
+## Grounding Geometry in Real OCR Data
+
+The bounding boxes produced above are **LLM-estimated**. When the OCR backend supplies real
+geometry (Textract or the Mistral OCR LambdaHook), a post-LLM enrichment pass grounds each
+field's box in the actual OCR coordinates from the consolidated per-page `pageData.json`
+artifact (see `idp_common/ocr/README.md`). Implemented in `idp_common.assessment.ocr_grounding`
+and used by the standalone assessment step (`service.py`) and the agentic in-shard path alike.
+
+```python
+from idp_common.assessment.ocr_grounding import (
+    load_page_ocr_data,
+    ground_assessment_geometry,
+)
+
+# Read pageData.json for the section's pages (keyed by 1-indexed page number).
+page_data = load_page_ocr_data(document.pages, sorted_page_ids)
+
+# Replace LLM-estimated boxes with real OCR boxes where the extracted value matches a line.
+enhanced_assessment = ground_assessment_geometry(
+    enhanced_assessment, extraction_results, page_data
+)
+```
+
+Key behaviors:
+
+- **Tiered matching** of each extracted value to OCR `lines[]`: exact → value-in-line →
+  multi-line span (boxes unioned) → line fragment → token-overlap fuzzy (≥ 0.6).
+- **Spatial disambiguation** of repeated values: when a value matches multiple lines, the
+  candidate nearest the LLM-estimated box wins; with no usable reference box the field keeps
+  its LLM box (so identical amounts across table rows don't collapse onto one line).
+- **Coordinates stay 0–1**: `pageData` geometry is already normalized, so grounded boxes skip
+  the 0–1000 → 0–1 rescale that LLM boxes go through. No mixed scales in `explainability_info`.
+- **Additive output**: a matched field gets `geometry_source` (`"ocr"`/`"ocr-paragraph"`/
+  `"llm"`) and, when available, `ocr_confidence` (0–1). The LLM `confidence`/`confidence_reason`
+  are never modified, so HITL and confidence alerts are unaffected.
+- **Config gate**: `extraction.geometry.mode` (`ocr_only` default | `llm_grounded` | `llm` | `off`). The legacy `assessment.ground_geometry_in_ocr: false` maps to `llm`; old configs are migrated on read.
+- **Safe fallback**: absent `pageData.json`, `geometryAvailable: false`, or no value match →
+  keep the LLM-estimated box (identical to prior behavior). `pageData.json` is read from S3, so
+  the `{OCR_TEXT_CONFIDENCE}` prompt and token budget are unchanged.
+
+### Per-shard grounding (sharded agentic path)
+
+In the sharded agentic path each shard **grounds its own rows against only its own
+pages** immediately after its in-shard confidence assessment (in
+`ExtractionService._build_assess_runner` → `_ground_shard_assessment`), rather than
+deferring one full-section grounding sweep to the merge step. This matters because
+grounding is `O(rows × pages)` fuzzy line-matching: a large multi-page table
+(e.g. 1,440 rows over 24 pages) grounded once at merge time is single-threaded, has
+no wall-clock guard, and could exceed the merge Lambda's 900s ceiling. Grounding
+per-shard makes it scale exactly like the confidence assessment does — each shard's
+work is bounded to its own ~N rows × ~5 pages and runs concurrently across shards.
+Scoping to the shard's pages also improves correctness: a row's value can only appear
+on its own pages, so cross-page false matches are avoided.
+
+The merge step then re-runs `ground_assessment_geometry(..., skip_grounded=True)`,
+which is a near-instant no-op over leaves that already carry a `geometry_source`
+(everything the shards grounded) and only grounds any **residual** leaves — e.g.
+reconcile-padded placeholder rows the assessment LLM omitted. The non-sharded
+single-agent path still grounds once at the end (`skip_grounded=True` is a no-op
+there because no leaf is pre-grounded), so behavior is identical.
+
+### Indexed value→line matching (performance)
+
+`match_value_to_geometry` builds, once per page and caches on the `pageData` dict,
+a normalized-line list plus an **exact-text → lines index**, then does an
+index-first pass across all pages before any linear scan. Because EXACT is the most
+precise tier, a value that equals an OCR line verbatim (the overwhelmingly common
+case for table cells) resolves as an O(1) dict hit and skips the substring / span /
+token-overlap / Levenshtein passes entirely; a tier-aware early-out likewise skips
+the fuzzy ladder whenever a hit that it cannot beat already exists. This took a
+1,440-row section from ~64s to ~2s with byte-identical output. When nothing matches
+exactly (reformatting, OCR noise) the full fuzzy ladder still runs, so match quality
+is unchanged. `_ground_shard_assessment` logs the row count + duration so a
+regression can never again be a silent multi-minute hang.
+
+### Images omitted in OCR-geometry modes
+
+In `geometry.mode: ocr_only` (default) and `off`, `assess_results` **drops the page
+images from the confidence prompt** — the model is never asked for boxes (geometry
+comes from OCR value-matching), so the images only bloat the request (~1.7K input
+tokens each; a 5-page shard ≈ 8.7K) and, on a small multimodal model like Nova Lite,
+materially raise latency and the odds of a max-output-token truncation on large
+tables. In `llm`/`llm_grounded` the images are kept (the model needs them to estimate
+boxes).
+
+See the *Geometry / Bounding Boxes* section of `docs/extraction-and-confidence.md`
+for the user-facing description.
 
 ## Multimodal Assessment
 
@@ -665,7 +1413,10 @@ def lambda_handler(event, context):
 
 ### Configuration
 - Set appropriate temperature (0 for deterministic assessment)
-- Configure max_tokens based on expected response length
+- Output tokens are not configurable — the confidence pass requests the model
+  maximum (so long list assessments aren't truncated), except on Nova Lite/Micro,
+  where each call requests a row-sized output budget (see *Truncation-aware
+  adaptive batch splitting*)
 - Use system prompts to establish assessment criteria
 
 ### Performance
@@ -705,3 +1456,4 @@ class AttributeAssessment:
 class AssessmentResult:
     attributes: Dict[str, AttributeAssessment]
     metadata: Dict[str, Any]
+```

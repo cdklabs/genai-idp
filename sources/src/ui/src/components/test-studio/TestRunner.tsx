@@ -1,14 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { SelectProps, IconProps } from '@cloudscape-design/components';
 import { Container, Header, SpaceBetween, Button, FormField, Select, Alert, Textarea, Input } from '@cloudscape-design/components';
-import { generateClient } from 'aws-amplify/api';
+import { generateClient } from '../../api/client-shim';
 import { ConsoleLogger } from 'aws-amplify/utils';
-import { startTestRun, getTestSets } from '../../graphql/generated';
+import { startTestRun, getTestSets, getTestSetVersions } from '../../graphql/generated';
 import handlePrint from './PrintUtils';
 import useConfigurationVersions from '../../hooks/use-configuration-versions';
+import ConfigRevisionSelector from '../common/ConfigRevisionSelector';
 import { getErrorMessage } from '../../utils/errorUtils';
+import { testSetVersionOptions, CURRENT_LABELS, type TestSetVersionOption } from './testSetVersionOptions';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GqlResult = { data: Record<string, any> };
@@ -28,6 +30,8 @@ interface TestSetData {
   filePattern?: string;
   fileCount: number;
   status: string;
+  /** Config profile this test set declares for itself (optional). */
+  configVersion?: string | null;
 }
 
 interface TestRunnerProps {
@@ -42,8 +46,53 @@ const TestRunner = ({
   activeTestRuns: _activeTestRuns,
 }: TestRunnerProps): React.JSX.Element => {
   const [testSets, setTestSets] = useState<TestSetData[]>([]);
+  const [testSetsLoading, setTestSetsLoading] = useState(true);
   const [selectedTestSet, setSelectedTestSet] = useState<SelectProps.Option | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<SelectProps.Option | null>(null);
+  // null = the profile's current configuration. Pinning an explicit revision is
+  // what makes two runs of the same profile comparable.
+  const [selectedRevision, setSelectedRevision] = useState<number | null>(null);
+  /**
+   * Which labels to score against. Null is the set's current labels, including any
+   * annotation in progress — the loop the review-effort panel invites. A number pins a
+   * published version, the counterpart of pinning a configuration revision above:
+   * both are what make two runs comparable once the thing they measure has moved.
+   */
+  const [testSetVersions, setTestSetVersions] = useState<TestSetVersionOption[]>([]);
+  const [selectedTestSetVersion, setSelectedTestSetVersion] = useState<number | null>(null);
+
+  useEffect(() => {
+    setSelectedTestSetVersion(null);
+    setTestSetVersions([]);
+    const id = selectedTestSet?.value;
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = (await client.graphql({ query: getTestSetVersions, variables: { testSetId: id } })) as {
+          data?: { getTestSetVersions?: (Partial<TestSetVersionOption> | null)[] | null };
+        };
+        if (cancelled) return;
+        const versions = (result.data?.getTestSetVersions ?? [])
+          .filter((v): v is TestSetVersionOption => v?.version != null)
+          .sort((a, b) => b.version - a.version);
+        setTestSetVersions(versions);
+      } catch (err) {
+        // The picker degrades to "current labels" only; a run is still possible.
+        logger.debug('Could not load test set versions:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTestSet?.value]);
+
+  // Built in testSetVersionOptions.ts, which also explains why a version with no stored
+  // labels is called out here rather than discovered in the copier's log after the run.
+  const versionOptionsForSet = testSetVersionOptions(testSetVersions);
+  const selectedTestSetVersionOption =
+    versionOptionsForSet.find((o) => o.value === (selectedTestSetVersion === null ? CURRENT_LABELS : String(selectedTestSetVersion))) ??
+    versionOptionsForSet[0];
   const [numberOfFiles, setNumberOfFiles] = useState('');
   const [context, setContext] = useState('');
   const [error, setError] = useState('');
@@ -94,6 +143,8 @@ const TestRunner = ({
     } catch (err) {
       console.error('TestRunner: Failed to load test sets:', err);
       setError(`Failed to load test sets: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTestSetsLoading(false);
     }
   };
 
@@ -132,6 +183,8 @@ const TestRunner = ({
         ...(context && { context }),
         ...(numberOfFiles.trim() && { numberOfFiles: parseInt(numberOfFiles.trim(), 10) }),
         ...(selectedVersion && { configVersion: selectedVersion.value }),
+        ...(selectedRevision !== null && { configRevision: selectedRevision }),
+        ...(selectedTestSetVersion !== null && { testSetVersion: selectedTestSetVersion }),
       };
       console.log('TestRunner: Starting test run with input:', input);
 
@@ -171,6 +224,11 @@ const TestRunner = ({
     }
   };
 
+  // A set with no documents cannot be run; the server refuses it too, but a
+  // disabled button says so before the attempt.
+  const selectedFileCount = selectedTestSet ? (testSets.find((ts) => ts.id === selectedTestSet.value)?.fileCount ?? 0) : 0;
+  const runDisabledReason = !selectedTestSet ? 'Select a test set' : selectedFileCount === 0 ? 'This test set has no documents' : undefined;
+
   const testSetOptions = testSets
     .filter((testSet) => testSet.status === 'COMPLETED')
     .map((testSet) => ({
@@ -189,9 +247,11 @@ const TestRunner = ({
           description="Select a test set and execute test runs for document processing"
           actions={
             <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="primary" onClick={handleRunTest} loading={loading} disabled={!selectedTestSet}>
-                Run Test
-              </Button>
+              <span title={runDisabledReason}>
+                <Button variant="primary" onClick={handleRunTest} loading={loading} disabled={Boolean(runDisabledReason)}>
+                  Run Test
+                </Button>
+              </span>
               <Button onClick={handlePrint} iconName={'print' as unknown as IconProps.Name}>
                 Print
               </Button>
@@ -215,32 +275,91 @@ const TestRunner = ({
             onChange={({ detail }) => {
               setSelectedTestSet(detail.selectedOption);
               setNumberOfFiles(''); // Reset numberOfFiles when test set changes
+              // Auto-select the configuration profile for the chosen test set, in
+              // priority order:
+              //
+              //   1. `configVersion` declared ON the test set record. Lets a test
+              //      set name its own config explicitly — required for test sets
+              //      deployed by an extension, whose config presets are named
+              //      `<featureId>-v<version>` by the Feature Platform and so can
+              //      never equal the test set id.
+              //   2. A configuration profile whose name EQUALS the test set id. The
+              //      convention the stack-managed benchmark sets rely on
+              //      (e.g. "fake-w2", "docsplit").
+              //   3. The active version — nothing specific applies.
+              //
+              // A declared version that isn't in the dropdown (deleted, or out of
+              // the caller's config-version scope) falls through to 2 then 3
+              // rather than leaving the field empty.
+              const testSetData = testSets.find((ts) => ts.id === detail.selectedOption.value);
+              const versionOptions = getVersionOptions();
+              for (const candidate of [testSetData?.configVersion, testSetData?.id]) {
+                if (!candidate) continue;
+                const matchOption = versionOptions.find((opt) => opt.value === candidate);
+                if (matchOption) {
+                  setSelectedVersion(matchOption);
+                  return;
+                }
+              }
+              const activeVersion = versions.find((v) => v.isActive);
+              const activeOption = activeVersion ? versionOptions.find((opt) => opt.value === activeVersion.versionName) : null;
+              setSelectedVersion(activeOption ?? versionOptions[0] ?? null);
             }}
             options={testSetOptions}
             placeholder="Choose a test set..."
+            statusType={testSetsLoading ? 'loading' : 'finished'}
+            loadingText="Loading test sets..."
             empty="No test sets available"
           />
         </FormField>
 
         <FormField
-          label="Configuration Version"
-          description="Select which configuration version to use for processing these test documents"
+          label="Test set version"
+          description="Defaults to the set’s current labels, including any annotation in progress. Pin a published version to score exactly the labels it preserved — that is how two runs of the same set stay comparable once its ground truth has moved."
+        >
+          <Select
+            selectedOption={selectedTestSetVersionOption}
+            onChange={({ detail }) =>
+              setSelectedTestSetVersion(detail.selectedOption.value === CURRENT_LABELS ? null : Number(detail.selectedOption.value))
+            }
+            options={versionOptionsForSet}
+            disabled={loading || !selectedTestSet}
+          />
+        </FormField>
+
+        <FormField
+          label="Configuration Profile"
+          description="Select which configuration profile to use for processing these test documents"
         >
           <Select
             selectedOption={selectedVersion}
             onChange={({ detail }) => setSelectedVersion(detail.selectedOption)}
             options={getVersionOptions()}
-            placeholder={versions.length === 0 ? 'Loading versions...' : 'Select configuration version'}
+            placeholder={versions.length === 0 ? 'Loading profiles...' : 'Select configuration profile'}
             disabled={loading || versions.length === 0}
-            loadingText="Loading versions..."
+            loadingText="Loading profiles..."
           />
         </FormField>
 
+        <ConfigRevisionSelector
+          profileName={selectedVersion?.value}
+          value={selectedRevision}
+          onChange={setSelectedRevision}
+          description="Defaults to the profile’s current configuration. Pick an earlier revision to score exactly what it recorded — that is how two runs of the same profile stay comparable."
+          disabled={loading}
+        />
+
         <FormField
           label="Number of Files"
-          description={`Optional: Limit the number of files to process (max: ${
-            selectedTestSet ? testSets.find((ts) => ts.id === selectedTestSet.value)?.fileCount || 0 : 0
-          })`}
+          // 'max: 0' before a set is chosen reads as a hard limit of zero, i.e.
+          // "you cannot run this" — when in fact no maximum is known yet.
+          description={(() => {
+            if (!selectedTestSet) return 'Optional: Limit the number of files to process. Choose a test set to see its maximum.';
+            const fileCount = testSets.find((ts) => ts.id === selectedTestSet.value)?.fileCount;
+            return fileCount
+              ? `Optional: Limit the number of files to process (max: ${fileCount})`
+              : 'Optional: Limit the number of files to process.';
+          })()}
         >
           <Input
             value={numberOfFiles}
@@ -267,11 +386,13 @@ const TestRunner = ({
               // If number is too large, don't update the state (prevents typing)
             }}
             placeholder={
-              selectedTestSet
-                ? `Enter 1-${testSets.find((ts) => ts.id === selectedTestSet.value)?.fileCount || 0}`
-                : 'Select a test set first'
+              !selectedTestSet
+                ? 'Select a test set first'
+                : selectedFileCount > 0
+                  ? `Enter 1-${selectedFileCount}`
+                  : 'This test set has no documents'
             }
-            disabled={!selectedTestSet}
+            disabled={!selectedTestSet || selectedFileCount === 0}
             type="text"
             inputMode="numeric"
           />

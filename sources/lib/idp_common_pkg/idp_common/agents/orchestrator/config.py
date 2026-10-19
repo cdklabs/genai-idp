@@ -8,7 +8,11 @@ Configuration management for orchestrator agents.
 import logging
 from typing import Any, Dict
 
-from ..common.config import configure_logging, get_environment_config
+from ..common.config import (
+    DEFAULT_AGENT_MODEL_ID,
+    configure_logging,
+    get_environment_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +31,7 @@ def get_orchestrator_config() -> Dict[str, Any]:
     config = get_environment_config()
 
     # Add orchestrator-specific defaults
-    config.setdefault(
-        "default_model_id", "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-    )
+    config.setdefault("default_model_id", DEFAULT_AGENT_MODEL_ID)
 
     # Configure logging based on the configuration
     configure_logging(
@@ -65,7 +67,19 @@ def get_chat_companion_model_id() -> str:
     except Exception as e:
         logger.warning(f"Failed to load model ID from configuration: {e}")
 
-        # Final fallback to default
-        default_model_id = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+        # The shared fallback, not a literal of our own. See
+        # agents/common/config.py: a second copy of a model id is a second thing
+        # to retire, and seven agent modules each carrying their own literal is
+        # how every one of them ended up naming an end-of-life model. This
+        # function had such a literal and it named Claude Sonnet 4.
+        #
+        # ⚠️ This is NOT the same value a healthy stack runs.
+        # DEFAULT_AGENT_MODEL_ID derives from ChatCompanionConfig.model_id's
+        # declared default, which is a Sonnet, while
+        # system_defaults/base-agents.yaml sets the same field to Claude Haiku
+        # 4.5 and the YAML is what a deployed stack resolves. So this path costs
+        # roughly 3x the configured one. Reconciling the two layers moves the
+        # fallback for the other agent modules too, so it is its own change.
+        default_model_id = DEFAULT_AGENT_MODEL_ID
         logger.info(f"Using default chat companion model ID: {default_model_id}")
         return default_model_id

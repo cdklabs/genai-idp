@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import boto3
+import datetime
 import gzip
+import hashlib
 import json
 import os
 from typing import Dict, Any, Optional, Union, List
@@ -12,19 +14,33 @@ from botocore.exceptions import ClientError
 import logging
 from boto3.dynamodb.types import Binary
 
-from .models import IDPConfig, SchemaConfig, PricingConfig, ConfigurationRecord, ConfigMetadata
+from idp_common.ddb_numbers import coerce_int
+
+from .models import (
+    IDPConfig,
+    SchemaConfig,
+    PricingConfig,
+    ModelConfigLimitsConfig,
+    ConfigurationRecord,
+    ConfigMetadata,
+)
 from .merge_utils import (
     deep_update,
     get_diff_dict,
 )
 from .constants import (
+    ACTIVE_POINTER_KEY,
     CONFIG_TYPE_CUSTOM_PRICING,
     CONFIG_TYPE_DEFAULT_PRICING,
+    CONFIG_TYPE_CUSTOM_MODEL_CONFIG_LIMITS,
+    CONFIG_TYPE_DEFAULT_MODEL_CONFIG_LIMITS,
     CONFIG_TYPE_SCHEMA,
     CONFIG_TYPE_CONFIG,
+    RESERVED_VERSION_NAMES,
     VALID_CONFIG_TYPES,
-    DEFAULT_VERSION
+    DEFAULT_VERSION,
 )
+from .revisions import ConfigRevisionStore
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +54,30 @@ _COMPRESSED_STORAGE_VALUE = "compressed"
 _COMPRESSED_DATA_FIELD = "_compressed_config"
 
 # DynamoDB metadata fields that are stored as top-level attributes (not compressed)
-_DYNAMODB_METADATA_FIELDS = {"Configuration", "CreatedAt", "UpdatedAt", "IsActive", "Description",
-                              "BdaProjectArn", "BdaSyncStatus", "BdaLastSyncedAt"}
+_DYNAMODB_METADATA_FIELDS = {
+    "Configuration",
+    "CreatedAt",
+    "UpdatedAt",
+    "IsActive",
+    "Description",
+    "BdaProjectArn",
+    "BdaSyncStatus",
+    "BdaLastSyncedAt",
+    "Managed",
+    "LatestRevision",
+    "PublishedRevision",
+}
+
+# Head-item attributes that are maintained by targeted update_item calls rather
+# than by to_dynamodb_item(). put_item replaces the whole item, so these must be
+# read back and re-attached on every write or they would be silently dropped.
+_PRESERVED_HEAD_FIELDS = (
+    "BdaProjectArn",
+    "BdaSyncStatus",
+    "BdaLastSyncedAt",
+    "LatestRevision",
+    "PublishedRevision",
+)
 
 # DynamoDB item size limit (400KB) with safety margin
 _DYNAMODB_ITEM_SIZE_LIMIT = 400 * 1024
@@ -47,6 +85,17 @@ _DYNAMODB_ITEM_SIZE_WARNING = 350 * 1024  # Warn at 350KB
 
 # Minimum number of top-level keys expected in a full IDP config
 _MIN_FULL_CONFIG_KEYS = 4
+
+EXPIRED_REVISION_REMEDY = (
+    "If it is the profile's current revision and its body has expired, saving a "
+    "change to the profile's configuration in the editor or with idp-cli "
+    "config-upload cuts a new revision with a fresh body, and new documents are "
+    "pinned to it. 'default' and stack-managed profiles cannot be saved in the "
+    "editor: an administrator can change 'default' with Save as default from "
+    "another profile or with idp-cli config-upload, and a stack-managed profile "
+    "gets a new revision from a stack update that changes its configuration, so "
+    "process its documents under an editable copy of it until then."
+)
 
 
 def _is_full_config(raw_dict: Dict[str, Any]) -> bool:
@@ -68,9 +117,36 @@ def _is_full_config(raw_dict: Dict[str, Any]) -> bool:
     if raw_dict.get(_FULL_CONFIG_MARKER) == _FULL_CONFIG_VALUE:
         return True
     # Heuristic: full configs have many top-level sections
-    config_sections = {"ocr", "classification", "extraction", "classes", "assessment", "summarization"}
+    config_sections = {
+        "ocr",
+        "classification",
+        "extraction",
+        "classes",
+        "assessment",
+        "summarization",
+    }
     present = config_sections.intersection(raw_dict.keys())
     return len(present) >= _MIN_FULL_CONFIG_KEYS
+
+
+def _stored_content_hash(item: Dict[str, Any]) -> str:
+    """Hash of a profile head item's stored configuration, excluding its metadata."""
+    content = {k: v for k, v in item.items() if k not in _DYNAMODB_METADATA_FIELDS}
+    canonical = json.dumps(content, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
+
+
+def _parse_timestamp(value: Any) -> Optional[datetime.datetime]:
+    """Parse the ISO-8601 timestamps written on head items and revision entries."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed
 
 
 class ConfigurationManager:
@@ -96,13 +172,24 @@ class ConfigurationManager:
         manager.save_configuration(CONFIG_TYPE_CONFIG, config, version="v1")
     """
 
-    def __init__(self, table_name: Optional[str] = None):
+    def __init__(self, table_name: Optional[str] = None, region: Optional[str] = None):
         """
         Initialize the configuration manager.
 
         Args:
             table_name: Optional override for configuration table name.
                        If not provided, uses CONFIGURATION_TABLE_NAME env var.
+            region: Optional AWS region for the DynamoDB and S3 clients this
+                   manager builds. ``None`` means "let boto3 resolve it"
+                   (AWS_REGION / AWS_DEFAULT_REGION / profile / IMDS), which is
+                   what a Lambda wants — the runtime always sets AWS_REGION.
+                   A caller that resolved the table name in a specific region
+                   MUST pass that same region: the table name is not
+                   region-qualified, so reading it back under a different region
+                   either raises ResourceNotFoundException or, on a multi-region
+                   account, silently hits a same-named table in the wrong
+                   region. That is how ``idp-cli config-upload --region`` used to
+                   report success after writing to the wrong stack.
 
         Raises:
             ValueError: If table name cannot be determined
@@ -114,16 +201,23 @@ class ConfigurationManager:
                 "environment variable or provide table_name parameter."
             )
 
-        self.dynamodb = boto3.resource("dynamodb")
-        self.table = self.dynamodb.Table(
-            table_name
-        )  # pyright: ignore[reportAttributeAccessIssue]
+        self.region = region
+        self.dynamodb = boto3.resource("dynamodb", region_name=self.region)
+        self.table = self.dynamodb.Table(table_name)  # pyright: ignore[reportAttributeAccessIssue]
         self.table_name = table_name
+        # Revision history for Configuration Profiles. Disabled (no-op) when no
+        # configuration bucket is configured, so an older deployment or a unit
+        # test that does not exercise history keeps working unchanged. The region
+        # is passed through for the same reason as above: the revision objects
+        # live in the configuration bucket of the stack we just resolved.
+        self.revisions = ConfigRevisionStore(self.table, region=self.region)
         logger.info(f"ConfigurationManager initialized with table: {table_name}")
 
     def get_configuration(
         self, config_type: str, version: Optional[str] = None
-    ) -> Optional[Union[SchemaConfig, IDPConfig, PricingConfig]]:
+    ) -> Optional[
+        Union[SchemaConfig, IDPConfig, PricingConfig, ModelConfigLimitsConfig]
+    ]:
         """
         Retrieve configuration from DynamoDB.
 
@@ -145,7 +239,9 @@ class ConfigurationManager:
         try:
             record = self._read_record(config_type, version=version)
             if record is None:
-                logger.info(f"Configuration not found: {config_type}, version: {version}")
+                logger.info(
+                    f"Configuration not found: {config_type}, version: {version}"
+                )
                 return None
 
             return record.config
@@ -154,7 +250,9 @@ class ConfigurationManager:
             logger.error(f"Error retrieving configuration {config_type}: {e}")
             raise
 
-    def get_raw_configuration(self, config_type: str, version: str) -> Optional[Dict[str, Any]]:
+    def get_raw_configuration(
+        self, config_type: str, version: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Retrieve RAW configuration from DynamoDB without Pydantic validation.
 
@@ -183,45 +281,93 @@ class ConfigurationManager:
             item = response.get("Item")
 
             if item is None:
-                logger.info(f"Raw configuration not found: {config_type}, version: {version}")
+                logger.info(
+                    f"Raw configuration not found: {config_type}, version: {version}"
+                )
                 return None
 
             # Decompress if stored in compressed format
             item = self._decompress_item(item)
 
             # Remove DynamoDB partition key and metadata fields - return only config data
-            config_data = {k: v for k, v in item.items() if k not in _DYNAMODB_METADATA_FIELDS}
+            config_data = {
+                k: v for k, v in item.items() if k not in _DYNAMODB_METADATA_FIELDS
+            }
 
-            logger.info(f"Retrieved raw configuration for {config_type}, version: {version}")
+            # Relocate legacy-shaped keys to their current paths.
+            #
+            # "Raw" here means "no Pydantic DEFAULTS" — that is what preserves the
+            # sparse-delta pattern this method exists for. It does NOT mean "the
+            # stored bytes at whatever path they used to live". The migration chain
+            # is a pure relocation of keys that are PRESENT and injects nothing, so
+            # applying it keeps the delta just as sparse while putting each value
+            # where today's readers look for it.
+            #
+            # Without this, the config editor breaks for every pre-existing custom
+            # profile after a key MOVE: the editor renders the Schema (which
+            # describes the new path) populated from this raw delta (which still
+            # holds the value at the old path), so the panel shows the DEFAULT
+            # while the runtime — which goes through get_merged_configuration and
+            # therefore does migrate — uses the user's real value. Verified live
+            # after the v0.7 move: the editor reported validation enabled/warn on
+            # profiles the pipeline was running disabled/escalate, and a save from
+            # that panel would have persisted the wrong value.
+            #
+            # Only for CONFIG_TYPE_CONFIG. The migrations describe the IDP config
+            # shape; the other record types in this table (Schema, pricing, model
+            # limits) are unrelated documents. Their key paths would never match,
+            # but the chain unconditionally stamps `config_format_version`, so
+            # running it would inject a meaningless key into a pricing or schema
+            # record — which a subsequent save would then persist.
+            if config_type == CONFIG_TYPE_CONFIG:
+                from .migrations import migrate_config
+
+                config_data = migrate_config(config_data)
+
+            logger.info(
+                f"Retrieved raw configuration for {config_type}, version: {version}"
+            )
             return config_data
 
         except ClientError as e:
             logger.error(f"Error retrieving raw configuration {config_type}: {e}")
             raise
 
-    def get_merged_configuration(self, version: str) -> Optional[IDPConfig]:
+    def get_merged_configuration(
+        self, version: str, revision: Optional[int] = None
+    ) -> Optional[IDPConfig]:
         """
-        Get the full configuration for a version, ready for runtime processing.
+        Get the full configuration for a profile, ready for runtime processing.
 
         NEW BEHAVIOR (full config format):
-        - Each version stores a complete configuration
-        - Simply read and return the version's config
+        - Each profile stores a complete configuration
+        - Simply read and return the profile's config
 
         LEGACY SUPPORT (sparse delta format):
-        - If a version is detected as sparse (missing key sections), merge with default
+        - If a profile is detected as sparse (missing key sections), merge with default
         - Auto-migrate the sparse config to full format for future reads
 
         Args:
-            version: Version to load. If None/empty, uses active version.
+            version: Configuration Profile to load. If None/empty, uses the active one.
+            revision: Optional revision to load instead of the profile's current
+                configuration. Used when a document or test run is pinned to a
+                specific revision.
 
         Returns:
             IDPConfig ready for runtime use, or None if not found
 
         Raises:
             ClientError: If DynamoDB operation fails
-            ValueError: If version not found
+            ValueError: If the requested revision is no longer retained
         """
         from copy import deepcopy
+
+        if revision is not None:
+            # An explicitly pinned revision is authoritative. Note there is no
+            # "published revision" branch: the profile head always holds the
+            # published revision's content, and reading the head is one get_item
+            # against an S3 GET, so the unpinned path below stays on the head.
+            return self._load_revision_config(version, revision)
 
         if not version:
             # Find and use active version
@@ -231,7 +377,7 @@ class ConfigurationManager:
                     active_version = version_dict.get("versionName")
                     logger.info(f"Using active version: {active_version}")
                     break
-            
+
             if active_version:
                 version = active_version
             else:
@@ -252,11 +398,15 @@ class ConfigurationManager:
             logger.debug(f"Could not load version {version} as full config: {e}")
 
         # LEGACY PATH: sparse delta config - merge with default
-        logger.info(f"Version {version} appears to be legacy sparse format, merging with default")
+        logger.info(
+            f"Version {version} appears to be legacy sparse format, merging with default"
+        )
 
         default_config = self.get_configuration(CONFIG_TYPE_CONFIG, DEFAULT_VERSION)
         if default_config is None:
-            logger.warning("Default configuration not found - cannot create merged config")
+            logger.warning(
+                "Default configuration not found - cannot create merged config"
+            )
             return None
 
         if not isinstance(default_config, IDPConfig):
@@ -271,6 +421,16 @@ class ConfigurationManager:
         # Remove format marker if present (shouldn't be in sparse, but just in case)
         version_dict.pop(_FULL_CONFIG_MARKER, None)
 
+        # Migrate the raw sparse delta to v0.6 BEFORE merging. The default is
+        # already v0.6 (get_configuration validates through IDPConfig, which
+        # migrates), so migrating the delta first keeps the merge a clean
+        # v0.6-over-v0.6 deep_update — the delta's confidence/geometry/hitl keys
+        # correctly override the default's, instead of a hybrid where a legacy
+        # `assessment.*` delta would be shadowed by the default's new-home keys.
+        from .migrations import migrate_config
+
+        version_dict = migrate_config(version_dict)
+
         # Merge: Start with Default, deep update with version deltas
         default_dict = default_config.model_dump(mode="python")
         merged_dict = deepcopy(default_dict)
@@ -279,9 +439,18 @@ class ConfigurationManager:
         merged_config = IDPConfig(**merged_dict)
         logger.info(f"Merged default + version (legacy sparse) for version: {version}")
 
-        # Auto-migrate: save the merged full config back so future reads are fast
+        # Auto-migrate: save the merged full config back so future reads are fast.
+        # Not a revision: this is a storage-format rewrite, not a user's edit, and
+        # recording it would make every legacy profile's history start with a
+        # revision nobody made.
         try:
-            self.save_configuration(CONFIG_TYPE_CONFIG, merged_config, version=version, skip_sync=True)
+            self.save_configuration(
+                CONFIG_TYPE_CONFIG,
+                merged_config,
+                version=version,
+                skip_sync=True,
+                cut_revision=False,
+            )
             logger.info(f"Auto-migrated version {version} from sparse to full format")
         except Exception as e:
             logger.warning(f"Failed to auto-migrate version {version}: {e}")
@@ -291,30 +460,55 @@ class ConfigurationManager:
     def save_configuration(
         self,
         config_type: str,
-        config: Union[SchemaConfig, IDPConfig, PricingConfig, Dict[str, Any]],
+        config: Union[
+            SchemaConfig,
+            IDPConfig,
+            PricingConfig,
+            ModelConfigLimitsConfig,
+            Dict[str, Any],
+        ],
         version: Optional[str] = None,
         description: Optional[str] = None,
         skip_sync: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
+        cut_revision: bool = True,
+        created_by: Optional[str] = None,
+        revision_notes: Optional[str] = None,
     ) -> None:
         """
         Save configuration to DynamoDB.
 
         For Config type versions, always saves the FULL configuration.
-        Versions are independent snapshots - updating the default does NOT
-        auto-sync other versions.
+        Configuration Profiles are independent snapshots - updating the default
+        does NOT auto-sync other profiles.
+
+        Saving a Config profile also cuts an immutable **revision** recording
+        what was saved, so the previous configuration is never lost. This is what
+        makes an in-place save by a scoped Author non-destructive.
 
         Args:
             config_type: Configuration type (Schema, Config, DefaultPricing, CustomPricing)
             config: Configuration model or dict
-            version: Version identifier (for Config type)
-            description: Optional description for the version
+            version: Configuration Profile name (for Config type)
+            description: Optional description for the profile
             skip_sync: Unused (kept for backward compatibility of method signature)
             metadata: Optional metadata dict
+            cut_revision: Whether to record a revision. False for internal
+                rewrites that are not user intent (e.g. the legacy sparse-config
+                auto-migration), which would otherwise fill history with noise.
+            created_by: Email of the user whose save this is, recorded on the
+                revision. None is recorded as "system".
+            revision_notes: Optional note stored on the revision.
 
         Raises:
+            ValueError: If the profile name is reserved
             ClientError: If DynamoDB operation fails
         """
+        if config_type == CONFIG_TYPE_CONFIG and version in RESERVED_VERSION_NAMES:
+            raise ValueError(
+                f"'{version}' is a reserved name and cannot be used as a "
+                f"configuration profile name"
+            )
         # Convert dict to appropriate config type if needed (for backward compatibility)
         if isinstance(config, dict):
             # Remove format marker before validation
@@ -326,50 +520,466 @@ class ConfigurationManager:
                 CONFIG_TYPE_CUSTOM_PRICING,
             ):
                 config = PricingConfig(**config)
+            elif config_type in (
+                CONFIG_TYPE_DEFAULT_MODEL_CONFIG_LIMITS,
+                CONFIG_TYPE_CUSTOM_MODEL_CONFIG_LIMITS,
+            ):
+                config = ModelConfigLimitsConfig(**config)
             else:
                 config = IDPConfig(**config)
 
         if config_type == CONFIG_TYPE_CONFIG:
             import datetime
+
             timestamp = datetime.datetime.utcnow().isoformat() + "Z"
 
             # Get existing record to preserve metadata
-            existing_record = self._read_record(CONFIG_TYPE_CONFIG, version)
+            existing_item = self._read_item(CONFIG_TYPE_CONFIG, version)
+            existing_record = (
+                ConfigurationRecord.from_dynamodb_item(existing_item)
+                if existing_item is not None
+                else None
+            )
             is_active_status = existing_record.is_active if existing_record else False
 
             if existing_record:
                 # Existing config - preserve created_at, update updated_at
                 record_metadata = {
-                    "created_at": existing_record.metadata.created_at if existing_record.metadata else timestamp,
-                    "updated_at": timestamp
+                    "created_at": existing_record.metadata.created_at
+                    if existing_record.metadata
+                    else timestamp,
+                    "updated_at": timestamp,
                 }
                 record = ConfigurationRecord(
                     configuration_type=config_type,
                     version=version,
                     is_active=is_active_status,
-                    description=description if description else existing_record.description,
+                    description=description
+                    if description
+                    else existing_record.description,
                     config=config,
-                    metadata=ConfigMetadata(**record_metadata)
+                    metadata=ConfigMetadata(**record_metadata),
                 )
             else:
                 # New config - set both timestamps
-                record_metadata = {
-                    "created_at": timestamp,
-                    "updated_at": timestamp
-                }
+                record_metadata = {"created_at": timestamp, "updated_at": timestamp}
                 record = ConfigurationRecord(
                     configuration_type=config_type,
                     version=version,
                     is_active=is_active_status,
                     description=description,
                     config=config,
-                    metadata=ConfigMetadata(**record_metadata)
+                    metadata=ConfigMetadata(**record_metadata),
                 )
         else:
             record = ConfigurationRecord(configuration_type=config_type, config=config)
 
         # Write to DynamoDB (adds full config marker automatically)
-        self._write_record(record)
+        stored_hash = self._write_record(record)
+
+        if config_type == CONFIG_TYPE_CONFIG and version and cut_revision:
+            # History is best-effort by design: a configuration save must never
+            # fail because the revision could not be recorded. Losing a history
+            # entry is recoverable; refusing a save is an outage.
+            try:
+                self._record_revisions(
+                    profile=version,
+                    previous=existing_record,
+                    config=config,
+                    created_by=created_by,
+                    notes=revision_notes,
+                    stored_hash=stored_hash,
+                    previous_head=existing_item,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    f"Saved profile '{version}' but could not record its revision: {e}"
+                )
+
+    def _record_revisions(
+        self,
+        profile: str,
+        previous: Optional[ConfigurationRecord],
+        config: Union[SchemaConfig, IDPConfig, PricingConfig, ModelConfigLimitsConfig],
+        created_by: Optional[str] = None,
+        notes: Optional[str] = None,
+        stored_hash: Optional[str] = None,
+        previous_head: Optional[Dict[str, Any]] = None,
+    ) -> Optional[int]:
+        """
+        Cut the revision(s) for a just-completed profile save.
+
+        On the first save after upgrading to a release with revision history, the
+        configuration that was there *before* this save is cut as a revision
+        first, so the pre-history state is not lost by the very change that
+        introduced history. When that save changes nothing, the backfill is
+        published, with the stored-content hash its own body implies rather than
+        the hash of the head the save wrote: `True == 1`, so a save that swaps one
+        for the other wherever the configuration model leaves a value untyped, as
+        it does inside a class, counts as unchanged although the head it writes
+        stores the configuration differently from the backfill.
+
+        Any other save that does not change the configuration cuts no revision. Every
+        stack deployment re-saves `default` and each managed profile whether or
+        not the shipped configuration moved, so without this a handful of no-op
+        upgrades would fill the retention window with identical revisions and
+        push a user's real history out of it. Such a save still refreshes the
+        published revision's stored-content hash, from the revision's body or
+        from `previous_head`, the decompressed head this save replaced (see
+        `_refresh_published_stored_hash`).
+        """
+        if not self.revisions.enabled:
+            return None
+
+        head = self.table.get_item(
+            Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{profile}"},
+            ProjectionExpression="LatestRevision",
+        ).get("Item", {})
+        has_history = bool(head.get("LatestRevision"))
+
+        new_dict = self._config_to_dict(config)
+        previous_dict = (
+            self._config_to_dict(previous.config) if previous is not None else None
+        )
+        unchanged = previous_dict is not None and previous_dict == new_dict
+
+        if previous is not None and not has_history:
+            # First save since history was introduced: capture what was there
+            # before this save.
+            try:
+                backfilled = self.revisions.cut(
+                    profile,
+                    previous_dict,
+                    created_by="system",
+                    notes="Configuration as it stood before revision history was enabled",
+                    publish=unchanged,
+                    stored_hash=self._stored_hash_of_body(profile, previous_dict)
+                    if unchanged
+                    else None,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    f"Could not backfill pre-history revision for '{profile}': {e}"
+                )
+            else:
+                if unchanged:
+                    # The save changed nothing `==` can see, so the backfill is
+                    # published instead of a second, equal revision.
+                    logger.info(
+                        f"Profile '{profile}' is unchanged by this save; its pre-history "
+                        f"snapshot r{backfilled} is the current revision"
+                    )
+                    return backfilled
+        elif unchanged and has_history:
+            logger.info(
+                f"Profile '{profile}' saved with no configuration change; "
+                f"not recording a revision"
+            )
+            self._refresh_published_stored_hash(profile, previous_head)
+            return None
+
+        return self.revisions.cut(
+            profile,
+            new_dict,
+            created_by=created_by,
+            notes=notes,
+            stored_hash=stored_hash,
+        )
+
+    @staticmethod
+    def _config_to_dict(config: Any) -> Dict[str, Any]:
+        """Serialize a config model (or passthrough a dict) for revision storage."""
+        if isinstance(config, dict):
+            body = dict(config)
+        else:
+            body = config.model_dump(mode="json")
+        body.pop("config_type", None)
+        return body
+
+    # ===== Configuration Profile Revisions =====
+
+    def list_revisions(self, profile: str) -> List[Dict[str, Any]]:
+        """
+        Revision history for a Configuration Profile, newest first.
+
+        Each entry carries `revision`, `createdAt`, `createdBy`, `label`,
+        `notes`, `sizeBytes`, `classFingerprint`, and `pinned`, plus `published`
+        for the revision the profile head currently reflects.
+        """
+        entries = self.revisions.list(profile)
+        head = self.table.get_item(
+            Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{profile}"},
+            ProjectionExpression="PublishedRevision",
+        ).get("Item", {})
+        published = head.get("PublishedRevision")
+        published_num = int(published) if published is not None else None
+        for entry in entries:
+            entry["published"] = entry["revision"] == published_num
+        return entries
+
+    def get_revision(self, profile: str, revision: int) -> Optional[Dict[str, Any]]:
+        """Full configuration recorded in one revision, or None if not retained."""
+        return self._read_revision_body(profile, revision)
+
+    def _read_revision_body(
+        self, profile: str, revision: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        A revision's body, rebuilt from the profile head if it is the published
+        revision and its object has expired.
+
+        Revision bodies live in the Configuration bucket, whose lifecycle rule
+        expires every object after DataRetentionInDays, while every new document is
+        pinned to its profile's PublishedRevision. Without this, a profile whose
+        published revision was cut more than DataRetentionInDays ago stops
+        processing new documents. The head stands in only when it is provably that
+        revision (`_head_is_revision`); any other missing body stays missing.
+        """
+        body = self.revisions.get_body(profile, revision)
+        if body is not None or not self.revisions.enabled:
+            return body
+        return self._published_body_from_head(profile, int(revision))
+
+    def _published_body_from_head(
+        self, profile: str, revision: int
+    ) -> Optional[Dict[str, Any]]:
+        """The head's configuration as `revision`'s body, or None if unproven."""
+        item = self.table.get_item(
+            Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{profile}"}
+        ).get("Item")
+        if not item or not self._is_published_and_latest(item, revision):
+            return None
+        entry = self.revisions.get_entry(profile, revision)
+        if entry is None:
+            return None
+        head = self._decompress_item(item)
+        if not self._head_is_revision(head, entry):
+            logger.warning(
+                f"Revision r{revision} of configuration profile '{profile}' has no "
+                f"stored body, and the profile head cannot be shown to be that "
+                f"revision. {EXPIRED_REVISION_REMEDY}"
+            )
+            return None
+        body = self._config_of_head(head)
+        logger.warning(
+            f"Revision r{revision} of configuration profile '{profile}' has no stored "
+            f"body (expired under the Configuration bucket's DataRetentionInDays "
+            f"lifecycle rule); using the profile head, which is that revision"
+        )
+        return body
+
+    @staticmethod
+    def _is_published_and_latest(item: Dict[str, Any], revision: int) -> bool:
+        """Whether a head item names `revision` as both its published and newest."""
+        return (
+            coerce_int(item.get("PublishedRevision")) == revision
+            and coerce_int(item.get("LatestRevision")) == revision
+        )
+
+    @classmethod
+    def _config_of_head(cls, head: Dict[str, Any]) -> Dict[str, Any]:
+        """The configuration a decompressed head item serves, shaped as a body."""
+        return cls._config_to_dict(ConfigurationRecord.from_dynamodb_item(head).config)
+
+    @staticmethod
+    def _head_is_revision(head: Dict[str, Any], entry: Dict[str, Any]) -> bool:
+        """
+        Whether a decompressed head item holds exactly the revision `entry` records.
+
+        Proven by the stored-content hash the revision recorded, or, for revisions
+        cut before that hash existed, by the head not having been written since the
+        revision was cut. The second rule accepts the head the revision's own save
+        wrote, so it accepts it for a pre-history backfill an earlier release
+        published on an unchanged save too, although that save may have stored the
+        configuration differently from the backfill (`True` swapped for `1` where
+        the configuration model leaves a value untyped, as in a class).
+        """
+        recorded = entry.get("storedHash")
+        if recorded:
+            return recorded == _stored_content_hash(head)
+        written_at = _parse_timestamp(head.get("UpdatedAt"))
+        cut_at = _parse_timestamp(entry.get("createdAt"))
+        return written_at is not None and cut_at is not None and written_at <= cut_at
+
+    def _stored_hash_of_body(self, profile: str, body: Dict[str, Any]) -> str:
+        """The stored-content hash a head holding `body` would have."""
+        config_dict = {k: v for k, v in body.items() if k != _FULL_CONFIG_MARKER}
+        config_dict.pop("config_type", None)
+        item = ConfigurationRecord(
+            configuration_type=CONFIG_TYPE_CONFIG,
+            version=profile,
+            config=IDPConfig(**config_dict),
+        ).to_dynamodb_item()
+        item[_FULL_CONFIG_MARKER] = _FULL_CONFIG_VALUE
+        return _stored_content_hash(item)
+
+    def _refresh_published_stored_hash(
+        self, profile: str, previous_head: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Record the stored-content hash a head holding the published revision has
+        under the current code.
+
+        Computed from the revision's own body or, once that has expired, from the
+        configuration in `previous_head`, the decompressed head the save replaced,
+        provided that head passes the proof a pinned read applies. Never computed
+        from the head the save wrote, so a head changed by a writer that cut no
+        revision is never recorded as the published revision. Best effort: a save
+        never fails because this could not be recorded.
+        """
+        try:
+            published = self.resolve_published_revision(profile)
+            if published is None:
+                return
+            entry = self.revisions.get_entry(profile, published)
+            if entry is None:
+                return
+            body = self.revisions.get_body(profile, published)
+            if body is None:
+                if previous_head is None or not (
+                    self._is_published_and_latest(previous_head, published)
+                    and self._head_is_revision(previous_head, entry)
+                ):
+                    return
+                body = self._config_of_head(previous_head)
+            stored_hash = self._stored_hash_of_body(profile, body)
+            if entry.get("storedHash") != stored_hash:
+                self.revisions.update_entry(profile, published, storedHash=stored_hash)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                f"Could not refresh the stored-content hash of '{profile}': {e}"
+            )
+
+    def _load_revision_config(self, profile: str, revision: int) -> IDPConfig:
+        """
+        Load a pinned revision as a validated IDPConfig.
+
+        Raises rather than falling back to the profile head: a document or test run
+        pinned to r5 must never be silently processed under r9. A wrong-config run
+        that looks successful is worse than a failed one, because its numbers go
+        into a comparison. The head is used only when it provably *is* r5 and r5's
+        body has expired (`_read_revision_body`).
+        """
+        body = self._read_revision_body(profile, revision)
+        if body is None:
+            raise ValueError(
+                f"Revision r{revision} of configuration profile '{profile}' is not "
+                f"available (deleted, pruned, expired under the Configuration "
+                f"bucket's DataRetentionInDays lifecycle rule, or history is "
+                f"disabled). {EXPIRED_REVISION_REMEDY}"
+            )
+        config_dict = {k: v for k, v in body.items() if k != _FULL_CONFIG_MARKER}
+        config_dict.pop("config_type", None)
+        logger.info(f"Loaded configuration profile '{profile}' revision r{revision}")
+        return IDPConfig(**config_dict)
+
+    def resolve_published_revision(self, profile: str) -> Optional[int]:
+        """
+        The revision a new document processed under this profile should be pinned to.
+
+        Returns None when the profile has no revision history (an older deployment,
+        or a profile untouched since the upgrade), in which case consumers fall back
+        to the profile head — the pre-revision behavior.
+        """
+        try:
+            item = (
+                self.table.get_item(
+                    Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{profile}"},
+                    ProjectionExpression="PublishedRevision",
+                ).get("Item")
+                or {}
+            )
+        except ClientError as e:
+            logger.warning(
+                f"Could not resolve the published revision for '{profile}': {e}"
+            )
+            return None
+        published = item.get("PublishedRevision")
+        return int(published) if published is not None else None
+
+    def restore_revision(
+        self, profile: str, revision: int, created_by: Optional[str] = None
+    ) -> int:
+        """
+        Restore an earlier revision by saving it as the profile's newest revision.
+
+        Restoring never rewrites history: the restored configuration becomes a
+        *new* revision, so the state being replaced remains inspectable. Returns
+        the new revision number.
+
+        Not subject to `_reject_inert_gating_hooks` (#982), for the same reason
+        reset-to-default is not: the whole revision body is restored atomically, so
+        `use_bda` and any pipeline hook travel together and no combination is created
+        that was not once live in this profile. Refusing would also make a revision
+        unrestorable with no way to edit it first. The dispatcher's runtime audit
+        still reports an inert hook on every document.
+
+        Raises:
+            ValueError: If the revision is not retained or is unreadable
+        """
+        body = self._read_revision_body(profile, revision)
+        if body is None:
+            raise ValueError(
+                f"Revision r{revision} of profile '{profile}' is no longer available"
+            )
+        config_dict = {k: v for k, v in body.items() if k != _FULL_CONFIG_MARKER}
+        self.save_configuration(
+            CONFIG_TYPE_CONFIG,
+            IDPConfig(**config_dict),
+            version=profile,
+            created_by=created_by,
+            revision_notes=f"Restored from r{revision}",
+        )
+        head = self.table.get_item(
+            Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{profile}"},
+            ProjectionExpression="LatestRevision",
+        ).get("Item", {})
+        return int(head.get("LatestRevision") or revision)
+
+    def label_revision(
+        self,
+        profile: str,
+        revision: int,
+        label: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> bool:
+        """
+        Attach a label/notes to a revision.
+
+        A labeled revision is exempt from retention pruning — labeling is how a
+        user says "keep this one".
+        """
+        changes: Dict[str, Any] = {}
+        if label is not None:
+            changes["label"] = label[:100] or None
+        if notes is not None:
+            changes["notes"] = notes[:500] or None
+        if not changes:
+            return False
+        return self.revisions.update_entry(profile, revision, **changes)
+
+    def mark_revision_pinned(self, profile: str, revision: int) -> bool:
+        """Protect a revision from pruning because a test run scored against it."""
+        return self.revisions.mark_pinned(profile, revision)
+
+    def delete_revision(self, profile: str, revision: int) -> bool:
+        """
+        Delete one revision.
+
+        Raises:
+            ValueError: If the revision is the one the profile head reflects
+        """
+        head = self.table.get_item(
+            Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{profile}"},
+            ProjectionExpression="PublishedRevision",
+        ).get("Item", {})
+        published = head.get("PublishedRevision")
+        if published is not None and int(published) == int(revision):
+            raise ValueError(
+                f"Cannot delete r{revision}: it is the current configuration of "
+                f"profile '{profile}'"
+            )
+        return self.revisions.delete(profile, revision)
 
     def activate_version(self, version: str) -> None:
         """
@@ -384,7 +994,9 @@ class ConfigurationManager:
         """
         try:
             # Verify the version exists
-            response = self.table.get_item(Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{version}"})
+            response = self.table.get_item(
+                Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{version}"}
+            )
             if not response.get("Item"):
                 raise ValueError(f"Config version {version} not found")
 
@@ -392,52 +1004,170 @@ class ConfigurationManager:
             for version_dict in self.list_config_versions():
                 if version_dict.get("isActive"):
                     self.table.update_item(
-                        Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{version_dict.get('versionName')}"},
+                        Key={
+                            "Configuration": f"{CONFIG_TYPE_CONFIG}#{version_dict.get('versionName')}"
+                        },
                         UpdateExpression="SET IsActive = :false",
-                        ExpressionAttributeValues={":false": False}
+                        ExpressionAttributeValues={":false": False},
                     )
 
             # Activate the target version
             self.table.update_item(
                 Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{version}"},
                 UpdateExpression="SET IsActive = :true",
-                ExpressionAttributeValues={":true": True}
+                ExpressionAttributeValues={":true": True},
             )
+            self._write_active_pointer(version)
             logger.info(f"Activated Config version {version}")
         except ClientError as e:
             logger.error(f"Error activating version {version}: {e}")
             raise
 
-    def list_config_versions(self) -> List[Dict[str, Any]]:
+    def _write_active_pointer(self, version: str) -> None:
         """
-        List all configuration versions.
+        Record the active profile in a sentinel item so resolving it is a single
+        get_item.
 
-        Returns:
-            List of version info dicts with versionName, isActive, createdAt, updatedAt,
-            description, bdaProjectArn, bdaSyncStatus, bdaLastSyncedAt
+        resolve_active_version() runs once per document at queue time. Deriving it
+        from list_config_versions() means a full table scan on the hot path, and
+        DynamoDB bills a scan on total item size regardless of the projection —
+        so it got more expensive with every profile added. The pointer is a
+        cache: IsActive on the profile items remains the source of truth, and a
+        missing or stale pointer falls back to the scan.
         """
         try:
-            response = self.table.scan(
-                FilterExpression="begins_with(Configuration, :config_prefix)",
-                ExpressionAttributeValues={":config_prefix": f"{CONFIG_TYPE_CONFIG}#"},
-                ProjectionExpression="Configuration, IsActive, CreatedAt, UpdatedAt, Description, BdaProjectArn, BdaSyncStatus, BdaLastSyncedAt"
+            self.table.put_item(
+                Item={
+                    "Configuration": ACTIVE_POINTER_KEY,
+                    "ActiveVersion": version,
+                    "UpdatedAt": datetime.datetime.now(datetime.timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                }
+            )
+        except ClientError as e:
+            # Non-fatal: resolution falls back to the scan.
+            logger.warning(f"Could not write the active-profile pointer: {e}")
+
+    def resolve_active_version(self) -> str:
+        """
+        Resolve the configuration version a new document should be processed under.
+
+        Returns the IsActive=true version's name, or DEFAULT_VERSION when no
+        version is marked active. The latter is a NORMAL state, not an error: a
+        freshly deployed stack writes Config#default with no IsActive attribute
+        at all (the Create path calls activate_version, but inside a log-only
+        except), so documents legitimately process under the default until an
+        admin activates something.
+
+        Callers should use this to STAMP document.config_version at queue time
+        rather than leaving it None and letting each downstream consumer resolve
+        it independently. Every consumer that re-resolved on its own was a place
+        the resolution could disagree or silently fail — which is what issue #599
+        was.
+
+        Reads the active-profile pointer first (a single get_item), falling back
+        to a paginated scan of every profile when the pointer is absent — which
+        is the case on a stack deployed before the pointer existed, until the
+        next activation writes it. The fallback paginates, so it cannot miss an
+        active row that sorts late.
+
+        Returns:
+            The active version name, or DEFAULT_VERSION if none is active.
+        """
+        try:
+            pointer = self.table.get_item(
+                Key={"Configuration": ACTIVE_POINTER_KEY},
+                ProjectionExpression="ActiveVersion",
+            ).get("Item")
+            if pointer and pointer.get("ActiveVersion"):
+                return str(pointer["ActiveVersion"])
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                f"Could not read the active-profile pointer ({e}); scanning instead"
             )
 
+        try:
+            for version_dict in self.list_config_versions():
+                if version_dict.get("isActive"):
+                    name = version_dict.get("versionName")
+                    if name:
+                        return name
+        except Exception as e:  # noqa: BLE001
+            # Never fail a document over this — the default is always readable.
+            logger.warning(
+                f"Could not resolve the active config version ({e}); "
+                f"falling back to '{DEFAULT_VERSION}'"
+            )
+            return DEFAULT_VERSION
+        # Note: list_config_versions() swallows ClientError and returns [], so a
+        # throttled scan also lands here rather than in the except above. It logs
+        # its own error first, so the failure is still visible — but treat this
+        # message as "no active version was FOUND", not proof none is set.
+        logger.info(f"No active config version is set; using '{DEFAULT_VERSION}'")
+        return DEFAULT_VERSION
+
+    def list_config_versions(self) -> List[Dict[str, Any]]:
+        """
+        List all Configuration Profiles.
+
+        Sentinel records under the same `Config#` prefix (the active-profile
+        pointer) are skipped — this list feeds the scope-filtered profile
+        dropdowns, so a sentinel leaking in would appear to users as a profile
+        with no configuration.
+
+        Returns:
+            List of profile info dicts with versionName, isActive, createdAt,
+            updatedAt, description, bdaProjectArn, bdaSyncStatus,
+            bdaLastSyncedAt, managed, latestRevision, publishedRevision
+        """
+        try:
+            # DynamoDB scan returns at most 1MB per call, so paginate through
+            # LastEvaluatedKey to ensure every config version is returned. Without
+            # this loop, versions beyond the first page are silently dropped.
+            scan_kwargs = {
+                "FilterExpression": "begins_with(Configuration, :config_prefix)",
+                "ExpressionAttributeValues": {
+                    ":config_prefix": f"{CONFIG_TYPE_CONFIG}#"
+                },
+                "ProjectionExpression": "Configuration, IsActive, CreatedAt, UpdatedAt, Description, BdaProjectArn, BdaSyncStatus, BdaLastSyncedAt, Managed, LatestRevision, PublishedRevision",
+            }
+
             versions = []
-            for item in response.get('Items', []):
-                config_key = item.get('Configuration', '')
-                if "#" in config_key:
-                    _, version = config_key.split("#", 1)
-                    versions.append({
-                        "versionName": version,
-                        "isActive": item.get('IsActive'),
-                        "createdAt": item.get('CreatedAt'),
-                        "updatedAt": item.get('UpdatedAt'),
-                        "description": item.get('Description', ""),
-                        "bdaProjectArn": item.get('BdaProjectArn'),
-                        "bdaSyncStatus": item.get('BdaSyncStatus'),
-                        "bdaLastSyncedAt": item.get('BdaLastSyncedAt'),
-                    })
+            while True:
+                response = self.table.scan(**scan_kwargs)
+                for item in response.get("Items", []):
+                    config_key = item.get("Configuration", "")
+                    if "#" in config_key:
+                        _, version = config_key.split("#", 1)
+                        if version in RESERVED_VERSION_NAMES:
+                            continue
+                        latest = item.get("LatestRevision")
+                        published = item.get("PublishedRevision")
+                        versions.append(
+                            {
+                                "versionName": version,
+                                "isActive": item.get("IsActive"),
+                                "createdAt": item.get("CreatedAt"),
+                                "updatedAt": item.get("UpdatedAt"),
+                                "description": item.get("Description", ""),
+                                "bdaProjectArn": item.get("BdaProjectArn"),
+                                "bdaSyncStatus": item.get("BdaSyncStatus"),
+                                "bdaLastSyncedAt": item.get("BdaLastSyncedAt"),
+                                "managed": item.get("Managed", False),
+                                "latestRevision": int(latest)
+                                if latest is not None
+                                else None,
+                                "publishedRevision": int(published)
+                                if published is not None
+                                else None,
+                            }
+                        )
+
+                last_evaluated_key = response.get("LastEvaluatedKey")
+                if not last_evaluated_key:
+                    break
+                scan_kwargs["ExclusiveStartKey"] = last_evaluated_key
 
             return versions
 
@@ -460,8 +1190,7 @@ class ConfigurationManager:
         try:
             key = {"Configuration": f"{CONFIG_TYPE_CONFIG}#{version}"}
             response = self.table.get_item(
-                Key=key,
-                ProjectionExpression="BdaProjectArn"
+                Key=key, ProjectionExpression="BdaProjectArn"
             )
             item = response.get("Item")
             if item:
@@ -471,7 +1200,9 @@ class ConfigurationManager:
             logger.error(f"Error getting BDA project ARN for version {version}: {e}")
             return None
 
-    def set_bda_project_arn(self, version: str, arn: str, sync_status: str = "synced") -> None:
+    def set_bda_project_arn(
+        self, version: str, arn: str, sync_status: str = "synced"
+    ) -> None:
         """
         Set or update the BDA project ARN and sync status for a config version.
 
@@ -481,6 +1212,7 @@ class ConfigurationManager:
             sync_status: Sync status ("synced", "out-of-sync", "creating")
         """
         import datetime
+
         try:
             key = {"Configuration": f"{CONFIG_TYPE_CONFIG}#{version}"}
             timestamp = datetime.datetime.utcnow().isoformat() + "Z"
@@ -491,9 +1223,11 @@ class ConfigurationManager:
                     ":arn": arn,
                     ":status": sync_status,
                     ":ts": timestamp,
-                }
+                },
             )
-            logger.info(f"Set BDA project ARN for version {version}: {arn} (status: {sync_status})")
+            logger.info(
+                f"Set BDA project ARN for version {version}: {arn} (status: {sync_status})"
+            )
         except ClientError as e:
             logger.error(f"Error setting BDA project ARN for version {version}: {e}")
             raise
@@ -529,14 +1263,16 @@ class ConfigurationManager:
             self.table.update_item(
                 Key=key,
                 UpdateExpression="SET BdaSyncStatus = :status",
-                ExpressionAttributeValues={":status": status}
+                ExpressionAttributeValues={":status": status},
             )
             logger.info(f"Updated BDA sync status for version {version}: {status}")
         except ClientError as e:
             logger.error(f"Error updating BDA sync status for version {version}: {e}")
             raise
 
-    def delete_configuration(self, config_type: str, version: Optional[str] = None) -> None:
+    def delete_configuration(
+        self, config_type: str, version: Optional[str] = None
+    ) -> None:
         """
         Delete configuration from DynamoDB.
 
@@ -555,19 +1291,36 @@ class ConfigurationManager:
 
                 # Prevent deletion of default version
                 if version.lower() == DEFAULT_VERSION.lower():
-                    raise ValueError(f"Cannot delete the '{DEFAULT_VERSION}' configuration version")
+                    raise ValueError(
+                        f"Cannot delete the '{DEFAULT_VERSION}' configuration version"
+                    )
 
                 record = self._read_record(CONFIG_TYPE_CONFIG, version)
-                logger.info(f"Checking version {version} for deletion. Record found: {record is not None}, Is active: {record.is_active if record else 'N/A'}")
+                logger.info(
+                    f"Checking version {version} for deletion. Record found: {record is not None}, Is active: {record.is_active if record else 'N/A'}"
+                )
                 if not record:
                     raise ValueError(f"Version: {version} not found in configurations")
                 if record and record.is_active:
-                    raise ValueError(f"Cannot delete active version {version}. Activate another version first.")
+                    raise ValueError(
+                        f"Cannot delete active version {version}. Activate another version first."
+                    )
                 key = f"{CONFIG_TYPE_CONFIG}#{version}"
             else:
                 key = config_type
             self.table.delete_item(Key={"Configuration": key})
             logger.info(f"Deleted configuration: {key}")
+            if config_type == CONFIG_TYPE_CONFIG and version:
+                # Drop the profile's revision history too: leaving orphaned
+                # bodies in S3 would keep paying storage for a profile nothing
+                # can reach, and a later profile of the same name would appear
+                # to inherit the deleted one's history.
+                try:
+                    self.revisions.delete_profile(version)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        f"Could not delete revision history for '{version}': {e}"
+                    )
         except ClientError as e:
             logger.error(f"Error deleting configuration {config_type}: {e}")
             raise
@@ -589,7 +1342,9 @@ class ConfigurationManager:
             return None
 
         if not isinstance(default_config, PricingConfig):
-            logger.warning(f"Expected PricingConfig but got {type(default_config).__name__}")
+            logger.warning(
+                f"Expected PricingConfig but got {type(default_config).__name__}"
+            )
             return None
 
         custom_config = self.get_configuration(CONFIG_TYPE_CUSTOM_PRICING)
@@ -598,7 +1353,9 @@ class ConfigurationManager:
             return default_config
 
         if not isinstance(custom_config, PricingConfig):
-            logger.warning(f"CustomPricing is not PricingConfig, returning DefaultPricing")
+            logger.warning(
+                f"CustomPricing is not PricingConfig, returning DefaultPricing"
+            )
             return default_config
 
         default_dict = default_config.model_dump(mode="python")
@@ -631,10 +1388,80 @@ class ConfigurationManager:
                 return True
             raise
 
+    # ===== Model Config Limits Methods =====
+
+    def get_merged_model_config_limits(self) -> Optional[ModelConfigLimitsConfig]:
+        """
+        Get the effective model config limits (Custom if present, else Default).
+
+        Unlike pricing, Custom is a FULL replacement list rather than deltas:
+        model_limits is an ordered first-match-wins list, so deep_update (which
+        wholesale-replaces lists anyway) cannot express a partial merge that
+        preserves ordering intent.
+
+        Returns:
+            Effective ModelConfigLimitsConfig, or None if no Default is seeded
+        """
+        default_config = self.get_configuration(CONFIG_TYPE_DEFAULT_MODEL_CONFIG_LIMITS)
+        if default_config is None:
+            logger.info("DefaultModelConfigLimits not found in DynamoDB")
+            return None
+
+        if not isinstance(default_config, ModelConfigLimitsConfig):
+            logger.warning(
+                f"Expected ModelConfigLimitsConfig but got {type(default_config).__name__}"
+            )
+            return None
+
+        custom_config = self.get_configuration(CONFIG_TYPE_CUSTOM_MODEL_CONFIG_LIMITS)
+        if custom_config is None:
+            logger.info(
+                "No CustomModelConfigLimits found, returning DefaultModelConfigLimits"
+            )
+            return default_config
+
+        if not isinstance(custom_config, ModelConfigLimitsConfig):
+            logger.warning(
+                "CustomModelConfigLimits is not ModelConfigLimitsConfig, returning DefaultModelConfigLimits"
+            )
+            return default_config
+
+        logger.info("Returning CustomModelConfigLimits (full replacement list)")
+        return custom_config
+
+    def save_custom_model_config_limits(
+        self, limits: Union[ModelConfigLimitsConfig, Dict[str, Any]]
+    ) -> bool:
+        """Save custom model config limits (full replacement list) to DynamoDB."""
+        if isinstance(limits, dict):
+            limits = ModelConfigLimitsConfig(**limits)
+        # Force the discriminator so a payload lacking config_type stores as Custom
+        limits.config_type = "CustomModelConfigLimits"
+        self.save_configuration(CONFIG_TYPE_CUSTOM_MODEL_CONFIG_LIMITS, limits)
+        logger.info("Saved CustomModelConfigLimits configuration")
+        return True
+
+    def delete_custom_model_config_limits(self) -> bool:
+        """Delete custom model config limits, effectively resetting to defaults."""
+        try:
+            self.delete_configuration(CONFIG_TYPE_CUSTOM_MODEL_CONFIG_LIMITS)
+            logger.info("Deleted CustomModelConfigLimits, limits reset to defaults")
+            return True
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
+                logger.info("CustomModelConfigLimits already deleted or never existed")
+                return True
+            raise
+
     # ===== Update Configuration Handler =====
 
     def handle_update_custom_configuration(
-        self, custom_config: Union[str, Dict[str, Any], IDPConfig], version: Optional[str] = None, description: Optional[str] = None
+        self,
+        custom_config: Union[str, Dict[str, Any], IDPConfig],
+        version: Optional[str] = None,
+        description: Optional[str] = None,
+        created_by: Optional[str] = None,
+        revision_notes: Optional[str] = None,
     ) -> bool:
         """
         Handle the updateConfiguration GraphQL mutation.
@@ -652,8 +1479,18 @@ class ConfigurationManager:
 
         Args:
             custom_config: Configuration as JSON string, dict, or IDPConfig
-            version: Version to update
+            version: Configuration Profile to update
             description: Optional description
+            created_by: Email of the user making the change, recorded on the
+                revision this save cuts
+            revision_notes: What this change was, recorded on the revision — e.g.
+                "raised topK to 20". Without it an ordinary edit records a revision
+                with a timestamp and an author but nothing about the intent, which
+                makes a profile's history unreadable for an automated loop that
+                cuts many revisions. Applied to the normal-update and
+                profile-created paths; the operation-specific notes ("Reset to
+                default", "Saved as default", "Promoted from profile ...") are
+                left as they are, since those describe what the operation WAS.
 
         Returns:
             True on success
@@ -690,13 +1527,45 @@ class ConfigurationManager:
             config_dict.pop("pricing", None)
             config_dict.pop(_FULL_CONFIG_MARKER, None)
 
+        # Migrate an incoming legacy-shaped config/delta to the current format BEFORE
+        # it is merged onto a v0.6 default/current config below. If a v0.5-shaped upload
+        # (top-level `assessment`, `extraction.assessment_integration`, ...) were
+        # deep_update-merged onto a v0.6 dict first, the migration's "explicit v0.6 keys
+        # win" rule would let the v0.6 DEFAULTS clobber the user's migrated legacy
+        # customizations (pinned assessment model / list_batch_size / geometry_mode
+        # reverting to default). Migration is idempotent, so this is a no-op for v0.6
+        # input. (saveAsVersion/saveAsDefault/normal-update all merge, so migrate once
+        # here at the single choke point.)
+        if isinstance(config_dict, dict) and config_dict:
+            from .migrations import migrate_config
+
+            config_dict = migrate_config(config_dict)
+
         # === Reset to default ===
+        #
+        # Deliberately NOT subject to _reject_inert_gating_hooks. This copies the
+        # `default` row verbatim; if that row carries an inert gating hook (#982),
+        # refusing the reset would wedge the admin — reset is the escape hatch from
+        # a bad version, there is no in-UI way to edit `default` except through a
+        # save that would itself be refused, and the copy introduces nothing that
+        # was not already stored. The dispatcher's runtime audit still reports the
+        # hook on every document. Covered by
+        # tests/unit/config/test_hook_reachability.py.
         if reset_to_default:
             logger.info(f"Resetting version {version} to default")
             default_config = self.get_configuration(CONFIG_TYPE_CONFIG, DEFAULT_VERSION)
             if default_config and isinstance(default_config, IDPConfig):
-                self.save_configuration(CONFIG_TYPE_CONFIG, default_config, version=version, description=description)
-                logger.info(f"Version {version} reset to default (saved full default config)")
+                self.save_configuration(
+                    CONFIG_TYPE_CONFIG,
+                    default_config,
+                    version=version,
+                    description=description,
+                    created_by=created_by,
+                    revision_notes="Reset to default",
+                )
+                logger.info(
+                    f"Version {version} reset to default (saved full default config)"
+                )
             else:
                 logger.error("Cannot reset to default: default config not found")
             return True
@@ -705,10 +1574,24 @@ class ConfigurationManager:
         if save_as_default:
             # Frontend sends the complete config to become the new default
             config = IDPConfig(**config_dict)
-            self.save_configuration(CONFIG_TYPE_CONFIG, config, version=DEFAULT_VERSION)
+            self._reject_inert_gating_hooks(config, config_dict)
+            self.save_configuration(
+                CONFIG_TYPE_CONFIG,
+                config,
+                version=DEFAULT_VERSION,
+                created_by=created_by,
+                revision_notes=f"Promoted from profile '{version}'",
+            )
 
             # Reset the current version to default
-            self.save_configuration(CONFIG_TYPE_CONFIG, config, version=version, description=description)
+            self.save_configuration(
+                CONFIG_TYPE_CONFIG,
+                config,
+                version=version,
+                description=description,
+                created_by=created_by,
+                revision_notes="Saved as default",
+            )
 
             logger.info(f"Saved version {version} state as new default, version reset")
             return True
@@ -725,12 +1608,28 @@ class ConfigurationManager:
                 deep_update(full_dict, config_dict)
                 # Validate
                 full_config = IDPConfig(**full_dict)
-                self.save_configuration(CONFIG_TYPE_CONFIG, full_config, version=version, description=description)
+                self._reject_inert_gating_hooks(full_config, config_dict)
+                self.save_configuration(
+                    CONFIG_TYPE_CONFIG,
+                    full_config,
+                    version=version,
+                    description=description,
+                    created_by=created_by,
+                    revision_notes=revision_notes or "Profile created",
+                )
                 logger.info(f"Saved new version: {version} with full configuration")
             else:
                 # No default available, try to save as-is
                 config = IDPConfig(**config_dict)
-                self.save_configuration(CONFIG_TYPE_CONFIG, config, version=version, description=description)
+                self._reject_inert_gating_hooks(config, config_dict)
+                self.save_configuration(
+                    CONFIG_TYPE_CONFIG,
+                    config,
+                    version=version,
+                    description=description,
+                    created_by=created_by,
+                    revision_notes=revision_notes or "Profile created",
+                )
                 logger.info(f"Saved new version: {version} (no default to merge with)")
             return True
 
@@ -740,8 +1639,12 @@ class ConfigurationManager:
         existing_description = existing_record.description if existing_record else None
         description_updated = existing_description != description
 
-        if not description_updated and (not config_dict or (isinstance(config_dict, dict) and len(config_dict) == 0)):
-            logger.info("Empty configuration update with no special flags - no changes made")
+        if not description_updated and (
+            not config_dict or (isinstance(config_dict, dict) and len(config_dict) == 0)
+        ):
+            logger.info(
+                "Empty configuration update with no special flags - no changes made"
+            )
             return True
 
         # Get current full config for this version
@@ -753,7 +1656,9 @@ class ConfigurationManager:
                 current_dict = default_config.model_dump(mode="python")
             else:
                 current_dict = {}
-            logger.info(f"No existing config for version {version}, starting from default")
+            logger.info(
+                f"No existing config for version {version}, starting from default"
+            )
         else:
             current_dict = current_config.model_dump(mode="python")
 
@@ -762,12 +1667,60 @@ class ConfigurationManager:
 
         # Validate and save the full config
         updated_config = IDPConfig(**current_dict)
-        self.save_configuration(CONFIG_TYPE_CONFIG, updated_config, version=version, description=description)
+        self._reject_inert_gating_hooks(updated_config, config_dict)
+        self.save_configuration(
+            CONFIG_TYPE_CONFIG,
+            updated_config,
+            version=version,
+            description=description,
+            created_by=created_by,
+            revision_notes=revision_notes,
+        )
         logger.info(f"Updated version {version} configuration (full config saved)")
 
         return True
 
     # ===== Private Methods =====
+
+    @staticmethod
+    def _reject_inert_gating_hooks(
+        config: IDPConfig, delta: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Refuse a write that registers an `onError: fail` hook that can never fire.
+
+        Three hook points — postOcr, postClassification, postExtraction — exist
+        only on the Pipeline branch of the state machine, so with
+        ``use_bda: true`` a hook registered at one of them is never invoked and
+        its `onError: fail` policy never gates anything (#982). Accepting that
+        save is fail-open: the config record shows the hook, the UI shows the
+        hook, and the execution history shows nothing, because the dispatcher was
+        never called.
+
+        `config` is the fully merged configuration about to be stored; `delta` is
+        what this write actually asked to change. The refusal is scoped to the
+        delta — see `hook_reachability.delta_touches_hook_registration` for why
+        that matters, including the BDA class-sync callers that would otherwise be
+        refused over a hook they never mentioned. Passing no delta checks
+        everything, which suits a caller that supplies a whole configuration.
+
+        Raised only for the GATING policy. An advisory hook (`continue` /
+        `skip-remaining`) is logged and saved — a config may legitimately carry an
+        observing hook for a mode it will be switched to later — and the
+        dispatcher repeats the whole audit at runtime into
+        `$.HookResults.preprocessing`, which is what covers both a `use_bda` flip
+        and a hook that was already stored when this check arrived.
+
+        This is the WRITE boundary only. It is deliberately NOT an IDPConfig
+        validator: a record already in the table with this shape (written by an
+        earlier release, or by `register_feature_hooks` writing to DynamoDB
+        directly) must still LOAD, or every Lambda that reads the configuration
+        would start failing on upgrade.
+        """
+        from .hook_reachability import reject_inert_gating_hooks
+
+        reject_inert_gating_hooks(
+            config.model_dump(mode="python"), delta, log=logger
+        )
 
     def _get_full_config_for_version(self, version: str) -> Optional[IDPConfig]:
         """
@@ -801,7 +1754,9 @@ class ConfigurationManager:
             try:
                 return IDPConfig(**merged)
             except Exception as e:
-                logger.error(f"Failed to create merged config for version {version}: {e}")
+                logger.error(
+                    f"Failed to create merged config for version {version}: {e}"
+                )
                 return None
 
         return None
@@ -811,7 +1766,7 @@ class ConfigurationManager:
     ) -> None:
         """
         Apply deltas to a full config dict.
-        
+
         Null values in deltas mean "restore this field to its default value".
         Other values are applied normally via deep_update.
 
@@ -848,7 +1803,9 @@ class ConfigurationManager:
                         target[key] = deepcopy(default_dict[key])
                         logger.info(f"Restored field '{key}' to default value")
 
-    def _read_record(self, configuration_type: str, version: str = "") -> Optional[ConfigurationRecord]:
+    def _read_record(
+        self, configuration_type: str, version: str = ""
+    ) -> Optional[ConfigurationRecord]:
         """
         Read ConfigurationRecord from DynamoDB using single key.
 
@@ -863,20 +1820,37 @@ class ConfigurationManager:
         Returns:
             ConfigurationRecord or None if not found
         """
-        response = self.table.get_item(Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{version}" if version else configuration_type})
+        item = self._read_item(configuration_type, version)
+        if item is None:
+            return None
+        return ConfigurationRecord.from_dynamodb_item(item)
+
+    def _read_item(
+        self, configuration_type: str, version: str = ""
+    ) -> Optional[Dict[str, Any]]:
+        """The decompressed DynamoDB item `_read_record` parses, or None if absent."""
+        response = self.table.get_item(
+            Key={
+                "Configuration": f"{CONFIG_TYPE_CONFIG}#{version}"
+                if version
+                else configuration_type
+            }
+        )
         item = response.get("Item")
 
         if item is None:
             return None
 
         # Decompress if stored in compressed format
-        item = self._decompress_item(item)
+        return self._decompress_item(item)
 
-        return ConfigurationRecord.from_dynamodb_item(item)
-
-    def _write_record(self, record: ConfigurationRecord, identifier: Optional[str] = None) -> None:
+    def _write_record(
+        self, record: ConfigurationRecord, identifier: Optional[str] = None
+    ) -> str:
         """
         Write ConfigurationRecord to DynamoDB using single key.
+
+        Returns the stored-content hash of what was written.
 
         Uses gzip compression to store config data as a Binary attribute,
         keeping only metadata fields as top-level DynamoDB attributes. This
@@ -899,21 +1873,21 @@ class ConfigurationManager:
         if record.configuration_type == CONFIG_TYPE_CONFIG:
             item[_FULL_CONFIG_MARKER] = _FULL_CONFIG_VALUE
 
-        # Preserve BDA metadata fields from existing record (put_item replaces the
-        # entire item, so fields set by set_bda_project_arn() would be lost)
-        _BDA_FIELDS = ("BdaProjectArn", "BdaSyncStatus", "BdaLastSyncedAt")
+        # Preserve head-item metadata from the existing record (put_item replaces
+        # the entire item, so fields set by set_bda_project_arn() or by the
+        # revision counters would be lost)
         config_key = item.get("Configuration")
-        if config_key and any(f not in item for f in _BDA_FIELDS):
+        if config_key and any(f not in item for f in _PRESERVED_HEAD_FIELDS):
             try:
                 existing = self.table.get_item(
                     Key={"Configuration": config_key},
-                    ProjectionExpression=", ".join(_BDA_FIELDS),
+                    ProjectionExpression=", ".join(_PRESERVED_HEAD_FIELDS),
                 ).get("Item", {})
-                for field in _BDA_FIELDS:
+                for field in _PRESERVED_HEAD_FIELDS:
                     if field in existing and field not in item:
                         item[field] = existing[field]
             except Exception as e:
-                logger.warning(f"Failed to preserve BDA metadata: {e}")
+                logger.warning(f"Failed to preserve head metadata: {e}")
 
         # Compress config data to avoid DynamoDB 400KB item limit
         compressed_item = self._compress_item(item)
@@ -929,6 +1903,7 @@ class ConfigurationManager:
             log_id = record.configuration_type
 
         logger.info(f"Saved configuration: {log_id}")
+        return _stored_content_hash(item)
 
     # ===== Compression Helpers =====
 
@@ -1016,7 +1991,9 @@ class ConfigurationManager:
         # Extract compressed data
         compressed_data = item.get(_COMPRESSED_DATA_FIELD)
         if compressed_data is None:
-            logger.error("Compressed storage marker present but no compressed data found")
+            logger.error(
+                "Compressed storage marker present but no compressed data found"
+            )
             return item
 
         # Handle both Binary wrapper and raw bytes
@@ -1043,12 +2020,20 @@ class ConfigurationManager:
                 full_item[key] = value
         full_item.update(config_data)
 
-        logger.debug(f"Decompressed config: {len(raw_bytes):,} bytes → {len(decompressed_json):,} bytes")
+        logger.debug(
+            f"Decompressed config: {len(raw_bytes):,} bytes → {len(decompressed_json):,} bytes"
+        )
         return full_item
 
     # ===== Legacy Compatibility =====
 
-    def save_raw_configuration(self, config_type: str, config_dict: Dict[str, Any], version: str, description: Optional[str] = None) -> None:
+    def save_raw_configuration(
+        self,
+        config_type: str,
+        config_dict: Dict[str, Any],
+        version: str,
+        description: Optional[str] = None,
+    ) -> None:
         """
         Save raw configuration dict to DynamoDB.
 
@@ -1064,38 +2049,60 @@ class ConfigurationManager:
             version: Version to save
             description: Optional description
         """
-        if config_dict is None or (isinstance(config_dict, dict) and len(config_dict) == 0):
+        if config_dict is None or (
+            isinstance(config_dict, dict) and len(config_dict) == 0
+        ):
             # Reset to default: copy default config into this version
             default_config = self.get_configuration(CONFIG_TYPE_CONFIG, DEFAULT_VERSION)
             if default_config and isinstance(default_config, IDPConfig):
-                self.save_configuration(CONFIG_TYPE_CONFIG, default_config, version=version, description=description)
-                logger.info(f"Reset version {version} to default (via save_raw_configuration)")
+                self.save_configuration(
+                    CONFIG_TYPE_CONFIG,
+                    default_config,
+                    version=version,
+                    description=description,
+                )
+                logger.info(
+                    f"Reset version {version} to default (via save_raw_configuration)"
+                )
             else:
-                logger.warning(f"Cannot reset version {version}: default config not found")
+                logger.warning(
+                    f"Cannot reset version {version}: default config not found"
+                )
             return
 
         # If it's a full config, save through normal path
         if _is_full_config(config_dict):
-            config_dict_clean = {k: v for k, v in config_dict.items() if k != _FULL_CONFIG_MARKER}
+            config_dict_clean = {
+                k: v for k, v in config_dict.items() if k != _FULL_CONFIG_MARKER
+            }
             config = IDPConfig(**config_dict_clean)
-            self.save_configuration(CONFIG_TYPE_CONFIG, config, version=version, description=description)
+            self.save_configuration(
+                CONFIG_TYPE_CONFIG, config, version=version, description=description
+            )
             return
 
         # Legacy sparse dict - merge with default first, then save full
         from copy import deepcopy
+
         default_config = self.get_configuration(CONFIG_TYPE_CONFIG, DEFAULT_VERSION)
         if default_config and isinstance(default_config, IDPConfig):
             default_dict = default_config.model_dump(mode="python")
             merged = deepcopy(default_dict)
             deep_update(merged, config_dict)
             config = IDPConfig(**merged)
-            self.save_configuration(CONFIG_TYPE_CONFIG, config, version=version, description=description)
-            logger.info(f"Saved version {version} (merged sparse delta with default into full config)")
+            self.save_configuration(
+                CONFIG_TYPE_CONFIG, config, version=version, description=description
+            )
+            logger.info(
+                f"Saved version {version} (merged sparse delta with default into full config)"
+            )
         else:
             # No default - try saving as-is (may fail validation)
             try:
                 config = IDPConfig(**config_dict)
-                self.save_configuration(CONFIG_TYPE_CONFIG, config, version=version, description=description)
+                self.save_configuration(
+                    CONFIG_TYPE_CONFIG, config, version=version, description=description
+                )
             except Exception as e:
                 logger.error(f"Cannot save sparse config without default: {e}")
                 raise

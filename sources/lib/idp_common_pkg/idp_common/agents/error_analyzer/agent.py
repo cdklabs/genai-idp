@@ -13,6 +13,8 @@ import strands
 
 from idp_common.config import get_config
 
+from ..common.config import DEFAULT_AGENT_MODEL_ID
+from ..common.cost_metrics import with_cost_hook
 from ..common.strands_bedrock_model import create_strands_bedrock_model
 from .config import get_error_analyzer_model_id
 from .tools import (
@@ -20,6 +22,7 @@ from .tools import (
     analyze_system_performance,
     analyze_workflow_execution,
     fetch_document_record,
+    fetch_pipeline_configuration,
     fetch_recent_records,
     retrieve_document_context,
     search_cloudwatch_logs,
@@ -55,6 +58,7 @@ def create_error_analyzer_agent(
         search_performance_issues,
         fetch_document_record,
         fetch_recent_records,
+        fetch_pipeline_configuration,
         retrieve_document_context,
         analyze_workflow_execution,
         analyze_document_trace,
@@ -66,9 +70,7 @@ def create_error_analyzer_agent(
         model_id = get_error_analyzer_model_id()
     except Exception as e:
         logger.warning(f"Failed to get chat companion model ID, using default: {e}")
-        model_id = config.get(
-            "default_model_id", "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-        )
+        model_id = config.get("default_model_id", DEFAULT_AGENT_MODEL_ID)
     logger.info(f"Model ID: {model_id}")
     bedrock_model = create_strands_bedrock_model(
         model_id=model_id, boto_session=session
@@ -78,4 +80,5 @@ def create_error_analyzer_agent(
         tools=tools,
         system_prompt=config.agents.error_analyzer.system_prompt,
         model=bedrock_model,
+        hooks=with_cost_hook(kwargs.get("hooks"), "error-analyzer", model_id),
     )

@@ -10,13 +10,44 @@ The IDP SDK provides programmatic Python access to all IDP Accelerator capabilit
 
 ```bash
 # Install from local development
-pip install -e ./lib/idp_sdk
+# Recommended: install everything at once
+make setup-venv
+source .venv/bin/activate
 
-# Or with uv
-uv pip install -e ./lib/idp_sdk
+# Or install just the SDK with pip/uv, from the repository root. `idp_common` has
+# to be on the same command line: the SDK requires it by name, and that name on
+# public PyPI belongs to an unrelated party.
+uv pip install -e ./lib/idp_common_pkg -e ./lib/idp_sdk
 ```
 
+See [Installing First-Party Packages Safely](dependency-confusion.md) for why the
+single-command form matters.
+
 ## Quick Start
+
+> **Argument naming:** the named configuration entity is a **Configuration
+> Profile**, selected with `config_profile=`. The former keyword,
+> `config_version=`, is still accepted everywhere it used to be — both set the
+> same value, and existing code does not need to change. Passing both with
+> *different* values raises `ValueError` rather than silently picking one. Use
+> `config_profile=` in new code. `config_revision=` is unrelated: it selects a
+> *revision within* a profile. See
+> [configuration-profiles.md](configuration-profiles.md#terminology-which-word-means-what).
+
+### Using the Public Interface
+
+The SDK is designed around a single entry point: `IDPClient`. Always import from the top-level `idp_sdk` package — this is the stable public interface. Avoid importing directly from internal submodules (e.g., `idp_sdk._core`, `idp_sdk.operations`, `idp_sdk.models.*`) as these are private implementation details and may change without notice.
+
+```python
+# Correct: use the public interface
+from idp_sdk import IDPClient, BatchProcessResult, RerunStep, IDPError
+
+# Avoid: importing from private/internal modules
+# from idp_sdk.operations.batch import BatchOperation  # private
+# from idp_sdk._core.batch_processor import BatchProcessor  # private
+```
+
+All response models, enums, and exceptions you need are exported directly from `idp_sdk` — see the [Response Models](#response-models) section for the complete list.
 
 ```python
 from idp_sdk import IDPClient
@@ -30,7 +61,7 @@ print(f"Document ID: {result.document_id}, Status: {result.status}")
 
 # Process a batch of documents
 batch_result = client.batch.process(source="./documents/")
-print(f"Batch: {batch_result.batch_id}, Queued: {batch_result.documents_queued}")
+print(f"Batch: {batch_result.batch_id}, Queued: {batch_result.queued}")
 
 # Check status
 status = client.batch.get_status(batch_id=batch_result.batch_id)
@@ -46,13 +77,25 @@ client = IDPClient(stack_name="my-stack")
 
 # Stack operations
 client.stack.deploy(...)
-client.stack.delete()
+client.stack.delete(...)
 client.stack.get_resources()
+client.stack.exists()
+client.stack.get_status()
+client.stack.check_in_progress()
+client.stack.monitor(...)
+client.stack.cancel_update()
+client.stack.wait_for_stable_state()
+client.stack.get_failure_analysis()
+client.stack.cleanup_orphaned(...)
+client.stack.get_bucket_info()
 
 # Batch operations (multiple documents)
 client.batch.process(...)
 client.batch.reprocess(...)
 client.batch.get_status(...)
+client.batch.get_document_ids(...)
+client.batch.get_results(...)
+client.batch.get_confidence(...)
 client.batch.list()
 client.batch.download_results(...)
 client.batch.download_sources(...)
@@ -69,8 +112,16 @@ client.document.download_source(...)
 client.document.reprocess(...)
 client.document.delete(...)
 
+# Discovery operations (schema generation)
+client.discovery.run(...)
+client.discovery.run_batch(...)
+client.discovery.run_multi_doc(...)
+client.discovery.run_multi_section(...)
+client.discovery.auto_detect_sections(...)
+
 # Evaluation operations (baseline comparison)
 client.evaluation.create_baseline(...)
+client.evaluation.use_as_baseline(...)
 client.evaluation.get_report(...)
 client.evaluation.get_metrics(...)
 client.evaluation.list_baselines(...)
@@ -89,9 +140,11 @@ client.config.create(...)
 client.config.validate(...)
 client.config.upload(...)
 client.config.download(...)
-client.config.list(...)
+client.config.list()
+client.config.revisions(...)
 client.config.activate(...)
 client.config.delete(...)
+client.config.sync_bda(...)
 
 # Manifest operations
 client.manifest.generate(...)
@@ -263,14 +316,24 @@ List processed documents with pagination support.
 - `next_token` (str, optional): Pagination token from previous request
 - `stack_name` (str, optional): Stack name override
 
-**Returns:** `DocumentListResult` with `documents` (list of DocumentInfo), `count`, and optional `next_token`
+**Returns:** `DocumentListResult` with `documents` (list of `DocumentInfo`), `count`, and optional `next_token`
+
+`count` is the number of documents **in this page**. The tracking table is paged
+with a DynamoDB scan, which reports no table-wide total, so there is no grand
+total to read here — walk `next_token` if you need one.
+
+Each `DocumentInfo` carries `document_id`, `status`, `timestamp` and `batch_id`
+(`None` for a document submitted outside a batch). Page counts and the classified
+document type are not part of a listing; use `document.get_status()` or
+`document.get_metadata()`, which read the full record.
 
 ```python
 # List documents
 result = client.document.list(limit=50)
+print(f"{result.count} documents in this page")
 
 for doc in result.documents:
-    print(f"{doc.document_id}: {doc.status}")
+    print(f"{doc.document_id}: {doc.status} (batch: {doc.batch_id})")
 
 # Pagination
 if result.next_token:
@@ -318,14 +381,17 @@ Process multiple documents through the IDP pipeline.
 - `directory` (str, optional): Local directory path
 - `s3_uri` (str, optional): S3 URI (s3://bucket/prefix/)
 - `test_set` (str, optional): Test set identifier
+- `batch_id` (str, optional): Custom batch ID
 - `batch_prefix` (str, optional): Batch ID prefix (default: "sdk-batch")
 - `file_pattern` (str, optional): File pattern for filtering (default: "*.pdf")
 - `recursive` (bool, optional): Recursively process subdirectories (default: True)
 - `number_of_files` (int, optional): Limit number of files to process
 - `config_path` (str, optional): Path to custom configuration file
+- `config_profile` (alias: `config_version`) (str, optional): Configuration profile to use for processing
+- `context` (str, optional): Context for test set processing
 - `stack_name` (str, optional): Stack name override
 
-**Returns:** `BatchResult` with `batch_id`, `document_ids`, `queued`, `uploaded`, `failed`, and `timestamp`
+**Returns:** `BatchProcessResult` with `batch_id`, `document_ids`, `queued`, `uploaded`, `failed`, `baselines_uploaded`, `source`, `output_prefix`, and `timestamp`
 
 ```python
 # From directory
@@ -344,7 +410,8 @@ result = client.batch.process(
     file_pattern="*.pdf",
     recursive=True,
     number_of_files=10,
-    config_path="./config.yaml"
+    config_path="./config.yaml",
+    config_profile="v2"
 )
 
 print(f"Batch ID: {result.batch_id}")
@@ -361,6 +428,28 @@ Get processing status for all documents in a batch.
 
 **Returns:** `BatchStatus` with `batch_id`, `documents` (list of DocumentStatus), `total`, `completed`, `failed`, `in_progress`, `queued`, `success_rate`, and `all_complete`
 
+⚠️ **`all_complete` is the only correct thing to poll on.** It is
+`completed + failed == total`, and it is what accounts for a document that has
+been accepted but has no tracking row yet — the row is written asynchronously by
+the queue sender, so for the first 60 seconds of a batch such a document is
+reported under `queued` rather than `failed`. Re-deriving completeness from the
+counters (for example, stopping as soon as `completed > 0 or failed > 0`) stops
+early on a batch that has not started, which is the defect
+[#1338](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/1338)
+fixed. Past that window a document with no row is reported as failed with
+`Document not found in tracking table`; `IDP_NOT_FOUND_GRACE_SECONDS` sets the
+window.
+
+⚠️ **Read a document's progress bucket from `doc.bucket`, not from
+`doc.status`.** `NOT_FOUND` is the one status whose bucket is not a function of
+the status: inside the window it means "queued", past it "failed", and the
+status string is the same either way, so code that derives a bucket from the
+status counts an in-flight document as a failure. `bucket` is one of `queued`,
+`running`, `completed` or `failed`, and `get_status` sets it on every document
+it returns. It is `Optional`, because `DocumentStatus` has other producers that
+record no bucket; fall back to `idp_sdk.classify_document_state(doc.status)`
+when it is `None`.
+
 ```python
 status = client.batch.get_status(batch_id="batch-20250123-123456")
 
@@ -371,6 +460,73 @@ print(f"Success Rate: {status.success_rate:.1%}")
 
 for doc in status.documents:
     print(f"  {doc.document_id}: {doc.status.value}")
+```
+
+### batch.get_document_ids()
+
+Get all document IDs belonging to a batch. Useful for pre-fetching a document count before a confirmation prompt without triggering the full reprocess pipeline.
+
+**Parameters:**
+- `batch_id` (str, required): Batch identifier
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `list[str]` - List of document object keys (S3 keys) in the batch
+
+```python
+doc_ids = client.batch.get_document_ids(batch_id="batch-20250123-123456")
+print(f"Batch contains {len(doc_ids)} documents")
+```
+
+### batch.get_results()
+
+Get extracted metadata and fields for all documents in a batch, with pagination support.
+
+**Parameters:**
+- `batch_id` (str, required): Batch identifier
+- `section_id` (int, optional): Section number within documents (default: 1)
+- `limit` (int, optional): Maximum documents to return per page (default: 10)
+- `next_token` (str, optional): Pagination token from previous request
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `dict` with `batch_id`, `section_id`, `count`, `total_in_batch`, `documents` (list of per-document result dicts), and optional `next_token`
+
+```python
+result = client.batch.get_results(batch_id="batch-20250123-123456", limit=20)
+
+print(f"Showing {result['count']} of {result['total_in_batch']} documents")
+for doc in result["documents"]:
+    print(f"  {doc['document_id']}: {doc['document_class']} ({doc['status']})")
+
+# Pagination
+if result.get("next_token"):
+    next_page = client.batch.get_results(
+        batch_id="batch-20250123-123456",
+        limit=20,
+        next_token=result["next_token"]
+    )
+```
+
+### batch.get_confidence()
+
+Get confidence scores and quality metrics for all documents in a batch, with pagination support.
+
+**Parameters:**
+- `batch_id` (str, required): Batch identifier
+- `section_id` (int, optional): Section number (default: 1)
+- `limit` (int, optional): Maximum documents to return (default: 10)
+- `next_token` (str, optional): Pagination token from previous request
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `dict` with `batch_id`, `section_id`, `count`, `total_in_batch`, `documents` (list with per-document confidence attributes), and optional `next_token`
+
+```python
+result = client.batch.get_confidence(batch_id="batch-20250123-123456", limit=20)
+
+for doc in result["documents"]:
+    low_conf = [f for f, a in doc["attributes"].items()
+                if not a.get("meets_threshold")]
+    if low_conf:
+        print(f"{doc['document_id']} needs review: {', '.join(low_conf)}")
 ```
 
 ### batch.list()
@@ -394,10 +550,6 @@ for batch in result.batches:
 # Pagination
 if result.next_token:
     next_page = client.batch.list(limit=20, next_token=result.next_token)
-
-# Iterate directly (backward compatible)
-for batch in result:
-    print(f"{batch.batch_id}")
 ```
 
 ### batch.download_results()
@@ -444,16 +596,30 @@ print(f"Downloaded {result.files_downloaded} source files")
 
 ### batch.delete_documents()
 
-Permanently delete all documents in a batch and their associated data from InputBucket, OutputBucket, and DynamoDB.
+Permanently delete documents and their associated data from InputBucket, OutputBucket, and DynamoDB. Select documents by batch ID or wildcard pattern.
 
 **Parameters:**
-- `batch_id` (str, required): Batch identifier
+- `batch_id` (str, optional): Batch identifier. Selects documents **under** that
+  batch — the id is matched as a leading path segment, so `batch-1` selects
+  `batch-1/a.pdf` and **not** `batch-10/b.pdf`. Use `pattern` for substring or
+  wildcard selection.
+- `pattern` (str, optional): Wildcard pattern to match document keys (e.g., `"batch-123/*.pdf"`, `"*invoice*"`)
 - `status_filter` (str, optional): Filter by document status (e.g., "FAILED", "COMPLETED")
 - `stack_name` (str, optional): Stack name override
 - `dry_run` (bool, optional): If True, simulate deletion without actually deleting (default: False)
 - `continue_on_error` (bool, optional): Continue deleting if one document fails (default: True)
 
+**Note:** Must specify either `batch_id` or `pattern` (not both). A missing or empty
+selector raises `IDPConfigurationError` before anything is read.
+
 **Returns:** `BatchDeletionResult` with `success`, `deleted_count`, `failed_count`, `total_count`, `dry_run`, and `results` (list of DocumentDeletionResult)
+
+⚠️ **A failure while selecting the documents raises `IDPProcessingError`; it is not
+reported as a success with nothing deleted.** `success=True, deleted_count=0` means the
+selector matched no documents — an empty batch, or a status filter nothing satisfied —
+and nothing else. A throttled or rejected table scan, or a table that does not exist,
+reaches you as an exception naming the cause, so a retry is your decision to make rather
+than something the result hides.
 
 ```python
 # Delete entire batch
@@ -462,6 +628,17 @@ result = client.batch.delete_documents(batch_id="batch-123")
 # Delete with status filter
 result = client.batch.delete_documents(
     batch_id="batch-123",
+    status_filter="FAILED"
+)
+
+# Delete by wildcard pattern
+result = client.batch.delete_documents(
+    pattern="batch-123/*.pdf"
+)
+
+# Delete all failed invoices across batches
+result = client.batch.delete_documents(
+    pattern="*invoice*",
     status_filter="FAILED"
 )
 
@@ -515,13 +692,16 @@ Stop all running Step Functions workflows and purge the SQS queue.
 - `skip_purge` (bool, optional): Skip purging the SQS queue (default: False)
 - `skip_stop` (bool, optional): Skip stopping executions (default: False)
 
-**Returns:** `StopWorkflowsResult` with `executions_stopped`, `documents_aborted`, and `queue_purged`
+**Returns:** `StopWorkflowsResult` with `executions_stopped` (`ExecutionsStoppedResult`), `documents_aborted` (`DocumentsAbortedResult`), and `queue_purged`
 
 ```python
 result = client.batch.stop_workflows()
 
 print(f"Queue purged: {result.queue_purged}")
-print(f"Executions stopped: {result.executions_stopped}")
+if result.executions_stopped:
+    print(f"Executions stopped: {result.executions_stopped.total_stopped}")
+if result.documents_aborted:
+    print(f"Documents aborted: {result.documents_aborted.documents_aborted}")
 ```
 
 ---
@@ -564,6 +744,32 @@ result = client.evaluation.create_baseline(
 )
 ```
 
+### evaluation.use_as_baseline()
+
+Promote a processed document's output to the evaluation baseline — the
+programmatic equivalent of the web UI's **Use as Evaluation Baseline** button.
+Copies the document's output into the evaluation baseline bucket and sets its
+`EvaluationStatus` to `BASELINE_AVAILABLE`. Runs synchronously.
+
+Unlike `create_baseline()` (which writes a baseline you construct yourself from
+a `baseline_data` dict), this captures an already-processed document's own
+output as the baseline.
+
+**Parameters:**
+- `document_id` (str, required): Document identifier (S3 key) of a processed document
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `UseAsBaselineResult` with `document_id`, `files_copied`, `evaluation_status`, and `timestamp`
+
+**Raises:** `IDPResourceNotFoundError` if the document has no output (e.g. not finished processing); `IDPProcessingError` if the copy fails.
+
+```python
+result = client.evaluation.use_as_baseline(
+    document_id="loan-12345/package.pdf"
+)
+print(f"Copied {result.files_copied} files; status={result.evaluation_status}")
+```
+
 ### evaluation.get_report()
 
 Get evaluation report comparing extraction results to baseline.
@@ -573,18 +779,50 @@ Get evaluation report comparing extraction results to baseline.
 - `section_id` (int, optional): Section number (default: 1)
 - `stack_name` (str, optional): Stack name override
 
-**Returns:** `EvaluationReport` with `document_id`, `section_id`, `accuracy`, `field_results`, and `summary`
+**Returns:** `EvaluationReport` with `document_id`, `section_id`, `document_class`,
+the section's `accuracy` / `precision` / `recall` / `f1_score`, a list of
+`field_comparisons`, and the document-level `overall_metrics`
+
+The report is read from the evaluation artifact the pipeline writes at
+`<document key>/evaluation/results.json` in the output bucket, so the document
+must have been evaluated against a baseline first — see
+[evaluation.use_as_baseline()](#evaluationuse_as_baseline). If it has not, or if
+the results contain no such section, the call raises
+`IDPResourceNotFoundError`.
+
+Every score is `Optional[float]`: a section whose evaluation failed records no
+metrics rather than a zero.
+
+Each entry in `field_comparisons` is a `FieldComparison` with `attribute`,
+`expected`, `actual`, `matched`, `score`, `method` (the comparator that produced
+the score — `EXACT`, `FUZZY`, `LLM`, …) and `reason`. `expected` and `actual` hold
+whatever the schema declared for the attribute, so they may be scalars, lists or
+nested objects.
+
+Because the scores are optional and `overall_metrics` may be `{}`, format them
+only once you have checked — a bare `f"{report.accuracy:.1%}"` raises `TypeError`
+on a section that recorded no metrics, and `overall_metrics['accuracy']` raises
+`KeyError` on a document that recorded none.
 
 ```python
+def pct(value):
+    return f"{value:.1%}" if value is not None else "n/a"
+
+
 report = client.evaluation.get_report(document_id="test-invoice-001.pdf")
 
-print(f"Accuracy: {report.accuracy:.1%}")
+print(f"Section {report.section_id} ({report.document_class})")
+print(f"Accuracy: {pct(report.accuracy)}  F1: {pct(report.f1_score)}")
+print(f"Document overall accuracy: {pct(report.overall_metrics.get('accuracy'))}")
 
-for field, result in report.field_results.items():
-    if result['match']:
-        print(f"✓ {field}: {result['extracted']}")
+for field in report.field_comparisons:
+    if field.matched:
+        print(f"✓ {field.attribute}: {field.actual}")
     else:
-        print(f"✗ {field}: expected '{result['expected']}', got '{result['extracted']}'")
+        print(
+            f"✗ {field.attribute}: expected {field.expected!r}, "
+            f"got {field.actual!r} ({field.reason})"
+        )
 ```
 
 ### evaluation.get_metrics()
@@ -598,19 +836,56 @@ Get aggregated evaluation metrics across multiple documents.
 - `batch_id` (str, optional): Filter by batch identifier
 - `stack_name` (str, optional): Stack name override
 
-**Returns:** `EvaluationMetrics` with `total_evaluations`, `average_accuracy`, and `by_document_class`
+**Returns:** `EvaluationMetrics` with `total_documents`, `avg_accuracy`,
+`avg_precision`, `avg_recall`, `avg_f1_score`, `by_document_class`, and the
+`start_date` / `end_date` / `document_class` filters echoed back
+
+The four `avg_*` scores aggregate **documents** — one `overall_metrics` block
+each. `by_document_class` aggregates **sections**, because a document class is a
+property of a section rather than of the whole document, and maps each class to
+`{"count", "avg_accuracy", "avg_precision", "avg_recall", "avg_f1_score"}`. A
+document with an invoice section and a receipt section contributes one to
+`total_documents` and one section to each class, so the class counts can sum to
+more than `total_documents`.
+
+⚠️ **Passing `document_class` sets the four top-level averages to `None`.** They
+come from whole-document metrics, which cannot answer a question about one class
+of section — a class-filtered `avg_accuracy` would be a real number measuring
+something other than what was asked for. The class-scoped answer is
+`by_document_class[document_class]`. The filter still narrows which documents are
+counted and which sections appear in the breakdown.
+
+Every average is `Optional[float]` for a second reason too: a section the pipeline
+excluded or failed to evaluate carries no scores, and a class where none of them
+did reports `None` rather than `0.0`.
 
 ```python
+def pct(value):
+    return f"{value:.1%}" if value is not None else "n/a"
+
+
 metrics = client.evaluation.get_metrics(
     start_date="2024-01-01",
     end_date="2024-01-31"
 )
 
-print(f"Total evaluations: {metrics.total_evaluations}")
-print(f"Average accuracy: {metrics.average_accuracy:.1%}")
+print(f"Documents evaluated: {metrics.total_documents}")
+print(f"Average accuracy: {pct(metrics.avg_accuracy)}")
+print(f"Average F1: {pct(metrics.avg_f1_score)}")
 
-for doc_class, accuracy in metrics.by_document_class.items():
-    print(f"{doc_class}: {accuracy:.1%}")
+for doc_class, stats in metrics.by_document_class.items():
+    print(f"{doc_class}: {stats['count']} sections, {pct(stats['avg_accuracy'])}")
+
+# Scoped to one class: read the breakdown, not the top-level averages. A class
+# that matched no section is simply absent from the breakdown, so use .get().
+invoices = client.evaluation.get_metrics(document_class="invoice")
+assert invoices.avg_accuracy is None
+
+stats = invoices.by_document_class.get("invoice")
+if stats is None:
+    print("No invoice sections have been evaluated")
+else:
+    print(f"Invoice sections: {stats['count']}, {pct(stats['avg_accuracy'])}")
 ```
 
 ### evaluation.list_baselines()
@@ -622,13 +897,19 @@ List evaluation baselines with pagination support.
 - `next_token` (str, optional): Pagination token from previous request
 - `stack_name` (str, optional): Stack name override
 
-**Returns:** `EvaluationBaselineListResult` with `baselines`, `count`, and optional `next_token`
+**Returns:** `EvaluationBaselineListResult` with `baselines` (list of
+`BaselineInfo`), `count`, and optional `next_token`
+
+`count` is the number of baselines in this page; an S3 prefix listing reports no
+bucket-wide total. Each `BaselineInfo` carries `document_id` and `s3_location`;
+`created_date` and `size_bytes` stay `None` here, because a prefix listing returns
+neither — stat the objects yourself if you need them.
 
 ```python
 result = client.evaluation.list_baselines(limit=50)
 
 for baseline in result.baselines:
-    print(f"{baseline['document_id']}: {baseline['created_at']}")
+    print(f"{baseline.document_id} -> {baseline.s3_location}")
 
 if result.next_token:
     next_page = client.evaluation.list_baselines(limit=50, next_token=result.next_token)
@@ -764,7 +1045,17 @@ Query knowledge base with natural language questions.
 - `next_token` (str, optional): Pagination token from previous request
 - `stack_name` (str, optional): Stack name override
 
-**Returns:** `SearchResult` with `answer`, `confidence`, `citations`, and optional `next_token`
+**Returns:** `SearchResult` with `answer`, `citations`, `confidence`, and optional `next_token`
+
+When the knowledge base matches nothing, `answer` is `""`, `citations` is empty and
+`confidence` is `None` — so "no answer" stays distinguishable from "an answer the
+model scored at zero". Guard on `result.answer` before formatting `confidence`.
+
+Each entry in `citations` is a `SearchCitation` with `text`, its own retrieval
+`confidence`, and a `document` (`SearchDocumentReference`) carrying `document_id`
+plus `section_id` and `page` where the knowledge base could localise the passage.
+Those two are `Optional[int]`: a citation the knowledge base did not localise
+leaves them unset.
 
 ```python
 # Ask a question
@@ -772,8 +1063,11 @@ result = client.search.query(
     question="What is the total amount on invoice INV-12345?"
 )
 
-print(f"Answer: {result.answer}")
-print(f"Confidence: {result.confidence:.1%}")
+if not result.answer:
+    print("No answer found")
+else:
+    print(f"Answer: {result.answer}")
+    print(f"Confidence: {result.confidence:.1%}")
 
 for citation in result.citations:
     print(f"Source: {citation.document.document_id}")
@@ -795,14 +1089,30 @@ Operations for deploying and managing IDP stacks.
 
 ### stack.deploy()
 
-Deploy or update an IDP stack.
+Deploy or update an IDP CloudFormation stack.
+
+**Parameters:**
+- `stack_name` (str, optional): CloudFormation stack name (uses client default if not provided)
+- `admin_email` (str, optional): Admin user email — required for new stacks
+- `template_url` (str, optional): URL to CloudFormation template in S3
+- `template_path` (str, optional): Local path to CloudFormation template file
+- `from_code` (str, optional): Path to project root for building from source
+- `custom_config` (str, optional): Path to local config file or S3 URI
+- `max_concurrent` (int, optional): Maximum concurrent workflows
+- `log_level` (str, optional): Logging level (DEBUG, INFO, WARN, ERROR)
+- `enable_hitl` (bool, optional): Enable Human-in-the-Loop
+- `parameters` (dict, optional): Additional CloudFormation parameters
+- `wait` (bool, optional): Wait for operation to complete (default: True)
+- `no_rollback` (bool, optional): Disable rollback on failure (default: False)
+- `role_arn` (str, optional): CloudFormation service role ARN
+
+**Returns:** `StackDeploymentResult` with `success`, `operation`, `status`, `stack_name`, `stack_id`, `outputs`, and `error`
 
 ```python
 from idp_sdk import Pattern
 
 result = client.stack.deploy(
     stack_name="my-new-stack",
-    pattern=Pattern.PATTERN_2,
     admin_email="admin@example.com",
     max_concurrent=100,
     wait=True
@@ -815,7 +1125,15 @@ if result.success:
 
 ### stack.delete()
 
-Delete an IDP stack.
+Delete an IDP CloudFormation stack.
+
+**Parameters:**
+- `stack_name` (str, optional): CloudFormation stack name (uses client default if not provided)
+- `empty_buckets` (bool, optional): Empty S3 buckets before deletion (default: False)
+- `force_delete_all` (bool, optional): Force delete all retained resources after deletion (default: False)
+- `wait` (bool, optional): Wait for deletion to complete (default: True)
+
+**Returns:** `StackDeletionResult` with `success`, `status`, `stack_name`, `stack_id`, `error`, and `cleanup_result`
 
 ```python
 result = client.stack.delete(
@@ -831,6 +1149,8 @@ print(f"Status: {result.status}")
 
 Get stack resource information.
 
+**Returns:** `StackResources` with bucket names, ARNs, and other resource identifiers
+
 ```python
 resources = client.stack.get_resources()
 
@@ -838,6 +1158,316 @@ print(f"Input Bucket: {resources.input_bucket}")
 print(f"Output Bucket: {resources.output_bucket}")
 print(f"Queue URL: {resources.document_queue_url}")
 ```
+
+### stack.exists()
+
+Check whether a CloudFormation stack exists.
+
+**Parameters:**
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `bool` — True if the stack exists, False otherwise
+
+```python
+if client.stack.exists():
+    print("Stack is deployed")
+else:
+    print("Stack not found")
+```
+
+### stack.get_status()
+
+Get the current CloudFormation status of a stack.
+
+**Parameters:**
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `str` or `None` — CloudFormation status string (e.g., `"UPDATE_IN_PROGRESS"`), or `None` if the stack does not exist
+
+```python
+status = client.stack.get_status()
+print(f"Stack status: {status}")
+```
+
+### stack.check_in_progress()
+
+Check whether a CloudFormation stack has an operation currently in progress.
+
+**Parameters:**
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `StackOperationInProgress` if an operation is in progress, `None` otherwise. The `operation` field is one of `"CREATE"`, `"UPDATE"`, or `"DELETE"`.
+
+```python
+in_progress = client.stack.check_in_progress()
+if in_progress:
+    print(f"Operation in progress: {in_progress.operation} ({in_progress.status})")
+```
+
+### stack.monitor()
+
+Monitor a CloudFormation stack operation until it reaches a terminal state. Blocks until the operation completes or fails.
+
+**Parameters:**
+- `stack_name` (str, optional): Stack name override
+- `operation` (str, optional): Operation type being monitored: `"CREATE"`, `"UPDATE"`, or `"DELETE"` (default: `"UPDATE"`)
+- `poll_interval_seconds` (int, optional): Seconds between CloudFormation API polls (default: 10)
+
+**Returns:** `StackMonitorResult` with `success`, `operation`, `status`, `stack_name`, `outputs`, and `error`
+
+```python
+result = client.stack.monitor(operation="UPDATE")
+if result.success:
+    print(f"Operation complete: {result.status}")
+else:
+    print(f"Operation failed: {result.error}")
+```
+
+### stack.cancel_update()
+
+Cancel an in-progress stack update. Only valid when the stack is in `UPDATE_IN_PROGRESS` status.
+
+**Parameters:**
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `CancelUpdateResult` with `success`, `message`, and `error`
+
+```python
+result = client.stack.cancel_update()
+if result.success:
+    print("Update cancelled successfully")
+```
+
+### stack.wait_for_stable_state()
+
+Wait for a CloudFormation stack to reach a stable (non-transitional) state. Useful before triggering an operation on a stack that may be in a transitional state.
+
+**Parameters:**
+- `stack_name` (str, optional): Stack name override
+- `timeout_seconds` (int, optional): Maximum seconds to wait (default: 1200)
+- `poll_interval_seconds` (int, optional): Seconds between polls (default: 10)
+
+**Returns:** `StackStableStateResult` with `success`, `status`, and `message`
+
+```python
+result = client.stack.wait_for_stable_state()
+if result.success:
+    print(f"Stack is stable: {result.status}")
+```
+
+### stack.get_failure_analysis()
+
+Analyze a CloudFormation deployment failure. Recursively collects failed events from the main stack and all nested stacks, identifies root causes vs. cascade failures.
+
+**Parameters:**
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `FailureAnalysis` with `stack_name`, `root_causes` (list of `FailureCause`), and `all_failures` (list of `FailureCause`)
+
+```python
+analysis = client.stack.get_failure_analysis()
+print(f"Root causes ({len(analysis.root_causes)}):")
+for cause in analysis.root_causes:
+    print(f"  {cause.resource}: {cause.reason}")
+```
+
+### stack.cleanup_orphaned()
+
+Remove residual AWS resources left behind from deleted IDP stacks. Identifies orphaned CloudFront distributions, CloudWatch log groups, AppSync APIs (leftovers from stacks created before AppSync was removed — current stacks create none), IAM policies, S3 buckets, DynamoDB tables, and more.
+
+**Parameters:**
+- `dry_run` (bool, optional): Preview changes without making them (default: False)
+- `auto_approve` (bool, optional): Auto-approve all deletions (default: False)
+- `regions` (list[str], optional): AWS regions to check (default: the `IDP_REGIONS` list in `lib/idp_sdk/idp_sdk/_core/cleanup_orphaned.py`)
+- `profile` (str, optional): AWS profile name (default: None)
+
+**Returns:** `OrphanedResourceCleanupResult` with `results` (dict), `has_errors`, and `has_disabled`
+
+```python
+# Preview what would be cleaned up
+result = client.stack.cleanup_orphaned(dry_run=True)
+print(f"Has errors: {result.has_errors}")
+```
+
+### stack.get_bucket_info()
+
+Get information about S3 buckets associated with a CloudFormation stack.
+
+**Parameters:**
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `list[BucketInfo]` — one `BucketInfo` per S3 bucket, with `logical_id`, `bucket_name`, `object_count`, `total_size`, and `size_display`
+
+```python
+buckets = client.stack.get_bucket_info()
+for bucket in buckets:
+    print(f"{bucket.logical_id}: {bucket.bucket_name} ({bucket.size_display}, {bucket.object_count} objects)")
+```
+
+---
+
+## Publish Operations
+
+Operations for building and publishing IDP CloudFormation artifacts to S3. This namespace consolidates what was historically done by the standalone `publish.py` and `scripts/generate_govcloud_template.py` scripts.
+
+Accessed via `client.publish.*`.
+
+### publish.build()
+
+Build and publish IDP CloudFormation artifacts (SAM templates, Lambda functions, Lambda layers, UI, container images) to S3. Optionally also generates a **headless** (no-UI) template variant.
+
+This is the programmatic equivalent of `idp-cli publish` — see [Headless Deployment](./headless-deployment.md) and [IDP CLI — publish](./idp-cli.md#publish) for end-to-end examples.
+
+**Parameters:**
+- `source_dir` (str, required): Path to the IDP project root directory
+- `bucket` (str, optional): S3 bucket basename for artifacts. If omitted, auto-generated as `idp-accelerator-artifacts-{account_id}`. The region is appended automatically.
+- `prefix` (str, optional): S3 key prefix for artifacts (default: `"idp-cli"`)
+- `region` (str, optional): AWS region. Falls back to the client's region, then `AWS_DEFAULT_REGION`.
+- `headless` (bool, optional): If `True`, also generate a **headless (no-UI) template variant**. For GovCloud regions (`us-gov-*`), GovCloud configuration defaults are applied automatically (ARN partition, GovCloud-compatible Bedrock models, `lending-package-sample-govcloud` preset). Default: `False`.
+- `public` (bool, optional): If `True`, make S3 artifacts publicly readable. Default: `False`.
+- `max_workers` (int, optional): Maximum concurrent build workers. Default: auto-detect.
+- `clean_build` (bool, optional): If `True`, delete all checksum files to force a full rebuild. Default: `False`.
+- `no_validate` (bool, optional): If `True`, skip CloudFormation template validation. Default: `False`.
+- `verbose` (bool, optional): If `True`, enable verbose build output. Default: `False`.
+- `lint` (bool, optional): If `True`, enable ruff linting and cfn-lint. Default: `True`.
+
+**Returns:** `PublishResult` with:
+- `success` (bool)
+- `template_path` (str, optional): Local path to the built standard template
+- `template_url` (str, optional): S3 URL of the uploaded standard template
+- `headless_template_path` (str, optional): Local path to the built headless template (only when `headless=True`)
+- `headless_template_url` (str, optional): S3 URL of the uploaded headless template (only when `headless=True`)
+- `bucket` (str, optional): S3 bucket used (region-suffixed)
+- `prefix` (str, optional): S3 prefix used
+- `version` (str, optional): Version string from the project's `VERSION` file
+- `error` (str, optional): Error message if the build failed
+
+**Raises:**
+- `IDPConfigurationError`: If the source directory is invalid or region cannot be determined
+- `IDPStackError`: If the build pipeline fails
+
+```python
+from idp_sdk import IDPClient
+
+client = IDPClient(region="us-east-1")
+
+# Standard build — produces idp-main.yaml
+result = client.publish.build(source_dir=".", region="us-east-1")
+if result.success:
+    print("Template:", result.template_url)
+
+# Build both standard and headless variants
+result = client.publish.build(
+    source_dir=".",
+    region="us-east-1",
+    headless=True,
+)
+if result.success:
+    print("Standard  :", result.template_url)
+    print("Headless  :", result.headless_template_url)
+
+# Build for GovCloud WITH the Web UI (govcloud=True removes CloudFront, keeps the UI)
+result = client.publish.build(
+    source_dir=".",
+    region="us-gov-west-1",
+    govcloud=True,
+)
+if result.success:
+    print("GovCloud  :", result.govcloud_template_url)
+
+# Or build a headless (no-UI) variant for GovCloud (GovCloud config
+# defaults — ARN partitions, GovCloud preset — auto-applied for us-gov-*)
+result = client.publish.build(
+    source_dir=".",
+    region="us-gov-west-1",
+    headless=True,
+)
+```
+
+### publish.transform_template_headless()
+
+Transform an existing (already-built) CloudFormation template into a **headless** variant by removing the Web UI, the UI REST API (the `APIRESOLVERSTACK` nested stack holding the API Gateway REST API, its dispatcher, and the UI-only resolver Lambdas), Cognito, WAF, agent, HITL, knowledge-base, and Test Studio resources. Useful when you already have an `idp-main.yaml` and want to produce the headless variant without rebuilding.
+
+**Parameters:**
+- `source_template` (str, required): Path to the source CloudFormation YAML template
+- `output_path` (str, optional): Path to write the headless template. If omitted, appends `-headless` to the source filename.
+- `update_govcloud_config` (bool, optional): If `True`, additionally update the configuration maps for GovCloud (ARN partition rewrite, GovCloud-compatible Bedrock models, `lending-package-sample-govcloud` preset). Default: `False`.
+- `verbose` (bool, optional): If `True`, enable verbose logging. Default: `False`.
+
+**Returns:** `TemplateTransformResult` with:
+- `success` (bool)
+- `input_path` (str): Path to the source template
+- `output_path` (str, optional): Path to the transformed headless template
+- `error` (str, optional): Error message if transformation failed
+
+```python
+# Transform an already-built template for commercial headless deployment
+result = client.publish.transform_template_headless(
+    source_template="./.aws-sam/idp-main.yaml",
+    output_path="./.aws-sam/idp-headless.yaml",
+)
+
+# Same, but apply GovCloud defaults (for GovCloud deployment)
+result = client.publish.transform_template_headless(
+    source_template="./.aws-sam/idp-main.yaml",
+    output_path="./.aws-sam/idp-headless-govcloud.yaml",
+    update_govcloud_config=True,
+)
+
+if result.success:
+    print("Headless template written to:", result.output_path)
+else:
+    print("Error:", result.error)
+```
+
+### publish.print_deployment_urls()
+
+Print deployment URLs (S3 template URL + 1-click CloudFormation launch link) to stdout. If a headless template URL is provided, also prints the headless variant. Uses the correct console domain for the partition (`aws.amazon.com` vs `amazonaws-us-gov.com`).
+
+**Parameters:**
+- `template_url` (str, required): S3 URL of the main template
+- `region` (str, required): AWS region
+- `headless_template_url` (str, optional): S3 URL of the headless template
+- `stack_name` (str, optional): Default stack name for the 1-click launch URL (default: `"IDP"`)
+
+**Returns:** `None` (prints to stdout)
+
+```python
+client.publish.print_deployment_urls(
+    template_url=result.template_url,
+    region="us-east-1",
+    headless_template_url=result.headless_template_url,
+    stack_name="MyStack",
+)
+```
+
+### Deploying a Headless Stack Programmatically
+
+To build a headless template and deploy it in one flow, combine `publish.build(headless=True)` with `stack.deploy(template_path=...)`:
+
+```python
+from idp_sdk import IDPClient
+
+client = IDPClient(region="us-east-1", stack_name="my-idp-headless")
+
+# Build both variants
+publish_result = client.publish.build(
+    source_dir=".",
+    region="us-east-1",
+    headless=True,
+)
+if not publish_result.success:
+    raise SystemExit(f"Build failed: {publish_result.error}")
+
+# Deploy the headless variant (local path) or the headless URL
+deploy_result = client.stack.deploy(
+    template_path=publish_result.headless_template_path,   # or template_url=publish_result.headless_template_url
+    wait=True,
+)
+print("Deployed:", deploy_result.stack_name, deploy_result.status)
+```
+
+For GovCloud, use `region="us-gov-west-1"` with either `govcloud=True` (full Web UI, CloudFront removed) or `headless=True` (no UI). See the [GovCloud Deployment Guide](./govcloud-deployment.md).
 
 ---
 
@@ -848,6 +1478,15 @@ Operations for managing IDP configurations.
 ### config.create()
 
 Generate an IDP configuration template.
+
+**Parameters:**
+- `features` (str, optional): Feature set to include — `"min"`, `"core"`, `"all"`, or comma-separated (default: `"min"`)
+- `pattern` (str, optional): Pattern to use — `"pattern-1"` or `"pattern-2"` (default: `"pattern-2"`)
+- `output` (str, optional): Output file path
+- `include_prompts` (bool, optional): Include prompt templates (default: False)
+- `include_comments` (bool, optional): Include explanatory comments (default: True)
+
+**Returns:** `ConfigCreateResult` with `yaml_content` and `output_path`
 
 ```python
 result = client.config.create(
@@ -863,7 +1502,23 @@ print(result.yaml_content)
 
 ### config.validate()
 
-Validate a configuration file.
+Validate a configuration file against system defaults.
+
+**Parameters:**
+- `config_file` (str, required): Path to the configuration file
+- `pattern` (str, optional): Pattern to validate against (default: `"pattern-2"`)
+- `show_merged` (bool, optional): Include merged configuration in result (default: False)
+- `strict` (bool, optional): Report deprecated/unknown fields as errors (default: False)
+
+**Returns:** `ConfigValidationResult` with `valid`, `validation_available`, `errors`, `warnings`, `deprecated_fields`, `unknown_fields`, and optional `merged_config`
+
+`validation_available` is False when this installation could not run the checks at
+all — `idp_common`, which does the checking, is not importable — and the missing
+component is named in `errors`. The method returns that as a result rather than
+raising, so a caller in a minimal environment still gets an answer; `valid` is False
+in that case too, so code that gates only on `valid` keeps refusing. Branch on
+`validation_available` when you need to tell a configuration that was checked and
+found wrong from an installation that cannot check one.
 
 ```python
 result = client.config.validate(
@@ -876,25 +1531,96 @@ if result.valid:
 else:
     for error in result.errors:
         print(f"Error: {error}")
+
+for warning in result.warnings:
+    print(f"Warning: {warning}")
 ```
 
 ### config.upload()
 
 Upload configuration to a deployed stack.
 
+**Parameters:**
+- `config_file` (str, required): Path to the YAML or JSON configuration file
+- `config_profile` (alias: `config_version`) (str, required): Configuration profile to upload to (e.g., `"default"`, `"v1"`, `"production"`). If the profile doesn't exist, it will be created automatically.
+- `stack_name` (str, optional): Stack name override
+- `validate` (bool, optional): Validate configuration before uploading (default: `True`)
+- `pattern` (str, optional): Pattern to validate against (default: `"pattern-2"`)
+- `description` (str, optional): Description for the configuration version
+- `created_by` (str, optional): Recorded as the revision's author and shown as **By** in the revision history. The Web UI derives this from the caller's Cognito identity; an SDK caller has none, so it defaults to `system` — set it to something that identifies your automation if you want its saves attributable.
+- `revision_notes` (str, optional): What this upload changed, recorded on the revision and shown as **Notes** in the revision history. Distinct from `description`, which belongs to the profile and is overwritten by every save.
+
+**Returns:** `ConfigUploadResult` with `success`, `version`, `version_created`, `revision`, and `error`
+
+`revision` is the revision number this upload produced — pass it as
+`config_revision=` to pin processing to exactly what was just uploaded. It is
+`None` when the stack has no revision history. A save that changed nothing cuts
+no new revision, so `revision` is then the one already current, which is still
+the right value to pin.
+
 ```python
+# Upload to the default version
 result = client.config.upload(
     config_file="./my-config.yaml",
+    config_profile="default",
     validate=True
 )
 
 if result.success:
     print("Configuration uploaded")
+
+# Create a new named version
+result = client.config.upload(
+    config_file="./my-config.yaml",
+    config_profile="v2",
+    description="Updated extraction rules"
+)
+
+if result.success:
+    if result.version_created:
+        print(f"New version created: {result.version}")
+    else:
+        print(f"Version updated: {result.version}")
+
+# Score exactly what was uploaded, rather than "whatever that profile holds now"
+result = client.config.upload(
+    config_file="./attempt.yaml",
+    config_profile="tuning-run-42",
+    description="raised topK to 20",
+)
+client.batch.process(
+    directory="./docs/",
+    config_profile="tuning-run-42",
+    config_revision=result.revision,
+)
 ```
 
 ### config.download()
 
 Download configuration from a deployed stack.
+
+**Parameters:**
+- `stack_name` (str, optional): Stack name override
+- `output` (str, optional): Output file path
+- `format` (str, optional): Format type — `"full"` or `"minimal"` (default: `"full"`)
+- `pattern` (str, optional): Pattern override (auto-detected if not provided)
+- `config_profile` (alias: `config_version`) (str, optional): Configuration profile to download (default: active version)
+- `config_revision` (int, optional): Download an exact **revision** of that profile instead of its current configuration
+
+**Returns:** `ConfigDownloadResult` with `config`, `yaml_content`, `output_path`, and `revision`
+
+**Raises:** `IDPResourceNotFoundError` if the named profile does not exist, if the
+requested revision is no longer retained, or if its body has expired under
+`DataRetentionInDays`, unless it is the profile's current published revision and the
+profile still provably holds that configuration, in which case it is rebuilt from the
+profile ([Retention](configuration-profiles.md#retention)). None of these falls back to anything: handing back
+a *different* configuration under the name you asked for would look like a success, and
+for a missing profile the answer on offer was the **YAML null document** — `config` came
+back `{}` and `yaml_content` was `"null\n...\n"`, so `output` was written with `null`
+inside it and every downstream reader took that for an empty configuration. That applies
+to the default resolution too: a stack where nothing has been activated falls back to
+the profile name `default`, and if `Config#default` does not exist this raises rather
+than substituting whichever profile happens to be there.
 
 ```python
 result = client.config.download(
@@ -903,48 +1629,245 @@ result = client.config.download(
 )
 
 print(result.yaml_content)
+
+# Retrieve exactly what an earlier run used
+earlier = client.config.download(config_profile="lending", config_revision=7)
 ```
 
 ### config.list()
 
 List all configuration versions in a deployed stack.
 
+**Parameters:**
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `ConfigListResult` with `versions` (list of `ConfigVersionInfo`) and `count`
+
+**ConfigVersionInfo fields:** `version_name`, `is_active`, `created_at`, `updated_at`, `description`, `latest_revision`, `published_revision`
+
+`published_revision` is the revision each profile's configuration currently
+reflects — the one to pin. It equals `latest_revision` except while a restore is in
+flight. Both are `None` for a profile with no history.
+
 ```python
 result = client.config.list()
 
-print(f"Found {result['count']} versions:")
-for version in result['versions']:
-    status = " (ACTIVE)" if version.get('isActive') else ""
-    print(f"  - {version['versionName']}{status}")
+print(f"Found {result.count} profiles:")
+for version in result.versions:
+    status = " (ACTIVE)" if version.is_active else ""
+    at = f" @r{version.published_revision}" if version.published_revision else ""
+    print(f"  - {version.version_name}{status}{at}")
 ```
+
+### config.revisions()
+
+Revision history of one Configuration Profile, newest first.
+
+Every save of a profile cuts an immutable revision. This returns the ones still
+retained — the last 20, plus anything labeled, pinned by a test run, or currently
+in use. See [configuration-profiles.md](configuration-profiles.md#revision-history).
+
+A returned revision is not necessarily one `download(config_revision=...)` can still
+fetch. A label or a test-run pin keeps a revision in this list, but every revision's
+body expires `DataRetentionInDays` after it was cut, and after that only the
+profile's current published revision can still be downloaded, and only while the
+profile provably still holds that configuration
+([Retention](configuration-profiles.md#retention)).
+
+**Parameters:**
+- `config_profile` (alias: `config_version`) (str, required): Profile whose history to list
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `ConfigRevisionListResult` with `profile`, `revisions` (list of `ConfigRevisionInfo`), and `count`
+
+**ConfigRevisionInfo fields:** `revision`, `created_at`, `created_by`, `label`, `notes`, `size_bytes`, `published`, `pinned`, `class_fingerprint`
+
+`published` marks the revision the profile currently reflects. `pinned` means a
+test run scored against it, which exempts it from retention pruning. Two revisions
+with the same `class_fingerprint` extract the same fields, so their accuracy
+numbers are directly comparable.
+
+> **Comparing fingerprints across the v0.6.7 boundary.** The hash was made stable
+> against a DynamoDB round-trip in v0.6.7, so a revision cut before that upgrade can
+> carry a different `class_fingerprint` than the same classes hash to now. Read a
+> mismatch where one side predates the upgrade as *unknown*, not as *changed*; two
+> revisions cut on v0.6.7 or later compare exactly.
+
+```python
+history = client.config.revisions(config_profile="lending")
+
+for rev in history.revisions:
+    marker = " <- current" if rev.published else ""
+    print(f"  r{rev.revision} by {rev.created_by}: {rev.notes or ''}{marker}")
+
+# An empty list means no history: an older deployment, or a profile untouched
+# since the stack was upgraded.
+```
+
+**Iterating on one profile instead of many.** `upload()` returning `revision`,
+`revisions()`, and `config_revision=` on `download()` / `batch.process()` together
+let an automated tuning loop keep **one** profile and track its attempts as
+revisions. Naming a new profile per attempt also works, but every one of them then
+appears in the profile pickers and access-control scope lists of the whole
+deployment.
 
 ### config.activate()
 
-Activate a configuration version.
+Activate a configuration version. If the configuration uses BDA (`use_bda=True`), a BDA blueprint sync is performed before activation.
+
+**Parameters:**
+- `config_profile` (alias: `config_version`) (str, required): Configuration profile to activate
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `ConfigActivateResult` with `success`, `activated_version`, `bda_synced`, `bda_classes_synced`, `bda_classes_failed`, `bda_orphaned_blueprint_arns`, and `error`
+
+`bda_orphaned_blueprint_arns` is the same report `sync_bda()` returns as
+`orphaned_blueprint_arns` — see [`config.sync_bda()`](#configsync_bda) below for what
+leaves a blueprint orphaned. Read it on failure as well as on success: the deletes run
+whatever happened to the classes, so an aborted activation is the outcome most likely to
+have left one, and `bda_synced` is `False` on every failing path.
 
 ```python
 result = client.config.activate("v2")
 
-if result["success"]:
-    print(f"Activated version: {result['activated_version']}")
+if result.success:
+    print(f"Activated version: {result.activated_version}")
+    if result.bda_synced:
+        print(f"BDA synced: {result.bda_classes_synced} classes")
 else:
-    print(f"Failed to activate: {result['error']}")
+    print(f"Failed to activate: {result.error}")
+
+# Independent of success: blueprints left behind in the account.
+for arn in result.bda_orphaned_blueprint_arns:
+    print(f"  ⚠ orphaned, run the cleanup to remove: {arn}")
 ```
 
 ### config.delete()
 
 Delete a configuration version.
 
+**Parameters:**
+- `config_profile` (alias: `config_version`) (str, required): Configuration profile to delete
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `ConfigDeleteResult` with `success`, `deleted_version`, and `error`
+
 ```python
 result = client.config.delete("old-version")
 
-if result["success"]:
-    print(f"Deleted version: {result['deleted_version']}")
+if result.success:
+    print(f"Deleted version: {result.deleted_version}")
 else:
-    print(f"Failed to delete: {result['error']}")
+    print(f"Failed to delete: {result.error}")
 ```
 
-**Note:** Cannot delete 'default' or currently active versions.
+**Note:** Cannot delete `"default"` or currently active versions.
+
+### config.sync_bda()
+
+Synchronize IDP document class schemas with BDA (Bedrock Data Automation) blueprints.
+
+**Parameters:**
+- `direction` (str, optional): Sync direction — `"bidirectional"` (default), `"bda_to_idp"`, or `"idp_to_bda"`
+- `mode` (str, optional): Sync mode — `"replace"` (default, full alignment) or `"merge"` (additive)
+- `config_profile` (alias: `config_version`) (str, optional): Configuration profile to sync (default: active version)
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `ConfigSyncBdaResult` with `success`, `direction`, `mode`, `classes_synced`, `classes_failed`, `processed_classes`, `orphaned_blueprint_arns`, and `error`
+
+`processed_classes` names every document class the sync processed — the ones that
+succeeded and the ones that failed alike, so its length is `classes_synced +
+classes_failed` — in the order the sync reported them. It is the only part of the result
+that says *which* classes reached BDA rather than how many, and it is what
+`idp-cli config-sync-bda` prints under "Classes synced".
+
+⚠️ **A successful entry names a class; a failed one may name something else.** Three
+values can appear that are not a class id you configured, each of them rare and
+per-entry:
+
+- `Document`, for a blueprint whose schema carries no class id at all. This one can
+  appear on a **successful** entry, so a clean sync listing `Document` really has synced
+  a class under that id.
+- A BDA **blueprint name**, such as `idp-Invoice-a1b2c3d4`, on an entry that failed while
+  syncing BDA → IDP — at that point the blueprint is the only handle the sync has on the
+  work. `idp-cli config-sync-bda` never shows one, because it prints the names only for a
+  sync that succeeded, but an SDK caller reading a partial result will see them.
+- `unknown`, where neither a class id nor a blueprint name was available.
+
+A result in which *every* entry is a placeholder is none of those. It means something is
+reading the sync's per-class entries under a key it does not write, which is what
+[#1208](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/1208)
+was.
+
+`orphaned_blueprint_arns` names blueprints a `replace`-mode sync removed from the BDA
+project but could not then delete. The order is forced — BDA refuses to delete a
+blueprint a project still associates, so the project's list is rewritten first and the
+deletes follow — so a failed delete leaves a blueprint that is already out of the
+project: invisible to everything that reads the project, still counted against the
+account's blueprint limit, and still matchable by name prefix. It is reported alongside
+`success` rather than instead of it, and it is **not** counted into `classes_failed`,
+because the classes may all have synced and the outstanding work is a cleanup rather
+than a re-sync. It is populated on the failure and exception paths too, since the
+deletes run before the last steps of a sync. `config.activate()` reports the same thing
+as `bda_orphaned_blueprint_arns`.
+
+⚠️ The remedy is **`config.sync_bda(direction="cleanup_orphaned")`** — the same call as a
+sync, with a direction that is not one. It deletes every blueprint carrying the stack's
+name prefix that the named profile's classes do not account for, **account-wide**, which
+is what makes it the only thing that can reach a blueprint no project-scoped read can
+see. Because the scope is the account and the survivors are decided by the profile you
+name, naming the wrong profile deletes live blueprints. It reports
+`cleanup_deleted_count` and `cleanup_failed_count` rather than the class counts: it
+processes no classes. It returns `success=False` without deleting anything unless the
+profile **exists** — a name that is not a profile is refused, and so is having none at
+all (you passed none and none is active) — because either yields an empty set of classes
+to keep, which is indistinguishable from "keep nothing" and would delete every prefixed
+blueprint in the account. A profile that exists with no classes *is* honoured, and does
+delete them all. The `syncBdaIdp` API operation with
+`direction: "cleanup_orphaned"` is the same operation through the resolver, and
+`idp-cli config-sync-bda --direction cleanup-orphaned` is the same operation on the
+command line.
+
+Do **not** reach for [`stack.cleanup_orphaned()`](#stackcleanup_orphaned): despite the
+name it is a different operation entirely — it removes CloudFront distributions, log
+groups, IAM policies and S3 buckets left behind by deleted stacks, and never touches a
+blueprint.
+
+```python
+result = client.config.sync_bda(
+    direction="cleanup_orphaned", config_profile="v2"
+)
+print(result.cleanup_deleted_count, result.cleanup_failed_count)
+# Anything still in result.orphaned_blueprint_arns is still orphaned.
+```
+
+```python
+# Bidirectional sync (default)
+result = client.config.sync_bda()
+
+# Import BDA blueprints to IDP (merge mode)
+result = client.config.sync_bda(
+    direction="bda_to_idp",
+    mode="merge"
+)
+
+# Push IDP classes to BDA
+result = client.config.sync_bda(
+    direction="idp_to_bda",
+    config_profile="v2"
+)
+
+if result.success:
+    print(f"Synced {result.classes_synced} classes")
+    for cls in result.processed_classes:
+        print(f"  • {cls}")
+else:
+    print(f"Sync failed: {result.error}")
+
+# Independent of success/failure: blueprints left behind in the account.
+for arn in result.orphaned_blueprint_arns:
+    print(f"  ⚠ orphaned, run the cleanup to remove: {arn}")
+```
 
 ---
 
@@ -959,6 +1882,18 @@ Discover document class schemas from sample documents using Amazon Bedrock.
 ### discovery.run()
 
 Analyze a document to generate a JSON Schema definition for a document class.
+
+**Parameters:**
+- `document_path` (str, required): Local path to document file (PDF, PNG, JPG, TIFF)
+- `ground_truth_path` (str, optional): Path to JSON ground truth file
+- `config_profile` (alias: `config_version`) (str, optional): Configuration profile to save to (stack mode only)
+- `stack_name` (str, optional): Stack name override
+- `page_range` (str, optional): Page range to extract from a PDF (e.g., "1-3")
+- `class_name_hint` (str, optional): Hint for the document class name (LLM uses this as `$id`)
+- `auto_detect` (bool, optional): If True, auto-detect section boundaries and discover each section. Returns `DiscoveryBatchResult`.
+- `model_id` (str, optional): Override the Bedrock model ID used for discovery (e.g., `us.anthropic.claude-opus-4-6-v1`). When `None` (default), the discovery model from the stack config (stack mode) or system defaults (local mode) is used. Applies to with-ground-truth, without-ground-truth, and `auto_detect` modes.
+
+**Returns:** `DiscoveryResult` with `status`, `document_class`, `json_schema`, `config_version`, `document_path`, `page_range`, and `error`. When `auto_detect=True`, returns `DiscoveryBatchResult`.
 
 ```python
 # Local mode — no stack needed
@@ -976,25 +1911,180 @@ result = client.discovery.run(
     ground_truth_path="./invoice-expected.json"
 )
 
+# With class name hint
+result = client.discovery.run(
+    "./form.pdf",
+    class_name_hint="W2 Tax Form"
+)
+
+# Discover specific page range from a PDF
+result = client.discovery.run(
+    "./lending_package.pdf",
+    page_range="3-5",
+    class_name_hint="W2 Form"
+)
+
+# Auto-detect sections and discover each
+batch_result = client.discovery.run(
+    "./lending_package.pdf",
+    auto_detect=True,
+    config_profile="v2"
+)
+for r in batch_result.results:
+    print(f"{r.document_class} (pages {r.page_range}): {r.status}")
+
 # Save to specific config version
 result = client.discovery.run(
     "./form.pdf",
-    config_version="v2"
+    config_profile="v2"
+)
+
+# Override the Bedrock model (e.g. use Claude Opus instead of the default)
+result = client.discovery.run(
+    "./invoice.pdf",
+    ground_truth_path="./invoice.json",
+    model_id="us.anthropic.claude-opus-4-6-v1",
 )
 ```
 
-**Parameters:**
-- `document_path` (str, required): Local path to document file (PDF, PNG, JPG, TIFF)
-- `ground_truth_path` (str, optional): Path to JSON ground truth file
-- `config_version` (str, optional): Config version to save to (stack mode only)
-- `stack_name` (str, optional): Stack name override
+### discovery.auto_detect_sections()
 
-**Returns:** `DiscoveryResult` with `status`, `document_class`, `json_schema`, `config_version`, `document_path`, `error`
+Detect document section boundaries in a multi-page PDF using LLM analysis.
+
+**Parameters:**
+- `document_path` (str, required): Local path to a PDF document
+- `stack_name` (str, optional): Stack name override
+- `model_id` (str, optional): Override the Bedrock model ID used for section detection. When `None` (default), the configured `auto_split.model_id` is used.
+
+**Returns:** `AutoDetectResult` with `status`, `sections` (list of `AutoDetectSection`), `document_path`, and `error`
+
+**AutoDetectSection fields:** `start` (int), `end` (int), `type` (str, optional)
+
+```python
+# Detect section boundaries
+result = client.discovery.auto_detect_sections("./lending_package.pdf")
+
+if result.status == "SUCCESS":
+    for section in result.sections:
+        print(f"Pages {section.start}-{section.end}: {section.type}")
+    # Output:
+    # Pages 1-2: Cover Letter
+    # Pages 3-5: W2 Form
+    # Pages 6-8: Bank Statement
+```
+
+### discovery.run_multi_section()
+
+Discover multiple document classes from page ranges in a single PDF.
+
+**Parameters:**
+- `document_path` (str, required): Local path to a multi-page PDF
+- `page_ranges` (list, required): List of dicts with `start` (int), `end` (int), and optional `label` (str)
+- `config_profile` (alias: `config_version`) (str, optional): Configuration profile to save to
+- `stack_name` (str, optional): Stack name override
+- `model_id` (str, optional): Override the Bedrock model ID used for discovery. Applied to every per-range discovery call.
+
+**Returns:** `DiscoveryBatchResult` with one result per page range
+
+```python
+# Discover specific page ranges
+result = client.discovery.run_multi_section(
+    "./lending_package.pdf",
+    page_ranges=[
+        {"start": 1, "end": 2, "label": "Cover Letter"},
+        {"start": 3, "end": 5, "label": "W2 Form"},
+        {"start": 6, "end": 8, "label": "Bank Statement"},
+    ],
+    config_profile="v2"
+)
+
+print(f"Discovered {result.succeeded}/{result.total} sections")
+for r in result.results:
+    print(f"  Pages {r.page_range}: {r.document_class} ({r.status})")
+```
+
+### discovery.run_multi_doc()
+
+Discover document classes from a collection of documents using embedding-based clustering and agentic analysis. Unlike `run()` (which analyzes one document at a time), this method analyzes a directory of mixed documents to automatically identify document types, cluster similar documents, and generate JSON Schemas for each discovered class.
+
+**Requires:** `pip install -e "lib/idp_common_pkg[multi_document_discovery]"`
+
+**Note:** Requires at least **2 documents per expected class**. Clusters with fewer than 2 documents are filtered as noise. For discovering schemas from individual documents, use `discovery.run()` instead.
+
+**Parameters:**
+- `document_dir` (str, optional): Directory path containing documents to analyze (recursive scan)
+- `document_paths` (list[str], optional): List of individual document file paths
+- `embedding_model_id` (str, optional): Bedrock embedding model ID (default: `us.cohere.embed-v4:0`)
+- `analysis_model_id` (str, optional): Bedrock LLM for cluster analysis (default: `us.anthropic.claude-sonnet-4-6`)
+- `output_dir` (str, optional): Directory to write individual JSON schema files per discovered class
+- `save_to_config` (bool, optional): Save discovered schemas to the stack's configuration (default: False)
+- `config_profile` (alias: `config_version`) (str, optional): Configuration profile to save schemas to (required with `save_to_config`)
+- `progress_callback` (callable, optional): Callback function for pipeline progress updates
+- `region` (str, optional): AWS region
+
+**Returns:** `MultiDocDiscoveryResult` with `status` (SUCCESS/PARTIAL/FAILED), `discovered_classes` (list of `DiscoveredClassResult`), `reflection_report`, `total_documents`, `total_clusters`, `noise_documents`, `config_version`, and `error`
+
+**DiscoveredClassResult fields:** `cluster_id`, `classification`, `json_schema`, `document_count`, `sample_doc_ids`, `error`
+
+```python
+# Basic usage — discover from a directory
+client = IDPClient()
+result = client.discovery.run_multi_doc(document_dir="./samples/")
+
+print(f"Status: {result.status}")
+print(f"Documents: {result.total_documents} → Clusters: {result.total_clusters}")
+
+for dc in result.discovered_classes:
+    if not dc.error:
+        print(f"  Cluster {dc.cluster_id}: {dc.classification} ({dc.document_count} docs)")
+
+# Save schemas to output directory
+result = client.discovery.run_multi_doc(
+    document_dir="./samples/",
+    output_dir="./schemas/"
+)
+
+# Save to stack configuration
+client = IDPClient(stack_name="my-stack")
+result = client.discovery.run_multi_doc(
+    document_dir="./samples/",
+    save_to_config=True,
+    config_profile="v2"
+)
+
+# With explicit document paths
+result = client.discovery.run_multi_doc(
+    document_paths=["./doc1.pdf", "./doc2.png", "./doc3.jpg"]
+)
+
+# With progress callback
+def on_progress(step, data=None):
+    print(f"  [{step}] {data}")
+
+result = client.discovery.run_multi_doc(
+    document_dir="./samples/",
+    progress_callback=on_progress
+)
+
+# Print reflection report
+if result.reflection_report:
+    print(result.reflection_report)
+```
+
+**Note:** If the required dependencies are not installed, this method returns a `MultiDocDiscoveryResult` with `status="FAILED"` and an error message instructing the user to install `idp-common[multi_document_discovery]`, rather than raising an exception.
 
 ### discovery.run_batch()
 
-Run discovery on multiple documents sequentially. Ground truth paths are
-auto-matched to documents by filename stem.
+Run discovery on multiple documents sequentially. Ground truth paths are auto-matched to documents by position.
+
+**Parameters:**
+- `document_paths` (list, required): List of local file paths
+- `ground_truth_paths` (list, optional): Parallel list of ground truth paths (use `None` for docs without ground truth)
+- `config_profile` (alias: `config_version`) (str, optional): Configuration profile to save to
+- `stack_name` (str, optional): Stack name override
+- `model_id` (str, optional): Override the Bedrock model ID used for discovery. Applied to every document in the batch.
+
+**Returns:** `DiscoveryBatchResult` with `total`, `succeeded`, `failed`, and `results` (list of `DiscoveryResult`)
 
 ```python
 # Batch without ground truth
@@ -1011,14 +2101,6 @@ result = client.discovery.run_batch(
     ground_truth_paths=[None, "./w2.json"],
 )
 ```
-
-**Parameters:**
-- `document_paths` (list, required): List of local file paths
-- `ground_truth_paths` (list, optional): Parallel list of ground truth paths (use None for docs without GT)
-- `config_version` (str, optional): Config version to save to
-- `stack_name` (str, optional): Stack name override
-
-**Returns:** `DiscoveryBatchResult` with `total`, `succeeded`, `failed`, `results`
 
 ---
 
@@ -1060,11 +2142,22 @@ else:
 
 ## Testing Operations
 
-Operations for load testing and performance validation.
+Operations for load testing, Test Studio evaluation results, and performance validation.
 
 ### testing.load_test()
 
-Run load testing.
+Run load testing by copying files to the input bucket.
+
+**Parameters:**
+- `source_file` (str, required): Source file to copy
+- `stack_name` (str, optional): Stack name override
+- `rate` (int, optional): Files per minute for constant load (default: 100)
+- `duration` (int, optional): Duration in minutes (default: 1)
+- `schedule_file` (str, optional): Optional schedule file for variable load
+- `dest_prefix` (str, optional): Destination prefix in S3 (default: `"load-test"`)
+- `config_profile` (alias: `config_version`) (str, optional): Configuration profile to tag files with
+
+**Returns:** `LoadTestResult` with `success`, `total_files`, `duration_minutes`, and `error`
 
 ```python
 result = client.testing.load_test(
@@ -1075,13 +2168,102 @@ result = client.testing.load_test(
 )
 
 print(f"Total files: {result.total_files}")
+print(f"Success: {result.success}")
+```
+
+### testing.get_test_result()
+
+Get Test Studio evaluation results for a specific test run.
+
+**Parameters:**
+- `test_run_id` (str, required): Test run identifier
+- `stack_name` (str, optional): Stack name override
+- `wait` (bool, optional): Wait for test run to complete if still in progress (default: False)
+- `timeout` (int, optional): Maximum wait time in seconds (default: 300)
+- `poll_interval` (int, optional): Polling interval in seconds (default: 5)
+
+**Returns:** `TestRunResult` with evaluation metrics
+
+```python
+# Get result immediately (may be evaluating)
+result = client.testing.get_test_result(
+    test_run_id="Fake-W2-Tax-Forms-20260410-173735"
+)
+
+# Wait for evaluation to complete
+result = client.testing.get_test_result(
+    test_run_id="Fake-W2-Tax-Forms-20260410-173735",
+    wait=True,
+    timeout=900
+)
+
+print(f"Status: {result.status}")
+print(f"Overall Accuracy: {result.overall_accuracy:.2%}")
+print(f"Precision: {result.accuracy_breakdown['precision']:.2%}")
+print(f"Recall: {result.accuracy_breakdown['recall']:.2%}")
+print(f"F1 Score: {result.accuracy_breakdown['f1_score']:.2%}")
+print(f"Total Cost: ${result.total_cost:.2f}")
+```
+
+### testing.compare_test_runs()
+
+Compare multiple Test Studio evaluation runs.
+
+**Parameters:**
+- `test_run_ids` (list[str], required): List of test run identifiers to compare (minimum 2)
+- `stack_name` (str, optional): Stack name override
+
+**Returns:** `TestComparisonResult` with `metrics` for each test run and `configs`,
+the differences between the configurations the runs captured.
+
+⚠️ **`configs` has three values and `None` is not `[]`.** A run records the
+configuration it ran under, and the comparison reads it back, so:
+
+| `configs` | Meaning |
+|---|---|
+| a list of `{"setting": "<dotted path>", "values": {"<test run id>": "<value>"}}` | those settings differ between the runs; `<missing>` means a run has no such setting |
+| `[]` | the configurations were compared and are identical |
+| `None` | **nothing was compared** — fewer than two distinct runs returned a configuration |
+
+Treating `None` as "no differences" reports the runs as identically configured
+without having looked, which is the most misleading answer available when two runs
+score differently. A run returns its configuration once its evaluation results have
+been aggregated, and not at all if the run could not be retrieved. Metadata such as
+save timestamps, and the class definitions, are excluded from the comparison.
+
+```python
+result = client.testing.compare_test_runs(
+    test_run_ids=[
+        "Fake-W2-Tax-Forms-20260410-173735",
+        "Fake-W2-Tax-Forms-20260409-191545"
+    ]
+)
+
+for test_run_id, metrics in result.metrics.items():
+    print(f"\nTest Run: {test_run_id}")
+    print(f"  Accuracy: {metrics['overallAccuracy']:.2%}")
+    print(f"  Completed: {metrics['completedFiles']}/{metrics['filesCount']}")
+    print(f"  Cost: ${metrics['totalCost']:.2f}")
+
+if result.configs is None:
+    print("\nConfigurations were not compared.")
+elif not result.configs:
+    print("\nConfigurations are identical.")
+else:
+    for difference in result.configs:
+        print(f"\n{difference['setting']}")
+        for test_run_id, value in difference["values"].items():
+            print(f"  {test_run_id}: {value}")
 ```
 
 ---
 
 ## Response Models
 
-All operations return typed Pydantic models:
+All operations return typed result objects — Pydantic models for the document,
+batch, stack and config surfaces, and dataclasses for the evaluation and search
+ones. Either way the fields are the same to read. Import them from the top-level
+`idp_sdk` package:
 
 ```python
 from idp_sdk import (
@@ -1090,11 +2272,12 @@ from idp_sdk import (
     DocumentStatus,
     DocumentDownloadResult,
     DocumentReprocessResult,
+    DocumentRerunResult,
     DocumentDeletionResult,
     DocumentMetadata,
     DocumentInfo,
     DocumentListResult,
-    
+
     # Batch models
     BatchResult,
     BatchProcessResult,
@@ -1102,50 +2285,81 @@ from idp_sdk import (
     BatchInfo,
     BatchListResult,
     BatchReprocessResult,
+    BatchRerunResult,
     BatchDownloadResult,
     BatchDeletionResult,
-    
+
     # Evaluation models
     EvaluationReport,
     EvaluationMetrics,
     EvaluationBaselineListResult,
-    
+    BaselineResult,
+    BaselineInfo,
+    FieldComparison,
+    DeleteResult,
+
     # Assessment models
     AssessmentConfidenceResult,
     AssessmentFieldConfidence,
     AssessmentGeometryResult,
     AssessmentFieldGeometry,
-    
+    AssessmentMetrics,
+
     # Search models
     SearchResult,
     SearchCitation,
     SearchDocumentReference,
-    
+
     # Stack models
     StackDeploymentResult,
     StackDeletionResult,
     StackResources,
-    
+    StackOperationInProgress,
+    StackMonitorResult,
+    StackStableStateResult,
+    FailureCause,
+    FailureAnalysis,
+    BucketInfo,
+    CancelUpdateResult,
+    OrphanedResourceCleanupResult,
+
     # Config models
     ConfigCreateResult,
     ConfigValidationResult,
     ConfigUploadResult,
     ConfigDownloadResult,
-    
+    ConfigActivateResult,
+    ConfigVersionInfo,
+    ConfigListResult,
+    ConfigDeleteResult,
+
+    # Discovery models
+    DiscoveryResult,
+    DiscoveryBatchResult,
+
     # Manifest models
+    ManifestDocument,
     ManifestResult,
     ManifestValidationResult,
-    
+
     # Testing models
-    LoadTestResult,
     StopWorkflowsResult,
-    
+    ExecutionsStoppedResult,
+    DocumentsAbortedResult,
+    LoadTestResult,
+    TestRunResult,
+    TestComparisonResult,
+
     # Enums
+    DocumentBucket,
     DocumentState,
     Pattern,
     RerunStep,
     StackState,
-    
+
+    # State classification
+    classify_document_state,
+
     # Exceptions
     IDPError,
     IDPConfigurationError,
@@ -1195,10 +2409,10 @@ doc_id = doc_result.document_id
 while True:
     status = client.document.get_status(document_id=doc_id)
     print(f"Status: {status.status.value}")
-    
+
     if status.status.value in ["COMPLETED", "FAILED"]:
         break
-    
+
     time.sleep(5)
 
 # Download results if successful
@@ -1217,10 +2431,10 @@ batch_id = batch_result.batch_id
 while True:
     batch_status = client.batch.get_status(batch_id=batch_id)
     print(f"Progress: {batch_status.completed}/{batch_status.total}")
-    
+
     if batch_status.all_complete:
         break
-    
+
     time.sleep(10)
 
 # Download batch results

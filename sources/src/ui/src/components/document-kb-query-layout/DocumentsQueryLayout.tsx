@@ -1,17 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-/* eslint-disable max-len */
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
 import { Box, Button, Spinner, Header, Grid, Container, SpaceBetween, Input, Link } from '@cloudscape-design/components';
-import { generateClient } from 'aws-amplify/api';
+import SafeMarkdown from '../common/SafeMarkdown';
+
+import { generateClient } from '../../api/client-shim';
 import { ConsoleLogger } from 'aws-amplify/utils';
 
 import { queryKnowledgeBase } from '../../graphql/generated';
 import { DOCUMENTS_PATH } from '../../routes/constants';
 import useSettingsContext from '../../contexts/settings';
+import { describeApiError } from '../../hooks/utils/graphql-error';
 
 const client = generateClient();
 const logger = new ConsoleLogger('queryKnowledgeBase');
@@ -64,7 +65,6 @@ export const DocumentsQueryLayout = (): React.JSX.Element => {
   const { settings } = useSettingsContext();
 
   const getElementByIdAsync = (id: string): Promise<HTMLElement> =>
-    // eslint-disable-next-line
     new Promise((resolve) => {
       const getElement = () => {
         const element = document.getElementById(id);
@@ -108,22 +108,27 @@ export const DocumentsQueryLayout = (): React.JSX.Element => {
     logger.debug('Submitting GraphQL query:', query);
     const queryResponse = getDocumentsQueryResponseFromKB(query, kbSessionId);
 
-    queryResponse.then((r) => {
-      const kbResponse = JSON.parse((r as { data: Record<string, unknown> }).data.queryKnowledgeBase as string);
-      const kbanswer = kbResponse.markdown;
-      setKbSessionId(kbResponse.sessionId);
-      const queries = currentQueries.map((q) => {
-        if (q.value !== '...') {
-          return q;
-        }
-        return {
-          label: q.label,
-          value: kbanswer,
-        };
-      });
-      setMeetingKbQueries(queries);
+    // The placeholder row is inserted as '...' above and only ever replaced on
+    // success, so an unhandled rejection left the answer showing '...' for ever with
+    // nothing in the UI and nothing but an unhandled-rejection warning in the
+    // console. queryKnowledgeBase now also requires an assigned Cognito group, which
+    // makes a refusal a real outcome rather than a hypothetical one — so the
+    // rejection replaces the placeholder with what went wrong.
+    const replacePlaceholder = (value: string) => {
+      setMeetingKbQueries(currentQueries.map((q) => (q.value === '...' ? { label: q.label, value } : q)));
       scrollToBottomOfChat();
-    });
+    };
+
+    queryResponse
+      .then((r) => {
+        const kbResponse = JSON.parse((r as { data: Record<string, unknown> }).data.queryKnowledgeBase as string);
+        setKbSessionId(kbResponse.sessionId);
+        replacePlaceholder(kbResponse.markdown);
+      })
+      .catch((err) => {
+        logger.error('Error querying the knowledge base', err);
+        replacePlaceholder(describeApiError(err, 'query the knowledge base'));
+      });
     setMeetingKbQueryStatus(false);
   };
 
@@ -134,12 +139,11 @@ export const DocumentsQueryLayout = (): React.JSX.Element => {
     return true;
   };
 
-  // eslint-disable-next-line
   const placeholder =
     (settings as Record<string, unknown>).ShouldUseDocumentKnowledgeBase === 'true'
       ? 'Enter a question to query your document knowledge base.'
       : 'Document Knowledge Base is set to DISABLED for this GenAIIDP deployment.';
-  // eslint-disable-next-line
+
   const initialMsg =
     (settings as Record<string, unknown>).ShouldUseDocumentKnowledgeBase === 'true'
       ? 'Ask a question below.'
@@ -169,8 +173,7 @@ export const DocumentsQueryLayout = (): React.JSX.Element => {
                     <Spinner />
                   </div>
                 ) : (
-                  <ReactMarkdown
-                    rehypePlugins={[rehypeRaw]}
+                  <SafeMarkdown
                     components={
                       {
                         documentid: CustomLink,
@@ -178,7 +181,7 @@ export const DocumentsQueryLayout = (): React.JSX.Element => {
                     }
                   >
                     {entry.value}
-                  </ReactMarkdown>
+                  </SafeMarkdown>
                 )}
               </ValueWithLabel>
             ))

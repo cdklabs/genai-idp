@@ -36,6 +36,77 @@ for md_file in "$PROJECT_ROOT"/docs/*.md; do
 done
 echo "   ✅ Linked $count documentation files"
 
+# Step 1b: Symlink per-extension docs from docs/extensions/ into
+# src/content/docs/extensions/ so they publish under the "extensions/<slug>"
+# route (matching the docsUrl slug each OSS feature declares in feature.yaml).
+if [ -d "$PROJECT_ROOT/docs/extensions" ]; then
+    echo ""
+    echo "🔗 Creating symlinks for extension docs..."
+    mkdir -p "$CONTENT_DOCS/extensions"
+    ext_count=0
+    for md_file in "$PROJECT_ROOT"/docs/extensions/*.md; do
+        [ -e "$md_file" ] || continue
+        filename=$(basename "$md_file")
+        target="$CONTENT_DOCS/extensions/$filename"
+        # Path: docs-site/src/content/docs/extensions/ → 5 levels up to project root
+        [ -L "$target" ] && rm "$target"
+        ln -s "../../../../../docs/extensions/$filename" "$target"
+        ext_count=$((ext_count + 1))
+    done
+    echo "   ✅ Linked $ext_count extension docs"
+fi
+
+# Step 1c: Symlink the docs/benchmarking/ folder (guide + config-guidance, the
+# per-release audit trail under releases/, and the one-off studies under studies/)
+# into src/content/docs/benchmarking/.
+if [ -d "$PROJECT_ROOT/docs/benchmarking" ]; then
+    echo ""
+    echo "🔗 Creating symlinks for benchmarking docs..."
+    mkdir -p "$CONTENT_DOCS/benchmarking/releases"
+    bench_count=0
+    for md_file in "$PROJECT_ROOT"/docs/benchmarking/*.md; do
+        [ -e "$md_file" ] || continue
+        filename=$(basename "$md_file")
+        target="$CONTENT_DOCS/benchmarking/$filename"
+        # Path: docs-site/src/content/docs/benchmarking/ → 5 levels up to project root
+        [ -L "$target" ] && rm "$target"
+        ln -s "../../../../../docs/benchmarking/$filename" "$target"
+        bench_count=$((bench_count + 1))
+    done
+    for sub in releases studies; do
+        mkdir -p "$CONTENT_DOCS/benchmarking/$sub"
+        for md_file in "$PROJECT_ROOT"/docs/benchmarking/$sub/*.md; do
+            [ -e "$md_file" ] || continue
+            filename=$(basename "$md_file")
+            target="$CONTENT_DOCS/benchmarking/$sub/$filename"
+            # Path: docs-site/src/content/docs/benchmarking/<sub>/ → 6 levels up
+            [ -L "$target" ] && rm "$target"
+            ln -s "../../../../../../docs/benchmarking/$sub/$filename" "$target"
+            bench_count=$((bench_count + 1))
+        done
+    done
+    echo "   ✅ Linked $bench_count benchmarking docs"
+fi
+
+# Step 1d: Symlink the docs/release-validation/ folder (index + the per-release
+# validation record) into src/content/docs/release-validation/.
+if [ -d "$PROJECT_ROOT/docs/release-validation" ]; then
+    echo ""
+    echo "🔗 Creating symlinks for release-validation docs..."
+    mkdir -p "$CONTENT_DOCS/release-validation"
+    relval_count=0
+    for md_file in "$PROJECT_ROOT"/docs/release-validation/*.md; do
+        [ -e "$md_file" ] || continue
+        filename=$(basename "$md_file")
+        target="$CONTENT_DOCS/release-validation/$filename"
+        # Path: docs-site/src/content/docs/release-validation/ → 5 levels up
+        [ -L "$target" ] && rm "$target"
+        ln -s "../../../../../docs/release-validation/$filename" "$target"
+        relval_count=$((relval_count + 1))
+    done
+    echo "   ✅ Linked $relval_count release-validation docs"
+fi
+
 # Step 2: Symlink images/ into src/content/images/ (for ../images/ relative paths in docs)
 # Path: docs-site/src/content/ → 3 levels up to project root
 echo ""
@@ -50,6 +121,27 @@ mkdir -p "$SCRIPT_DIR/public"
 [ -L "$SCRIPT_DIR/public/images" ] && rm "$SCRIPT_DIR/public/images"
 ln -s "../../images" "$SCRIPT_DIR/public/images"
 echo "   ✅ Linked images directory for public serving"
+
+# Step 3: Symlink docs/analyst-reports/ into public/ so the third-party analyst
+# report PDFs are served as static assets at
+# <base>/analyst-reports/<file>.pdf — the browser's built-in PDF viewer renders
+# them in place. These are NOT pages: the remark link-rewrite plugin only
+# rewrites ".md" targets, so a relative link to a PDF from a published page
+# resolves in the repository and 404s on the site. docs/references.md therefore
+# links them by absolute URL, which works from both renderers.
+#
+# The directory is linked rather than each file, so a report added to
+# docs/analyst-reports/ is served without editing this script. The guard keeps
+# the step a no-op in a checkout that has no such directory — including the
+# throwaway one scripts/tests/test_markdown_links.py runs this script in.
+if [ -d "$PROJECT_ROOT/docs/analyst-reports" ]; then
+    echo ""
+    echo "📄 Setting up analyst report symlink..."
+    [ -L "$SCRIPT_DIR/public/analyst-reports" ] && rm "$SCRIPT_DIR/public/analyst-reports"
+    # Path: docs-site/public/ → 2 levels up to project root
+    ln -s "../../docs/analyst-reports" "$SCRIPT_DIR/public/analyst-reports"
+    echo "   ✅ Linked analyst-reports directory for public serving"
+fi
 
 echo ""
 echo "✨ Setup complete! Run 'npm install && npm run dev' to start the dev server."

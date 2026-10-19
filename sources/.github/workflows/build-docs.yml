@@ -1,0 +1,65 @@
+name: Build Documentation Site
+
+# Build-only validation of the Starlight docs site. It does NOT publish.
+#
+# The live GitHub Pages site is served from the `gh-pages` branch ("Deploy from
+# a branch" mode) and is published manually with `make docs-deploy`, which builds
+# locally and pushes `docs-site/dist` to that branch via `npx gh-pages`. This
+# workflow used to have a `deploy` job calling `actions/deploy-pages` from `main`,
+# but that can never succeed here: the `github-pages` environment's branch policy
+# only allows `gh-pages`, and `actions/deploy-pages` requires Pages to be in
+# "GitHub Actions" source mode anyway. Every run of that job on `main` failed
+# (2026-07 through 2026-09), so it was removed rather than left permanently red.
+# If publishing is ever moved into Actions, switch the Pages source to
+# "GitHub Actions" and allow `main` on the environment first.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'docs/**'
+      - 'docs-site/**'
+      - 'images/**'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'docs-site/**'
+      - 'images/**'
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: docs-site
+        run: npm ci
+
+      - name: Setup symlinks
+        working-directory: docs-site
+        # Use setup.sh as the single source of truth so the symlink set (top-level
+        # docs, docs/extensions/, docs/benchmarking/, and images) can't drift from
+        # local builds. An inline copy previously missed the extensions/benchmarking
+        # subfolders and broke the build when sidebar entries referenced them.
+        run: bash setup.sh
+
+      - name: Build documentation site
+        working-directory: docs-site
+        run: npm run build

@@ -9,6 +9,7 @@ import TestSets from './TestSets';
 import TestExecutions from './TestExecutions';
 import TestResults from './TestResults';
 import TestComparison from './TestComparison';
+import ToolsPanel from './tools-panel';
 import { appLayoutLabels } from '../common/labels';
 import useAppContext from '../../contexts/app';
 
@@ -31,6 +32,7 @@ const TestStudioLayout = (): React.JSX.Element => {
   const [activeTabId, setActiveTabId] = useState('sets');
   const [timePeriodHours, setTimePeriodHours] = useState(336); // Default: 2 weeks
   const [selectedTestItems, setSelectedTestItems] = useState<TestRunItem[]>([]);
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   // Handle URL tab parameter
   useEffect(() => {
@@ -87,10 +89,14 @@ const TestStudioLayout = (): React.JSX.Element => {
 
   return (
     <AppLayout
+      headerSelector="#top-navigation"
       ariaLabels={appLayoutLabels}
       navigation={<Navigation />}
       navigationOpen={navigationOpen}
       onNavigationChange={({ detail }) => setNavigationOpen(detail.open)}
+      tools={<ToolsPanel />}
+      toolsOpen={toolsOpen}
+      onToolsChange={({ detail }) => setToolsOpen(detail.open)}
       content={
         <ContentLayout
           header={

@@ -34,7 +34,7 @@ The LambdaHook option is available for the following pipeline steps in Pattern-1
 | **OCR** (Bedrock backend) | `ocr.model_id` | LLM-based OCR when `backend=bedrock` |
 | **Classification** | `classification.model` | Document type classification |
 | **Extraction** | `extraction.model` | Structured data extraction |
-| **Assessment** | `assessment.model` | Confidence scoring |
+| **Assessment** | `extraction.confidence.model` | Confidence scoring |
 | **Summarization** | `summarization.model` | Document summarization |
 
 ## Configuration
@@ -121,74 +121,6 @@ Your Lambda function receives a **Converse API-compatible** payload:
 
 3. **`context` field is added** — Indicates which pipeline step is calling (OCR, Classification, Extraction, Assessment, Summarization).
 
-### Page Output URI (`pageOutputUri`)
-
-The payload may include an optional top-level `pageOutputUri` field — a string containing the S3 prefix for the page's output directory in the **output bucket**.
-
-```json
-{
-  "modelId": "LambdaHook",
-  "messages": [...],
-  "system": [...],
-  "inferenceConfig": {...},
-  "context": "Classification",
-  "pageOutputUri": "s3://output-bucket/doc123/pages/page_001/"
-}
-```
-
-**What it represents:** `pageOutputUri` points to the directory in the output bucket where the previous pipeline step wrote its artifacts for this page (e.g., `s3://{outputBucket}/{input_key}/pages/{page_id}/`). Artifacts typically include the page image, OCR results, and other intermediate outputs.
-
-**How hooks can use it:** Your Lambda hook can use `pageOutputUri` to discover and read artifacts written by previous pipeline steps — such as page images, raw OCR text, or parsed structured data — directly from the output bucket. This is useful when your hook needs access to artifacts beyond what is included in the Converse API `messages` content.
-
-**Example — reading artifacts from `pageOutputUri`:**
-
-```python
-import json
-import boto3
-
-s3_client = boto3.client('s3')
-
-def lambda_handler(event, context):
-    """Hook that reads page artifacts from pageOutputUri."""
-
-    page_output_uri = event.get('pageOutputUri')
-
-    if page_output_uri:
-        # Parse the S3 prefix
-        # e.g. "s3://output-bucket/doc123/pages/page_001/"
-        without_protocol = page_output_uri.replace('s3://', '')
-        bucket = without_protocol.split('/')[0]
-        prefix = '/'.join(without_protocol.split('/')[1:])
-
-        # Read the page image
-        image_key = prefix + 'image.jpg'
-        image_obj = s3_client.get_object(Bucket=bucket, Key=image_key)
-        image_bytes = image_obj['Body'].read()
-
-        # Read raw OCR text
-        raw_text_key = prefix + 'rawText.json'
-        raw_text_obj = s3_client.get_object(Bucket=bucket, Key=raw_text_key)
-        raw_text = json.loads(raw_text_obj['Body'].read())
-
-        # Use the artifacts for your inference logic...
-        result = my_inference(image_bytes, raw_text)
-    else:
-        # pageOutputUri not provided — fall back to Converse API content
-        result = process_from_messages(event['messages'])
-
-    return {
-        "output": {
-            "message": {
-                "role": "assistant",
-                "content": [{"text": json.dumps(result)}]
-            }
-        },
-        "usage": {"inputTokens": 0, "outputTokens": 0}
-    }
-```
-
-**Backward compatibility:** Existing hooks can safely ignore the `pageOutputUri` field. If your hook only uses the Converse API payload content (`messages`, `system`, images via S3 references), no changes are needed — the field is purely additive and does not affect any other payload fields.
-
 ## Expected Response
 
 Your Lambda function must return a **Converse API-compatible** response:
@@ -223,7 +155,35 @@ Your Lambda function must return a **Converse API-compatible** response:
 | `usage.outputTokens` | No | Output token count (for cost tracking) |
 | `usage.totalTokens` | No | Total token count |
 
-If `usage` is not provided, zeros will be recorded for metering.
+If `usage` is not provided, zeros will be recorded for metering. `usage` values must be
+JSON numbers: metering sums and prices them, so non-numeric members (strings, booleans,
+lists, objects) are ignored rather than recorded.
+
+### Optional: structured OCR output (confidence + geometry)
+
+For the **OCR** step, a hook may additionally return a top-level `textractBlocks`
+object in **Amazon Textract response format** (a `DocumentMetadata` object plus a
+`Blocks` list of `PAGE`/`LINE`/`WORD` blocks with `Confidence` and normalized
+`Geometry.BoundingBox`). When present and non-empty, the OCR service persists it as
+the page's `rawText.json` and `textConfidence.json` instead of the default "no
+confidence data" placeholder, and folds it into the consolidated per-page
+`pageData.json` (so the confidence/geometry surfaces in the Web UI page Visual
+Editor). This carries real per-line/word OCR confidence into
+**Assessment** (the `{OCR_TEXT_CONFIDENCE}` prompt placeholder used for extraction
+confidence) and makes bounding-box **geometry** available for UI highlighting — the
+same data the native Textract backend produces. Text-only hooks are unaffected
+(they still get a text-only `pageData.json`). See the
+[consolidated OCR page data](../lib/idp_common_pkg/idp_common/ocr/README.md#consolidated-ocr-page-data-pagedatajson)
+docs for the `pageData.json` schema.
+
+`Confidence` and `Geometry` are **independently optional** on every block, so a hook
+contributes whatever its backend has. A block with no `Confidence` is reported as
+`N/A` in the confidence table (not `0.0`), so a geometry-only backend does not
+signal to the assessment model that every line was unreliable — see
+**GENAIIDP-cohere-parse-hook**, which has geometry but no confidence.
+
+A hook may also return `usage.pages` (in addition to / instead of token counts) to
+enable per-page cost metering. See **GENAIIDP-mistral-ocr-hook** for a worked example.
 
 ## Sample Lambda Functions
 
@@ -233,6 +193,9 @@ Ready-to-deploy sample Lambda hook functions are provided in [`samples/lambda-ho
 |--------|-------------|
 | **GENAIIDP-bedrock-proxy** | Forwards to Bedrock Converse API — use as a starting template for custom hooks with pre/post processing |
 | **GENAIIDP-sagemaker-hook** | Calls a SageMaker real-time inference endpoint — shows format conversion between Converse API and SageMaker |
+| **GENAIIDP-chandra-ocr-hook** | Calls the [Datalab Chandra OCR 2](https://github.com/datalab-to/chandra) hosted API for high-quality OCR — converts page images to structured Markdown, JSON, or HTML |
+| **GENAIIDP-mistral-ocr-hook** | Calls the hosted [Mistral OCR](https://mistral.ai/news/ocr-4/) API for high-quality OCR — returns Markdown **plus per-word confidence and bounding-box geometry** (Textract format) for explainability, with per-page cost metering. Fully serverless |
+| **GENAIIDP-cohere-parse-hook** | Calls the hosted [Cohere Parse](https://cohere.com/blog/parse) API for low-cost OCR ($1.50 / 1,000 pages) — converts Cohere's HTML tables to Markdown pipe tables and returns **table/figure bounding boxes**, but **no confidence scores** (Parse provides none). Fully serverless |
 
 Each sample includes:
 - Well-commented Python code with clearly marked customization points
@@ -246,6 +209,280 @@ sam build && sam deploy --guided --stack-name GENAIIDP-lambda-hooks
 ```
 
 See the [samples README](../samples/lambda-hook-inference/README.md) for full deployment instructions.
+
+## Chandra OCR Integration
+
+[Chandra OCR 2](https://github.com/datalab-to/chandra) by [Datalab](https://www.datalab.to) is a state-of-the-art VLM-based OCR model that converts images into structured Markdown, JSON, or HTML. It supports 90+ languages, math, tables, forms (including checkboxes), handwriting, and complex layouts.
+
+The **GENAIIDP-chandra-ocr-hook** sample integrates the Datalab hosted API with the LambdaHook feature for OCR. The Datalab API uses an asynchronous pattern:
+
+1. **Submit**: `POST /api/v1/convert` with the page image (multipart form) → returns a `request_check_url`
+2. **Poll**: `GET request_check_url` until `status: "complete"` → returns OCR result
+
+### Configuration
+
+```yaml
+ocr:
+  backend: bedrock
+  model_id: "LambdaHook"
+  model_lambda_hook_arn: "arn:aws:lambda:us-east-1:123456789012:function:GENAIIDP-chandra-ocr-hook"
+```
+
+### Deployment
+
+```bash
+cd samples/lambda-hook-inference/GENAIIDP-chandra-ocr-hook
+sam build
+sam deploy --guided \
+  --stack-name GENAIIDP-chandra-ocr-hook \
+  --parameter-overrides \
+    IDPWorkingBucket=<your-idp-working-bucket-name> \
+    CustomerManagedEncryptionKeyArn=<your-kms-key-arn> \
+    ChandraApiKey=<your-datalab-api-key>
+```
+
+**Getting an API key**: Sign up at [datalab.to](https://www.datalab.to) to get your API key.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHANDRA_API_KEY` | (required) | Datalab API key |
+| `CHANDRA_API_URL` | `https://www.datalab.to` | Datalab API base URL |
+| `OUTPUT_FORMAT` | `markdown` | Output format: `markdown`, `json`, or `html` |
+| `CONVERSION_MODE` | `accurate` | Quality mode: `fast`, `balanced`, or `accurate` |
+| `POLL_INTERVAL` | `3` | Seconds between polling attempts |
+| `MAX_POLL_ATTEMPTS` | `60` | Maximum polling attempts before timeout |
+
+### Local Testing
+
+Test locally before deploying:
+
+```bash
+cd samples/lambda-hook-inference/GENAIIDP-chandra-ocr-hook
+pip install pdf2image Pillow
+export CHANDRA_API_KEY="your-api-key"
+python test_local.py ../../insurance_package.pdf --pages 1,2
+```
+
+## Mistral OCR Integration
+
+[Mistral OCR 4](https://mistral.ai/news/ocr-4/) is a document-understanding model
+that returns markdown-structured text together with paragraph-level bounding boxes,
+typed-block classification, and per-page / per-word confidence scores across 170
+languages. The **GENAIIDP-mistral-ocr-hook** sample calls the hosted Mistral OCR
+API (`POST https://api.mistral.ai/v1/ocr`, Bearer-key auth) — fully serverless, no
+SageMaker endpoint or GPU required.
+
+This hook is the reference implementation of the [structured OCR output](#optional-structured-ocr-output-confidence--geometry)
+pattern: it requests `include_blocks=true` and `confidence_scores_granularity=word`,
+then translates Mistral's response into Amazon Textract block format (normalizing
+the pixel bounding boxes against page dimensions to Textract's 0–1 scale) and returns
+it under `textractBlocks`. The result: OCR confidence flows into Assessment and bounding-box
+geometry is available to the UI, just like the native Textract backend.
+
+### Configuration
+
+```yaml
+ocr:
+  backend: bedrock
+  model_id: "LambdaHook"
+  model_lambda_hook_arn: "arn:aws:lambda:us-east-1:123456789012:function:GENAIIDP-mistral-ocr-hook"
+```
+
+**Getting an API key**: Sign up at [console.mistral.ai](https://console.mistral.ai) to get your API key, provided as `MistralApiKey` at deploy time.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MISTRAL_API_KEY` | (required) | Mistral API key (Bearer token) |
+| `MISTRAL_API_URL` | `https://api.mistral.ai/v1/ocr` | Mistral OCR endpoint |
+| `MISTRAL_OCR_MODEL` | `mistral-ocr-latest` | OCR model id |
+| `INCLUDE_BLOCKS` | `true` | Request paragraph bounding boxes (geometry) |
+| `CONFIDENCE_GRANULARITY` | `word` | Confidence granularity: `word` or `page` |
+| `REQUEST_TIMEOUT` | `120` | Per-request timeout (seconds) |
+
+### Cost metering
+
+The hook returns `usage.pages` (from Mistral's `usage_info.pages_processed`). Add a
+pricing entry keyed on `lambda_hook/<function-name>` (Mistral OCR list price is
+$4 / 1,000 pages):
+
+```yaml
+  - name: lambda_hook/GENAIIDP-mistral-ocr-hook
+    units:
+      - name: pages
+        price: "0.004"
+```
+
+The `lambda_hook/` prefix matches the metering key the pipeline emits
+(`{context}/lambda_hook/{function-name}` — see
+[Metering and Cost Tracking](#metering-and-cost-tracking) below). A key of just
+`GENAIIDP-mistral-ocr-hook` also resolves, because the lookup walks the
+`/`-delimited suffixes of the metering key, but the prefixed form is what
+`config_library/pricing.yaml` ships and is unambiguous.
+
+### Local Testing
+
+```bash
+cd samples/lambda-hook-inference/GENAIIDP-mistral-ocr-hook
+pip install pdf2image Pillow
+export MISTRAL_API_KEY="your-api-key"
+python test_local.py ../../insurance_package.pdf --pages 1,2   # markdown + confidence + geometry
+python test_translation.py                                     # offline unit tests (no API/AWS)
+```
+
+## Cohere Parse Integration
+
+[Cohere Parse](https://cohere.com/blog/parse) (`parse-v5.0`) is a 2.3B-parameter
+vision language model that converts document images into Markdown, with tables as
+HTML and bounding boxes on tables and figures. The
+**GENAIIDP-cohere-parse-hook** sample calls the hosted Parse API
+(`POST https://api.cohere.com/v2/parse`, Bearer-key auth) — fully serverless, no
+SageMaker endpoint or GPU required. At **$1.50 / 1,000 pages** it is the cheapest
+of the OCR hooks (2.7× cheaper than Mistral OCR, the same list price as Textract
+`DetectDocumentText`).
+
+### What it does and does not give you
+
+| | Cohere Parse hook | Mistral OCR hook |
+|---|---|---|
+| OCR confidence | **none** — Parse returns no scores | per LINE and per WORD |
+| Geometry | tables and figures only | paragraph-level, all text |
+| Tables | HTML → converted to Markdown pipe tables | Markdown |
+| Languages | 9 stable, others zero-shot | 170 |
+| API accepts | images only (no PDF) | images or PDF |
+| List price / page | $0.0015 | $0.004 |
+
+**The confidence gap is the thing to decide on.** With no OCR scores, the
+`{OCR_TEXT_CONFIDENCE}` placeholder reports `N/A` per line, so
+[Assessment](./extraction-and-confidence.md) cannot ground extraction confidence
+in OCR quality — confidence comes from the assessment model alone. Don't tune HITL
+thresholds against OCR confidence on this backend. Use the Mistral hook if that
+grounding matters to you.
+
+**HTML tables are converted to Markdown by default.** Parse emits tables as HTML;
+the accelerator's deterministic table parser (agentic extraction) reads Markdown
+pipe tables. Without conversion every table would silently fall back to pure-LLM
+extraction and lose the row-completeness guarantee — so the hook converts them
+(`CONVERT_HTML_TABLES=false` to opt out). `colspan` is expanded into the first
+spanned column. A table Markdown *cannot* represent faithfully — one using
+`rowspan`, or a nested table — is left as raw HTML rather than converted: Markdown
+has no vertical span, so the covered rows would each lose a cell and every later
+value would shift one column left, landing under the wrong header with a plausible
+cell count and no warning. A pipe inside a cell becomes U+2502 (│) rather than an
+escaped `\|`, because the deterministic table parser splits on a bare `|` and would
+otherwise gain a phantom column and truncate the row's last value.
+
+**Geometry.** The hook requests `output_format=blocks` and attaches each table's
+or figure's normalized box to every line derived from it. The OCR service
+recognizes a box shared across lines as paragraph-level geometry
+(`geometrySource: "paragraph"`), so tables and figures highlight in the Web UI
+Visual Editor while body text has no overlay. Parse's pixel `bounding_box` is
+ignored — normalizing it would require source-image dimensions the response does
+not carry.
+
+### Configuration
+
+```yaml
+ocr:
+  backend: bedrock
+  model_id: "LambdaHook"
+  model_lambda_hook_arn: "arn:aws:lambda:us-east-1:123456789012:function:GENAIIDP-cohere-parse-hook"
+  # Required when moving an existing config from Textract to any OCR LambdaHook:
+  task_prompt: |
+    Extract all text from this document image. Preserve the layout, including
+    paragraphs, tables, and formatting.
+    {DOCUMENT_IMAGE}
+```
+
+⚠️ **Switching an existing profile from `backend: textract` needs `{DOCUMENT_IMAGE}`
+in `ocr.task_prompt`.** A Textract-based profile has no reason to carry the
+placeholder, and config validation rejects the save without it (correctly — the
+hook would receive no image). Note that the error message's suggestion to "remove
+task_prompt to use system defaults" does **not** resolve it when the stack's
+`default` profile is itself Textract-based, because the inherited default has no
+placeholder either. Set it explicitly, as above.
+
+**Getting an API key**: Sign up at [dashboard.cohere.com](https://dashboard.cohere.com/api-keys) to get your API key, provided as `CohereApiKey` at deploy time.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `COHERE_API_KEY` | (required) | Cohere API key (Bearer token) |
+| `COHERE_API_URL` | `https://api.cohere.com/v2/parse` | Parse endpoint |
+| `COHERE_PARSE_MODEL` | `parse-v5.0` | Parse model id |
+| `OUTPUT_FORMAT` | `blocks` | `blocks` (table/figure geometry) or `markdown` (no usable geometry) |
+| `CONVERT_HTML_TABLES` | `true` | Convert HTML tables to Markdown pipe tables |
+| `MAX_RETRIES` | `2` | Retry attempts for 429 / 5xx / timeout / connection errors |
+| `RETRY_BASE_DELAY` | `1` | Initial backoff in seconds, doubled per attempt |
+| `REQUEST_TIMEOUT` | `120` | Per-request timeout (seconds) |
+
+### Service limits and latency
+
+Images only (`document.type: "image_url"`; PDFs are not accepted — fine, since the
+accelerator sends page images), 20 MB / 50 megapixels per image, and a flat
+**500 requests/minute** for trial *and* production keys, hence the built-in
+429/5xx retry with exponential backoff. Trial keys are additionally capped at
+1,000 calls/month. Headers, footers and font hierarchy are not identified, and
+charts get a description rather than extracted data series.
+
+⚠️ **The hosted API is slow per page.** Measured on a bank statement page:
+**~50–90 seconds per page**, and it does not improve with a smaller image (150 dpi
+took 55.6s, 300 dpi took 50.9s — the cost is model time, not upload). The blog's
+"4.5 pages/second" is a *self-hosted 8×H100 vLLM* figure and does not describe the
+hosted API.
+
+Two consequences:
+
+- The pipeline waits up to 900s for a hook (see the LambdaHook read-timeout note
+  in the CHANGELOG). Older releases waited only 60s — the boto3 default — and
+  would abandon then re-invoke a slow hook, re-running the paid Cohere call while
+  the first was still going. If you are on a release before that fix, this hook
+  will not complete.
+- Cohere Parse's output is not deterministic: repeat calls on the same page
+  returned differing block counts and one transcribed an account number
+  differently between runs. Don't expect byte-identical OCR across runs.
+
+### Cost metering
+
+The hook returns `usage.pages` (from Parse's `meta.billed_units.pages`).
+`config_library/pricing.yaml` ships the entry:
+
+```yaml
+  - name: lambda_hook/GENAIIDP-cohere-parse-hook
+    units:
+      - name: pages
+        price: "0.0015"
+```
+
+The $1.50 / 1,000 pages figure comes from the [Parse announcement](https://cohere.com/blog/parse)
+("access Parse through the Cohere API for just $1.50 per 1,000 pages"), not from
+[cohere.com/pricing](https://cohere.com/pricing), which lists no per-page rate for
+Parse — it prices Model Vault per dedicated instance ($4.00/hr Medium, $7.00/hr XL).
+**Confirm the current rate against your own Cohere invoice**, and override this
+entry if you self-host on Model Vault or SageMaker, where cost is per
+instance-hour rather than per page.
+
+### Local Testing
+
+```bash
+cd samples/lambda-hook-inference/GENAIIDP-cohere-parse-hook
+export COHERE_API_KEY="your-api-key"
+python test_local.py ../../old_cal_license.png   # markdown + table/figure geometry
+python test_translation.py                       # offline unit tests (no API/AWS)
+```
+
+### Self-hosting option
+
+Parse is also offered on **Amazon SageMaker** and Cohere's Model Vault (it is not
+on Amazon Bedrock). A SageMaker deployment keeps document images inside your own
+account and VPC, and Cohere quotes 23–61% lower cost at sustained GPU
+utilization. That is a different hook — start from
+[`GENAIIDP-sagemaker-hook`](../samples/lambda-hook-inference/GENAIIDP-sagemaker-hook/)
+and reuse this hook's response translation.
 
 ## Example Implementations
 
@@ -343,10 +580,23 @@ The Lambda Hook includes built-in retry logic:
 
 Lambda Hook invocations are tracked in the document's metering data under:
 ```
-{context}/lambda_hook/{lambda_arn}
+{context}/lambda_hook/{function-name}
 ```
 
-For example: `Extraction/lambda_hook/arn:aws:lambda:us-east-1:123456789012:function:GENAIIDP-extractor`
+For example, a hook configured as
+`arn:aws:lambda:us-east-1:123456789012:function:GENAIIDP-extractor` is metered as
+`Extraction/lambda_hook/GENAIIDP-extractor`.
+
+Note that the key carries the **bare function name**, not the ARN you configured
+in `model_lambda_hook_arn` — the ARN is normalized down to the function name (any
+alias or version qualifier is dropped as well). This matters for pricing. An ARN
+embeds an account id and a region, so a pricing entry keyed on one could never
+ship as a default and would break the moment the stack was redeployed into another
+account. An ARN also delimits the function name with `:` rather than `/`, and the
+pricing lookup resolves a key by walking the `/`-delimited suffixes of the metering
+key — so an ARN-keyed metering row is simply unpriceable, and both shipped hook
+rows recorded a NULL cost until this was fixed
+(GitHub issue [#926](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/926)).
 
 Token usage from the Lambda response's `usage` field is included in metering for cost calculations.
 

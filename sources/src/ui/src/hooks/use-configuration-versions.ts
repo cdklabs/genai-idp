@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT-0
 
 import { useState, useEffect } from 'react';
-import { generateClient } from 'aws-amplify/api';
+import { generateClient } from '../api/client-shim';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import {
   getConfigVersions,
@@ -12,6 +12,7 @@ import {
 } from '../graphql/generated';
 import useConfiguration from './use-configuration';
 import useUserRole from './use-user-role';
+import { scopeAllows } from '../utils/config-scope';
 import type { ConfigVersion } from '../components/test-studio/utils/configVersionUtils';
 
 const client = generateClient();
@@ -46,11 +47,21 @@ const useConfigurationVersions = (): UseConfigurationVersionsReturn => {
   // Get updateConfiguration from useConfiguration hook
   const { updateConfiguration } = useConfiguration();
 
-  // Get user's config version scope for filtering
+  // Get user's configuration profile scope for filtering
   const { allowedConfigVersions } = useUserRole();
 
-  // Filter versions by user's allowed scope (null = unrestricted)
-  const versions = allowedConfigVersions ? allVersions.filter((v) => allowedConfigVersions.includes(v.versionName)) : allVersions;
+  // Filter versions by the user's allowed scope (null/empty = unrestricted).
+  //
+  // A scope entry may be a glob (`tenant-a_*`), so this must not be an exact
+  // `includes` — `scopeAllows` is the mirror of the server's `scope_allows` and
+  // is the only thing that knows which entries are patterns. An exact comparison
+  // leaves a caller scoped to a pattern with an EMPTY picklist and no way to
+  // reprocess a document, even though the server allows every profile the pattern
+  // covers. When the scope is unrestricted the unfiltered array is returned by
+  // identity, so consumers' effects do not see a new array on every render.
+  const versions = allowedConfigVersions?.length
+    ? allVersions.filter((v) => scopeAllows(allowedConfigVersions, v.versionName))
+    : allVersions;
 
   const fetchVersions = async (): Promise<void> => {
     setLoading(true);
@@ -76,7 +87,7 @@ const useConfigurationVersions = (): UseConfigurationVersionsReturn => {
       );
       setAllVersions(fetchedVersions);
     } catch (err: unknown) {
-      logger.error('Error fetching configuration versions:', err);
+      logger.error('Error fetching configuration profiles:', err);
       console.error('Full error object:', err);
       const graphqlErr = err as { errors?: { message: string }[]; message?: string };
       if (graphqlErr.errors) {
@@ -109,7 +120,7 @@ const useConfigurationVersions = (): UseConfigurationVersionsReturn => {
         custom: response.Custom,
       };
     } catch (err) {
-      logger.error('Error fetching configuration version:', err);
+      logger.error('Error fetching configuration profile:', err);
       throw err;
     }
   };
@@ -156,6 +167,20 @@ const useConfigurationVersions = (): UseConfigurationVersionsReturn => {
         return {
           success: false,
           error: `Cannot create version "${versionName}" - this name is already used by the active version. Please change the active version first or use a different name.`,
+        };
+      }
+
+      // Reject a name that is already taken. The backend's saveAsVersion path
+      // writes straight to the named version, so without this check a typo'd or
+      // reused name silently overwrites that profile's configuration with the
+      // one being saved. (The overwrite does cut a revision, so the previous
+      // state stays recoverable from revision history — but the user gets no
+      // warning at all, which is the bug.) Callers that legitimately want to
+      // replace an existing profile should use updateConfiguration instead.
+      if (versions.some((v) => v.versionName === versionName)) {
+        return {
+          success: false,
+          error: `A configuration profile named "${versionName}" already exists. Please choose a different name.`,
         };
       }
 
@@ -214,19 +239,23 @@ const useConfigurationVersions = (): UseConfigurationVersionsReturn => {
     fetchVersions();
   }, []);
 
-  // Utility function to generate version options for Select components
+  // Utility function to generate version options for Select components.
+  // Sorted alphanumerically by version name (numeric-aware, so "v2" sorts
+  // before "v10") to give the picklists a stable, predictable order.
   const getVersionOptions = (): VersionOption[] => {
-    return versions.map((version) => {
-      const truncatedDescription =
-        version.description && version.description.length > 50 ? `${version.description.substring(0, 50)}...` : version.description;
+    return [...versions]
+      .sort((a, b) => a.versionName.localeCompare(b.versionName, undefined, { numeric: true, sensitivity: 'base' }))
+      .map((version) => {
+        const truncatedDescription =
+          version.description && version.description.length > 50 ? `${version.description.substring(0, 50)}...` : version.description;
 
-      return {
-        label: version.isActive
-          ? `${version.versionName} (Active)${truncatedDescription ? ` - ${truncatedDescription}` : ''}`
-          : `${version.versionName}${truncatedDescription ? ` - ${truncatedDescription}` : ''}`,
-        value: version.versionName,
-      };
-    });
+        return {
+          label: version.isActive
+            ? `${version.versionName} (Active)${truncatedDescription ? ` - ${truncatedDescription}` : ''}`
+            : `${version.versionName}${truncatedDescription ? ` - ${truncatedDescription}` : ''}`,
+          value: version.versionName,
+        };
+      });
   };
 
   return {

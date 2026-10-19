@@ -2,11 +2,27 @@ import { useState, useCallback, useEffect } from 'react';
 import { produce } from 'immer';
 import {
   X_AWS_IDP_DOCUMENT_TYPE,
-  X_AWS_IDP_RULE_TYPE,
+  X_AWS_IDP_POLICY_TYPE,
   X_AWS_IDP_EXAMPLES,
   X_AWS_IDP_DOCUMENT_NAME_REGEX,
   X_AWS_IDP_PAGE_CONTENT_REGEX,
+  X_AWS_IDP_EXTRACTION_MODEL,
+  X_AWS_IDP_EXTRACTION_ESCALATION_MODEL,
+  X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT,
+  X_AWS_IDP_EXTRACTION_TASK_PROMPT,
+  X_AWS_IDP_EXCLUDE_FROM_PROCESSING,
+  X_AWS_IDP_EXCLUSION_REASON,
+  X_AWS_IDP_INSTANCE_ARRAY,
+  X_AWS_IDP_MULTI_INSTANCE,
+  X_AWS_IDP_ALLOW_INTEGRATED_LISTS,
+  X_AWS_IDP_EVALUATION_MATCH_THRESHOLD,
+  SUBSCHEMA_KEYWORDS,
+  SUBSCHEMA_MAP_KEYWORDS,
+  DESIGNER_ONLY_KEYS,
+  REF_INCOMPATIBLE_KEYWORDS,
+  TYPE_OBJECT,
 } from '../constants/schemaConstants';
+import { refNode, declaresNonObjectShape, nonObjectBodyKeywords } from '../components/json-schema-builder/utils/schemaHelpers';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -28,9 +44,15 @@ interface SchemaClass {
   name: string;
   description?: string;
   attributes: {
-    type: string;
+    // Optional: a definition that describes its own shape — an alias or an enumeration —
+    // declares no type, and inventing one for it publishes a contradiction.
+    type?: string;
     properties: Record<string, JsonSchemaProperty>;
     required: string[];
+    // A `$defs` entry does not have to be an object, and the keywords that describe a
+    // scalar or enumerated one — `enum`, `pattern`, `format`, `minimum`, … — have no
+    // dedicated slot. They ride here so the definition survives a load-and-save.
+    [key: string]: unknown;
   };
   [key: string]: unknown;
 }
@@ -63,13 +85,54 @@ interface UseSchemaDesignerReturn {
   renameAttribute: (classId: string, oldName: string, newName: string) => boolean;
   removeAttribute: (classId: string, attributeName: string) => void;
   reorderAttributes: (classId: string, oldIndex: number, newIndex: number) => void;
-  exportSchema: () => JsonSchemaProperty[] | null;
+  exportSchema: (classNameFilter?: string[]) => JsonSchemaProperty[] | null;
   importSchema: (importedClasses: SchemaClass[]) => void;
   resetDirty: () => void;
   getSelectedClass: () => SchemaClass | undefined;
   getSelectedAttribute: () => JsonSchemaProperty | undefined;
   clearAllClasses: () => void;
 }
+
+/**
+ * Extract a human-readable name from a JSON Schema $id field.
+ * If $id is a URL (e.g., "https://schema.example.com/BankCheck"), returns the last path segment ("BankCheck").
+ * If $id is already a simple name, returns it as-is.
+ * Returns undefined if $id is falsy.
+ */
+const extractNameFromId = (id: string | undefined): string | undefined => {
+  if (!id) return undefined;
+  // If it looks like a URL, extract the last path segment
+  if (id.includes('://') || id.startsWith('/')) {
+    const segments = id.split('/').filter(Boolean);
+    return segments.length > 0 ? segments[segments.length - 1] : id;
+  }
+  return id;
+};
+
+/**
+ * The class body for a `$defs` entry, preserving what the entry says about itself.
+ *
+ * A definition does not have to be an object: `{"type": "string", "enum": [...]}` is a
+ * legal `$defs` entry, and one the backend reads correctly — both `deref_schema` and
+ * `bedrock/tool_schema.py` follow a `$ref` and take the target's own `type`. Building
+ * every entry as `{type: 'object', properties}` therefore destroyed such a definition
+ * the first time its class was opened in the Schema Builder and saved: its `type`, its
+ * `enum` and any constraint keywords were gone, and it was rewritten as an empty object.
+ */
+const defClassBody = (defSchema: JsonSchemaProperty, properties: Record<string, JsonSchemaProperty>): SchemaClass['attributes'] => {
+  const { type, properties: _properties, required, description: _description, ...constraints } = defSchema;
+  // No type is invented for a definition that says it is something else — an alias, an
+  // enumeration, an array, a constrained string. Defaulting here rather than at export time
+  // is still a default: the body would reach `exportSchema` already carrying
+  // `type: 'object'`, and the pointer or the constraint would be published beside a type
+  // contradicting it.
+  return {
+    ...(type ? { type } : declaresNonObjectShape(constraints) ? {} : { type: TYPE_OBJECT }),
+    ...constraints,
+    properties,
+    required: required || [],
+  };
+};
 
 const extractInlineObjectsToClasses = (
   properties: Record<string, JsonSchemaProperty>,
@@ -100,12 +163,14 @@ const extractInlineObjectsToClasses = (
         },
       });
 
-      // Replace inline object with $ref
-      // Keep type: 'object' for UI purposes, but remove properties and required
-      const { properties: _props, required: _required, ...otherProps } = propSchema;
+      // Replace the inline object with a reference to the class just extracted.
+      // `type`, `properties` and `required` all described the inline object and now
+      // live on the `$defs` entry, so the referencing node keeps none of them — the
+      // same shape both reference-picking routes in the UI write (#957).
+      const { type: _type, properties: _props, required: _required, ...otherProps } = propSchema;
       updatedProperties[propName] = {
         ...otherProps,
-        $ref: `#/$defs/${className}`,
+        ...refNode(className),
       };
     } else if (propSchema.type === 'array' && propSchema.items) {
       // Check if array items are inline objects
@@ -137,9 +202,7 @@ const extractInlineObjectsToClasses = (
         // Replace inline object with $ref
         updatedProperties[propName] = {
           ...propSchema,
-          items: {
-            $ref: `#/$defs/${className}`,
-          },
+          items: refNode(className),
         };
       } else {
         updatedProperties[propName] = propSchema;
@@ -195,7 +258,11 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
       // Convert root schema to document type class
       const docTypeClass: SchemaClass = {
         id: `class-${timestamp}-doc-${schemaIndex}`,
-        name: (schema.$id as string) || (schema[X_AWS_IDP_DOCUMENT_TYPE] as string) || `DocumentType${schemaIndex + 1}`,
+        name:
+          (schema.title as string) ||
+          extractNameFromId(schema.$id as string) ||
+          (schema[X_AWS_IDP_DOCUMENT_TYPE] as string) ||
+          `DocumentType${schemaIndex + 1}`,
         description: schema.description,
         [X_AWS_IDP_DOCUMENT_TYPE]: true,
         attributes: {
@@ -208,6 +275,32 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
         // Preserve regex fields if they exist in the schema
         ...(schema[X_AWS_IDP_DOCUMENT_NAME_REGEX] ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: schema[X_AWS_IDP_DOCUMENT_NAME_REGEX] } : {}),
         ...(schema[X_AWS_IDP_PAGE_CONTENT_REGEX] ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: schema[X_AWS_IDP_PAGE_CONTENT_REGEX] } : {}),
+        // Preserve extraction model override if it exists in the schema
+        ...(schema[X_AWS_IDP_EXTRACTION_MODEL] ? { [X_AWS_IDP_EXTRACTION_MODEL]: schema[X_AWS_IDP_EXTRACTION_MODEL] } : {}),
+        // Preserve escalation model override if it exists in the schema
+        ...(schema[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]
+          ? { [X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]: schema[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL] }
+          : {}),
+        // Preserve extraction prompt overrides if they exist in the schema
+        ...(schema[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]
+          ? { [X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]: schema[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT] }
+          : {}),
+        ...(schema[X_AWS_IDP_EXTRACTION_TASK_PROMPT]
+          ? { [X_AWS_IDP_EXTRACTION_TASK_PROMPT]: schema[X_AWS_IDP_EXTRACTION_TASK_PROMPT] }
+          : {}),
+        // Preserve excluded-class flags if they exist in the schema
+        ...(schema[X_AWS_IDP_EXCLUDE_FROM_PROCESSING]
+          ? { [X_AWS_IDP_EXCLUDE_FROM_PROCESSING]: schema[X_AWS_IDP_EXCLUDE_FROM_PROCESSING] }
+          : {}),
+        ...(schema[X_AWS_IDP_EXCLUSION_REASON] ? { [X_AWS_IDP_EXCLUSION_REASON]: schema[X_AWS_IDP_EXCLUSION_REASON] } : {}),
+        ...(schema[X_AWS_IDP_INSTANCE_ARRAY] ? { [X_AWS_IDP_INSTANCE_ARRAY]: schema[X_AWS_IDP_INSTANCE_ARRAY] } : {}),
+        ...(schema[X_AWS_IDP_MULTI_INSTANCE] ? { [X_AWS_IDP_MULTI_INSTANCE]: schema[X_AWS_IDP_MULTI_INSTANCE] } : {}),
+        ...(schema[X_AWS_IDP_ALLOW_INTEGRATED_LISTS]
+          ? { [X_AWS_IDP_ALLOW_INTEGRATED_LISTS]: schema[X_AWS_IDP_ALLOW_INTEGRATED_LISTS] }
+          : {}),
+        ...(schema[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD] !== undefined
+          ? { [X_AWS_IDP_EVALUATION_MATCH_THRESHOLD]: schema[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD] }
+          : {}),
       };
       allClasses.push(docTypeClass);
 
@@ -229,11 +322,7 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
               name: defName,
               description: defSchema.description,
               [X_AWS_IDP_DOCUMENT_TYPE]: false,
-              attributes: {
-                type: 'object',
-                properties: extractedDefProperties,
-                required: defSchema.required || [],
-              },
+              attributes: defClassBody(defSchema, extractedDefProperties),
             };
             processedDefs.set(defName, defClass);
           }
@@ -263,7 +352,7 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
   const mainClassId = `class-${timestamp}`;
   const mainClass: SchemaClass = {
     id: mainClassId,
-    name: jsonSchema.$id || 'MainClass',
+    name: (jsonSchema.title as string) || extractNameFromId(jsonSchema.$id as string) || 'MainClass',
     description: jsonSchema.description,
     [X_AWS_IDP_DOCUMENT_TYPE]: true, // Mark as document type for backward compat
     attributes: {
@@ -276,6 +365,32 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
     // Preserve regex fields if they exist in the schema
     ...(jsonSchema[X_AWS_IDP_DOCUMENT_NAME_REGEX] ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: jsonSchema[X_AWS_IDP_DOCUMENT_NAME_REGEX] } : {}),
     ...(jsonSchema[X_AWS_IDP_PAGE_CONTENT_REGEX] ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: jsonSchema[X_AWS_IDP_PAGE_CONTENT_REGEX] } : {}),
+    // Preserve extraction model override if it exists in the schema
+    ...(jsonSchema[X_AWS_IDP_EXTRACTION_MODEL] ? { [X_AWS_IDP_EXTRACTION_MODEL]: jsonSchema[X_AWS_IDP_EXTRACTION_MODEL] } : {}),
+    // Preserve escalation model override if it exists in the schema
+    ...(jsonSchema[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]
+      ? { [X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]: jsonSchema[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL] }
+      : {}),
+    // Preserve extraction prompt overrides if they exist in the schema
+    ...(jsonSchema[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]
+      ? { [X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]: jsonSchema[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT] }
+      : {}),
+    ...(jsonSchema[X_AWS_IDP_EXTRACTION_TASK_PROMPT]
+      ? { [X_AWS_IDP_EXTRACTION_TASK_PROMPT]: jsonSchema[X_AWS_IDP_EXTRACTION_TASK_PROMPT] }
+      : {}),
+    // Preserve excluded-class flags if they exist in the schema
+    ...(jsonSchema[X_AWS_IDP_EXCLUDE_FROM_PROCESSING]
+      ? { [X_AWS_IDP_EXCLUDE_FROM_PROCESSING]: jsonSchema[X_AWS_IDP_EXCLUDE_FROM_PROCESSING] }
+      : {}),
+    ...(jsonSchema[X_AWS_IDP_EXCLUSION_REASON] ? { [X_AWS_IDP_EXCLUSION_REASON]: jsonSchema[X_AWS_IDP_EXCLUSION_REASON] } : {}),
+    ...(jsonSchema[X_AWS_IDP_INSTANCE_ARRAY] ? { [X_AWS_IDP_INSTANCE_ARRAY]: jsonSchema[X_AWS_IDP_INSTANCE_ARRAY] } : {}),
+    ...(jsonSchema[X_AWS_IDP_MULTI_INSTANCE] ? { [X_AWS_IDP_MULTI_INSTANCE]: jsonSchema[X_AWS_IDP_MULTI_INSTANCE] } : {}),
+    ...(jsonSchema[X_AWS_IDP_ALLOW_INTEGRATED_LISTS]
+      ? { [X_AWS_IDP_ALLOW_INTEGRATED_LISTS]: jsonSchema[X_AWS_IDP_ALLOW_INTEGRATED_LISTS] }
+      : {}),
+    ...(jsonSchema[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD] !== undefined
+      ? { [X_AWS_IDP_EVALUATION_MATCH_THRESHOLD]: jsonSchema[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD] }
+      : {}),
   };
   classes.push(mainClass);
 
@@ -292,11 +407,7 @@ const convertJsonSchemaToClasses = (jsonSchema: JsonSchemaProperty | JsonSchemaP
         name: defName,
         description: defSchema.description,
         [X_AWS_IDP_DOCUMENT_TYPE]: false, // Shared class, not a document type
-        attributes: {
-          type: 'object',
-          properties: extractedDefProperties,
-          required: defSchema.required || [],
-        },
+        attributes: defClassBody(defSchema, extractedDefProperties),
       });
     });
   }
@@ -422,6 +533,24 @@ export const useSchemaDesigner = (
       produce(prev, (draft) => {
         const cls = draft.find((c) => c.id === classId);
         if (cls) {
+          // Giving a definition that is not an object a property converts it to one. The
+          // alternative is a body that says `type: 'string'` — or carries an `enum`, or a
+          // `$ref` — and `properties` at the same time: the corruption the round-trip fix
+          // exists to prevent, arrived at from the editor instead of the importer.
+          //
+          // The condition has to cover a body that declares no type at all, which is the
+          // state preserved for an alias or an enumeration, and not only one that declares
+          // a non-object type. Otherwise the `$ref` case is worse than a contradiction: the
+          // sanitizer strips `properties` beside a `$ref`, so the attribute just added
+          // disappears on export with nothing said.
+          //
+          // Every keyword the object allow-list does not cover described the old shape, so
+          // dropping exactly those is complete by construction — including the `$ref`,
+          // which is what makes this a conversion rather than a silent no-op.
+          if (declaresNonObjectShape(cls.attributes)) {
+            nonObjectBodyKeywords(cls.attributes).forEach((keyword) => delete cls.attributes[keyword]);
+            cls.attributes.type = TYPE_OBJECT;
+          }
           cls.attributes.properties[attributeName] = newAttribute;
         }
       }),
@@ -536,36 +665,52 @@ export const useSchemaDesigner = (
   }, []);
 
   const sanitizeAttributeSchema = useCallback((attribute: unknown): JsonSchemaProperty => {
+    // `oneOf` and friends hold a list of subschemas, so the walk has to descend into
+    // arrays as well as objects.
+    if (Array.isArray(attribute)) {
+      return attribute.map((entry) => sanitizeAttributeSchema(entry)) as unknown as JsonSchemaProperty;
+    }
+
     if (!attribute || typeof attribute !== 'object') {
       return attribute as JsonSchemaProperty;
     }
 
     const attrObj = attribute as JsonSchemaProperty;
-    const { id: _id, name: _name, ...rest } = attrObj;
-    const sanitized: JsonSchemaProperty = { ...rest };
+    const sanitized: JsonSchemaProperty = { ...attrObj };
+    DESIGNER_ONLY_KEYS.forEach((key) => delete sanitized[key]);
 
-    // CRITICAL FIX: Remove 'type' when '$ref' is present (invalid JSON Schema)
-    // When a $ref is used, no other schema keywords (type, properties, etc.) should be present
+    // A `$ref` delegates the type designation to the referenced `$defs` entry, so the
+    // keywords that would contradict it go with it — and only those. This runs over every
+    // node of every export, hand-authored ones included, where `minProperties`,
+    // `maxProperties` and `additionalProperties` beside a `$ref` are the documented
+    // draft-2020-12 way to constrain a reference: nothing reads them, they contradict
+    // nothing, and deleting them would lose authored intent. `refAttributeUpdates` clears
+    // the wider set because it is a *write*, where stale inline-object state is the point.
     if (sanitized.$ref) {
-      delete sanitized.type;
-      delete sanitized.properties;
-      delete sanitized.required;
+      REF_INCOMPATIBLE_KEYWORDS.forEach((keyword) => delete sanitized[keyword]);
     }
 
-    if (sanitized.items) {
-      sanitized.items = sanitizeAttributeSchema(sanitized.items);
-    }
+    // Recursing into `items` and `properties` alone left every composition, conditional
+    // and `contains` branch unsanitized, so a `$ref`-beside-`type` one level down went out
+    // as written — and a designer key in a `$defs` body went out with it.
+    SUBSCHEMA_KEYWORDS.forEach((keyword) => {
+      const value = sanitized[keyword];
+      if (value && typeof value === 'object') {
+        sanitized[keyword] = sanitizeAttributeSchema(value);
+      }
+    });
 
-    if (sanitized.properties) {
-      const sanitizedProperties = Object.entries(sanitized.properties).reduce(
+    SUBSCHEMA_MAP_KEYWORDS.forEach((keyword) => {
+      const map = sanitized[keyword];
+      if (!map || typeof map !== 'object') return;
+      sanitized[keyword] = Object.entries(map as Record<string, JsonSchemaProperty>).reduce(
         (acc: Record<string, JsonSchemaProperty>, [propName, propValue]) => {
           acc[propName] = sanitizeAttributeSchema(propValue);
           return acc;
         },
         {},
       );
-      sanitized.properties = sanitizedProperties;
-    }
+    });
 
     return sanitized;
   }, []);
@@ -576,115 +721,131 @@ export const useSchemaDesigner = (
       console.log(`  findReferencedClasses for: ${rootClass.name}`);
       const referenced: SchemaClass[] = [];
 
-      const processProperties = (properties: Record<string, JsonSchemaProperty>) => {
-        Object.entries(properties || {}).forEach(([attrName, attr]) => {
-          // Check direct $ref
-          if (attr.$ref) {
-            const refName = attr.$ref.replace('#/$defs/', '');
-            console.log(`    Found $ref in "${attrName}": ${attr.$ref} -> looking for class: "${refName}"`);
+      const addRef = (ref: unknown) => {
+        if (typeof ref !== 'string' || !ref) return;
+        const refName = ref.replace('#/$defs/', '');
+        if (visited.has(refName)) return;
 
-            if (!visited.has(refName)) {
-              const refClass = classes.find((c) => c.name === refName);
-              console.log(`      Class found? ${!!refClass}, isDocType? ${refClass?.[X_AWS_IDP_DOCUMENT_TYPE]}`);
+        const refClass = classes.find((c) => c.name === refName);
+        if (!refClass) {
+          console.log(
+            `      ❌ No class found with name "${refName}". Available classes:`, // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Controlled input from schema validation, not user input
+            classes.map((c) => c.name),
+          );
+          return;
+        }
 
-              if (!refClass) {
-                console.log(
-                  `      ❌ No class found with name "${refName}". Available classes:`, // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Controlled input from schema validation, not user input
-                  classes.map((c) => c.name),
-                );
-              } else {
-                console.log(`      ✅ Adding "${refName}" to referenced classes (isDocType: ${refClass[X_AWS_IDP_DOCUMENT_TYPE]})`);
-                visited.add(refName);
-                referenced.push(refClass);
-                // Recursively find references in this class
-                referenced.push(...findReferencedClasses(refClass, visited));
-              }
-            } else {
-              console.log(`      Already visited "${refName}"`);
-            }
-          }
+        visited.add(refName);
+        referenced.push(refClass);
+        // Recursively find references in this class
+        referenced.push(...findReferencedClasses(refClass, visited));
+      };
 
-          // Check array items $ref
-          if (attr.items?.$ref) {
-            const refName = attr.items.$ref.replace('#/$defs/', '');
-            console.log(`    Found items.$ref in "${attrName}": ${attr.items.$ref} -> looking for class: "${refName}"`);
+      /**
+       * Every `$ref` reachable from one node, wherever it sits: on the node itself, on
+       * an array's `items`, inside a composition or conditional branch, or on a nested
+       * inline object's properties.
+       *
+       * The branches matter because the `contains` builder, and the composition and
+       * conditional editors, can each point one at a shared class. A class reached only
+       * that way was left out of `$defs`, which publishes a schema whose own pointer
+       * resolves to nothing.
+       */
+      const collectRefs = (node: unknown) => {
+        if (Array.isArray(node)) {
+          node.forEach(collectRefs);
+          return;
+        }
+        if (!node || typeof node !== 'object') return;
 
-            if (!visited.has(refName)) {
-              const refClass = classes.find((c) => c.name === refName);
-              console.log(`      Class found? ${!!refClass}, isDocType? ${refClass?.[X_AWS_IDP_DOCUMENT_TYPE]}`);
-
-              if (!refClass) {
-                console.log(
-                  `      ❌ No class found with name "${refName}". Available classes:`, // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Controlled input from schema validation, not user input
-                  classes.map((c) => c.name),
-                );
-              } else {
-                console.log(`      ✅ Adding "${refName}" to referenced classes (isDocType: ${refClass[X_AWS_IDP_DOCUMENT_TYPE]})`);
-                visited.add(refName);
-                referenced.push(refClass);
-                referenced.push(...findReferencedClasses(refClass, visited));
-              }
-            } else {
-              console.log(`      Already visited "${refName}"`);
-            }
-          }
-
-          // Check nested object properties
-          if (attr.type === 'object' && attr.properties) {
-            processProperties(attr.properties);
-          }
+        const obj = node as JsonSchemaProperty;
+        addRef(obj.$ref);
+        SUBSCHEMA_KEYWORDS.forEach((keyword) => collectRefs(obj[keyword]));
+        SUBSCHEMA_MAP_KEYWORDS.forEach((keyword) => {
+          const map = obj[keyword];
+          if (map && typeof map === 'object') Object.values(map).forEach(collectRefs);
         });
       };
 
-      processProperties(rootClass.attributes.properties);
+      // The whole class body, not only its properties. A `$defs` entry may be an alias
+      // (`{"$ref": …}`) or an array of a shared class (`{"type": "array", "items":
+      // {"$ref": …}}`), and a reference sitting there is as much part of the schema as
+      // one on a property. Walking only `properties` left the target out of `$defs`.
+      collectRefs(rootClass.attributes);
       console.log(`  Total referenced classes found: ${referenced.length}`);
       return referenced;
     },
     [classes],
   );
 
-  const exportSchema = useCallback((): JsonSchemaProperty[] | null => {
-    if (classes.length === 0) {
-      return null;
-    }
+  // Export the schema as an array of per-document-type JSON Schemas. Pass
+  // `classNameFilter` (a list of document-type class names) to export only those
+  // document types (each still carries its own referenced $defs); omit it to
+  // export every document type — the behavior the live onChange/preview path uses.
+  const exportSchema = useCallback(
+    (classNameFilter?: string[]): JsonSchemaProperty[] | null => {
+      if (classes.length === 0) {
+        return null;
+      }
 
-    // Find all document type classes
-    const docTypeClasses = classes.filter((cls) => cls[X_AWS_IDP_DOCUMENT_TYPE] === true);
+      // Find all document type classes
+      const docTypeClasses = classes.filter((cls) => cls[X_AWS_IDP_DOCUMENT_TYPE] === true);
 
-    // If no document types, fall back to treating first class as document type (backward compat)
-    const baseClasses = docTypeClasses.length > 0 ? docTypeClasses : [classes[0]];
+      // If no document types, fall back to treating first class as document type (backward compat)
+      let baseClasses = docTypeClasses.length > 0 ? docTypeClasses : [classes[0]];
 
-    console.log('=== exportSchema DEBUG ===');
-    console.log('Total classes:', classes.length);
-    console.log(
-      'All class names and flags:',
-      classes.map((c) => ({
-        name: c.name,
-        isDocType: c[X_AWS_IDP_DOCUMENT_TYPE],
-        properties: Object.keys(c.attributes.properties || {}),
-      })),
-    );
-    console.log(
-      'Document type classes:',
-      baseClasses.map((c) => c.name),
-    );
+      // Optionally restrict to a caller-selected subset of document types.
+      if (classNameFilter && classNameFilter.length > 0) {
+        const wanted = new Set(classNameFilter);
+        const filtered = baseClasses.filter((cls) => wanted.has(cls.name));
+        if (filtered.length > 0) {
+          baseClasses = filtered;
+        }
+      }
 
-    // Build schema for each document type
-    const schemas = baseClasses.map((docTypeClass) => {
-      console.log(`\n--- Building schema for: ${docTypeClass.name} ---`);
+      // Build schema for each document type
+      const schemas = baseClasses.map((docTypeClass) => {
+        // Find classes referenced by this document type
+        const referencedClasses = findReferencedClasses(docTypeClass);
 
-      // Find classes referenced by this document type
-      const referencedClasses = findReferencedClasses(docTypeClass);
-      console.log(
-        'Referenced classes found:',
-        referencedClasses.map((c) => c.name),
-      );
+        // Build $defs only for referenced classes
+        const defs: Record<string, JsonSchemaProperty> = {};
+        referencedClasses.forEach((cls) => {
+          const sanitizedProps = Object.entries(cls.attributes.properties || {}).reduce(
+            (acc: Record<string, JsonSchemaProperty>, [attrName, attrValue]) => {
+              acc[attrName] = sanitizeAttributeSchema(attrValue);
+              return acc;
+            },
+            {},
+          );
 
-      // Build $defs only for referenced classes
-      const defs: Record<string, JsonSchemaProperty> = {};
-      referencedClasses.forEach((cls) => {
-        console.log(`Adding to $defs: ${cls.name}`);
-        const sanitizedProps = Object.entries(cls.attributes.properties || {}).reduce(
+          // What the definition says about itself, not an assumption that it is an
+          // object. A scalar or enumerated `$defs` entry keeps its own `type` and
+          // constraint keywords, and is written back without an empty `properties` map it
+          // never had.
+          //
+          // Two things this must not do. It must not invent `type: 'object'` for a body
+          // that already describes its own shape — an alias would get a `$ref` beside a
+          // contradictory `type`, and a typeless `{"enum": [...]}` would get one matching
+          // nothing. And it must not hand the body's own keywords through unexamined: they
+          // are subschemas like any other, so they go through the sanitizer, which is what
+          // keeps a designer key or a nested `$ref`-beside-`type` out of `$defs`.
+          const { type: bodyType, properties: _bodyProps, required: bodyRequired, ...bodyConstraints } = cls.attributes;
+          const declaredType = typeof bodyType === 'string' && bodyType ? bodyType : null;
+          const definitionType = declaredType ?? (declaresNonObjectShape(bodyConstraints) ? null : TYPE_OBJECT);
+          const carriesProperties = definitionType === TYPE_OBJECT || Object.keys(sanitizedProps).length > 0;
+
+          defs[cls.name] = sanitizeAttributeSchema({
+            ...(definitionType ? { type: definitionType } : {}),
+            ...(cls.description ? { description: cls.description } : {}),
+            ...(bodyConstraints as Record<string, unknown>),
+            ...(carriesProperties ? { properties: sanitizedProps } : {}),
+            ...(Array.isArray(bodyRequired) && bodyRequired.length > 0 ? { required: bodyRequired } : {}),
+          });
+        });
+
+        // Build main schema properties
+        const sanitizedProps = Object.entries(docTypeClass.attributes.properties || {}).reduce(
           (acc: Record<string, JsonSchemaProperty>, [attrName, attrValue]) => {
             acc[attrName] = sanitizeAttributeSchema(attrValue);
             return acc;
@@ -692,68 +853,60 @@ export const useSchemaDesigner = (
           {},
         );
 
-        defs[cls.name] = {
+        // Use conditional field names based on schema type
+        const typeField = isRuleSchema ? X_AWS_IDP_POLICY_TYPE : X_AWS_IDP_DOCUMENT_TYPE;
+        const propertiesField = isRuleSchema ? 'rule_properties' : 'properties';
+
+        const result: JsonSchemaProperty = {
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          $id: docTypeClass.name,
+          [typeField]: docTypeClass.name,
           type: 'object',
-          ...(cls.description ? { description: cls.description } : {}),
-          properties: sanitizedProps,
-          ...(cls.attributes.required?.length > 0 ? { required: cls.attributes.required } : {}),
+          ...(docTypeClass.description ? { description: docTypeClass.description } : {}),
+          [propertiesField]: sanitizedProps,
+          ...(docTypeClass.attributes.required?.length > 0 ? { required: docTypeClass.attributes.required } : {}),
+          ...(Object.keys(defs).length > 0 ? { $defs: defs } : {}),
+          ...(Array.isArray(docTypeClass[X_AWS_IDP_EXAMPLES]) && docTypeClass[X_AWS_IDP_EXAMPLES].length > 0
+            ? { [X_AWS_IDP_EXAMPLES]: docTypeClass[X_AWS_IDP_EXAMPLES] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_DOCUMENT_NAME_REGEX]
+            ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: docTypeClass[X_AWS_IDP_DOCUMENT_NAME_REGEX] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX]
+            ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EXTRACTION_MODEL] ? { [X_AWS_IDP_EXTRACTION_MODEL]: docTypeClass[X_AWS_IDP_EXTRACTION_MODEL] } : {}),
+          ...(docTypeClass[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]
+            ? { [X_AWS_IDP_EXTRACTION_ESCALATION_MODEL]: docTypeClass[X_AWS_IDP_EXTRACTION_ESCALATION_MODEL] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]
+            ? { [X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT]: docTypeClass[X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EXTRACTION_TASK_PROMPT]
+            ? { [X_AWS_IDP_EXTRACTION_TASK_PROMPT]: docTypeClass[X_AWS_IDP_EXTRACTION_TASK_PROMPT] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EXCLUDE_FROM_PROCESSING]
+            ? { [X_AWS_IDP_EXCLUDE_FROM_PROCESSING]: docTypeClass[X_AWS_IDP_EXCLUDE_FROM_PROCESSING] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EXCLUSION_REASON] ? { [X_AWS_IDP_EXCLUSION_REASON]: docTypeClass[X_AWS_IDP_EXCLUSION_REASON] } : {}),
+          ...(docTypeClass[X_AWS_IDP_INSTANCE_ARRAY] ? { [X_AWS_IDP_INSTANCE_ARRAY]: docTypeClass[X_AWS_IDP_INSTANCE_ARRAY] } : {}),
+          ...(docTypeClass[X_AWS_IDP_MULTI_INSTANCE] ? { [X_AWS_IDP_MULTI_INSTANCE]: docTypeClass[X_AWS_IDP_MULTI_INSTANCE] } : {}),
+          ...(docTypeClass[X_AWS_IDP_ALLOW_INTEGRATED_LISTS]
+            ? { [X_AWS_IDP_ALLOW_INTEGRATED_LISTS]: docTypeClass[X_AWS_IDP_ALLOW_INTEGRATED_LISTS] }
+            : {}),
+          ...(docTypeClass[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD] !== undefined
+            ? { [X_AWS_IDP_EVALUATION_MATCH_THRESHOLD]: docTypeClass[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD] }
+            : {}),
         };
+
+        return result;
       });
 
-      console.log('Final $defs keys:', Object.keys(defs));
-      console.log('$defs will be added?', Object.keys(defs).length > 0);
-
-      // Build main schema properties
-      const sanitizedProps = Object.entries(docTypeClass.attributes.properties || {}).reduce(
-        (acc: Record<string, JsonSchemaProperty>, [attrName, attrValue]) => {
-          // Check if this attribute has a $ref
-          if (attrValue.$ref) {
-            console.log(`Property "${attrName}" has $ref: ${attrValue.$ref}`);
-          }
-          if (attrValue.items?.$ref) {
-            console.log(`Property "${attrName}" array items has $ref: ${attrValue.items.$ref}`);
-          }
-          acc[attrName] = sanitizeAttributeSchema(attrValue);
-          return acc;
-        },
-        {},
-      );
-
-      // Use conditional field names based on schema type
-      const typeField = isRuleSchema ? X_AWS_IDP_RULE_TYPE : X_AWS_IDP_DOCUMENT_TYPE;
-      const propertiesField = isRuleSchema ? 'rule_properties' : 'properties';
-
-      const result: JsonSchemaProperty = {
-        $schema: 'https://json-schema.org/draft/2020-12/schema',
-        $id: docTypeClass.name,
-        [typeField]: docTypeClass.name,
-        type: 'object',
-        ...(docTypeClass.description ? { description: docTypeClass.description } : {}),
-        [propertiesField]: sanitizedProps,
-        ...(docTypeClass.attributes.required?.length > 0 ? { required: docTypeClass.attributes.required } : {}),
-        ...(Object.keys(defs).length > 0 ? { $defs: defs } : {}),
-        ...(Array.isArray(docTypeClass[X_AWS_IDP_EXAMPLES]) && docTypeClass[X_AWS_IDP_EXAMPLES].length > 0
-          ? { [X_AWS_IDP_EXAMPLES]: docTypeClass[X_AWS_IDP_EXAMPLES] }
-          : {}),
-        ...(docTypeClass[X_AWS_IDP_DOCUMENT_NAME_REGEX]
-          ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: docTypeClass[X_AWS_IDP_DOCUMENT_NAME_REGEX] }
-          : {}),
-        ...(docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX]
-          ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX] }
-          : {}),
-      };
-
-      console.log('Final schema has $defs?', '$defs' in result);
-      console.log('Final schema $defs keys:', result.$defs ? Object.keys(result.$defs) : 'NONE');
-
-      return result;
-    });
-
-    console.log('=== exportSchema COMPLETE ===\n');
-
-    // Always return array of schemas for consistency
-    return schemas;
-  }, [classes, sanitizeAttributeSchema, findReferencedClasses, isRuleSchema]);
+      // Always return array of schemas for consistency
+      return schemas;
+    },
+    [classes, sanitizeAttributeSchema, findReferencedClasses, isRuleSchema],
+  );
 
   const importSchema = useCallback((importedClasses: SchemaClass[]) => {
     setClasses(importedClasses);

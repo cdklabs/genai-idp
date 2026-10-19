@@ -16,7 +16,7 @@ from idp_common.bedrock import invoke_model
 
 # Basic model invocation
 response = invoke_model(
-    model_id="anthropic.claude-3-haiku-20240307-v1:0",
+    model_id="anthropic.claude-haiku-4-5-20251001-v1:0",
     system_prompt="You are a helpful assistant.",
     content=[{"text": "What are the main features of AWS Bedrock?"}],
     temperature=0.0,
@@ -57,6 +57,44 @@ output_text = client.extract_text_from_response(response)
 print(output_text)
 ```
 
+### What the metering key names
+
+Every invocation returns `{"response": ..., "metering": ...}`, where the metering
+key is `"{context}/bedrock/{model id}"` — for example
+`"Extraction/bedrock/us.anthropic.claude-sonnet-5"`. That model ID is the one
+**actually sent to Bedrock**, and it is what cost reporting prices, so which
+suffixes it keeps matters:
+
+| Suffix | In the key? | Why |
+|---|---|---|
+| `:flex`, `:priority` (service tier) | kept | The tier re-prices **every** request made in it (flex 0.5×, priority 1.75×) and each tier has its own `config_library/pricing.yaml` entry, so the key has to name it to pick the right rate. |
+| `:1m` (long context) | **stripped** | It names no separate rate: the 1M context window is priced at the model's standard per-token rates. It is also not part of the model ID — the client removes it and sends the `context-1m-2025-08-07` beta header instead — so a key carrying it names a profile that was never invoked. |
+
+Note that both suffixes are stripped before Bedrock is called (`parse_model_id`
+lifts a service tier out into `converse_params["serviceTier"]`), so the wire
+format is not what separates them — pricing is.
+
+`idp_common.bedrock.model_utils.metering_model_id` does the stripping for
+**metering keys**; use it at any new metering emission site (a unit test in
+`tests/unit/bedrock/test_long_context_metering_key.py` fails if a new site builds
+the key from a raw model ID). It is **not** the only place `:1m` is handled, and
+it is not meant to be. Six other sites strip the suffix by hand, none of them
+about pricing: `client.py` normalizes a model ID to its base family name in
+`is_claude_4_7_model` and `_strip_region_and_1m` (capability predicates — which
+inference parameters the model accepts); `extraction/agentic_idp.py` and the
+`chat_with_document_processor` Lambda plus its vendored copy under
+`chat_stream_processor/` strip it to build the ID they actually invoke with; and
+`calculate_capacity/index.py` falls back to the base ID for a Service Quotas
+lookup, since a `:1m` variant shares the base model's quota. Deciding what to
+*call*, or which quota to read, is a different question from what a metering key
+should name, so those sites deliberately do not route through
+`metering_model_id`.
+
+Until v0.6.9 the key carried `:1m`, and `pricing.yaml` gave those keys a premium
+rate card — a flat 2× input / 1.5× output that never applied to any model offered
+with the suffix — which overstated long-context model cost by up to 1.8× in every
+report; see `docs/cost-calculator.md` and issue #899.
+
 ## Working with Embeddings
 
 Generate text embeddings for semantic search or document comparison:
@@ -79,12 +117,39 @@ Prompt caching is a powerful feature in Amazon Bedrock that significantly reduce
 
 ### Supported Models
 
-CachePoint functionality is only available for specific Bedrock model IDs:
+CachePoint functionality is only available for specific Bedrock model IDs.
+`CACHEPOINT_SUPPORTED_MODELS` in `client.py` is the authoritative list; it
+currently covers the Claude Haiku 4.5 / Haiku 5.5 / Sonnet 4.x-5 / Sonnet 5.5 /
+Opus 4.x-5 / Opus 5.5 families (including the `:1m` variants) and the Nova
+models — for example:
 
-- `us.anthropic.claude-3-5-haiku-20241022-v1:0`
-- `us.anthropic.claude-3-7-sonnet-20250219-v1:0`
+- `us.anthropic.claude-haiku-4-5-20251001-v1:0`
+- `us.anthropic.claude-haiku-5-5`
+- `us.anthropic.claude-sonnet-5`
+- `us.anthropic.claude-sonnet-5-5`
 - `us.amazon.nova-lite-v1:0`
 - `us.amazon.nova-pro-v1:0`
+
+The Canada geo profile `ca.amazon.nova-lite-v1:0` is on the list as well,
+measured in ca-central-1 (2026-10-12): a 7,530-token system prompt followed by a
+`cachePoint` reported `cacheWriteInputTokens=7530`, and an identical second call
+`cacheReadInputTokens=7530`.
+
+OpenAI GPT-5.x models are deliberately absent: they are served via the
+bedrock-mantle Responses API and handle caching in `openai_responses.py`.
+
+OpenAI GPT-6 Astra is absent for a third reason: it reaches Converse, but an
+explicit `cachePoint` block raises `AccessDeniedException` while its **implicit**
+caching works with no request change at all (a repeated 2,707-token prefix billed
+`inputTokens=2` / `cacheReadInputTokens=2707`, us-west-2, 2026-09-10). Adding it
+to the list would break requests without unlocking a discount that is already
+being applied.
+
+xAI Grok models are also deliberately absent, for a different reason: explicit
+`cachePoint` blocks raise `AccessDeniedException`. Grok's model card advertises
+*implicit* caching (no request change needed), but that was not observed to
+engage — four back-to-back identical 20,033-token prompts each reported
+`cacheReadInputTokens = 0`. Do not plan cost around a caching discount for Grok.
 
 When using unsupported models, the client will automatically remove `<<CACHEPOINT>>` tags from the content while preserving all text, and log a warning.
 
@@ -115,6 +180,46 @@ response = client.invoke_model(
     temperature=0.0
 )
 ```
+
+### Images are fitted to Bedrock's many-image cap before every call (#994)
+
+Immediately before `converse`, `invoke_model` sweeps the assembled request with
+`idp_common.image.fit_images_in_request`. Bedrock caps each image at 8,000 px per
+side normally, but at **2,000 px** once the request carries more than 20 image
+blocks — counting `document` blocks and images nested in a `toolResult`. That limit
+binds on the request's image **count**, so no per-image guard can see it: every page
+is individually legal and the request fails as a whole with `image exceed max
+allowed size for many-image requests: 2000 pixels`.
+
+This is the only place in the library that sees a complete request, which is why the
+sweep lives here rather than in each stage. It therefore covers classification,
+assessment, summarization, evaluation and few-shot examples as well as extraction
+(which additionally clamps at page-load time, so the reduction is auditable and the
+agentic path — which builds its own requests — is covered).
+
+The sweep is best-effort: an image it cannot resize is sent unchanged with a warning
+rather than failing a request Bedrock might accept, and one aggregate `WARNING` per
+request replaces the per-image line. To avoid the re-encode entirely, set the
+stage's `image.target_width` / `target_height` to 2,000 or less.
+
+Three properties worth knowing about the call site:
+
+- **It does not mutate what the caller passed.** When the content carries no
+  `<<CACHEPOINT>>` tag, `processed_content is content` — the caller's own list — so
+  `_fit_request_images` counts the blocks first and, only when the cap actually
+  binds, works on a `deepcopy` of the request spine (`bytes` is atomic to
+  `deepcopy`, so the image payloads are shared, not duplicated). Without that, a
+  cached few-shot example image or a page-image list reused by a later pass would be
+  permanently downscaled by one oversized request.
+- **It runs once per `invoke_model`, not once per retry.** The sweep sits before
+  `_invoke_with_retry`, and re-running it would be a no-op anyway since the images
+  then fit.
+- **It applies to every model family, not only Claude.** The 2,000 px figure is
+  measured on Claude and is legal on all of them, so clamping cannot cause a
+  rejection that would not otherwise happen; not clamping risks a hard failure on a
+  family that turns out to enforce a similar cap. The cost is some resolution on a
+  >20-image Nova / Grok / Astra request. The `LambdaHook` path returns before the
+  sweep and is unaffected.
 
 ### How CachePoint Works
 
@@ -158,7 +263,170 @@ logging.getLogger('idp_common.bedrock.client').setLevel(logging.DEBUG)
 ```
 
 ### Example CachePoint Processing
-See notebook [Bedrock Client Prompt Cache Testing Notebook](../../../../notebooks/bedrock_client_cachepoint_test.ipynb)
+See notebook [Bedrock Client Prompt Cache Testing Notebook](../../../../notebooks/misc/bedrock_client_cachepoint_test.ipynb)
+
+## OpenAI GPT-5.x Models (bedrock-mantle Responses API)
+
+OpenAI's frontier models — **GPT-5.4** (`openai.gpt-5.4`), **GPT-5.5**
+(`openai.gpt-5.5`), and the **GPT-5.6** family (`openai.gpt-5.6-sol`,
+`openai.gpt-5.6-terra`, `openai.gpt-5.6-luna`) — are **not** served on the
+Converse API like every other model. They are available only on the
+**`bedrock-mantle` endpoint via the OpenAI Responses API**. The client hides
+this difference: when a model ID starts with `openai.gpt-5`, `invoke_model`
+transparently routes the request to a SigV4-signed HTTP call against
+`bedrock-mantle` (implemented in [`openai_responses.py`](openai_responses.py))
+and returns the **same `{"response", "metering"}` structure** every caller
+already expects — so no caller code changes.
+
+```python
+from idp_common.bedrock import invoke_model
+
+# Routed automatically to the bedrock-mantle Responses API.
+response = invoke_model(
+    model_id="openai.gpt-5.4",
+    system_prompt="You are a helpful assistant.",
+    content=[{"text": "Summarize this document."}],
+    max_tokens=4000,
+    reasoning_effort="medium",   # OpenAI-only: minimal | low | medium | high
+)
+text = response["response"]["output"]["message"]["content"][0]["text"]
+```
+
+### Behavior and limitations
+
+- **Inference params**: these are reasoning models — `temperature`, `top_p`, and
+  `top_k` are ignored. Control output via `reasoning_effort`
+  (`minimal`/`low`/`medium`/`high`, default `medium`). The default can be set
+  globally with the `BEDROCK_MANTLE_REASONING_EFFORT` env var.
+- **Input modalities**: text and images only. Converse `document` blocks (e.g.
+  whole-PDF input) are **not** supported and are dropped — callers needing PDF
+  ingestion (Discovery) must use a Claude/Nova model.
+- **Prompt caching**: differs by generation. GPT-5.4/5.5 cache **automatically**
+  (any prefix > ~1,024 tokens, populated server-side and reused on repeat calls,
+  no cache-write charge; `<<CACHEPOINT>>` markers are stripped). GPT-5.6
+  caches **explicitly** — a `<<CACHEPOINT>>` marker (or `cachePoint` block) is
+  translated into `prompt_cache_options`/`prompt_cache_breakpoint` with a
+  deterministic `prompt_cache_key` derived from the cached prefix. Cache reads
+  and (5.6-only) cache writes are metered via `cacheReadInputTokens` /
+  `cacheWriteInputTokens`. Note: this is separate from `CACHEPOINT_SUPPORTED_MODELS`,
+  which governs the Converse path only.
+- **Service tiers**: standard only (no `:priority`/`:flex`).
+- **Regions**: US only. GPT-5.4 in `us-east-1`, `us-east-2`, `us-west-2`,
+  `us-gov-west-1`; GPT-5.5 in `us-east-1`, `us-east-2`; GPT-5.6 Sol in
+  `us-east-1`, `us-east-2`; GPT-5.6 Terra/Luna add `us-west-2`. No EU/global;
+  GovCloud is GPT-5.4 only. When the configured region lacks the model, the
+  request is routed to a known-available region (override with
+  `BEDROCK_MANTLE_REGION`).
+- **Agentic extraction / Discovery**: not supported (the Strands path and
+  Discovery's PDF document blocks are incompatible); these are rejected by
+  `idp-cli config-validate` and guarded at runtime.
+
+### Schema-enforced output (`output_schema`, opt-in)
+
+This is the **only** surface in the accelerator with a native constrained-decoding
+format. On Converse and InvokeModel, `strict` tool use and `output_config.format`
+are both rejected by `bedrock-runtime` (`Extra inputs are not permitted`), so
+schema enforcement there is best-effort `toolConfig` at most. The Responses API
+instead accepts:
+
+```
+text.format = {"type": "json_schema", "name": ..., "schema": {...}, "strict": true}
+```
+
+Note the field is **`text.format`** (the Responses API shape), *not* the Chat
+Completions `response_format`.
+
+```python
+from idp_common.bedrock.openai_responses import invoke_responses_api
+
+result = invoke_responses_api(
+    client=default_client,
+    model_id="openai.gpt-5.4",
+    system_prompt="Extract the invoice fields.",
+    content=[{"text": ocr_text}],
+    max_tokens=4000,
+    max_retries=3,
+    context="Extraction",
+    output_schema=class_schema,        # opt-in; None = unchanged behaviour
+    output_schema_name="Invoice",
+)
+```
+
+The return value is the same `{"response": ..., "metering": ...}` structure as
+always — including the disjoint `inputTokens` accounting — so no downstream
+consumer changes.
+
+**Opt-in means opt-in.** With `output_schema=None` (the default) no `text` key is
+added to the request body and every code path, including the error paths, is
+byte-identical to what it was before the parameter existed.
+
+**Schema normalization.** `to_strict_json_schema()` is applied automatically. It
+is pure, non-mutating and idempotent, and it enforces the three rules strict mode
+requires: `additionalProperties: false` on every object, every declared property
+listed in `required`, and originally-optional properties widened to a nullable
+union (`"type": ["string", "null"]`) so requiring them does not change semantics.
+It also strips `x-*` vendor extensions (`x-aws-idp-*`, `x-aws-stickler-*`), which
+are unknown keywords to the endpoint's schema validator. Two caveats: a property
+that is a bare `$ref` cannot be widened and stays genuinely required; and the
+exact keyword allow-list the endpoint enforces is undocumented, so other keywords
+pass through verbatim rather than being silently dropped.
+
+**Failure modes are raised, never swallowed.** All three are `RuntimeError`
+subclasses, so existing `except RuntimeError` handlers still catch them:
+
+| Exception | Trigger | Intended handling |
+|---|---|---|
+| `OutputSchemaRejectedError` | terminal 4xx while a schema was attached | catch and retry with `output_schema=None` (prompt-based schema); the endpoint's error text is preserved verbatim |
+| `OutputRefusalError` | a `refusal` content block (note `status` can still be `completed`) | a refusal is not an empty extraction — surface it; `.refusal` and `.metering` are attached |
+| `IncompleteOutputError` | `status == "incomplete"` (usually `max_output_tokens`) | partial text is invalid JSON under constrained decoding; raise `max_tokens` or shard the input; `.reason` and `.metering` are attached |
+
+The refusal/incomplete errors carry `.metering` because the request was billed;
+record it before re-raising if you account for cost.
+
+> **Not yet live-verified.** `text.format` + `strict: true` is the documented
+> OpenAI Responses API contract, and the AWS Responses API documentation defers to
+> it for request-field details while listing the endpoint's behaviour differences
+> (structured output is not among them). It has **not** been exercised against a
+> live GPT-5.x deployment from this repo. Until it is, do not treat this as a hard
+> guarantee — keep validating the parsed result against the schema downstream.
+> `invoke_model()` on `BedrockClient` does not forward `output_schema` yet either;
+> call `invoke_responses_api` directly, or plumb it through the client first.
+
+### Streaming
+
+For interactive use (e.g. Chat-with-Document), `stream_responses_api` yields
+incremental text deltas, then a final `{"metering": ..., "text": ...}` dict:
+
+```python
+from idp_common.bedrock import stream_responses_api
+from idp_common.bedrock.client import default_client
+
+for item in stream_responses_api(
+    client=default_client,
+    model_id="openai.gpt-5.4",
+    system_prompt="Answer concisely.",
+    content=[{"text": "What is the total due?"}],
+    max_tokens=2000,
+    context="ChatWithDocument",
+    reasoning_effort="low",
+):
+    if isinstance(item, str):
+        print(item, end="")        # incremental token delta
+    else:
+        metering = item["metering"]  # final usage record
+```
+
+### Detecting these models
+
+```python
+from idp_common.bedrock import is_openai_responses_model
+
+is_openai_responses_model("openai.gpt-5.4")          # True
+is_openai_responses_model("us.anthropic.claude-...")  # False
+```
+
+For the full support matrix and IAM/env-var details, see the
+[OpenAI GPT-5.x Models](../../../../docs/openai-models.md) guide.
 
 ## Helper Methods
 
@@ -197,9 +465,241 @@ formatted_prompt = client.format_prompt(template, substitutions)
 text = client.extract_text_from_response(response)
 ```
 
+Both extraction helpers scan **every** content block rather than indexing
+`content[0]`. Reasoning models (Claude Sonnet 5 / 4.6+, and any model with
+extended thinking on) emit one or more `reasoningContent` blocks *before* the
+answer block, so `content[0]` is frequently not the answer.
+
+## Tool Use (`toolConfig` / `toolChoice`)
+
+`invoke_model` accepts two optional parameters that put a JSON Schema on the
+wire as a Converse tool, which is the strongest output-shape enforcement
+available on `bedrock-runtime`:
+
+```python
+TOOL_CONFIG = {                      # build this ONCE per document class
+    "tools": [
+        {
+            "toolSpec": {
+                "name": "extract_fields",
+                "description": "Return the extracted fields.",
+                "inputSchema": {"json": class_json_schema},
+            }
+        }
+    ]
+}
+
+response = client.invoke_model(
+    model_id="us.anthropic.claude-sonnet-5",
+    system_prompt="You extract fields from documents.",
+    content=[{"text": document_text}],
+    tool_config=TOOL_CONFIG,
+    tool_choice={"tool": {"name": "extract_fields"}},   # force the tool
+)
+
+data = client.extract_tool_use_from_response(response)   # dict, or None
+if data is None:
+    # A model can accept a toolConfig and still answer in prose.
+    data = json.loads(extract_json_from_text(client.extract_text_from_response(response)))
+```
+
+When both parameters are omitted (the default) the request is identical to one
+made before tool support existed — no `toolConfig` key is sent.
+
+### The `tool_choice` contract
+
+`toolChoice` is a *member of* `toolConfig` in the Converse API. It is accepted as
+a separate parameter here purely as a convenience:
+
+- `tool_config` is passed through **verbatim**, so you can also just embed
+  `"toolChoice"` inside it and omit the parameter.
+- When both are given, `tool_choice` is merged into a **shallow copy** of
+  `tool_config` (your dict is never mutated). If `tool_config` already carried a
+  different `toolChoice`, the parameter wins and a warning is logged.
+- `tool_choice` **without** `tool_config` raises `ValueError` — Converse rejects
+  a `toolChoice` with no tools.
+
+Valid modes: `{"auto": {}}`, `{"any": {}}`, `{"tool": {"name": "..."}}`.
+
+⚠️ **Carrying a `toolConfig` and being able to FORCE the call are two different
+capabilities, and one model has the first without the second.** `{"auto": {}}` is
+accepted wherever `supports_tool_config()` is True. The two forcing modes are not:
+**Claude Opus 5.5 rejects both** with `tool_choice: type "tool" and "any" are not
+supported for this model.`, while answering `auto` normally and emitting a
+`toolUse` block. Ask `supports_forced_tool_choice(model_id)` (or
+`forced_tool_choice_unsupported_reason` for the message) before forcing;
+`_resolve_tool_config` raises `ValueError` rather than letting the request spend
+its retry budget on a 400 that cannot succeed.
+
+Because a forced `toolChoice` is the strongest shape enforcement `bedrock-runtime`
+offers, there is no equivalent to fall back to on such a model — so
+`extraction.forced_tool` degrades to the prose schema and records the reason in the
+section's audit metadata. Every other currently selectable Claude and Nova family
+accepts all three modes.
+
+### Property names: sanitize before you send (#709)
+
+Bedrock enforces `^[a-zA-Z0-9_.-]{1,64}$` on `toolSpec.inputSchema` property
+keys. Document classes are authored for humans, so `"Account Number"` and
+`"Purchase Date and Time"` are normal — **4 of the 152 shipped preset classes
+contain names Bedrock would reject** (`bank-statement-sample`,
+`lending-package-sample`, `lending-package-sample-govcloud`,
+`rvl-cdip-package-sample`).
+
+`invoke_model` **refuses** such a schema with a `ValueError` naming the offending
+paths. It deliberately does not sanitize for you: renaming here would return a
+response keyed by names you never asked for, with no map to reverse it — silently
+renaming every field of every extraction. Do both halves yourself:
+
+```python
+from idp_common.bedrock.tool_schema import restore_names, sanitize_tool_schema
+
+clean, name_map = sanitize_tool_schema(class_schema)   # "Account Number" -> "Account_Number"
+response = client.invoke_model(..., tool_config=tool_config_for(clean))
+fields = restore_names(model_output, name_map)          # and back again
+```
+
+`sanitize_tool_schema` leaves an already-valid name **byte-identical** (so a
+working schema is unaffected and `name_map.is_empty()` makes `restore_names` a
+no-op), resolves collisions with a deterministic numeric suffix rather than
+merging two fields into one, and truncates to 64 characters.
+
+> **It sanitizes recursively, and that is deliberate.** Bedrock's own check is
+> **top level only** — a bad key inside an object property, inside `array.items`,
+> or inside a `$defs` entry is accepted *today*. Relying on that would break the
+> moment a class is wrapped in a list, and the day AWS makes the check recursive.
+> The `ValueError` reports nested offenders for the same reason.
+
+> **`$defs` definition names are renamed too, and every `$ref` follows.** Bedrock's
+> rule never covered definition names, so they were originally left alone — but
+> the *model* has to resolve the pointer that names them, and Claude Sonnet 5 does
+> not resolve `#/$defs/Account Holder Address`: it emitted the group as a
+> serialized JSON **string**, making every section with a spaced group name
+> schema-invalid while Sonnet 4.6 resolved it fine (#783). Definitions are now
+> sanitized with the same rules, local `$ref` pointers (raw or percent-encoded)
+> are rewritten to match, the rename is recorded in `name_map.defs_renamed`, and
+> each `$ref` node without a `type` gains the definition's `type` as belt and
+> braces — the explicit `"type": "object"` made Sonnet 5 return an object even
+> for the pointer it otherwise mis-resolved. The name map is then *linked*: each
+> property whose `$ref` resolves to a definition shares that definition's map, so
+> `restore_names` puts a `$ref`'d group's authored names back however many
+> definitions the class has (it used to guess only when there was exactly one),
+> and a pointer it cannot follow leaves those names sanitized rather than
+> restoring them against the wrong map. Container detection resolves `$ref` too:
+> a `$ref` to a shared *string* definition is a string, never parsed as a group.
+
+### Capability gate
+
+There are **two** gates here, on two different questions, and a model can pass the
+first and fail the second.
+
+**Can it carry a `toolConfig` at all?** (`supports_tool_config()` /
+`tool_config_unsupported_reason()`.) Every model that reaches the Converse API can,
+so there is no per-family allow-list (unlike `CACHEPOINT_SUPPORTED_MODELS`). Two
+routes in `invoke_model` bypass Converse and therefore **cannot**:
+
+| Route | Why |
+|---|---|
+| `model_id="LambdaHook"` | posts a Converse-shaped payload to a customer-owned Lambda, which need not implement tool use |
+| OpenAI GPT-5.x (`openai.gpt-5.*`) | served by the bedrock-mantle Responses API, which has its own tools schema |
+
+**Can the call be FORCED?** (`supports_forced_tool_choice()` /
+`forced_tool_choice_unsupported_reason()`, keyed on `FORCED_TOOL_CHOICE_UNSUPPORTED`
+by base name so every region prefix, the `:1m` variant and an inference-profile ARN
+resolve to one entry.) This one **does** need a denylist, because of two models:
+
+| Model | Why |
+|---|---|
+| Claude Opus 5.5 (`anthropic.claude-opus-5-5`) | carries a `toolConfig` and answers `toolChoice: auto` with a `toolUse` block, but rejects `{"any": {}}` and `{"tool": {...}}`: `tool_choice: type "tool" and "any" are not supported for this model.` |
+| Claude Sonnet 5.5 (`anthropic.claude-sonnet-5-5`) | the identical behaviour and the identical error, verified live on Converse (`us.anthropic.claude-sonnet-5-5`, us-east-1, 2026-10-14). |
+
+⚠️ **The answer is not a property of the family, and Sonnet 5.5 is what proves it.**
+Claude **Sonnet 5** accepts both forcing modes, so the Sonnet family spans both
+answers exactly as the Opus family does. Since `claude-sonnet-5` is a *substring* of
+`claude-sonnet-5-5`, only the exact base-name lookup gets this right — a gate written
+against the shorter id would wrongly refuse forcing for Sonnet 5 too.
+
+The model most likely to be added to this list by assumption is **Claude Haiku
+5.5** — it shares both 5.5 models' sampling-parameter rejections and their effort
+control, so "another 5.5" is the natural guess. It accepts both forcing modes and
+emits the `toolUse` block (verified live on Converse,
+`us.anthropic.claude-haiku-5-5`, us-west-2, 2026-10-08), so it is deliberately
+absent.
+
+Consult the forcing gate whenever you pass `tool_choice`; `auto` never needs it.
+`extraction.forced_tool` already does, and falls back to the prose schema with the
+reason in its audit metadata.
+
+xAI Grok and OpenAI GPT-6 Astra reach Converse, so they **do** support
+`toolConfig` — verified live with all three `toolChoice` modes
+(`auto`/`any`/`tool`) for Grok and with a forced `toolChoice` for Astra, each
+emitting a `toolUse` block. This is the reason both are allowed for agentic
+extraction while GPT-5.x is not. Note the gate is about the ROUTE, not the vendor:
+`openai.gpt-6-astra` passes it, `openai.gpt-5.6-sol` does not.
+
+A separate gate, `supports_document_blocks()` /
+`document_blocks_unsupported_reason()`, covers whole-PDF `document` content
+blocks. Three families fail it — GPT-5.x (text + image only on the Responses
+API), xAI Grok (*"This model doesn't support documents"*) and GPT-6 Astra
+(*"This model doesn't support the document field for user messages"*) — which is
+what excludes them from Discovery. Use it the same way as the tool-config gate.
+
+**Inference-profile ARNs.** `is_grok_model()`, `is_astra_model()`,
+`strips_sampling_params()`, `is_claude_4_7_model()`, `is_claude_effort_model()`,
+`thinking_can_be_disabled()`, `thinking_disable_payload()`,
+`forced_tool_choice_unsupported_reason()` and
+`document_blocks_unsupported_reason()` resolve
+inference-profile ARNs (via `resolve_model_id_from_arn`) before matching, so a
+config that names
+`arn:aws:bedrock:...:inference-profile/us.anthropic.claude-sonnet-5` — the form
+recommended for cost-allocation tagging, and the only form GovCloud accepts — is
+gated the same as the bare ID. **Opaque
+`application-inference-profile/<uuid>` ARNs are the exception**: the underlying
+foundation model cannot be determined without a `GetInferenceProfile` call, so
+these gates return the permissive answer for them. A Grok application inference
+profile will therefore bypass the sampling-param strip and the document-block
+refusal and fail at the Bedrock call instead. (`_is_model_cachepoint_supported`
+does make the control-plane call, if you need a model for how to resolve one.)
+
+Passing `tool_config`/`tool_choice` for either route raises `ValueError` — the
+schema is never silently dropped. Branch beforehand if you need a text fallback:
+
+```python
+from idp_common.bedrock.client import supports_tool_config, tool_config_unsupported_reason
+
+if supports_tool_config(model_id):
+    ...  # tool-based path
+else:
+    logger.info("No tool use: %s", tool_config_unsupported_reason(model_id))
+    ...  # prompt-based schema path
+```
+
+### Caveats before you add a caller
+
+- **There is no strict / structured-output mode on `bedrock-runtime`.**
+  `toolSpec.strict`, `output_config.format` and `response_format` are all
+  rejected (`Extra inputs are not permitted`) on **both** Converse and
+  InvokeModel. A forced `toolChoice` is best-effort constrained decoding, not a
+  grammar guarantee — always validate the returned object.
+- **Property names must be sanitized by the caller.** Converse rejects
+  *top-level* `inputSchema.json.properties` keys that don't match
+  `^[a-zA-Z0-9_.-]{1,64}$` (`Property keys should match pattern ...`). Names like
+  `"Account Number"` appear in several shipped class schemas, so a schema taken
+  straight from configuration can fail. `invoke_model` does **not** sanitize;
+  rename recursively (even though only the top level is enforced today) and map
+  the response keys back.
+- **Keep the `toolConfig` deterministic per class.** Tools render *before*
+  `system` in the prompt-cache prefix, so changing the tool schema invalidates
+  the entire cached prefix — system prompt included. A stable per-class
+  `toolConfig` caches normally (measured: +~400 cached input tokens); a
+  per-request one destroys cache hits silently.
+- A tool-using response has `stopReason == "tool_use"`; a prose answer has
+  `end_turn`. Existing truncation checks elsewhere in the library only look for
+  `max_tokens`, so they are unaffected.
+
 ## Guardrail Support
 
-This module includes built-in support for Amazon Bedrock Guardrails, which help enforce content safety, security, and policy compliance across all Bedrock model interactions.
+This module includes built-in support for Amazon Bedrock Guardrails, which help enforce content safety, security, and policy compliance across all Bedrock model interactions. Since the integration passes the Guardrail ID and version directly to Bedrock API calls, all Guardrail policy types are supported — including content filters, topic restrictions, PII detection, and [Automated Reasoning Checks](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning.html) for formal verification of model outputs.
 
 ### Configuring Guardrails
 
@@ -273,15 +773,150 @@ Different Bedrock models implement these parameters with varying defaults, namin
   - Default values: temperature=1.0, top_p=0.999, top_k=250 (wide open)
   - Parameters use snake_case: `temperature`, `top_p`, `top_k`
   - Implementation: `top_k` is placed in `additionalModelRequestFields`
+  - **Reasoning effort** (Sonnet 5, Sonnet 5.5, Sonnet 4.6, Opus 4.5–4.8, Opus 5,
+    Opus 5.5, Fable 5, Haiku 5.5 — see `is_claude_effort_model()`, which is the
+    authority; every list of this set in the tree is a copy of it):
+    `reasoning_effort` (`low`/`medium`/`high`/`xhigh`/`max`) maps to
+    `additionalModelRequestFields.output_config.effort`.
+    Ignored for Sonnet 4.5 / Haiku 4.5 (they 400 on it). `budget_tokens` is
+    rejected — use effort. Verified live: effort changes output-token spend.
+    **Haiku 5.5 is the first Haiku that takes effort**, so the Haiku family is
+    split across the two sentences above: 4.5 rejects it, 5.5 accepts it (default
+    `medium`, like Opus 5.5). Unlike Opus 5.5, thinking can still be disabled on
+    it — and the model card adds a constraint this client does not model: with
+    thinking disabled the effort level is capped at `high`.
+
+    **Turning thinking OFF is three different answers across the three 5.5
+    models, so ask rather than construct the field.** `thinking_can_be_disabled()`
+    says whether it can be turned off at all, and `thinking_disable_payload()`
+    returns the value to send:
+
+    | Model | `thinking_can_be_disabled` | payload |
+    |---|---|---|
+    | Claude Opus 5.5 | `False` | none — effort is the only control |
+    | Claude Haiku 5.5 | `True` | `{"type": "disabled"}` |
+    | Claude Sonnet 5.5 | `True` | `{"type": "between_tools"}` |
+
+    On **Opus 5.5** effort is the *only* thinking control: `thinking: {"type":
+    "disabled"}` is rejected at every effort level (`"thinking.type.disabled" is
+    not supported for this model`), so lowering effort is how you reduce thinking
+    spend there. Its own default is
+    `medium`, one level below the `high` the rest of the family defaults to, so
+    leaving `reasoning_effort` unset is not the same choice on Opus 5.5 as it is on
+    Opus 5.
+    On **Sonnet 5.5** thinking *can* be turned off, but only with
+    `{"type": "between_tools"}` — `{"type": "disabled"}` returns a 400 whose message
+    names the replacement (verified live, `us.anthropic.claude-sonnet-5-5`,
+    us-east-1, 2026-10-14). Its default effort is `high`, the ordinary one, **not**
+    the `medium` that Opus 5.5 and Haiku 5.5 carry. The Converse path in `client.py`
+    never sends a `thinking` field, so nothing in the product constructs any of
+    these requests today; the pair of functions exists so a caller that wants to
+    asks once instead of finding the 400 in production.
+  - **max_tokens**: an OPTIONAL cap. It is `Optional[int]` in every service
+    config (default `None`; an empty string in stored config also parses to
+    `None`), and each service passes the value straight through. When `None`
+    the client resolves the model maximum from `get_model_max_output_tokens()`
+    — so leaving it unset (the default everywhere) means "use the model's max
+    output". Set a positive value only to cap output below the model max. OCR
+    passes `None` (no config knob); extraction/confidence have no `max_tokens`
+    field at all and request the model maximum — except a confidence call on Nova
+    Lite/Micro, which passes a row-sized output budget
+    (`sizing.confidence_output_budget`) because that model was measured looping to
+    its cap. The limits
+    come from the DynamoDB Configuration Table when `CONFIGURATION_TABLE_NAME`
+    is set (seeded from `config_library/model_config_limits.yaml` at deploy and
+    editable in the web UI under "View / Edit Model Limits"; cached ~60s per
+    container), falling back to the on-disk `config_library/` YAML offline.
+    Omitting `maxTokens` would let Bedrock apply a small truncating default.
+    If a request still exceeds the model cap, the client parses the true limit
+    from the `ValidationException` and retries once.
 
 - **Nova models**:
   - Default values: temperature=0.7, topP=0.9, topK≈50 (moderately constrained)
   - Parameters use camelCase: `temperature`, `topP`, `topK`
   - Implementation: `topK` is placed in `additionalModelRequestFields.inferenceConfig`
 
+- **OpenAI GPT-5.x models** (`openai.gpt-5.*`):
+  - Reasoning models — `temperature`/`top_p`/`top_k` are **not used** (ignored)
+  - Controlled instead via `reasoning_effort` (`minimal`/`low`/`medium`/`high`)
+  - Served on the `bedrock-mantle` Responses API, not Converse — see the
+    [OpenAI GPT-5.x Models](#openai-gpt-5x-models-bedrock-mantle-responses-api)
+    section above
+
+- **xAI Grok models** (`us.xai.grok-4.6`, `global.xai.grok-4.6`):
+  - Reasoning model — `temperature` and `topP` are **hard-rejected** with a 400
+    naming the field, so `strips_sampling_params()` omits the whole sampling
+    group (`top_k` was never forwarded for non-Claude families). This is a
+    stronger contract than GPT-5.x, where the params are merely ignored.
+  - **Reasoning effort**: always on, defaults to `low`. `reasoning_effort` maps
+    to `additionalModelRequestFields.reasoning.effort` and accepts
+    `none`/`low`/`medium`/`high`/`xhigh` — **not** `max` (Grok 400s on it), and
+    **not** Claude's `output_config.effort` carrier (silently ignored here).
+  - **max_tokens** rides in `inferenceConfig.maxTokens`, the Converse-standard
+    field and the default for every non-Claude family. Claude's
+    `additionalModelRequestFields.max_tokens` is *accepted but silently ignored*
+    by Grok, so a wrong carrier fails open (uncapped output) rather than loudly.
+  - Served on Converse, so `toolConfig` works with all three `toolChoice` modes
+    — this is why Grok supports **agentic extraction** and GPT-5.x does not.
+  - Cannot accept `document` content blocks (`supports_document_blocks()` is
+    False), which excludes it from Discovery. See
+    [xAI Grok Models](../../../../docs/grok-models.md).
+  - Not in `CACHEPOINT_SUPPORTED_MODELS`: explicit `cachePoint` blocks raise
+    `AccessDeniedException`, and the advertised implicit caching was not
+    observed to engage. `<<CACHEPOINT>>` markers are stripped from the text.
+
+- **OpenAI GPT-6 Astra** (`us.openai.gpt-6-astra`, `global.openai.gpt-6-astra`):
+  - **Converse, not the Responses API.** This is the one thing to internalize:
+    despite the `openai.` prefix, Astra is NOT on the `bedrock-mantle` path its
+    GPT-5.x stablemates use. `is_openai_responses_model()` matches `openai.gpt-5`
+    and therefore returns False for Astra, which is what routes it to Converse.
+    `tests/unit/test_bedrock_astra.py` pins that so widening the GPT-5.x prefix
+    cannot silently steal this model.
+  - CRIS-only: there is no in-region form on `bedrock-runtime` (the bare
+    `openai.gpt-6-astra` is rejected — "Invocation of model ID ... with on-demand
+    throughput isn't supported"). `us.` covers the US geo, `global.` covers every
+    Region including the EU and APAC ones, which is why EU deployments can use it
+    (see `filter_models_by_region` in `update_configuration`).
+  - Reasoning model — `temperature` and `topP` are **hard-rejected** with a 400
+    naming the field, same contract as Grok, so `strips_sampling_params()` omits
+    the whole sampling group.
+  - **Reasoning effort**: always on. `reasoning_effort` maps to
+    `additionalModelRequestFields.reasoning.effort` — Grok's carrier — but a
+    **third vocabulary**: `none`/`low`/`medium`/`high`/`xhigh`/`max`. That is
+    `CLAUDE_EFFORT_LEVELS` plus `none`. It accepts `max` (Grok 400s on it) and
+    rejects `minimal` (GPT-5.x accepts it). Claude's `output_config.effort` is
+    **rejected** here ("Unknown parameter: 'output_config'"), not merely ignored,
+    so the carrier must be exactly right. See `ASTRA_EFFORT_LEVELS`.
+  - **max_tokens** rides in `inferenceConfig.maxTokens` (the Converse-standard
+    field). Cap is 128,000 against a 1,050,000-token context window.
+  - Served on Converse, so `toolConfig` works and `toolUse` is emitted under a
+    forced `toolChoice` — Astra supports **agentic and forced-tool extraction**,
+    unlike GPT-5.x. `_validate_agentic_openai` gates on the mantle route, not the
+    vendor, so it allows Astra by construction.
+  - Cannot accept `document` content blocks ("This model doesn't support the
+    document field for user messages"), which excludes it from Discovery — the
+    one gate where it IS treated like GPT-5.x.
+  - Not in `CACHEPOINT_SUPPORTED_MODELS`: explicit `cachePoint` blocks raise
+    `AccessDeniedException`. Unlike Grok, though, its **implicit caching
+    demonstrably works** on this path — a repeated 2,707-token prefix billed
+    `inputTokens=2` with `cacheReadInputTokens=2707`. No request change is needed,
+    and the existing metering already records `cacheReadInputTokens`, so the
+    discount reaches cost reports without any code here.
+  - Service tiers: **Standard only**. `flex` and `priority` are rejected, so no
+    tier-suffixed IDs are offered.
+  - `bedrock-mantle` does serve Astra, but only in `us-west-2` and without CRIS or
+    application inference profiles. The accelerator deliberately does not use that
+    route: Converse gives worldwide Regions, tool use, guardrails, cost-allocation
+    profiles and caching, while mantle would add only server-side tools and
+    explicit cache breakpoints. See
+    [OpenAI Models](../../../../docs/openai-models.md).
+
 **Common implementation details**:
-- Temperature is always included in the main `inferenceConfig`
+- Temperature is always included in the main `inferenceConfig`, except for the
+  sampling-param-stripped models (Claude 4.7+, xAI Grok, OpenAI GPT-6 Astra)
 - top_p is added to `inferenceConfig` as "topP"
+- `maxTokens` goes in `inferenceConfig` for every family EXCEPT Claude, which
+  uses `additionalModelRequestFields.max_tokens`
 
 ### Task-Specific Best Practices
 
@@ -321,7 +956,7 @@ The BedrockClient automatically handles common failure scenarios:
 When creating a BedrockClient instance, you can customize:
 
 - `region`: AWS region for Bedrock (default: AWS_REGION env var or us-west-2)
-- `max_retries`: Maximum retry attempts for throttled requests (default: 8)
+- `max_retries`: Maximum retry attempts for throttled requests (default: 7)
 - `initial_backoff`: Starting backoff time in seconds (default: 2)
 - `max_backoff`: Maximum backoff time in seconds (default: 300)
 - `metrics_enabled`: Whether to publish CloudWatch metrics (default: True)

@@ -39,7 +39,7 @@ https://github.com/user-attachments/assets/e2dea2c5-5eb1-42f6-9af5-469afd2135a7
 
 ## Architecture
 
-The architecture of the Agent Analysis feature is shown below. The Web UI and AppSync API components are the same as used by the rest of the IDP system (with new AppSync endpoints added). Note the inclusion of Amazon Athena and the AgentCore Code Interpreter is specific to the Analytics Agent, but the Agent Request Handler and Processor lambdas along with jobs table are used for all agents, including [MCP agents](./custom-MCP-agent.md).
+The architecture of the Agent Analysis feature is shown below. The Web UI and the API Gateway REST API it calls are the same components the rest of the IDP system uses — this feature adds new operations to the existing single `POST /op/{field}` route rather than a new API. Note the inclusion of Amazon Athena and the AgentCore Code Interpreter is specific to the Analytics Agent, but the Agent Request Handler and Processor lambdas along with jobs table are used for all agents, including [MCP agents](./custom-MCP-agent.md).
 
 ![Architecture Diagram](../images/IDP-AnalyticsAgent.drawio.png)
 
@@ -90,7 +90,7 @@ User Question → Analytics Request Handler → Analytics Processor → Agent To
                                                                   ├── Code Sandbox Tool
                                                                   └── Python Execution Tool
                                                                        ↓
-Results ← Web UI ← AppSync Subscription ← DynamoDB ← Agent Response
+Results ← Web UI (polls getAgentJobStatus over the REST API) ← DynamoDB ← Agent Response
 ```
 
 ## Available Tools
@@ -259,22 +259,28 @@ The solution includes sample W2 tax documents for testing the analytics feature:
 
 ## Configuration
 
-The Agent Analysis feature is configured through CloudFormation parameters:
+The Agent Analysis feature is configured through the configuration editor, not
+through CloudFormation parameters.
 
 ### Model Selection
 
+The model is `agents.chat_companion.model_id`, editable under Agents in the
+configuration editor without a stack update:
+
 ```yaml
-ChatCompanionModelId:
-  Type: String
-  Default: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-  Description: Model to use for Document Analysis Agent (analytics queries)
+agents:
+  chat_companion:
+    model_id: us.anthropic.claude-haiku-4-5-20251001-v1:0
 ```
 
 **Supported Models:**
 
-- `us.anthropic.claude-3-7-sonnet-20250219-v1:0` (Default - Recommended)
-- `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
-- `us.anthropic.claude-3-haiku-20240307-v1:0`
+- `us.anthropic.claude-haiku-4-5-20251001-v1:0` (Default)
+- `us.anthropic.claude-sonnet-4-6` (recommended for complex reasoning)
+- `us.anthropic.claude-sonnet-5`
+- `us.anthropic.claude-sonnet-5-5`
+- `us.anthropic.claude-haiku-5-5`
+- `us.anthropic.claude-sonnet-4-5-20250929-v1:0` (legacy; end of life 2027-04-08)
 - `us.amazon.nova-pro-v1:0`
 - `us.amazon.nova-lite-v1:0`
 
@@ -284,7 +290,7 @@ The feature automatically creates:
 
 - **DynamoDB Table**: Tracks analytics job status and results
 - **Lambda Functions**: Request handler and processor functions
-- **AppSync Resolvers**: GraphQL API endpoints for web UI integration
+- **API Resolvers**: the agent operations the REST API dispatcher routes to (`nested/api-resolvers/`)
 - **IAM Roles**: Minimal permissions for secure operation
 
 ### Environment Variables

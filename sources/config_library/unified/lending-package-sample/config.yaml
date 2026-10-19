@@ -7,6 +7,12 @@ use_bda: false
 
 notes: "Lending package sample - processes payslips, driver licenses, bank checks, bank statements, W2s, and insurance applications - . Set use_bda: true for BDA mode."
 
+chat:
+  # Chat-with-Document: inherits defaults from system base-chat.yaml.
+  # Uncomment and set 'model:' here to override the default chat model
+  # for documents processed with this configuration version.
+  enabled: true
+
 classes:
   - $schema: https://json-schema.org/draft/2020-12/schema
     $id: Payslip
@@ -86,17 +92,17 @@ classes:
         format: date
         description: The actual date when the employee was paid.
         type: string
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       PayPeriodStartDate:
         format: date
         description: The beginning date of the pay period covered by this payslip.
         type: string
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       PayPeriodEndDate:
         format: date
         description: The ending date of the pay period covered by this payslip.
         type: string
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       CurrentGrossPay:
         type: number
         description: The total earnings before any deductions for the current pay period.
@@ -127,7 +133,13 @@ classes:
         x-aws-idp-evaluation-method: LLM
       EmployeeNumber:
         type: string
-        description: The unique identifier assigned to the employee by the employer.
+        description: >-
+          The employer's unique identifier for the employee. Also labelled 'Employee
+          No.', 'Emp #', 'Employee ID' or 'File No.'. On ADP-style earnings statements
+          the header row reads 'CO. FILE DEPT. CLOCK NUMBER' and the employee number is
+          the value in the FILE column (the second of the five codes) - not the CLOCK
+          value (the employee's clock/badge number) and not the NUMBER value (the check
+          or advice number).
         x-aws-idp-evaluation-method: EXACT
       EmployeeAddress:
         description: The complete residential address of the employee.
@@ -176,7 +188,12 @@ classes:
         x-aws-idp-evaluation-method: NUMERIC_EXACT
       PayrollNumber:
         type: string
-        description: The payroll batch or sequence number for this pay period.
+        description: >-
+          The payroll check, advice or voucher number that identifies this specific
+          payment. Also labelled 'Check No.', 'Advice No.', 'Voucher No.' or 'Payroll
+          No.'. On ADP-style earnings statements it is the value in the NUMBER column
+          (the fifth of the five codes in the 'CO. FILE DEPT. CLOCK NUMBER' header row),
+          typically zero-padded.
         x-aws-idp-evaluation-method: EXACT
       currency:
         type: string
@@ -264,15 +281,15 @@ classes:
       DATE_OF_BIRTH:
         type: string
         description: The birth date of the license holder.
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       DATE_OF_ISSUE:
         type: string
         description: The date when the driver's license was issued.
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       EXPIRATION_DATE:
         type: string
         description: The date when the driver's license expires.
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       CLASS:
         type: string
         description: The type of driving privileges granted.
@@ -305,7 +322,7 @@ classes:
       date:
         format: date
         type: string
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       dollar_amount:
         type: number
         x-aws-idp-evaluation-method: NUMERIC_EXACT
@@ -374,7 +391,7 @@ classes:
         properties:
           date:
             type: string
-            x-aws-idp-evaluation-method: EXACT
+            x-aws-idp-evaluation-method: DATE
           description:
             type: string
             x-aws-idp-evaluation-method: EXACT
@@ -406,11 +423,11 @@ classes:
       statement_start_date:
         format: date
         type: string
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       statement_end_date:
         format: date
         type: string
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       account_summary:
         type: array
         items:
@@ -575,7 +592,7 @@ classes:
             x-aws-idp-evaluation-method: EXACT
           Date of Birth:
             type: string
-            x-aws-idp-evaluation-method: EXACT
+            x-aws-idp-evaluation-method: DATE
           Gender:
             type: string
             x-aws-idp-evaluation-method: EXACT
@@ -617,7 +634,7 @@ classes:
             x-aws-idp-evaluation-method: EXACT
           Date of Birth:
             type: string
-            x-aws-idp-evaluation-method: EXACT
+            x-aws-idp-evaluation-method: DATE
           Gender:
             type: string
             x-aws-idp-evaluation-method: EXACT
@@ -675,10 +692,10 @@ classes:
         x-aws-idp-evaluation-method: EXACT
       Effective Date:
         type: string
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       Expiration Date:
         type: string
-        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: DATE
       Purchase Date and Time:
         type: string
         x-aws-idp-evaluation-method: EXACT

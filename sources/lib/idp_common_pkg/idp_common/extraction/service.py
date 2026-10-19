@@ -13,26 +13,80 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
-from typing import Any
+from typing import Any, Callable
 
 from idp_common import bedrock, image, metrics, s3, utils
-from idp_common.bedrock import format_prompt
+from idp_common.bedrock import format_prompt, is_openai_responses_model
 from idp_common.config.models import IDPConfig
 from idp_common.config.schema_constants import (
     ID_FIELD,
+    SCHEMA_ITEMS,
     SCHEMA_PROPERTIES,
+    SCHEMA_TYPE,
+    TYPE_ARRAY,
+    TYPE_OBJECT,
+    UNCLASSIFIED_CLASS,
+    X_AWS_IDP_ALLOW_INTEGRATED_LISTS,
     X_AWS_IDP_DOCUMENT_TYPE,
+    X_AWS_IDP_EXTRACTION_ESCALATION_MODEL,
+    X_AWS_IDP_EXTRACTION_MODEL,
+    X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT,
+    X_AWS_IDP_EXTRACTION_TASK_PROMPT,
+    X_AWS_IDP_INSTANCE_ARRAY,
+    X_AWS_IDP_SOURCE_PAGE_TYPES,
 )
-from idp_common.models import Document
+from idp_common.empty_schema import (
+    EMPTY_SCHEMA_CLASS_NOT_CONFIGURED,
+    EMPTY_SCHEMA_NO_ATTRIBUTES,
+    EMPTY_SCHEMA_REASON_KEY,
+    EMPTY_SCHEMA_UNCLASSIFIED,
+)
+from idp_common.extraction.page_type_resolver import (
+    PageTypePresence,
+    resolve_page_types,
+)
+from idp_common.extraction.sharding import (
+    DEFAULT_MAX_PAGES_PER_SHARD,
+    DEFAULT_SHARD_TOKEN_BUDGET,
+    _rebalance_to_cap,  # noqa: PLC2701 - see _agentic_images_per_request (#994)
+    estimate_tokens,
+    plan_shards,
+)
+from idp_common.extraction.topk_resolver import (
+    is_topk_response,
+    resolve_candidates,
+)
+from idp_common.extraction.validation import (
+    ValidationReport,
+    build_empty_list_feedback,
+    build_subset_schema,
+    coerce_numeric_schema_keywords,
+    find_empty_declared_lists,
+    required_null_paths,
+    select_escalated_fields,
+    shard_validation_schema,
+    validate_extraction,
+)
+from idp_common.models import Document, Section
+from idp_common.utils.bedrock_utils import is_output_token_truncation
 from idp_common.utils.few_shot_example_builder import (
     build_few_shot_extraction_examples_content,
 )
 
-# Conditional import for agentic extraction (requires Python 3.10+ dependencies)
+# Conditional import for agentic extraction (requires Python 3.12+ dependencies)
 try:
-    from idp_common.extraction.agentic_idp import structured_output
-    from idp_common.schema import create_pydantic_model_from_json_schema
+    from idp_common.extraction.agentic_idp import (
+        concurrent_structured_output_async,
+        set_confidence_data,
+        structured_output,
+    )
+    from idp_common.schema import (
+        create_pydantic_model_from_json_schema,
+        nullable_leaves_for_transport,
+        nullable_required_containers_for_shard,
+    )
 
     AGENTIC_AVAILABLE = True
 except ImportError:
@@ -44,9 +98,65 @@ from idp_common.utils import extract_json_from_text, repair_truncated_json
 logger = logging.getLogger(__name__)
 
 
+class ExtractionInputTooLarge(Exception):
+    """A section's single extraction request exceeded the model's input window.
+
+    Raised ``from`` Bedrock's ``ValidationException`` so the Step Functions cause
+    and the document's errors carry an explanation and a remedy instead of the
+    bare "Input is too long for requested model". Deterministic — the class name
+    is deliberately NOT in any retry list (#787).
+    """
+
+
+class ExtractionImageRejected(Exception):
+    """Bedrock rejected a section's request because of the IMAGES it carried.
+
+    A different failure from :class:`ExtractionInputTooLarge` even though both
+    surface as a ``ValidationException``: the remedy is smaller page images, not
+    fewer tokens or smaller shards. Reducing pages per shard or switching to
+    Advanced mode does not help, and #994 shows what happens when the two are
+    conflated — users tune budgets that cannot fix it. Deterministic, so like
+    ``ExtractionInputTooLarge`` the class name is NOT in any retry list.
+    """
+
+
+class ExtractionOutputIncomplete(Exception):
+    """Extraction returned far fewer list rows than the section's OCR evidences.
+
+    Raised AFTER the partial result, the processing issue and the processing
+    report have been persisted, so the data and the diagnosis survive and only
+    the section's *outcome* changes. That ordering is the whole point: a
+    consumer reading status alone must not be told a document completed when
+    most of a list is missing (#1032), but the rows that were extracted are
+    still worth keeping and the issue names exactly what was lost.
+
+    Distinct from :class:`ExtractionInputTooLarge`, which is Bedrock refusing a
+    request that never ran. This one is the model *accepting* a request that fits
+    the window and then stopping early — the two need different remedies and,
+    measured on the 25-page case in #1032, an input-size gate cannot see this one
+    at all (~146K estimated input against a 200K window).
+
+    Deterministic: the class name is deliberately in no ``Retry.ErrorEquals``
+    list in ``patterns/unified/statemachine/workflow.asl.json``, and
+    ``is_transient_error`` returns False for it, so the same request is not sent
+    again to stop early again.
+    """
+
+
+# The shipped default of ``extraction.confidence.list_batch_size``. The field is
+# ``gt=0`` so it cannot express "unset", and its default is persisted into
+# ``Config#default`` on every stack update — so it cannot simply be changed to 0
+# without wedging a rollback to any release whose validator still requires > 0.
+# This constant lets ``_get_sizing_plan`` treat exactly the default as "the user
+# did not choose this" when deciding whether to report a manual override.
+_LEGACY_LIST_BATCH_DEFAULT = 25
+
+
 # Pydantic models for internal data transfer
 class SectionInfo(BaseModel):
     """Metadata about a document section being processed."""
+
+    model_config = {"arbitrary_types_allowed": True}
 
     class_label: str
     sorted_page_ids: list[str]
@@ -56,6 +166,7 @@ class SectionInfo(BaseModel):
     output_uri: str
     start_page: int
     end_page: int
+    page_type_presence: PageTypePresence | None = None
 
 
 class ExtractionConfig(BaseModel):
@@ -79,6 +190,39 @@ class ExtractionResult(BaseModel):
     output_truncated: bool = False
     output_repaired: bool = False
     repair_method: str | None = None
+    schema_analysis: dict[str, Any] | None = None
+    ocr_analysis: dict[str, Any] | None = None
+    instance_count: int = 0
+    """Number of documents (instances) of the section's class found. 0 =
+    undetermined, 1 = normal, >1 = the section holds several distinct
+    documents that classification did not split apart."""
+    recovered_instances: list[dict[str, Any]] | None = None
+    """Every instance parsed from a multi-instance response, in document order.
+    Set only when ``instance_count > 1``. ``extracted_fields`` holds the FIRST
+    instance (so the output shape is unchanged for every downstream consumer);
+    this carries the rest so nothing the model produced is thrown away."""
+    instance_probe: int | None = None
+    """The model's own answer to "how many separate documents of this class are
+    in these pages" (#753), asked in the same inference and stripped from
+    ``extracted_fields``. None when detection is off, unsupported on this path,
+    or the model did not answer. Greater than the number of records actually in
+    the result means records were silently lost — see
+    ``extraction_multi_instance_suspected``."""
+
+
+def _escalation_failure_reason(exc: BaseException) -> str:
+    """One bounded line for ``escalation_decision`` when the escalation call raised.
+
+    Deliberately NOT ``str(exc)``: a pydantic ValidationError over a 100-row list
+    model is one block per failing row, each with an ``input_value=`` excerpt of
+    extracted document text — persisting that into section metadata (and rendering
+    it in the Processing Report) is both a layout problem and a disclosure of
+    document content. Type name plus the first line, capped; the full detail goes
+    to the log with ``exc_info``.
+    """
+    lines = (str(exc) or "").strip().splitlines()
+    text = lines[0] if lines else ""
+    return f"escalation call failed: {type(exc).__name__}: {text[:160]}"
 
 
 class ExtractionService:
@@ -114,8 +258,71 @@ class ExtractionService:
         self._class_label: str = ""
         self._attribute_descriptions: str = ""
         self._class_schema: dict[str, Any] = {}
+        # The class schema as sent to the model (prompt text / forced toolSpec).
+        # Identical to _class_schema except for the multi-instance detection
+        # probe property (#753), which must never reach the off-schema filter,
+        # the validator, or any downstream stage.
+        self._wire_class_schema: dict[str, Any] = {}
+        self._instance_probe_requested: bool = False
         self._page_images: list[bytes] = []
         self._image_uris: list[str] = []
+        # Per-page OCR text in section order, populated per section. Used to
+        # shard the input by page range for concurrent agentic extraction.
+        self._page_texts: list[str] = []
+        # Optional checkpoint callback for incremental saves during agentic extraction.
+        # When set, called after each successful extraction_tool or apply_json_patches
+        # invocation with the current extraction dict, enabling resume on Lambda timeout.
+        self._checkpoint_callback: Any | None = None
+        # Optional per-shard persistence backend (idp_common.extraction.runtime.
+        # ShardPersistence). When set (e.g. an S3ShardPersistence wired by the
+        # extraction Lambda), the concurrent/sharded path persists each shard's
+        # result to a deterministic key and skips shards whose complete result is
+        # already present — so an SFN retry of a timed-out section re-runs ONLY
+        # the incomplete shards. None => in-memory only (standalone/notebook).
+        self._shard_persistence: Any | None = None
+        # Validation outcome from the most recent _invoke_extraction_model call,
+        # consumed by _save_results when building the metadata block. Reset per
+        # section so a prior section's result can never leak into the next.
+        self._pending_validation_metadata: dict[str, Any] | None = None
+        self._pending_abstained_fields: dict[str, Any] | None = None
+        self._pending_forced_tool_metadata: dict[str, Any] | None = None
+        # Deterministic type/format repairs applied to the most recent section's
+        # simple-mode result, so nothing is silently rewritten. Reset per section.
+        self._pending_coercion_metadata: dict[str, Any] | None = None
+        # Page images downscaled to fit Bedrock's per-image limit (#778), one
+        # entry per affected page, so a page sent at lower resolution than stored
+        # is auditable. Set by _load_document_images, reset by _reset_context
+        # (NOT by _invoke_extraction_model — images load before it runs).
+        self._pending_image_fit_metadata: list[dict[str, Any]] | None = None
+        # Whether a Simple-mode prompt built for the current section still carried a
+        # <<CACHEPOINT>> marker after the prompt_cache knob was applied (#780).
+        self._pending_cache_marker_seen: bool = False
+        # Model actually used for the most recent section's extraction (after
+        # per-class override resolution), recorded in metadata for audit. Reset
+        # per section.
+        self._pending_extraction_model: str | None = None
+        # Grounded per-field assessment staged by _attach_explainability for the
+        # current section, emitted as explainability_info by _save_results.
+        # Reset per section. None when in-shard assessment did not run.
+        self._grounded_assessment: dict[str, Any] | None = None
+        # Wall-clock deadline (epoch seconds) for the in-shard assessment ladder
+        # (1.5). Set per-invocation from the Lambda context; None = no guard.
+        self._assessment_deadline_epoch: float | None = None
+        self._integrated_downgrade_reason: str | None = None
+        self._integrated_downgrade_checked = False
+        # Memoized model-aware SizingPlan for the current section (item 2).
+        self._sizing_plan: Any = None
+        # Memoized per-section prompt-overhead estimate (#775); None = not yet
+        # measured (the prompt context did not exist when last asked).
+        self._prompt_overhead_cache: int | None = None
+        # The Document for the current section, stashed by _prepare_section_context
+        # so per-shard grounding can load each shard's OCR pageData without
+        # threading `document` through _invoke_extraction_model. Reset per section.
+        self._document: Document | None = None
+        # Agent's optional self-reported table-tool rationale (a "TABLE_TOOL_NOTE:"
+        # line) captured from its final message; consumed by _save_results. Reset
+        # per section so a prior section's note never leaks.
+        self._agent_table_tool_note: str | None = None
 
         # Get model_id from config for logging (type-safe access with fallback)
         model_id = (
@@ -163,7 +370,28 @@ class ExtractionService:
 
     def _get_class_schema(self, class_label: str) -> dict[str, Any]:
         """
-        Get JSON Schema for a specific document class from configuration.
+        Get the EFFECTIVE JSON Schema for a document class from configuration.
+
+        "Effective" because a class flagged ``x-aws-idp-multi-instance: true``
+        (Synthesize mode, GitHub #715) has its schema replaced by an
+        ``instances[]`` List-of-Class wrapper here, at the single point every
+        other part of this service reads the schema from. Wrapping here rather
+        than at each call site is what makes the prompt, the generated Pydantic
+        model, the JSON-Schema validator, the off-schema filter, the completeness
+        check and the instance-count resolver all inherit the transform without
+        knowing about it. The transform is a no-op (returning the same object)
+        for every unflagged class, which is all of them by default.
+
+        For the same reason, stringified numeric constraints are coerced back to
+        numbers here. The Configuration table stores every numeric scalar as a
+        string and nothing converts them on read (``classes`` is
+        ``List[Dict[str, Any]]``, so validation never descends into it), so a
+        class authored in the Web UI arrives with ``minItems: "100"`` — which
+        raised ``TypeError`` in the one reader that compared it without a guard
+        and cost that section its whole completeness report (#797). Coercing at
+        this single entry point means readers do not each need their own guard;
+        the ones that already have one keep it, since they are also reachable
+        with a schema that did not come through here.
 
         Args:
             class_label: The document class name
@@ -171,6 +399,8 @@ class ExtractionService:
         Returns:
             JSON Schema for the class, or empty dict if not found
         """
+        from idp_common.schema.multi_instance import wrap_class_schema
+
         # Access classes through IDPConfig - returns List of dicts
         classes_config = self.config.classes
 
@@ -180,7 +410,7 @@ class ExtractionService:
                 X_AWS_IDP_DOCUMENT_TYPE, ""
             )
             if class_id.lower() == class_label.lower():
-                return class_obj
+                return coerce_numeric_schema_keywords(wrap_class_schema(class_obj))
 
         return {}
 
@@ -280,6 +510,14 @@ class ExtractionService:
         """
         content: list[dict[str, Any]] = []
 
+        # extraction.prompt_cache: off — send no cache points. The marker is
+        # removed here, before any content is built, so every Simple-mode path
+        # (default prompt, per-class override, shards) honours it (#780).
+        if self.config.extraction.prompt_cache == "off":
+            prompt_template = prompt_template.replace("<<CACHEPOINT>>", "")
+        if "<<CACHEPOINT>>" in prompt_template:
+            self._pending_cache_marker_seen = True
+
         # Handle FEW_SHOT_EXAMPLES placeholder first
         if "{FEW_SHOT_EXAMPLES}" in prompt_template:
             parts = prompt_template.split("{FEW_SHOT_EXAMPLES}")
@@ -378,6 +616,615 @@ class ExtractionService:
             attachments.append(image.prepare_bedrock_image_attachment(image_content))
 
         return attachments
+
+    def _build_shard_payloads(
+        self,
+        prompt_template: str,
+        send_images: bool,
+        max_shards: int,
+        table_boundary_pages: frozenset[int] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Split the section into token-budgeted page shards and render each
+        shard's prompt content independently.
+
+        Each shard's content is built with the SAME prompt path as the single
+        pass (``_build_prompt_content``) by temporarily scoping
+        ``self._document_text`` and ``self._page_images`` to the shard's page
+        slice — so few-shot / {DOCUMENT_IMAGE} / placeholder handling is
+        identical. The section's first-page text is prepended as shared header
+        context to every shard but the first, so column headers and page-1
+        scalar context survive the split.
+
+        Returns a list of payload dicts: ``{"content", "page_start", "page_end",
+        "total_pages"}``. Falls back to a single whole-section payload when
+        per-page text isn't available.
+        """
+        page_texts = self._page_texts
+        num_pages = len(page_texts)
+        if num_pages <= 1:
+            # Nothing to shard; let the caller use the single-pass path.
+            return []
+
+        # Header context = the first page's *header region* (title / account
+        # context / table COLUMN HEADERS), prepended to later shards so they
+        # retain column meaning. We deliberately DROP page-1 data rows here: the
+        # full page 1 is already in shard 0, and re-including its data rows in
+        # later shards makes the deterministic table parser re-emit them ->
+        # duplicate rows after merge. Truncate at the Markdown table separator
+        # (the `|---|` line) so only the header survives; fall back to a small
+        # line cap for non-table documents.
+        header_context = self._table_header_context(page_texts[0] if page_texts else "")
+
+        # Reserve the header-context tokens from the per-shard budget so the
+        # *rendered* shard (own pages + prepended header) still respects the
+        # configured budget — otherwise a shard packed to the budget would
+        # exceed it once the header is added. Page 0's own shard carries no
+        # added header, but using the reduced budget for all shards is the safe
+        # (conservative) choice. Never reduce below a small floor.
+        full_budget = self._shard_token_budget()
+        header_tokens = estimate_tokens(header_context)
+        effective_budget = max(1000, full_budget - header_tokens)
+
+        shards = plan_shards(
+            page_texts,
+            token_budget=effective_budget,
+            max_shards=max_shards,
+            max_pages_per_shard=self._max_pages_per_shard(),
+            table_boundary_pages=table_boundary_pages,
+        )
+        if len(shards) <= 1:
+            return []
+
+        # Save the full-section context to restore afterwards.
+        saved_text = self._document_text
+        saved_images = self._page_images
+        payloads: list[dict[str, Any]] = []
+        try:
+            for shard in shards:
+                shard_page_texts = page_texts[shard.start : shard.end]
+                # Build this shard's document text with PAGE markers preserved.
+                parts: list[str] = []
+                if shard.start > 0 and header_context.strip():
+                    parts.append(
+                        "--- DOCUMENT HEADER (page 1, for context only) ---\n"
+                        f"{header_context}"
+                    )
+                for offset, text in enumerate(shard_page_texts):
+                    page_num = shard.start + offset + 1
+                    parts.append(f"--- PAGE {page_num} ---\n{text}")
+                self._document_text = "\n".join(parts)
+                self._page_images = (
+                    self._cap_agent_images(
+                        self._slice_images(saved_images, shard.start, shard.end)
+                    )
+                    if send_images
+                    else []
+                )
+                shard_images = self._page_images if send_images else None
+                content = self._build_prompt_content(prompt_template, shard_images)
+                payloads.append(
+                    {
+                        "content": content,
+                        "page_start": shard.start,
+                        "page_end": shard.end,
+                        "total_pages": num_pages,
+                        # Raw (un-rendered) shard text + images, kept so an
+                        # in-shard assessment pass (integrated-assessment feature)
+                        # can reuse AssessmentService.assess_results over the SAME
+                        # pages without re-reading S3. Always page images here (not
+                        # gated on send_images): assessment benefits from the image
+                        # even when the extraction prompt has no {DOCUMENT_IMAGE}.
+                        # These never cross the SFN JSON boundary — each shard Lambda
+                        # rebuilds payloads locally — so bytes in the dict are safe.
+                        "assess_document_text": self._document_text,
+                        "assess_page_images": self._cap_agent_images(
+                            self._slice_images(saved_images, shard.start, shard.end)
+                        ),
+                        # Integrated mode: tell the shard agent to emit per-field
+                        # confidence/bbox inline (one inference, no second pass).
+                        "emit_field_assessment": self._integrated_assessment_enabled(),
+                    }
+                )
+        finally:
+            self._document_text = saved_text
+            self._page_images = saved_images
+
+        logger.info(
+            "Built %d input shards for concurrent extraction "
+            "(budget=%d tokens, header-reserved=%d)",
+            len(payloads),
+            effective_budget,
+            header_tokens,
+        )
+        return payloads
+
+    def _preflight_table_parse(self, ocr_analysis: dict[str, Any]) -> dict | None:
+        """Parse the section's tables deterministically before the agent runs.
+
+        Returns the ``parse_markdown_tables`` result, or ``None`` when pre-flight
+        does not apply (table parsing disabled, or too few estimated rows for the
+        table pipeline to be the right tool).
+
+        Shared by the single-pass agentic path and the sharded SFN plan. It used
+        to live inline in the single-pass path only, which meant the sharded path
+        — the default for any multi-page table document — never knew a table had
+        already been parsed, and so never applied the ``lazy_images``
+        optimization below.
+        """
+        tp_config = self.config.extraction.agentic.table_parsing
+        if not (tp_config.enabled and ocr_analysis.get("estimated_row_count", 0) >= 50):
+            return None
+        from idp_common.extraction.tools.table_parser import parse_markdown_tables
+
+        result = parse_markdown_tables(
+            text=self._document_text,
+            max_empty_line_gap=tp_config.max_empty_line_gap,
+            auto_merge_adjacent_tables=tp_config.auto_merge_adjacent_tables,
+        )
+        # Logged here rather than at the call sites so both agentic paths are
+        # equally observable: the sharded path used to run no pre-flight at all,
+        # and once it did, it still emitted no evidence of having done so.
+        logger.info(
+            "Pre-flight table parsing complete",
+            extra={
+                "status": result.get("status"),
+                "table_count": result.get("table_count", 0),
+                "total_rows": sum(
+                    t.get("row_count", 0) for t in result.get("tables", [])
+                ),
+                "columns": result.get("columns", []),
+            },
+        )
+        return result
+
+    # Scope note for SHARDED agents ONLY (passed via `scope_note=` below). The
+    # block itself is written for an agent holding the whole section, and two of
+    # its sentences read wrong from inside a shard:
+    #
+    #  * "extract ONLY text between markers for your pages" — a shard's text is
+    #    ALREADY only its pages, and every shard after the first is prefixed with
+    #    a `--- DOCUMENT HEADER (page 1, for context only) ---` block that sits
+    #    OUTSIDE the `--- PAGE N ---` markers on purpose (`_build_shard_payloads`)
+    #    because it carries the table's column-header row. An agent obeying that
+    #    sentence literally drops the header, the deterministic parse then fails
+    #    on text that starts mid-table, and the agent falls back to emitting rows
+    #    itself — a COMPLETENESS risk, not only a cost one.
+    #  * the table/row totals are section-wide (`_preflight_table_parse` parses
+    #    the whole section), while `TABLE_PARSING_PROMPT_ADDENDUM` in the system
+    #    prompt tells the agent to verify row_count against the document and
+    #    never stop until all rows are captured. A shard covering 2 of 6 pages
+    #    that reads those totals as its own target can over-extract or fail to
+    #    terminate. `_run_shard_agent`'s per-shard "covering pages A-B of T"
+    #    sentence does establish the subset, but only a strong model reconciles
+    #    it with the totals unaided.
+    _SHARD_SCOPE_NOTE = (
+        "YOUR SCOPE (sharded run — this overrides the marker rule above): the "
+        "text you were given ALREADY contains only your assigned pages, so pass "
+        "ALL of it to parse_table, including any leading "
+        "'--- DOCUMENT HEADER (page 1, for context only) ---' block. That header "
+        "carries the table's column headers and deliberately sits outside the "
+        "'--- PAGE N ---' markers; dropping it makes parse_table fail on text "
+        "that starts mid-table.\n"
+        "The table and row totals above are for the WHOLE section, not for your "
+        "pages: parse_table on your pages will legitimately return fewer rows, "
+        "and that is complete for your scope."
+    )
+
+    @staticmethod
+    def _append_preflight_table_guidance(
+        custom_instruction: str | None,
+        preflight_parse_result: dict | None,
+        *,
+        scope_note: str | None = None,
+    ) -> str | None:
+        """Append the PRE-PARSED TABLE DATA block to an agent instruction.
+
+        Returns ``custom_instruction`` unchanged when there is no successful
+        pre-flight parse to describe, so the caller can apply this
+        unconditionally.
+
+        The block tells the agent that the section's tables have *already* been
+        parsed deterministically — how many tables, how many rows, which columns
+        — and then walks it through the tool chain that keeps the rows out of the
+        model's output: ``parse_table`` → ``map_table_to_schema`` →
+        ``finalize_table_extraction``, with the closing note that ``finalize``
+        reads the mapped rows from agent state so no JSON rows need to be
+        generated. Suppressing that row-by-row JSON fallback is the whole point:
+        it is the same failure mode whose removal cut Extraction output tokens
+        from 1,512,506 to 681,222 over an identical 12-run arm in the
+        advanced-extraction study.
+
+        Shared by the single-pass agentic path and the sharded SFN plan
+        (issue #900). It used to live inline in the single-pass path only, so the
+        shard agents — the DEFAULT for any multi-page table document, and the
+        ones the page-marker paragraph was written for — never received it, even
+        after #898 gave the sharded path the same pre-flight parse.
+
+        The page-range wording stays generic ("when you are assigned a page
+        range") rather than naming a concrete range, because the plan builds ONE
+        instruction for all of a section's shards and
+        ``agentic_idp._run_shard_agent`` already appends each shard's own
+        ``pages N-M of T`` sentence immediately after this block.
+
+        ``scope_note`` is an optional paragraph inserted directly after the
+        page-marker rule, so it can qualify it. The sharded call sites pass
+        :attr:`_SHARD_SCOPE_NOTE` (see the comment there for what the block gets
+        wrong when read from inside a shard); the single-agent path passes
+        nothing, which keeps its instruction byte-identical to the text the
+        advanced-extraction study measured.
+        """
+        if (preflight_parse_result or {}).get("status") != "success":
+            return custom_instruction
+
+        total_rows = sum(
+            t.get("row_count", 0) for t in preflight_parse_result.get("tables", [])
+        )
+        columns = preflight_parse_result.get("columns", [])
+        table_count = preflight_parse_result.get("table_count", 0)
+        scope_paragraph = f"{scope_note}\n\n" if scope_note else ""
+
+        guidance = (
+            f"\n\n**PRE-PARSED TABLE DATA AVAILABLE**:\n"
+            f"Found {table_count} table(s) with {total_rows} total rows.\n"
+            f"Table columns: {columns}\n\n"
+            f"PAGE MARKERS: The document text contains '--- PAGE N ---' "
+            f"markers between pages. When you are assigned a page range, "
+            f"extract ONLY text between markers for your pages before "
+            f"calling parse_table.\n\n"
+            # Empty unless a caller passes scope_note, so the single-agent
+            # path's text is unchanged (pinned byte-for-byte by a unit test).
+            f"{scope_paragraph}"
+            f"EFFICIENT EXTRACTION WORKFLOW:\n"
+            f"1. Extract scalar fields from your pages' text\n"
+            f"2. Call parse_table with your pages' text\n"
+            f"3. Call map_table_to_schema with column_mapping + static_fields\n"
+            f"   (merged rows are auto-split — no manual handling needed)\n"
+            f"4. Call finalize_table_extraction with table_array_field + "
+            f"scalar_fields\n\n"
+            f"finalize reads mapped rows from state — no JSON generation needed."
+        )
+        return f"{custom_instruction}{guidance}" if custom_instruction else guidance
+
+    def _apply_lazy_images(
+        self,
+        send_images: bool,
+        preflight_parse_result: dict | None,
+    ) -> bool:
+        """Apply the ``lazy_images`` cost optimization to an image decision.
+
+        When the deterministic table parser already parsed the section's
+        table(s) in pre-flight, the agentic loop is text/markdown-driven
+        (``parse_table`` / ``map_table_to_schema`` never read images) and the
+        agent can still fetch a page on demand via the ``view_image`` tool.
+        Pre-loaded images are re-sent on every agent turn and dominate cost on
+        multi-page documents (and push large documents toward context limits),
+        so the up-front attachment is suppressed. Gated by config
+        (``lazy_images``, default on) so image-dependent corpora can opt back in.
+
+        Returning False only decides the POLICY. On the single-pass path the
+        page images are already inside the prompt content that
+        ``_build_extraction_content`` rendered for ``{DOCUMENT_IMAGE}``, so the
+        caller must also apply :meth:`_limit_content_images` to that content —
+        otherwise the suppression is a no-op (which is what shipped: see the
+        note there). ``view_image`` stays available on the single-pass path
+        because the full page list is still handed to the agent for tool
+        registration, with attachment turned off; per-shard agents get no
+        ``view_image`` tool at all, so for them this is text-only.
+        """
+        suppress = (
+            send_images
+            and self.config.extraction.agentic.table_parsing.lazy_images
+            and (preflight_parse_result or {}).get("status") == "success"
+        )
+        if not suppress:
+            return send_images
+        logger.info(
+            "Skipping up-front image attachment for agentic extraction "
+            "(pre-flight table parse succeeded; table tool is text-driven, "
+            "view_image remains available on demand)"
+        )
+        return False
+
+    @staticmethod
+    def _limit_content_images(content: Any, limit: int | None) -> tuple[Any, int, int]:
+        """Enforce an image budget on ALREADY-RENDERED prompt content.
+
+        ``{DOCUMENT_IMAGE}`` is substituted in ``_build_extraction_content``,
+        which runs before the agentic branch decides anything about images. So
+        by the time ``_apply_lazy_images`` / ``max_images_per_agent`` have an
+        opinion, every page image is already an image block in ``content``, and
+        the ``page_images=`` argument they were being applied to is a *second*
+        copy. That made all three of the following true on the single-pass
+        agentic path, and none of them were caught by a test:
+
+        * ``lazy_images`` suppressed nothing — the images stayed in ``content``;
+        * ``max_images_per_agent`` capped nothing — a 25-page section with
+          ``{DOCUMENT_IMAGE}`` still attached 25 images against a default cap of
+          20, which is the oversized-first-turn overflow the cap exists for;
+        * with suppression off, every page image was attached **twice** (once by
+          the substitution, once by ``_prepare_prompt_content``).
+
+        The policy is therefore applied to the content itself, and the images
+        handed to the agent alongside it are for ``view_image`` only
+        (``attach_page_images=False``).
+
+        Args:
+            content: rendered content (list of blocks, or anything else — a
+                non-list prompt has no image blocks and is returned unchanged).
+            limit: max image blocks to keep; 0 drops them all, None = unlimited.
+
+        Returns:
+            ``(content, kept, dropped)``.
+        """
+        if limit is None or not isinstance(content, list):
+            return content, 0, 0
+        kept: list[Any] = []
+        n_images = 0
+        dropped = 0
+        for block in content:
+            is_image = isinstance(block, dict) and block.get("image") is not None
+            if is_image:
+                if n_images >= limit:
+                    dropped += 1
+                    continue
+                n_images += 1
+            kept.append(block)
+        return kept, n_images, dropped
+
+    @staticmethod
+    def _slice_images(images: list[bytes], start: int, end: int) -> list[bytes]:
+        """Slice page images to a page range, tolerating an empty/short list."""
+        if not images:
+            return []
+        return images[start:end]
+
+    def _cap_agent_images(self, images: list[bytes]) -> list[bytes]:
+        """Cap how many page images are attached to one agent invocation.
+
+        Sending many large page images in a single Bedrock request can cause an
+        oversized first turn and a read timeout (a 25-page doc with
+        ``{DOCUMENT_IMAGE}`` is the classic failure). Beyond
+        ``agentic.max_images_per_agent`` (0 = unlimited), attach only the first N
+        and log a warning — the agent still has the full OCR text and can pull
+        specific pages on demand via the view_image tool.
+        """
+        cap = getattr(self.config.extraction.agentic, "max_images_per_agent", 0) or 0
+        if cap <= 0 or not images or len(images) <= cap:
+            return images
+        logger.warning(
+            "Capping agent page-images from %d to %d (agentic.max_images_per_agent) "
+            "to avoid oversized-request read timeouts; OCR text is still complete "
+            "and the agent can fetch other pages via the view_image tool.",
+            len(images),
+            cap,
+        )
+        return images[:cap]
+
+    def _get_sizing_plan(self) -> Any:
+        """Model-aware sizing plan for this section (memoized per-invocation).
+
+        Derives shard token budget + confidence list-batch size from the
+        extraction model's context/output windows minus
+        ``extraction.context_buffer`` (see idp_common.bedrock.sizing). Explicit
+        non-zero config values for shard_token_budget / list_batch_size are
+        passed as overrides so they still win. Logged once per section.
+        """
+        cached = getattr(self, "_sizing_plan", None)
+        if cached is not None and cached.prompt_overhead_tokens:
+            return cached
+        overhead = self._prompt_overhead_tokens()
+        # A plan memoized before the prompt context existed carries no overhead;
+        # recompute it once the overhead is measurable, otherwise serve it.
+        if cached is not None and not overhead:
+            return cached
+        from idp_common.bedrock.sizing import compute_sizing_plan
+
+        ex = self.config.extraction
+        agentic = ex.agentic
+        # Explicit (non-zero) config values act as overrides; 0 => auto-size.
+        stb = getattr(agentic, "shard_token_budget", 0) or None
+        lbs = getattr(ex.confidence, "list_batch_size", 0) or None
+        # ``list_batch_size`` has a non-zero legacy default (25) and the field is
+        # ``gt=0``, so there is no in-band way to say "unset". Treat exactly the
+        # legacy default as "not an explicit override" so the reported figure shows
+        # a derived value rather than "manual override in effect" for a number
+        # nobody chose. This sentinel cannot be removed by defaulting the field to
+        # 0: the default is written into ``Config#default`` on every stack update,
+        # and a 0 there is REJECTED by every release up to and including v0.6.7
+        # (``gt=0``), which wedges a rollback — the same trap as
+        # `pricing-units-rollback-deadlock`.
+        #
+        # Note the plan's list_batch_size is a report-only ESTIMATE (no column count
+        # is available before extraction); the authoritative per-field size is
+        # derived at assessment time from the real rows.
+        plan = compute_sizing_plan(
+            model_id=(self._pending_extraction_model or ex.model),
+            context_buffer=getattr(ex, "context_buffer", 0.30),
+            geometry_mode=ex.geometry.mode,
+            max_images_per_agent=getattr(agentic, "max_images_per_agent", 20),
+            default_max_pages_per_shard=self._max_pages_per_shard(),
+            confidence_model_id=getattr(ex.confidence, "model", None),
+            shard_token_budget_override=stb,
+            list_batch_size_override=lbs
+            if (lbs and lbs != _LEGACY_LIST_BATCH_DEFAULT)
+            else None,
+            prompt_overhead_tokens=overhead,
+            log_label="extraction",
+        )
+        self._sizing_plan = plan
+        return plan
+
+    def _prompt_overhead_tokens(self) -> int:
+        """Estimated tokens of everything in one extraction request that is NOT
+        page text, so the shard budget can subtract it (#775).
+
+        Counted (chars/4, the same estimator ``plan_shards`` uses for page text):
+
+        - the task prompt the service would send — the per-class override, else
+          the mode-selected template — with the class schema prose, class label
+          and the few-shot ``attributesPrompt`` texts rendered in and the document
+          placeholders emptied;
+        - Simple: the (per-class or global) system prompt, plus the sanitized
+          forced ``toolSpec`` when forcing is enabled;
+        - Advanced: the agent's own system prompt (the task prompt travels as its
+          custom instruction), the real ``model_json_schema()`` of the transport
+          model that becomes the extraction tool's input schema, and that schema
+          again when ``restate_schema_in_system_prompt`` is on.
+
+        Not counted, so the estimate runs LOW and ``context_buffer`` still covers
+        it: the other agent tool specs (~3k tokens), the table-guidance custom
+        instruction, and page images (the plan's own image reserve). Few-shot
+        images are never fetched here — only their text is sized. Returns 0 until
+        ``_initialize_extraction_context`` has run; memoized per section
+        (``_reset_context`` clears it) so the estimate is computed once and
+        identically in every Lambda that plans, runs or merges this section's
+        shards.
+        """
+        if self._prompt_overhead_cache is not None:
+            return self._prompt_overhead_cache
+        if not self._class_schema or not self._attribute_descriptions:
+            return 0
+        try:
+            import json as _json
+
+            from idp_common.config.schema_constants import X_AWS_IDP_EXAMPLES
+            from idp_common.extraction.prompt_assembly import (
+                select_extraction_task_prompt,
+            )
+            from idp_common.utils.few_shot_example_builder import (
+                LEGACY_ATTRIBUTES_PROMPT,
+                X_AWS_IDP_ATTRIBUTES_PROMPT,
+                _example_field,
+            )
+
+            ex = self.config.extraction
+            schema = self._class_schema
+            template = schema.get(
+                X_AWS_IDP_EXTRACTION_TASK_PROMPT
+            ) or select_extraction_task_prompt(ex)
+            few_shot_text = ""
+            if "{FEW_SHOT_EXAMPLES}" in (template or ""):
+                few_shot_text = " ".join(
+                    str(
+                        _example_field(
+                            e, X_AWS_IDP_ATTRIBUTES_PROMPT, LEGACY_ATTRIBUTES_PROMPT
+                        )
+                        or ""
+                    )
+                    for e in (schema.get(X_AWS_IDP_EXAMPLES) or [])
+                    if isinstance(e, dict)
+                )
+            rendered = (
+                (template or "")
+                .replace(
+                    "{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}", self._attribute_descriptions
+                )
+                .replace("{DOCUMENT_CLASS}", self._class_label or "")
+                .replace("{FEW_SHOT_EXAMPLES}", few_shot_text)
+                .replace("{DOCUMENT_TEXT}", "")
+                .replace("{DOCUMENT_IMAGE}", "")
+                .replace("<<CACHEPOINT>>", "")
+            )
+            total = estimate_tokens(rendered)
+            wire_schema = self._wire_class_schema or schema
+            if ex.agentic.enabled:
+                from idp_common.extraction.agentic_idp import SYSTEM_PROMPT
+
+                tool_schema = _json.dumps(
+                    self._transport_model(
+                        wire_schema, self._class_label or "class"
+                    ).model_json_schema(),
+                    indent=2,
+                )
+                schema_tokens = estimate_tokens(tool_schema)
+                total += estimate_tokens(SYSTEM_PROMPT) + schema_tokens
+                if getattr(ex.agentic, "restate_schema_in_system_prompt", True):
+                    total += schema_tokens
+            else:
+                system_prompt = (
+                    schema.get(X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT)
+                    or ex.system_prompt
+                    or ""
+                )
+                total += estimate_tokens(system_prompt)
+                if getattr(getattr(ex, "forced_tool", None), "enabled", False):
+                    from idp_common.extraction.forced_tool import (
+                        build_extraction_tool_config,
+                    )
+
+                    total += estimate_tokens(
+                        _json.dumps(build_extraction_tool_config(wire_schema)[0])
+                    )
+            self._prompt_overhead_cache = int(total)
+            return self._prompt_overhead_cache
+        except Exception as e:  # noqa: BLE001 - never break sizing on an estimate
+            logger.warning(
+                "Prompt overhead estimate unavailable (%s); the shard budget falls "
+                "back to the blanket context_buffer for this section",
+                e,
+            )
+            return 0
+
+    def _shard_token_budget(self) -> int:
+        """Per-shard input-token budget.
+
+        Uses the explicit config override when set (non-zero); otherwise the
+        model-aware auto-derived budget (falls back to the module default if
+        sizing is somehow unavailable).
+        """
+        agentic = self.config.extraction.agentic
+        budget = getattr(agentic, "shard_token_budget", None)
+        if budget:
+            return int(budget)
+        try:
+            return int(self._get_sizing_plan().shard_token_budget)
+        except Exception as e:  # noqa: BLE001 - never break sharding on sizing
+            logger.warning("Auto-sizing shard budget failed (%s); using default", e)
+            return DEFAULT_SHARD_TOKEN_BUDGET
+
+    def _max_pages_per_shard(self) -> int:
+        """Per-shard page ceiling (config override or default).
+
+        Returns the configured ``extraction.agentic.max_pages_per_shard``. A
+        configured ``0`` disables the page ceiling (token budget only); a
+        missing field (older configs) falls back to the default. Distinguishes
+        missing (``None``) from an explicit ``0``.
+        """
+        agentic = self.config.extraction.agentic
+        cap = getattr(agentic, "max_pages_per_shard", None)
+        if cap is None:
+            return DEFAULT_MAX_PAGES_PER_SHARD
+        return int(cap)
+
+    @staticmethod
+    def _table_header_context(page_one_text: str, max_lines: int = 30) -> str:
+        """Return the *header region* of page 1 for prepending to later shards.
+
+        Includes title/account context and the table's COLUMN HEADERS but DROPS
+        the page-1 data rows so the deterministic table parser doesn't re-emit
+        them in every later shard (which would duplicate rows after merge).
+
+        Strategy:
+        - If the text contains a Markdown table separator line (``|---|---|``),
+          keep everything up to and including that line and drop the rest (the
+          data rows that follow). This preserves the column header exactly once.
+        - Otherwise (no detectable table header) keep at most ``max_lines`` lines
+          so account-level context still propagates without dragging a full page
+          of data into every shard.
+        """
+        if not page_one_text:
+            return ""
+        lines = page_one_text.split("\n")
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            # Markdown separator row: pipes/dashes/colons/spaces and >=1 dash.
+            if (
+                "-" in stripped
+                and set(stripped) <= set("|-: ")
+                and stripped.count("-") >= 3
+            ):
+                return "\n".join(lines[: i + 1])
+        return "\n".join(lines[:max_lines])
 
     def _build_few_shot_examples_content(self) -> list[dict[str, Any]]:
         """
@@ -496,7 +1343,11 @@ class ExtractionService:
         except Exception as e:
             error_msg = f"Failed to invoke custom prompt Lambda {lambda_arn}: {str(e)}"
             logger.error(error_msg)
-            raise Exception(error_msg)
+            # `from e` keeps the cause chain: a Lambda-side throttle or a botocore
+            # timeout invoking the hook is transient and the handler classifies it
+            # through the explicit cause (#787); a hook that failed on its own
+            # terms stays a hard error.
+            raise Exception(error_msg) from e
 
     def _reset_context(self) -> None:
         """Reset instance variables for clean state before processing."""
@@ -504,8 +1355,31 @@ class ExtractionService:
         self._class_label = ""
         self._attribute_descriptions = ""
         self._class_schema = {}
+        self._wire_class_schema = {}
+        self._instance_probe_requested = False
         self._page_images = []
         self._image_uris = []
+        self._pending_image_fit_metadata = None
+        self._pending_cache_marker_seen = False
+        self._grounded_assessment = None
+        # Top-level fields the simple-extraction schema-compliance filter dropped
+        # because the class schema does not define them (off-schema/hallucinated).
+        # Set by _filter_extracted_to_schema, surfaced by _build_extraction_issues.
+        self._off_schema_fields: list[str] = []
+        # Wall-clock deadline (epoch seconds) for the in-shard assessment ladder
+        # (1.5); set per-invocation from the Lambda context. None = no guard.
+        self._assessment_deadline_epoch = None
+        # Memoized model-aware SizingPlan for the current section (item 2).
+        self._sizing_plan = None
+        self._prompt_overhead_cache = None
+        self._document = None
+        self._agent_table_tool_note = None
+        # Reason a Simple + integrated section was downgraded to a separate
+        # confidence pass (list-bearing class), or None. Set lazily per section by
+        # _simple_integrated_list_downgrade; surfaced in metadata and the flow.
+        self._integrated_downgrade_reason = None
+        self._integrated_downgrade_checked = False
+        self._last_simple_input_estimate: dict[str, Any] | None = None
 
     def _validate_and_find_section(
         self, document: Document, section_id: str
@@ -621,42 +1495,236 @@ class ExtractionService:
             end_page=end_page,
         )
 
-    def _load_document_text(
+    def _load_page_texts(
         self, document: Document, sorted_page_ids: list[str]
-    ) -> str:
-        """
-        Load and concatenate text from all pages.
+    ) -> dict[str, str]:
+        """Load OCR text for each page in the section, preserving page IDs.
 
-        Args:
-            document: Document containing pages
-            sorted_page_ids: Sorted list of page IDs
-
-        Returns:
-            Concatenated document text
+        Pages missing from ``document.pages`` are recorded as errors and
+        omitted from the result.
         """
         t0 = time.time()
-        document_texts = []
-
+        page_id_to_text: dict[str, str] = {}
         for page_id in sorted_page_ids:
             if page_id not in document.pages:
                 error_msg = f"Page {page_id} not found in document"
                 logger.error(error_msg)
                 document.errors.append(error_msg)
                 continue
-
             page = document.pages[page_id]
             text_path = page.parsed_text_uri
-            page_text = s3.get_text_content(text_path)
-            document_texts.append(page_text)
+            page_id_to_text[page_id] = s3.get_text_content(text_path)
+        logger.info(f"Time taken to read text content: {time.time() - t0:.2f} seconds")
+        return page_id_to_text
 
-        document_text = "\n".join(document_texts)
-        t1 = time.time()
-        logger.info(f"Time taken to read text content: {t1 - t0:.2f} seconds")
+    def _format_document_text(
+        self,
+        sorted_page_ids: list[str],
+        page_id_to_text: dict[str, str],
+        page_type_presence: PageTypePresence | None = None,
+    ) -> str:
+        """Concatenate per-page text with sequential page markers.
 
-        return document_text
+        When ``page_type_presence`` resolves a page type for a page, the
+        marker is annotated as ``--- PAGE N [PageType] ---`` so the LLM
+        gets a soft hint about the page's role.
+        """
+        page_id_to_type: dict[str, str] = (
+            page_type_presence.page_id_to_page_type if page_type_presence else {}
+        )
+        parts: list[str] = []
+        for idx, page_id in enumerate(
+            pid for pid in sorted_page_ids if pid in page_id_to_text
+        ):
+            page_num = idx + 1
+            page_type = page_id_to_type.get(page_id)
+            marker = (
+                f"--- PAGE {page_num} [{page_type}] ---"
+                if page_type
+                else f"--- PAGE {page_num} ---"
+            )
+            parts.append(f"{marker}\n{page_id_to_text[page_id]}")
+        return "\n".join(parts)
+
+    def _load_document_text(
+        self, document: Document, sorted_page_ids: list[str]
+    ) -> str:
+        """Backwards-compatible loader that returns the concatenated text only.
+
+        Prefer :meth:`_load_page_texts` + :meth:`_format_document_text` when
+        per-page text is also needed (e.g., for page-type resolution).
+        """
+        page_id_to_text = self._load_page_texts(document, sorted_page_ids)
+        return self._format_document_text(sorted_page_ids, page_id_to_text)
+
+    def _load_confidence_data(
+        self, document: Document, sorted_page_ids: list[str]
+    ) -> dict[str, str]:
+        """
+        Load OCR confidence data for pages in a section.
+
+        Reads text_confidence_uri from each page to provide confidence scores
+        to the table parsing tool.
+
+        Args:
+            document: Document containing pages
+            sorted_page_ids: Sorted list of page IDs
+
+        Returns:
+            Dict mapping page IDs to confidence data strings
+        """
+        confidence_data: dict[str, str] = {}
+        for page_id in sorted_page_ids:
+            if page_id not in document.pages:
+                continue
+            page = document.pages[page_id]
+            confidence_uri = getattr(page, "text_confidence_uri", None)
+            if confidence_uri:
+                try:
+                    conf_text = s3.get_text_content(confidence_uri)
+                    if conf_text:
+                        confidence_data[page_id] = conf_text
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load confidence data for page {page_id}: {e}"
+                    )
+        return confidence_data
+
+    @staticmethod
+    def _repack_is_reachable(
+        page_texts: list[str], max_shards: int, page_cap: int | None
+    ) -> bool:
+        """Can ``plan_shards``' repack pass fire for ANY token budget? (#994)
+
+        It fires only when the first pass produces more than ``max_shards``
+        ranges. The first pass closes a shard on the page cap or on the budget, so
+        the fewest ranges any budget can yield is ``ceil(n / page_cap)`` — what an
+        unbounded budget gives, since only the page cap then applies. If even that
+        exceeds ``max_shards`` the repack fires whatever the budget is. Otherwise
+        it fires only for a budget small enough to split further, which requires
+        some page to carry a nonzero token estimate.
+
+        The case this exists for: a section whose pages have NO OCR text at all
+        (image-only pages, or pages under ``_CHARS_PER_TOKEN`` characters, which
+        ``estimate_tokens`` floors to 0). Every page then costs 0, so no budget can
+        split anything and the repack is unreachable — yet asking
+        ``_rebalance_to_cap`` anyway returns a degenerate split, because its
+        ``target`` of ``total / max_shards`` is 0 and every shard closes on the
+        first page: nine 1-page ranges and a tail holding the rest. Taking that as
+        the bound clamps a 20-page image-only section that the real planner would
+        have sent as 5-page shards. That is the one place the clamp costs most —
+        with no text, the page images are the model's only signal — so the
+        reachability test is worth the few lines.
+        """
+        if (page_cap or 0) > 0:
+            min_first_pass_ranges = -(-len(page_texts) // page_cap)  # type: ignore[operator]
+        else:
+            min_first_pass_ranges = 1
+        if min_first_pass_ranges > max_shards:
+            return True
+        return any(estimate_tokens(text) > 0 for text in page_texts)
+
+    def _agentic_images_per_request(
+        self, pages_to_attach: int, page_texts: list[str] | None = None
+    ) -> int:
+        """Upper bound on the page images ONE agentic request will carry (#994).
+
+        Needed because Bedrock's 2,000px many-image cap binds on a single
+        request's image count, and on the agentic path a section is not one
+        request. Two things bound it, and only one is a ceiling on page COUNT:
+
+        * ``max_images_per_agent`` is — ``_cap_agent_images`` truncates the
+          attached list to it before every invocation.
+        * ``max_pages_per_shard`` is not, and nor is any arithmetic on it.
+          ``plan_shards`` closes a shard at that many pages, but when that would
+          produce more shards than ``max_concurrent_batches``,
+          ``_rebalance_to_cap`` discards those ranges and repacks the pages into
+          exactly ``max_concurrent_batches`` **token-balanced** groups, ignoring
+          the page cap. Token-balanced, not page-balanced: one dense page can take
+          a whole shard and leave 20 sparse ones in another, so no closed form
+          over page counts bounds it.
+
+        So it is not estimated. ``plan_shards`` has exactly two regimes, and the
+        bound is the worse of them — which needs no token budget at all:
+
+        * **A, the page cap holds** (the first pass produced no more ranges than
+          ``max_concurrent_batches``): the largest shard is
+          ``max_pages_per_shard``, or the whole section when that is ``0``
+          ("page cap off").
+        * **B, the repack fired**: the largest range ``_rebalance_to_cap`` returns.
+          It takes no budget argument — it repacks from page 0 by token weight —
+          so this is computable exactly. Included only when the repack can actually
+          fire for some budget (see ``_repack_is_reachable``); asking for it
+          unconditionally over-clamps a section with no OCR text at all.
+
+        ``_rebalance_to_cap`` is private but imported at module scope deliberately:
+        the soundness argument below rests on it, so a rename should fail at import
+        rather than be swallowed by the fallback here and silently degrade the
+        bound to "the whole section".
+
+        Taking ``max(A, B)`` rather than planning under one budget is deliberate,
+        and an earlier version of this method got it wrong in a way worth
+        recording. It called ``plan_shards`` with a deliberately enormous budget,
+        on the argument that a smaller budget only closes shards *earlier* and so
+        cannot under-estimate. That is false: the budget also decides **whether the
+        repack fires at all**, and the repack discards the page cap. Measured on
+        the shipped default (``max_concurrent_batches: 10``,
+        ``max_pages_per_shard: 5``) with a 50-page section holding one dense page,
+        at Sonnet 4.6's own derived budget of 18,400 tokens: an unbounded budget
+        plans ten 5-page shards, while the real budget plans
+        ``[1, 41, 1, 1, ...]``. Estimating 5 there misses a clamp the request
+        needs. Regime B catches it because it does not depend on the budget.
+
+        ``table_boundary_pages`` is not consulted: it only ever closes a first-pass
+        shard earlier, which can move the plan from regime A into regime B, and B
+        is already covered.
+
+        Without ``page_texts`` (the only other caller shape) the sound answer is
+        the whole section, since a single agent may then receive all of it.
+
+        ⚠️ Known gap: sharding is skipped altogether — whole section to one agent
+        — when the run is a resume (``existing_data_model``) or carries a
+        ``checkpoint_buffer``, even with ``max_concurrent_batches > 1``. The
+        estimate cannot see that from here, so a resumed run of a sharded config
+        can carry more images than this predicts. ``max_images_per_agent`` still
+        bounds the attached count (at its default of 20; ``0`` means unlimited and
+        removes that backstop), and the failure mode is a clear
+        ``ExtractionImageRejected`` rather than a wrong result.
+        """
+        agentic = self.config.extraction.agentic
+        bound = pages_to_attach
+        if agentic.max_concurrent_batches > 1 and page_texts and pages_to_attach > 1:
+            try:
+                n = len(page_texts)
+                max_shards = min(agentic.max_concurrent_batches, n)
+                page_cap = self._max_pages_per_shard()
+                # Regime A: the page cap holds. 0 / None means "page cap off", so
+                # the token budget alone bounds shards and all of them can land in
+                # one.
+                page_cap_bound = page_cap if (page_cap or 0) > 0 else n
+                bound = min(bound, page_cap_bound)
+                if self._repack_is_reachable(page_texts, max_shards, page_cap):
+                    # Regime B: exact, and budget-free by construction — the repack
+                    # ignores the budget and repacks from page 0 by token weight.
+                    repacked = _rebalance_to_cap(page_texts, n, max_shards)
+                    repack_bound = max((e - s) for s, e in repacked) if repacked else n
+                    bound = min(pages_to_attach, max(page_cap_bound, repack_bound))
+            except Exception as e:  # noqa: BLE001 - fall back to the sound answer
+                logger.warning(
+                    "Could not size the many-image cap from the shard plan (%s); "
+                    "assuming one request carries the whole section.",
+                    e,
+                )
+                bound = pages_to_attach
+        if agentic.max_images_per_agent > 0:
+            bound = min(bound, agentic.max_images_per_agent)
+        return max(0, bound)
 
     def _load_document_images(
-        self, document: Document, sorted_page_ids: list[str]
+        self,
+        document: Document,
+        sorted_page_ids: list[str],
+        page_texts: list[str] | None = None,
     ) -> list[Any]:
         """
         Load images from all pages.
@@ -664,6 +1732,12 @@ class ExtractionService:
         Args:
             document: Document containing pages
             sorted_page_ids: Sorted list of page IDs
+            page_texts: Per-page OCR text in section page order, when the caller
+                has it. Used only to size Bedrock's many-image dimension cap
+                (#994): on the agentic path the pages are sharded by TEXT volume,
+                so how many images one request carries cannot be known without it.
+                Omitted means "assume one request takes the whole section", which
+                is the conservative answer.
 
         Returns:
             List of prepared images
@@ -671,6 +1745,31 @@ class ExtractionService:
         t0 = time.time()
         target_width = self.config.extraction.image.target_width
         target_height = self.config.extraction.image.target_height
+
+        # Bedrock drops the per-image dimension cap from 8,000px to 2,000px per side
+        # once a request carries MORE than 20 image blocks (#994). Which cap applies
+        # therefore depends on how many pages this section is about to attach, so it
+        # is decided here, once, from the page count rather than per image.
+        #
+        # What matters is the count ONE REQUEST will carry, not the section's page
+        # count, and on the agentic (Strands) path those differ: the section's pages
+        # are sliced into shards and capped again per agent invocation, so a long
+        # section can be sent as several small requests. Counting the section would
+        # clamp pages that no request ever over-fills. ``_agentic_images_per_request``
+        # bounds it from the shard planner's two regimes; it is then DOUBLED, because the
+        # agent re-sends its attached images on every turn and a ``view_image`` tool
+        # result adds a further copy of a page to the same request. Doubling is
+        # pessimistic on purpose — clamping to 2,000px costs far less than a hard
+        # request rejection. See extraction/README.md for the thresholds this
+        # produces per mode.
+        pages_to_attach = sum(1 for pid in sorted_page_ids if pid in document.pages)
+        if self.config.extraction.agentic.enabled:
+            effective_image_count = (
+                self._agentic_images_per_request(pages_to_attach, page_texts) * 2
+            )
+        else:
+            effective_image_count = pages_to_attach
+        max_dimension = image.max_dimension_for_image_count(effective_image_count)
 
         page_images = []
         for page_id in sorted_page_ids:
@@ -680,6 +1779,20 @@ class ExtractionService:
             page = document.pages[page_id]
             image_uri = page.image_uri
             image_content = image.prepare_image(image_uri, target_width, target_height)
+            # Bedrock's 5 MiB per-image limit is enforced on the BASE64 payload, so
+            # a stored page image over 3.75 MiB fails the whole request (#778).
+            # Fit it here — where the reduction can be recorded per page — rather
+            # than at the attach choke point, whose fit is then a pass-through.
+            # ``max_dimension`` additionally applies the many-image pixel cap.
+            image_content, fit = image.fit_image_to_bedrock_limit(
+                image_content, max_dimension=max_dimension
+            )
+            if fit is not None:
+                if self._pending_image_fit_metadata is None:
+                    self._pending_image_fit_metadata = []
+                self._pending_image_fit_metadata.append(
+                    {"page_id": page_id, **fit.to_dict()}
+                )
             page_images.append(image_content)
 
         t1 = time.time()
@@ -710,13 +1823,24 @@ class ExtractionService:
         """
         # Get JSON Schema for this document class
         class_schema = self._get_class_schema(class_label)
-        attribute_descriptions = self._format_schema_for_prompt(class_schema)
+
+        # The schema put ON THE WIRE (prompt text and, when forced tool use is
+        # on, the toolSpec) can differ from the effective class schema by exactly
+        # one auxiliary property: the multi-instance detection probe (#753). It
+        # is added to a COPY, so the off-schema filter, the JSON-Schema
+        # validator and every downstream stage still see only the declared
+        # fields. (Agentic extraction carries the same probe on its transport
+        # model for the unsharded call instead — see _agentic_probe_model.)
+        wire_schema, probe_added = self._build_wire_schema(class_schema, class_label)
+        attribute_descriptions = self._format_schema_for_prompt(wire_schema)
 
         # Store context in instance variables
         self._document_text = document_text
         self._class_label = class_label
         self._attribute_descriptions = attribute_descriptions
         self._class_schema = class_schema
+        self._wire_class_schema = wire_schema
+        self._instance_probe_requested = probe_added
         self._page_images = page_images
 
         # Prepare image URIs for Lambda
@@ -730,6 +1854,56 @@ class ExtractionService:
 
         return class_schema, attribute_descriptions
 
+    def _empty_schema_reason(self, class_label: str) -> str:
+        """Why this section's effective extraction schema is empty.
+
+        ``_get_class_schema`` returns ``{}`` both for a class the configuration
+        contains but gave no attributes, and for a label the configuration does
+        not contain at all — and ``_prepare_section_context`` routes both here.
+        Collapsing them into one flag made three different situations
+        indistinguishable downstream, and the one that is an operator fault was
+        the one that went unreported: a class **renamed or deleted while
+        documents were in flight**, or an old document reprocessed under a
+        configuration that no longer has its class, produces a section with no
+        fields that completes green.
+
+        The three are told apart by what the label is, not by how it got here:
+
+        * the label resolves to a class in configuration →
+          ``EMPTY_SCHEMA_NO_ATTRIBUTES``;
+        * the label is the ``unclassified`` sentinel (or the configured
+          ``classification.invalidClassFallback``, which defaults to it) →
+          ``EMPTY_SCHEMA_UNCLASSIFIED``. Classification determined no class,
+          which is an ordinary outcome for a blank page and a reportable failure
+          for a page whose classification errored — a distinction only
+          classification can draw, and it draws it at its own stage;
+        * anything else → ``EMPTY_SCHEMA_CLASS_NOT_CONFIGURED``.
+
+        A fallback set to one of the deployment's real classes lands in the first
+        case, correctly: that class has a schema, so this method is not reached
+        for it at all.
+
+        ⚠️ ``EMPTY_SCHEMA_CLASS_NOT_CONFIGURED`` is NOT reached only by a
+        configuration edit. Two supported classification configurations store a
+        model-invented class name verbatim, so its rate follows model output rather
+        than operator action: ``textbasedHolisticClassification``, which has no
+        vocabulary-enforcement loop at all (the loop lives in
+        ``classify_page_bedrock``), and ``multimodalPageLevelClassification`` with
+        ``enforceValidClasses: false``, which logs "using anyway" and stores the
+        prediction. Both are documented configurations, and small classification
+        models are the ones most prone to out-of-vocabulary predictions — so on
+        those two paths the reported section count can reach
+        ``ConfidenceUnavailableThreshold``, and that parameter is the lever. The
+        signal is still correct (the section really does hold no data); it is the
+        volume bound that does not hold there.
+        """
+        if self._get_class_schema(class_label):
+            return EMPTY_SCHEMA_NO_ATTRIBUTES
+        fallback = self.config.classification.invalidClassFallback
+        if class_label in {UNCLASSIFIED_CLASS, fallback}:
+            return EMPTY_SCHEMA_UNCLASSIFIED
+        return EMPTY_SCHEMA_CLASS_NOT_CONFIGURED
+
     def _handle_empty_schema(
         self,
         document: Document,
@@ -741,6 +1915,17 @@ class ExtractionService:
         """
         Handle case when schema has no attributes - skip LLM and return empty result.
 
+        The stub records WHY the schema was empty
+        (``metadata.empty_schema_reason``, see :meth:`_empty_schema_reason`),
+        because the three causes are not equivalent and the confidence pass keys
+        on the difference: it stays silent for a deliberately attribute-less class
+        and for a section classification never resolved, and reports the section
+        as unscored when the class is simply absent from the configuration.
+
+        For that last case — a fault nothing else in the pipeline reports — this
+        also records an error-severity ``extraction_class_not_configured`` issue
+        on the section, at the stage that discovered it and can name the remedy.
+
         Args:
             document: Document being processed
             section: Section being processed
@@ -751,8 +1936,12 @@ class ExtractionService:
         Returns:
             Updated document
         """
+        class_label = section_info.class_label
+        reason = self._empty_schema_reason(class_label)
         logger.info(
-            f"No attributes defined for class {section_info.class_label}, skipping LLM extraction"
+            "No attributes defined for class %s (%s), skipping LLM extraction",
+            class_label,
+            reason,
         )
 
         # Create empty result structure
@@ -766,16 +1955,78 @@ class ExtractionService:
         total_duration = 0.0
         parsing_succeeded = True
 
+        metadata: dict[str, Any] = {
+            "parsing_succeeded": parsing_succeeded,
+            "extraction_time_seconds": total_duration,
+            # Kept unconditionally: it is the flag existing readers and stored
+            # result files already use for "extraction wrote no fields without
+            # calling a model", and it is true in all three cases. The reason
+            # below refines it rather than replacing it, so a result written by an
+            # earlier version still reads back as the attribute-less case.
+            "skipped_due_to_empty_attributes": True,
+            EMPTY_SCHEMA_REASON_KEY: reason,
+        }
+
+        if reason == EMPTY_SCHEMA_CLASS_NOT_CONFIGURED:
+            from idp_common.models import ProcessingIssue
+
+            issue = ProcessingIssue(
+                stage="extraction",
+                severity="error",
+                code="extraction_class_not_configured",
+                message=(
+                    f"No fields were extracted from this section: the class it was "
+                    f"classified as ('{class_label}') does not exist in the "
+                    f"configuration this document was processed under, so there was "
+                    f"no schema to extract against. The section completed with no "
+                    f"data rather than with incorrect data."
+                ),
+                root_cause=(
+                    f"Section class '{class_label}' has no matching entry in "
+                    f"configuration classes"
+                    + (
+                        f" (version {document.config_version})"
+                        if getattr(document, "config_version", None)
+                        else ""
+                    )
+                    + ". Three causes: a class renamed or deleted while documents "
+                    "were in flight; a document reprocessed under a configuration "
+                    "that no longer defines its class; or the classifier returned a "
+                    "class outside the configured vocabulary and the "
+                    "classification path in use does not enforce one "
+                    "(textbasedHolisticClassification, or "
+                    "multimodalPageLevelClassification with "
+                    "enforceValidClasses: false). Add the class to the "
+                    "configuration, reclassify the document under the current one, "
+                    "or turn vocabulary enforcement on."
+                ),
+                section_id=section_id,
+            )
+            logger.error(
+                "Section %s is classified '%s', which is not in the configuration; "
+                "no fields could be extracted. Recorded %s.",
+                section_id,
+                class_label,
+                issue.code,
+            )
+            # Replace only the issues this stage owns, for the same reason
+            # _save_results does: the DynamoDB writer replaces the whole section
+            # map, so issues from other stages must survive.
+            section.processing_issues = [
+                pi
+                for pi in (section.processing_issues or [])
+                if getattr(pi, "stage", None) != "extraction"
+            ] + [issue]
+            metadata["processing_issues"] = [
+                pi.to_dict() for pi in section.processing_issues
+            ]
+
         # Write to S3
         output = {
-            "document_class": {"type": section_info.class_label},
+            "document_class": {"type": class_label},
             "split_document": {"page_indices": section_info.page_indices},
             "inference_result": extracted_fields,
-            "metadata": {
-                "parsing_succeeded": parsing_succeeded,
-                "extraction_time_seconds": total_duration,
-                "skipped_due_to_empty_attributes": True,
-            },
+            "metadata": metadata,
         }
         s3.write_content(
             output,
@@ -809,7 +2060,44 @@ class ExtractionService:
         Returns:
             Tuple of (content, system_prompt)
         """
-        system_prompt = self.config.extraction.system_prompt
+        # Resolve prompts — use per-class system/task prompt overrides if
+        # specified on the class schema, otherwise fall back to the global
+        # extraction prompts. Backward compatible: classes without overrides
+        # use the global prompts unchanged.
+        class_system_prompt_override = self._class_schema.get(
+            X_AWS_IDP_EXTRACTION_SYSTEM_PROMPT
+        )
+        system_prompt = (
+            class_system_prompt_override or self.config.extraction.system_prompt
+        )
+        if class_system_prompt_override:
+            logger.info(
+                f"Using per-class extraction system prompt override for "
+                f"'{self._class_label}'"
+            )
+
+        from idp_common.extraction.prompt_assembly import (
+            select_extraction_task_prompt,
+        )
+
+        class_task_prompt_override = self._class_schema.get(
+            X_AWS_IDP_EXTRACTION_TASK_PROMPT
+        )
+        # Select the extraction task prompt per settings: integrated mode uses the
+        # extraction+confidence template (+ bbox for LLM-box geometry); otherwise
+        # the plain extraction template. A per-class override still wins.
+        task_prompt = class_task_prompt_override or select_extraction_task_prompt(
+            self.config.extraction,
+            # A Simple + integrated section on a list-bearing class is scored
+            # separately, so it must get the plain extraction prompt, not 1S-TopK.
+            integrated_ok=self._simple_integrated_list_downgrade() is None,
+        )
+        if class_task_prompt_override:
+            logger.info(
+                f"Using per-class extraction task prompt override for "
+                f"'{self._class_label}'"
+            )
+
         custom_lambda_arn = self.config.extraction.custom_prompt_lambda_arn
 
         if custom_lambda_arn and custom_lambda_arn.strip():
@@ -827,7 +2115,7 @@ class ExtractionService:
             )
 
             # Build default content for Lambda input
-            prompt_template = self.config.extraction.task_prompt
+            prompt_template = task_prompt
             if prompt_template:
                 default_content = self._build_prompt_content(
                     prompt_template, page_images
@@ -866,7 +2154,7 @@ class ExtractionService:
             logger.info(
                 "No custom prompt Lambda configured - using default prompt generation"
             )
-            prompt_template = self.config.extraction.task_prompt
+            prompt_template = task_prompt
 
             if not prompt_template:
                 content = self._get_default_prompt_content()
@@ -881,11 +2169,3738 @@ class ExtractionService:
 
         return content, system_prompt
 
+    def _analyze_schema_for_table_requirements(
+        self, schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        """
+        Analyze schema to detect large array fields that require table parsing.
+
+        NOTE: This is OPTIONAL - minItems is not required for tool usage.
+        OCR analysis is the primary adaptive trigger. Schema analysis only
+        provides additional signal when minItems is explicitly set.
+
+        Returns:
+            Dict with analysis results including whether tool usage is recommended
+        """
+        large_arrays = []
+        max_min_items = 0
+
+        properties = schema.get(SCHEMA_PROPERTIES, {})
+        for field_name, field_def in properties.items():
+            if field_def.get("type") == "array":
+                # minItems can arrive as a string after a config round-trip
+                # (the Configuration table stores numeric schema fields as
+                # strings); coerce defensively so the comparison never raises.
+                try:
+                    min_items = int(field_def.get("minItems", 0) or 0)
+                except (TypeError, ValueError):
+                    min_items = 0
+                if min_items > 50:  # Match OCR threshold for consistency
+                    large_arrays.append(
+                        {
+                            "field": field_name,
+                            "min_items": min_items,
+                            "description": field_def.get("description", ""),
+                        }
+                    )
+                    max_min_items = max(max_min_items, min_items)
+
+        recommendation = len(large_arrays) > 0
+
+        return {
+            "large_array_fields": [arr["field"] for arr in large_arrays],
+            "max_min_items": max_min_items,
+            "field_details": large_arrays,
+            "tool_usage_recommended": recommendation,
+            "recommendation_reason": (
+                f"Schema has {len(large_arrays)} array field(s) with minItems > 50"
+                if recommendation
+                else "No large array constraints detected"
+            ),
+            "recommendation_strength": (
+                "MANDATORY"
+                if max_min_items >= 500  # Match OCR threshold
+                else "STRONGLY_RECOMMENDED"
+                if max_min_items >= 100  # Medium-large
+                else "RECOMMENDED"
+                if max_min_items >= 50  # Medium
+                else "OPTIONAL"
+            ),
+        }
+
+    #: Below this many matching OCR table rows the row-shortfall check stays quiet.
+    _OCR_ROW_ESTIMATE_MIN = 30
+    #: Extracted rows below this fraction of the matched OCR rows are a MATERIAL
+    #: shortfall — the one ``extraction.row_shortfall_action`` governs.
+    _OCR_ROW_SHORTFALL_RATIO = 0.5
+    #: The smallest row gap this check will speak about at all, and the reason it
+    #: is the same number as ``_OCR_ROW_ESTIMATE_MIN`` rather than a second knob.
+    #:
+    #: ``_OCR_ROW_SHORTFALL_RATIO`` is a MULTIPLICATIVE slack standing in for an
+    #: ADDITIVE imprecision — a column heading reprinted once per page — so the
+    #: tolerance grows with the document while the thing it absorbs does not. On a
+    #: 17-page 800-row statement the OCR evidence is 817 rows, of which 17 are
+    #: headings (2.1%), and half of 817 is 408.5: an extraction returning 409 of
+    #: the 800 rows, losing 48.9% of the document, crossed no bar and carried no
+    #: processing issue at all (#1361, measured 2026-10-14). The slack was ~24x
+    #: the imprecision it was chosen for, and the factor is proportional to the
+    #: page count.
+    #:
+    #: The imprecision is computable exactly — ``_ocr_tables`` emits one entry per
+    #: page-repeat and each entry's ``rows`` includes its heading row, so
+    #: ``_heading_rows_for_width`` is the whole of it — which leaves the
+    #: width-only attribution in ``_expected_rows_for_width`` as the only reason
+    #: to tolerate anything further. That one can only INFLATE the evidence (an
+    #: unrelated table of the same width is summed in; nothing ever subtracts), so
+    #: the honest bound on it is "a gap no larger than a table the check would
+    #: decline to speak about anyway". That is ``_OCR_ROW_ESTIMATE_MIN``, so this
+    #: is defined as that value rather than chosen: the silent band becomes
+    #: bounded in ABSOLUTE rows (at most 29, whatever the document's size) instead
+    #: of proportional to it (408 at 800 rows, 1,600 at 3,200).
+    _OCR_ROW_GAP_MIN = _OCR_ROW_ESTIMATE_MIN
+    #: A pipe-delimited run shorter than this is not a table (a prose line with a
+    #: "|", a two-line caption).
+    _OCR_TABLE_MIN_ROWS = 3
+    #: Lines between two table rows beyond which they belong to different tables.
+    _OCR_TABLE_GAP_LINES = 5
+
+    @classmethod
+    def _ocr_tables(cls, text: str) -> list[dict[str, int]]:
+        """The Markdown tables in ``text`` as ``[{"rows": n, "cols": c}, ...]``.
+
+        A table row is a line that STARTS with a pipe (textractor renders Textract
+        TABLE blocks in GitHub table form; a prose line that merely contains "|",
+        such as a footer, does not start with one). A run counts only if it holds
+        a separator row (``|---|``): pipe-bearing lines with no separator are not
+        a table. A separator starts a NEW table whose heading is the row before
+        it, so a table reprinted per page is one table per page (same width, so
+        the rows are summed by the caller). A run also ends when more than
+        ``_OCR_TABLE_GAP_LINES`` lines intervene, or when the cell count changes —
+        textractor separates two adjacent tables by a blank line and a heading,
+        which is under the gap, so the width change is what tells a 2-column
+        Daily Balances table from the 3-column Transactions table above it.
+        A non-empty line without a leading pipe ends the table (rows are emitted
+        contiguously; only EMPTY lines, up to the gap, are tolerated inside one).
+        Trailing empty cells (Textract's spare column) are not counted. Runs
+        shorter than ``_OCR_TABLE_MIN_ROWS`` are dropped. Heading rows count as
+        rows (the half ratio absorbs them).
+        """
+        tables: list[dict[str, int]] = []
+        cur_rows = 0
+        cur_cols = 0
+        has_sep = False
+        last_idx: int | None = None
+
+        def _flush(rows: int, cols: int) -> None:
+            if has_sep and rows >= cls._OCR_TABLE_MIN_ROWS:
+                tables.append({"rows": rows, "cols": cols})
+
+        for idx, line in enumerate(text.split("\n")):
+            stripped = line.strip()
+            if not stripped.startswith("|"):
+                if stripped and cur_rows:
+                    # prose ends the table: textractor emits a table's rows
+                    # contiguously, so pipe lines after a text line (a footer
+                    # block) are a new run, which needs its own separator to count
+                    _flush(cur_rows, cur_cols)
+                    cur_rows, has_sep = 0, False
+                continue
+            if re.match(r"^[\s|:-]+$", stripped):
+                if cur_rows > 1:
+                    # the row just read is the heading of the NEXT table; what came
+                    # before is the previous table (or, with no separator, not one)
+                    _flush(cur_rows - 1, cur_cols)
+                    cur_rows = 1
+                has_sep = True
+                last_idx = idx
+                continue
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            while len(cells) > 1 and cells[-1] == "":
+                cells.pop()
+            ncols = len(cells)
+            if cur_rows and (
+                (
+                    last_idx is not None
+                    and idx - last_idx - 1
+                    > cls._OCR_TABLE_GAP_LINES  # intervening lines
+                )
+                or ncols != cur_cols
+            ):
+                heading_only = cur_rows == 1 and has_sep and ncols != cur_cols
+                _flush(cur_rows, cur_cols)
+                cur_rows = 0
+                # a heading wider/narrower than its body keeps the separator it saw
+                has_sep = heading_only
+            cur_cols = ncols
+            cur_rows += 1
+            last_idx = idx
+        _flush(cur_rows, cur_cols)
+        return tables
+
+    #: The ``ProcessingIssue.code`` whose severity and consequence
+    #: ``extraction.row_shortfall_action`` governs. Named once so the issue
+    #: builder and the ``_save_results`` tail cannot drift apart.
+    ROW_SHORTFALL_CODE = "extraction_rows_below_ocr_estimate"
+
+    #: The ``ProcessingIssue.code`` for a response the model did not finish —
+    #: certain evidence, as opposed to ``ROW_SHORTFALL_CODE``'s OCR estimate.
+    #: ``warning`` severity, always: the row-shortfall code is the one
+    #: ``extraction.row_shortfall_action`` governs, and widening that knob to cover
+    #: this code too would fail runs that complete today on a deployment that has
+    #: already opted into ``fail``.
+    OUTPUT_TRUNCATED_CODE = "extraction_output_truncated"
+
+    #: The ``ProcessingIssue.code`` for the band ``_OCR_ROW_SHORTFALL_RATIO``
+    #: leaves silent: fewer rows than the OCR's matched tables actually hold, by
+    #: more than their reprinted headings can explain, but not under half. It is
+    #: the same evidence and the same arithmetic as ``ROW_SHORTFALL_CODE``, read
+    #: against the data-row count instead of half of the inflated one.
+    #:
+    #: ``warning`` severity, always, and deliberately NOT governed by
+    #: ``extraction.row_shortfall_action`` — for the reason
+    #: ``OUTPUT_TRUNCATED_CODE`` is not either. Widening that knob to cover this
+    #: band would start FAILING runs that complete today on any deployment that
+    #: has already opted into ``fail``, and whether a materially short extraction
+    #: should fail is a product decision rather than a detection one. Detection is
+    #: what is fixed here; the consequence is unchanged.
+    PARTIAL_ROW_SHORTFALL_CODE = "extraction_partial_row_shortfall"
+
+    def _row_shortfall_action(self) -> str:
+        """``extraction.row_shortfall_action`` — ``"fail"`` or ``"warn"``.
+
+        Read through ``getattr`` with the shipped default so a config object
+        built by an older release (or a test fixture that predates the field)
+        still resolves, rather than raising and taking extraction down with it.
+        The default is ``warn``, so a config that has never heard of this field
+        behaves exactly as it did before the field existed.
+        """
+        return str(
+            getattr(self.config.extraction, "row_shortfall_action", "warn") or "warn"
+        ).lower()
+
+    @classmethod
+    def _expected_rows_for_width(
+        cls, n_props: int, tables: list[dict[str, int]]
+    ) -> int:
+        """OCR table rows in tables whose column count EQUALS ``n_props``.
+
+        A section can hold several tables — Transactions next to a two-column
+        Daily Balances table, a form's key/value blocks — and only the ones shaped
+        like the list are evidence about it. Exact width is the trade the check
+        makes: a one-column tolerance let every key/value block count against a
+        three-column list, at the price that an item schema with a property the
+        table lacks (a derived Balance) is not compared at all.
+        """
+        return sum(tb["rows"] for tb in tables if tb["cols"] == n_props)
+
+    @classmethod
+    def _heading_rows_for_width(cls, n_props: int, tables: list[dict[str, int]]) -> int:
+        """Column-heading rows included in ``_expected_rows_for_width``'s sum.
+
+        ``_ocr_tables`` emits one entry per page-repeat of a table and counts the
+        row before the ``|---|`` separator — the heading — as one of that entry's
+        ``rows``. So the heading inflation in the summed evidence is exactly the
+        NUMBER of matched tables, and ``summed - this`` is the OCR's data-row
+        count: measured on the renderings this check is tested against, the
+        identity holds exactly (817 summed − 17 tables = 800 rows).
+
+        One shape is off by one in the SAFE direction. A run whose separator is
+        its first line has no heading row to count, so its entry's ``rows`` are
+        all data and subtracting one under-states the body by one — which lowers
+        the bar and can only suppress a firing, never cause one.
+        """
+        return sum(1 for tb in tables if tb["cols"] == n_props)
+
+    @staticmethod
+    def _declared_max_items(spec: Any) -> int | None:
+        """A usable ``maxItems`` on one array spec, as a row ceiling, or ``None``.
+
+        ``None`` means "this schema declares no bound I can read", and every value
+        this reader does not fully understand resolves to it. That direction is not
+        arbitrary: the ceiling is only ever used to SHRINK the OCR evidence
+        (``_expected_rows_for_width``), so misreading a value low silences the
+        shortfall check for a whole width group, while declining to read it leaves
+        the pre-existing behaviour exactly in place.
+
+        ``maxItems`` can arrive as a **string**: ``ConfigurationRecord._stringify_values``
+        stringifies every numeric scalar on the way into the Configuration table and
+        nothing converts ``classes`` back on read. That rule is not re-implemented
+        here — five separate copies of it had accumulated before #797, and
+        ``coerce_numeric_schema_keywords`` exists so there is one. It is applied to
+        the value on the way in, which also means an unreadable constraint is logged
+        rather than silently ignored (#823), and what is left for this method is the
+        question that is actually its own: is this number a usable row ceiling?
+
+        ``bool`` is refused before anything else, because ``True`` is an ``int`` in
+        Python and would read as a ceiling of 1 — silencing the check for the whole
+        width group. Everything else is decided by ``int()`` rather than by ``float()``:
+        a ``Decimal`` (the shape a DynamoDB number takes) and an integral float
+        (``15.0``) convert, a fractional one does not equal its truncation and is
+        refused, and a value ``int()`` cannot read at all resolves to ``None``.
+
+        The ``except`` is deliberately broad, and that breadth is the contract rather
+        than laziness. This method is called from ``_build_extraction_issues``, which
+        ``_save_results`` invokes with no enclosing ``try``, so an exception raised
+        over a schema constraint costs the section its entire processing-issue list —
+        precisely the #797 failure. Enumerating exception types is how that happens:
+        ``float()`` raises ``OverflowError`` (outside ``TypeError``/``ValueError``) on
+        an integer too large to convert, which the Web-UI round trip above can
+        produce, and an object with a raising ``__float__`` can raise anything at all.
+        A very large ceiling needs no special case either: it is above any OCR row
+        count, so ``min`` leaves the evidence untouched.
+        """
+        raw = spec.get("maxItems") if isinstance(spec, dict) else None
+        if raw is None or isinstance(raw, bool):
+            return None
+        raw = coerce_numeric_schema_keywords({"maxItems": raw}).get("maxItems")
+        try:
+            as_int = int(raw)  # type: ignore[call-overload]
+            exact = as_int == raw
+        except Exception:  # noqa: BLE001 - see the contract in the docstring
+            return None
+        return as_int if exact and as_int >= 0 else None
+
+    @classmethod
+    def _object_list_targets(
+        cls, schema: dict[str, Any], values: Any
+    ) -> list[tuple[str, int, list[Any], int | None]]:
+        """``(label, item_property_count, rows, max_rows)`` for every list of OBJECTS
+        the schema declares at the top level — ``items`` resolved through ``$ref``
+        (every shipped preset defines its rows in ``$defs``), descending one level
+        into an array of instances (the multi-instance wrapper, or any list whose
+        items carry their own lists) so the inner lists are compared as rows
+        across all instances. A wrapper whose instances carry no lists is skipped
+        — instances are documents, not table rows. Lists of scalars are not
+        targets: their items are not table rows.
+
+        ``max_rows`` is the schema's declared ceiling on the row count this target
+        contributes, or ``None`` when it declares none (#1046, item 4). For a
+        top-level list that is its own ``maxItems``. For an inner list the compared
+        rows are the CONCATENATION over the outer list's instances, so a
+        per-instance ``maxItems`` is not a bound on them: the declared bound is the
+        product of the outer and inner ceilings, and is ``None`` unless both are
+        declared. Multiplying by the number of instances actually extracted would
+        instead shrink the evidence in proportion to how many instances extraction
+        lost, which is the case the check exists to catch.
+        """
+        from idp_common.config.schema_utils import deref_schema
+
+        root = schema or {}
+        out: list[tuple[str, int, list[Any], int | None]] = []
+        props = root.get("properties") or {}
+
+        def _items_props(spec: dict[str, Any]) -> dict[str, Any] | None:
+            items = spec.get("items")
+            if not isinstance(items, dict):
+                return None
+            items = deref_schema(items, root)
+            iprops = items.get("properties") if isinstance(items, dict) else None
+            return iprops if isinstance(iprops, dict) and iprops else None
+
+        for name, spec in props.items():
+            if not isinstance(spec, dict) or spec.get("type") != "array":
+                continue
+            iprops = _items_props(spec)
+            if not iprops:
+                continue  # scalars, or an untyped list
+            rows = values.get(name) if isinstance(values, dict) else None
+            rows = rows if isinstance(rows, list) else []
+            outer_max = cls._declared_max_items(spec)
+            inner: dict[str, tuple[dict[str, Any], int | None]] = {}
+            for k, v in iprops.items():
+                v = deref_schema(v, root) if isinstance(v, dict) else v
+                if isinstance(v, dict) and v.get("type") == "array":
+                    ip = _items_props(v)
+                    if ip:
+                        inner[k] = (ip, cls._declared_max_items(v))
+            if inner:
+                for iname, (ip, inner_max) in inner.items():
+                    concat = [
+                        r
+                        for inst in rows
+                        if isinstance(inst, dict) and isinstance(inst.get(iname), list)
+                        for r in inst[iname]
+                    ]
+                    bound = (
+                        None
+                        if outer_max is None or inner_max is None
+                        else outer_max * inner_max
+                    )
+                    out.append((f"{name}[].{iname}", len(ip), concat, bound))
+            elif root.get(X_AWS_IDP_INSTANCE_ARRAY) == name:
+                continue  # bare multi-instance wrapper: instances are documents
+            else:
+                out.append((name, len(iprops), rows, outer_max))
+        return out
+
+    def _simple_mode_input_preflight(
+        self,
+        *,
+        content: list[dict[str, Any]],
+        system_prompt: str | None,
+        model_id: str,
+        section_id: str | None,
+    ) -> int:
+        """Estimate the single request Simple mode is about to send; log when it
+        exceeds the model's input window and remember the figures for the
+        failure message.
+
+        Simple mode sends ONE request per section — that is the difference from
+        Advanced mode, which shards. Text is chars/4; an image is priced from its
+        pixel dimensions using the model's own visual-token math (see
+        ``_image_token_estimate``), falling back to the sizing module's reserve
+        figure when the bytes cannot be read. The estimate is not recorded as a
+        processing issue: if the call then succeeds the estimate was wrong, and if
+        it fails the section never reaches the record — the failure itself carries
+        the explanation (see ``_explain_input_overflow``). Returns the estimate.
+
+        The image COUNT and the largest image dimension are recorded alongside the
+        token figures because a request can be rejected for either reason, and the
+        failure message has to be able to tell them apart (#994).
+        """
+        from idp_common.bedrock.sizing import _TOKENS_PER_IMAGE
+
+        text_tokens = estimate_tokens(system_prompt or "")
+        images = 0
+        image_tokens = 0
+        max_image_dimension = 0
+        for block in content or []:
+            if not isinstance(block, dict):
+                continue
+            if "text" in block:
+                text_tokens += estimate_tokens(str(block.get("text") or ""))
+            if "image" in block:
+                images += 1
+                image_tokens += self._image_token_estimate(
+                    block["image"], _TOKENS_PER_IMAGE, model_id
+                )
+                size = self._image_dimensions(block["image"])
+                if size:
+                    max_image_dimension = max(max_image_dimension, size[0], size[1])
+        estimate = text_tokens + image_tokens
+        max_input = 0
+        try:
+            max_input = int(self._get_sizing_plan().max_input_tokens)
+        except Exception:  # noqa: BLE001 - never block extraction on sizing
+            pass
+        pages = len(self._page_images or []) or images
+        self._last_simple_input_estimate = {
+            "estimated_input_tokens": estimate,
+            "max_input_tokens": max_input,
+            "pages": pages,
+            "images": images,
+            "max_image_dimension": max_image_dimension,
+        }
+        if max_input and estimate > max_input:
+            logger.warning(
+                "Section %s: Simple extraction is about to send ONE request of ~%s "
+                "input tokens (%s page(s), %s image(s)) against a %s-token window "
+                "for %s; expect 'Input is too long for requested model'. Advanced "
+                "(agentic) extraction shards a section across requests.",
+                section_id,
+                f"{estimate:,}",
+                pages,
+                images,
+                f"{max_input:,}",
+                model_id,
+            )
+        return estimate
+
+    @staticmethod
+    def _image_dimensions(image_block: Any) -> tuple[int, int] | None:
+        """``(width, height)`` of a Converse image block, or None if unreadable."""
+        try:
+            import io
+
+            from PIL import Image
+
+            data = None
+            if isinstance(image_block, dict):
+                src = image_block.get("source") or {}
+                data = src.get("bytes") if isinstance(src, dict) else None
+            if isinstance(data, (bytes, bytearray)) and data:
+                with Image.open(io.BytesIO(bytes(data))) as im:
+                    return im.size
+        except Exception:  # noqa: BLE001 - estimate only
+            pass
+        return None
+
+    @classmethod
+    def _image_token_estimate(
+        cls, image_block: Any, fallback: int, model_id: str | None = None
+    ) -> int:
+        """Tokens one image block costs, from its pixel dimensions.
+
+        Delegates to ``bedrock.model_utils.estimate_image_tokens``, which applies
+        Claude's 28px-patch math and the per-model visual-token CAP. The older
+        uncapped (w*h)/750 figure over-stated a full-page scan by ~2.4x, which is
+        what made a per-image dimension rejection look like a context-window
+        overflow (#994). Falls back to ``fallback`` when the bytes are unreadable.
+        """
+        from idp_common.bedrock.model_utils import estimate_image_tokens
+
+        size = cls._image_dimensions(image_block)
+        if size is None:
+            return int(fallback)
+        return estimate_image_tokens(size[0], size[1], model_id)
+
+    async def _run_shard_or_explain_overflow(self, fn: Any, **kwargs: Any) -> Any:
+        """Await one shard coroutine; re-raise a Bedrock input overflow as
+        ``ExtractionInputTooLarge`` with the Advanced-mode explanation, so the Step
+        Functions shard path fails with the same actionable cause as the in-process
+        path. ``fn`` is ``async`` (``extract_one_shard``): the try must wrap the
+        await, not the call that merely creates the coroutine."""
+        from idp_common.utils.bedrock_utils import (
+            is_image_request_rejection,
+            is_input_token_overflow,
+        )
+
+        try:
+            return await fn(**kwargs)
+        except Exception as e:
+            if is_image_request_rejection(e):
+                msg = self._explain_image_rejection(
+                    e, str(kwargs.get("section_id") or "?")
+                )
+                logger.error(msg)
+                raise ExtractionImageRejected(msg) from e
+            if is_input_token_overflow(e):
+                msg = self._explain_input_overflow(
+                    e, str(kwargs.get("section_id") or "?"), is_agentic=True
+                )
+                logger.error(msg)
+                raise ExtractionInputTooLarge(msg) from e
+            raise
+
+    def _explain_input_overflow(
+        self, exc: BaseException, section_id: str, *, is_agentic: bool
+    ) -> str:
+        """The message for a Bedrock input-overflow failure on a section.
+
+        The Simple-mode wording says the whole section went out as one request
+        and what to change; the Advanced wording does not tell an agentic user
+        to switch to agentic. The pre-flight figures, when they exist, are
+        included so the reader sees the size that failed.
+        """
+        est = getattr(self, "_last_simple_input_estimate", None) or {}
+        pages = est.get("pages") or len(self._page_images or [])
+        size = (
+            f" (~{est['estimated_input_tokens']:,} estimated input tokens, "
+            f"{pages} page(s), window {est['max_input_tokens']:,})"
+            if est.get("estimated_input_tokens") and est.get("max_input_tokens")
+            else (f" ({pages} page(s))" if pages else "")
+        )
+        if (
+            est.get("images", 0) > image.BEDROCK_MANY_IMAGE_COUNT_THRESHOLD
+            or est.get("max_image_dimension", 0)
+            > image.BEDROCK_MANY_IMAGE_MAX_DIMENSION
+        ):
+            # This request's SHAPE can also fail on the images themselves, and
+            # Bedrock reports a payload that is simply too large with the same
+            # "Input is too long" wording it uses for a context overflow (#994).
+            # Say so, so the reader does not spend the next hour lowering a page
+            # budget that is not the binding limit.
+            size += (
+                f" — note this request carried {est.get('images', 0)} image(s), "
+                f"largest {est.get('max_image_dimension', 0)}px per side; Bedrock "
+                f"also caps images at {image.BEDROCK_MANY_IMAGE_MAX_DIMENSION}px "
+                f"per side once a request carries more than "
+                f"{image.BEDROCK_MANY_IMAGE_COUNT_THRESHOLD} images, and caps the "
+                f"total request payload independently of the token count."
+            )
+        if is_agentic and "remedies:" in str(exc).lower():
+            advice = ""  # agentic_idp already translated it with its own remedies
+        elif is_agentic:
+            advice = (
+                " The request exceeded the model's input window even in Advanced "
+                "mode: lower extraction.agentic.max_pages_per_shard or the number "
+                "of page images per request, or split the document."
+            )
+        else:
+            advice = (
+                " Simple extraction sends the whole section as ONE request and it "
+                "exceeds the model's input window. Use Advanced (agentic) extraction, "
+                "which shards a section across requests, or split the document."
+            )
+        return f"Error processing section {section_id}: {exc}{size}{advice}"
+
+    def _explain_image_rejection(self, exc: BaseException, section_id: str) -> str:
+        """The message for a Bedrock IMAGE rejection on a section (#994).
+
+        Names the request's image count and largest dimension, then the remedy
+        that actually applies — smaller ``extraction.image.target_width`` /
+        ``target_height`` — rather than the token/shard advice that belongs to a
+        context-window overflow.
+        """
+        est = getattr(self, "_last_simple_input_estimate", None) or {}
+        largest = est.get("max_image_dimension") or 0
+        if est.get("images"):
+            # Simple mode: the pre-flight measured the request that actually went
+            # out, so the count and the largest dimension are that request's.
+            shape = f" (request carried {est['images']} image(s)"
+            if largest:
+                shape += f", largest {largest}px per side"
+            shape += ")"
+        else:
+            # Advanced/shard mode has no pre-flight estimate, and a shard carries
+            # only its own page range — so the only number available here is the
+            # SECTION's page count. Label it as such rather than claiming it is
+            # what the failing request held.
+            shape = f" (section has {len(self._page_images or [])} page image(s))"
+        return (
+            f"Error processing section {section_id}: {exc}{shape}. Bedrock rejected "
+            "the IMAGES in this request, not its token count: images are capped at "
+            f"{image.BEDROCK_IMAGE_MAX_DIMENSION}px per side, dropping to "
+            f"{image.BEDROCK_MANY_IMAGE_MAX_DIMENSION}px once a request carries more "
+            f"than {image.BEDROCK_MANY_IMAGE_COUNT_THRESHOLD} images, and each image "
+            "must be under 5 MB base64-encoded. Lower "
+            "extraction.image.target_width / target_height so pages are rendered "
+            "smaller; reducing pages per shard or switching extraction mode does "
+            "not address this."
+        )
+
+    def _analyze_ocr_for_tables(self, ocr_text: str) -> dict[str, Any]:
+        """
+        Analyze OCR text to detect large Markdown tables.
+
+        This is the PRIMARY trigger for table parsing tool guidance, adapting
+        automatically to documents of any size without requiring specific minItems.
+
+        Returns:
+            Dict with table detection results
+        """
+
+        # Detect Markdown table rows (lines with | delimiters)
+        table_rows = []
+        lines = ocr_text.split("\n")
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            # Skip separator rows (e.g., |---|---|)
+            if "|" in stripped and not re.match(r"^[\s|:-]+$", stripped):
+                table_rows.append(i)
+
+        # Estimate table count by gaps
+        tables_detected = 0
+        estimated_total_rows = 0
+        if table_rows:
+            tables_detected = 1
+            gap_threshold = 5
+            for i in range(1, len(table_rows)):
+                if table_rows[i] - table_rows[i - 1] > gap_threshold:
+                    tables_detected += 1
+            estimated_total_rows = len(table_rows)
+
+        # Adaptive thresholds - lower for better real-world coverage
+        # These are optimized for automatic detection without minItems requirement
+        recommendation = estimated_total_rows > 30
+
+        return {
+            "tables_detected": tables_detected,
+            "estimated_row_count": estimated_total_rows,
+            "tool_usage_recommended": recommendation,
+            "recommendation_reason": (
+                f"Detected {tables_detected} table(s) with ~{estimated_total_rows} total rows"
+                if recommendation
+                else "No large tables detected in OCR text"
+            ),
+            "recommendation_strength": (
+                "MANDATORY"
+                if estimated_total_rows >= 500  # Large documents
+                else "STRONGLY_RECOMMENDED"
+                if estimated_total_rows >= 100  # Medium-large tables
+                else "RECOMMENDED"
+                if estimated_total_rows >= 50  # Medium tables
+                else "OPTIONAL"
+            ),
+        }
+
+    def _build_table_parsing_guidance(
+        self, schema_analysis: dict[str, Any], ocr_analysis: dict[str, Any]
+    ) -> str:
+        """Build custom table parsing guidance based on pre-flight analysis."""
+
+        # Determine overall recommendation strength
+        strengths = [
+            schema_analysis.get("recommendation_strength", "OPTIONAL"),
+            ocr_analysis.get("recommendation_strength", "OPTIONAL"),
+        ]
+
+        # Get the strongest recommendation
+        strength_order = [
+            "OPTIONAL",
+            "RECOMMENDED",
+            "STRONGLY_RECOMMENDED",
+            "MANDATORY",
+        ]
+        max_strength = max(
+            strengths,
+            key=lambda x: strength_order.index(x) if x in strength_order else 0,
+        )
+
+        if max_strength == "MANDATORY":
+            # For very large tables (500+ rows detected by OCR)
+            guidance = """
+**CRITICAL - MANDATORY TABLE PARSING TOOL USAGE**:
+This document contains a large table with {row_count}+ rows detected by OCR analysis.
+You MUST use the parse_table tool for complete and accurate extraction:
+
+1. IMMEDIATELY call parse_table with the full document text or table section
+2. DO NOT attempt manual row-by-row LLM extraction for large tables
+3. Verify parse_table returned ALL expected rows (check row_count in response)
+4. If parse_table returns fewer rows than expected, investigate warnings and ensure all
+   table fragments are parsed (tables may be split across pages)
+
+FAILURE TO USE parse_table will result in:
+- Incomplete extraction (missing rows) - you will miss hundreds of data points
+- Schema validation failures
+- Excessive token usage (may hit context limits)
+- Poor extraction performance
+
+This is not optional - use the tool immediately for any tabular data.
+"""
+            return guidance.format(
+                row_count=ocr_analysis.get("estimated_row_count", "500"),
+            )
+
+        elif max_strength == "STRONGLY_RECOMMENDED":
+            # For medium-large tables (100-499 rows) - still use explicit instructions
+            guidance = """
+**IMPORTANT - USE TABLE PARSING TOOL**:
+This document contains tabular data with {row_count}+ rows detected.
+You MUST use the parse_table tool for accurate and complete extraction:
+
+1. Call parse_table with the document text containing the table
+2. The tool handles OCR artifacts (empty lines, page breaks) automatically
+3. Verify the row_count matches your expectation
+4. Review any warnings about table fragmentation
+5. Map the parsed columns to the required schema fields
+
+Using the tool ensures:
+- Complete data extraction (no missing rows)
+- Faster processing (10x more efficient than manual)
+- Better accuracy (deterministic parsing of well-structured tables)
+
+Do NOT attempt manual row-by-row extraction for tables with 100+ rows.
+"""
+            return guidance.format(
+                row_count=ocr_analysis.get("estimated_row_count", "100"),
+            )
+
+        elif max_strength == "RECOMMENDED":
+            # For medium tables (50-99 rows) - gentler guidance
+            guidance = """
+**RECOMMENDED - TABLE PARSING TOOL**:
+Detected a table with {row_count}+ rows. Consider using the parse_table tool:
+
+1. Call parse_table to extract the table data efficiently
+2. Review the quality metrics and warnings
+3. Fall back to LLM extraction if parse quality is poor
+
+Benefits: Faster, more accurate, handles OCR artifacts automatically.
+"""
+            return guidance.format(
+                row_count=ocr_analysis.get("estimated_row_count", "50"),
+            )
+
+        # Return empty for optional cases (standard TABLE_PARSING_PROMPT_ADDENDUM will be used)
+        return ""
+
+    @staticmethod
+    def _extract_table_tool_note(response_with_metering: Any) -> str | None:
+        """Pull the agent's optional ``TABLE_TOOL_NOTE:`` line from its final text.
+
+        The extraction agent is instructed to end its final message with a single
+        ``TABLE_TOOL_NOTE: <one sentence>`` line when it extracted a large table
+        directly instead of calling the deterministic parser. We surface that
+        first-person rationale in the processing report (clearly labelled as the
+        agent's *stated* reason — a post-hoc explanation, not ground truth).
+        Returns the note text (without the prefix), or None. Best-effort.
+        """
+        try:
+            from idp_common import bedrock
+
+            text = bedrock.extract_text_from_response(dict(response_with_metering))
+        except Exception:  # noqa: BLE001 - report-only; never fail extraction
+            return None
+        if not text or "TABLE_TOOL_NOTE:" not in text:
+            return None
+        # Take the content after the last occurrence of the marker, first line only.
+        note = text.split("TABLE_TOOL_NOTE:")[-1].strip().splitlines()[0].strip()
+        return note or None
+
+    def _explain_tool_usage_decision(
+        self,
+        expected: bool,
+        actual: bool,
+        schema_analysis: dict[str, Any] | None,
+        ocr_analysis: dict[str, Any] | None,
+        tool_enabled: bool = True,
+        ocr_had_markdown_tables: bool = True,
+        agent_note: str | None = None,
+    ) -> str:
+        """Generate a human-readable explanation of the table-parsing-tool decision.
+
+        Distinguishes the cases that matter for the report:
+          - tool DISABLED in config,
+          - tool ENABLED but OCR produced no Markdown tables (nothing to parse),
+          - tool AVAILABLE and recommended, but the AGENT chose not to call it
+            (a model decision — it judged direct LLM extraction sufficient),
+          - normal recommended-and-used / not-required cases.
+        """
+        if expected and actual:
+            return "Tool was recommended and used as expected."
+
+        if expected and not actual:
+            # Recommended but not used — explain the actual blocker.
+            if not tool_enabled:
+                return (
+                    "Table parsing was recommended but is DISABLED in this "
+                    "configuration (extraction.agentic.table_parsing.enabled=false), "
+                    "so the agent used direct LLM extraction instead."
+                )
+            if not ocr_had_markdown_tables:
+                return (
+                    "Table parsing is enabled but the OCR output contained NO "
+                    "Markdown tables for it to parse (the deterministic parser only "
+                    "runs on Markdown pipe-tables — e.g. Textract with the TABLES "
+                    "feature, or another OCR backend that emits Markdown tables). "
+                    "The agent used direct LLM extraction instead."
+                )
+            reasons = []
+            if ocr_analysis and ocr_analysis.get("tool_usage_recommended"):
+                reasons.append(ocr_analysis.get("recommendation_reason", ""))
+            if schema_analysis and schema_analysis.get("tool_usage_recommended"):
+                reasons.append(schema_analysis.get("recommendation_reason", ""))
+            reason_str = "; ".join(r for r in reasons if r) or "large tables detected"
+            base = (
+                "Table parsing was ENABLED and RECOMMENDED "
+                f"({reason_str}), and Markdown tables were present in the OCR, but "
+                "the extraction agent CHOSE NOT to call the deterministic parser and "
+                "extracted the table directly instead."
+            )
+            if agent_note:
+                # First-person reason the agent gave — a stated (post-hoc)
+                # explanation, not verified ground truth.
+                base += f' Agent\'s stated reason: "{agent_note}"'
+            else:
+                base += (
+                    " (No reason was reported by the agent.) The row counts below "
+                    "and the completeness check indicate whether that was safe; if a "
+                    "large table looks truncated, this is the first thing to inspect."
+                )
+            return base
+
+        if not expected and actual:
+            return "Tool was used even though not strictly required (agent chose to use it)."
+
+        return "Tool usage was not required (no large Markdown tables detected) and was not used."
+
+    def _check_completeness_detailed(
+        self,
+        extracted_fields: dict[str, Any],
+        schema: dict[str, Any],
+        tool_used: bool,
+        ocr_analysis: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Detailed completeness check with violations.
+
+        ``minItems`` is the only *schema* signal for a short list, and most configs
+        do not set it — so this used to print "All schema constraints satisfied"
+        directly above a warning that a declared 100-row list had come back
+        ``null``, which reads as a clean bill of health. When ``ocr_analysis``
+        supplies the evidence, that case is now reported here too, without
+        overstating it as a schema violation (it isn't one).
+        """
+
+        violations = []
+        properties = schema.get(SCHEMA_PROPERTIES, {})
+
+        for field_name, field_def in properties.items():
+            if field_def.get("type") == "array":
+                # minItems can arrive as a string after a config round-trip
+                # (the Configuration table stores numeric schema fields as
+                # strings); coerce defensively so the comparison never raises.
+                try:
+                    min_items = int(field_def.get("minItems", 0) or 0)
+                except (TypeError, ValueError):
+                    min_items = 0
+                actual_items = len(extracted_fields.get(field_name) or [])
+
+                if min_items > 0 and actual_items < min_items:
+                    violations.append(
+                        {
+                            "field": field_name,
+                            "constraint": f"minItems: {min_items}",
+                            "actual": actual_items,
+                            "shortfall": min_items - actual_items,
+                            "completeness_pct": round(
+                                100 * actual_items / min_items, 1
+                            ),
+                            "message": (
+                                f"Extracted {actual_items} items but schema requires "
+                                f"minimum {min_items} ({100 * actual_items / min_items:.1f}% complete)"
+                            ),
+                            "possible_cause": (
+                                "Agent did not use table parsing tool"
+                                if not tool_used
+                                else "Table parsing may have stopped early"
+                            ),
+                        }
+                    )
+
+        # Evidence-based emptiness: no schema constraint is broken, but the OCR
+        # pre-flight found a substantial table and every declared list came back
+        # with no rows. Reported separately so `schema_constraints_met` keeps its
+        # exact meaning while the summary stops claiming everything is fine.
+        ocr = ocr_analysis or {}
+        empty_lists: list[str] = []
+        if ocr.get("tool_usage_recommended") and ocr.get("tables_detected"):
+            empty, populated = find_empty_declared_lists(extracted_fields, schema)
+            if empty and not populated:
+                empty_lists = empty
+
+        schema_ok = len(violations) == 0
+        if violations:
+            summary = (
+                f"{len(violations)} constraint violation(s) detected - "
+                "extraction may be incomplete"
+            )
+        elif empty_lists:
+            summary = (
+                f"Schema constraints satisfied, but list field(s) "
+                f"{', '.join(empty_lists)} returned NO rows while the OCR found "
+                f"{ocr.get('tables_detected')} table region(s) with ~"
+                f"{ocr.get('estimated_row_count')} rows. "
+                + (
+                    "The agent did not use the table parsing tool."
+                    if not tool_used
+                    else "The table parsing tool ran but produced no rows."
+                )
+                # This summary is written on the AGENTIC path only (its caller is
+                # inside the `extraction_method == "agentic"` branch), where
+                # `minItems` is not advisory: the generated Pydantic model carries
+                # it into the `extraction_tool` boundary, so a list under the floor
+                # is REJECTED, the agent spends its correction rounds, and
+                # `structured_output_async` then raises. Recommending it here
+                # without saying so would trade a warning for a failed section
+                # that keeps no rows (#1048).
+                + " Setting minItems on this list field would make the floor "
+                "binding rather than advisory on this path: it is enforced at the "
+                "agent's tool boundary, the agent gets a bounded number of "
+                "correction rounds, and a floor the section cannot reach fails the "
+                "extraction and keeps no rows. Set a floor you are willing to fail "
+                "on, or use extraction.row_shortfall_action, which saves the rows "
+                "and this diagnosis first."
+            )
+        else:
+            summary = "All schema constraints satisfied"
+
+        return {
+            "schema_constraints_met": schema_ok,
+            "violations": violations,
+            "unexplained_empty_lists": empty_lists,
+            "complete": schema_ok and not empty_lists,
+            "summary": summary,
+        }
+
+    @staticmethod
+    def _count_schema_leaf_fields(
+        schema_node: dict[str, Any], value: Any
+    ) -> tuple[int, int, list[str]]:
+        """Recursively count schema-defined leaf fields vs. populated ones.
+
+        Walks the schema's ``properties`` (descending into nested ``object``
+        properties and the ``items`` of ``array`` properties) and, in parallel,
+        the extracted ``value``. Returns ``(defined, populated, empty_paths)``:
+
+        - ``defined``  — number of leaf (scalar) fields the schema declares.
+        - ``populated`` — how many of those have a non-empty value
+          (not None, not "" / [] / {}).
+        - ``empty_paths`` — dotted paths of the leaf fields that came back empty.
+
+        For arrays of objects, the item schema's leaves are counted once per
+        present row (so a 0-row array contributes its leaves as "defined but
+        empty", surfacing tables that extracted nothing). This is the signal
+        that catches silent nested-field loss (all-null nested objects).
+        """
+        defined = 0
+        populated = 0
+        empty: list[str] = []
+
+        node_type = schema_node.get(SCHEMA_TYPE)
+        properties = schema_node.get(SCHEMA_PROPERTIES) or {}
+
+        if node_type == TYPE_OBJECT or properties:
+            value_dict = value if isinstance(value, dict) else {}
+            for prop_name, prop_schema in properties.items():
+                if not isinstance(prop_schema, dict):
+                    continue
+                prop_type = prop_schema.get(SCHEMA_TYPE)
+                child_value = value_dict.get(prop_name)
+                path = prop_name
+
+                if prop_type == TYPE_OBJECT or (prop_schema.get(SCHEMA_PROPERTIES)):
+                    d, p, e = ExtractionService._count_schema_leaf_fields(
+                        prop_schema, child_value
+                    )
+                    defined += d
+                    populated += p
+                    empty.extend(f"{path}.{sub}" for sub in e)
+                elif prop_type == TYPE_ARRAY:
+                    item_schema = prop_schema.get(SCHEMA_ITEMS) or {}
+                    rows = child_value if isinstance(child_value, list) else []
+                    if isinstance(item_schema, dict) and item_schema.get(
+                        SCHEMA_PROPERTIES
+                    ):
+                        if rows:
+                            for idx, row in enumerate(rows):
+                                d, p, e = ExtractionService._count_schema_leaf_fields(
+                                    item_schema, row
+                                )
+                                defined += d
+                                populated += p
+                                empty.extend(f"{path}[{idx}].{sub}" for sub in e)
+                        else:
+                            # Empty array: count the item leaves once as "missing".
+                            d, _p, _e = ExtractionService._count_schema_leaf_fields(
+                                item_schema, {}
+                            )
+                            defined += d
+                            empty.append(path)
+                    else:
+                        # Array of scalars.
+                        defined += 1
+                        if rows:
+                            populated += 1
+                        else:
+                            empty.append(path)
+                else:
+                    # Scalar leaf.
+                    defined += 1
+                    if child_value not in (None, "", [], {}):
+                        populated += 1
+                    else:
+                        empty.append(path)
+
+        return defined, populated, empty
+
+    def _check_population_completeness(
+        self, extracted_fields: dict[str, Any], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Heuristic: how much of the schema actually got populated.
+
+        Unlike ``_check_completeness_detailed`` (which reports a declared
+        ``minItems`` floor the result is under), this flags *suspiciously sparse*
+        extractions — e.g. an agentic run that returned a correct top-level
+        object but null for nearly every nested field. It cannot know a field
+        *should* have had a value, so it is advisory (a warning signal), not a
+        hard failure: a genuinely sparse document will also score low.
+        """
+        defined, populated, empty_paths = self._count_schema_leaf_fields(
+            schema, extracted_fields
+        )
+        ratio = (populated / defined) if defined else 1.0
+        threshold = self.config.extraction.validation.min_population_ratio
+        below = defined > 0 and ratio < threshold
+
+        if below:
+            logger.warning(
+                "Extraction populated only %d/%d schema fields (%.0f%%), below the "
+                "%.0f%% completeness threshold — possible silent extraction loss "
+                "(e.g. nested fields not captured).",
+                populated,
+                defined,
+                ratio * 100,
+                threshold * 100,
+                extra={"empty_fields": empty_paths[:50]},
+            )
+
+        return {
+            "fields_defined": defined,
+            "fields_populated": populated,
+            "population_ratio": round(ratio, 3),
+            "threshold": threshold,
+            "below_threshold": below,
+            # Cap the echoed list so a huge sparse schema can't bloat metadata.
+            "empty_fields": empty_paths[:50],
+        }
+
+    def _filter_extracted_to_schema(
+        self, extracted_fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Drop top-level fields not defined in the class schema (simple mode).
+
+        Advanced (agentic) extraction validates output through a generated Pydantic
+        model, which structurally ignores keys the schema does not declare. Simple
+        extraction has no such step — it keeps whatever the model returns — so
+        hallucinated or cross-class attributes reach ``inference_result`` and later
+        break the confidence assessment (the enhancer collapses a list emitted for a
+        non-array/undefined attribute, leaving those rows permanently unscored — the
+        IDP1 ``assessment_schema_mismatch`` failure). This mirrors the agentic
+        behavior for simple mode at zero extra model cost.
+
+        Conservative and fail-open:
+        - No-op when the class schema has no ``properties`` (can't tell what's
+          off-schema → keep everything, unchanged behavior).
+        - Preserves the raw dict when a ``$defs``/``properties`` schema is absent.
+        - Only drops UNKNOWN top-level keys; known fields (and their values, however
+          malformed) pass through untouched — value/type correction is assessment's
+          job, not this filter's.
+
+        Records dropped names on ``self._off_schema_fields`` for the processing
+        report. Returns the filtered dict (same object identity not guaranteed).
+        """
+        from idp_common.config.schema_constants import SCHEMA_PROPERTIES
+
+        self._off_schema_fields = []
+        properties = (self._class_schema or {}).get(SCHEMA_PROPERTIES) or {}
+        if not isinstance(properties, dict) or not properties:
+            return extracted_fields
+
+        allowed = set(properties.keys())
+        dropped = [k for k in extracted_fields if k not in allowed]
+        if not dropped:
+            return extracted_fields
+
+        self._off_schema_fields = dropped
+        logger.warning(
+            "Simple extraction returned %d off-schema field(s) not defined in the "
+            "'%s' class schema; dropping them: %s",
+            len(dropped),
+            self._class_label,
+            ", ".join(dropped),
+        )
+        return {k: v for k, v in extracted_fields.items() if k in allowed}
+
+    def _build_wire_schema(
+        self, class_schema: dict[str, Any], class_label: str
+    ) -> tuple[dict[str, Any], bool]:
+        """Return ``(schema_to_send_to_the_model, probe_added)``.
+
+        The only difference from the effective class schema is the multi-instance
+        detection probe (#753) — one auxiliary integer property asking how many
+        separate documents of this class the pages contain. Added to a COPY, so
+        the off-schema filter, the validator and every downstream stage still see
+        exactly the declared fields.
+
+        Skipped when detection is disabled. Also skipped when Advanced (agentic)
+        extraction is in use — not because agentic is uncovered, but because it
+        does not read this schema: ``_agentic_probe_model`` puts the same probe
+        onto the generated transport model for the UNSHARDED agentic call
+        (GitHub #772, option 1). Two things made agentic more than a one-line
+        change, and the second is why the sharded path is still not probed:
+
+        * The agentic path is driven by a generated **Pydantic model**
+          (``create_pydantic_model_from_json_schema(self._class_schema, …)`` →
+          ``structured_output_async(data_format=…)``), not by a JSON-Schema dict,
+          so a property added to the schema copy here never reaches the wire. The
+          probe would have to be generated onto the model and stripped off the
+          validated object.
+        * Agentic **shards by page range** when a section is long enough, so each
+          shard would answer the count for its own pages. Summing double-counts a
+          document that spans a shard boundary and taking the max under-counts, so
+          the reconciliation rule is a real decision rather than a detail.
+
+        Simple extraction — the default, and the mode in which the silent loss was
+        reported — is covered on both its prompt and forced-tool paths. Note the
+        #715 wrapper is unaffected either way: it lives in ``_get_class_schema``,
+        which both modes share, so a flagged class extracts every record in
+        agentic mode too. It is only the detector that is missing there.
+        """
+        if not self.config.extraction.multi_instance_detection.enabled:
+            return class_schema, False
+        if self.config.extraction.agentic.enabled:
+            return class_schema, False
+
+        from idp_common.extraction.instance_probe import augment_schema_with_probe
+
+        wire, added = augment_schema_with_probe(
+            class_schema,
+            class_label,
+            self.config.extraction.multi_instance_detection.question,
+        )
+        return (wire if isinstance(wire, dict) else class_schema), added
+
+    def _agentic_probe_model(
+        self, dynamic_model: Any, class_label: str, *, resuming: bool
+    ) -> tuple[Any, bool]:
+        """The transport model for the UNSHARDED agentic call, with the
+        multi-instance detection probe on it when detection is enabled (#772).
+
+        Agentic extraction is driven by a generated Pydantic model, not by the
+        JSON-Schema dict the Simple path puts on the wire, so the probe has to be
+        generated ONTO the model: the same ``augment_schema_with_probe`` copy the
+        Simple path uses, fed through ``_transport_model``. The answer is popped
+        from the dumped fields right after the call, so validation, escalation,
+        the integrated-assessment lift and every downstream stage see only the
+        declared fields.
+
+        Only the single-agent path is probed (option 1 of #772). A sharded
+        section would answer per shard, and neither sum (double-counts a document
+        spanning a boundary) nor max (under-counts records spread across shards)
+        is right; that reconciliation is a separate decision. A run resumed from
+        a VALIDATED checkpoint (``existing_data`` present) keeps its existing
+        model, since that data was validated against it; a resume from a raw
+        buffer checkpoint has no existing model and is probed like a fresh run.
+
+        Returns ``(model, probe_added)`` and records the request on
+        ``_instance_probe_requested`` like the Simple path does.
+        """
+        if resuming or not self.config.extraction.multi_instance_detection.enabled:
+            return dynamic_model, False
+        from idp_common.extraction.instance_probe import augment_schema_with_probe
+
+        wire, added = augment_schema_with_probe(
+            self._class_schema,
+            class_label,
+            self.config.extraction.multi_instance_detection.question,
+        )
+        if not added or not isinstance(wire, dict):
+            return dynamic_model, False
+        self._instance_probe_requested = True
+        return self._transport_model(wire, class_label), True
+
+    def _read_instance_probe(self, extracted_fields: Any) -> int | None:
+        """Pop the multi-instance probe from a parsed result and return its value.
+
+        Always pops when present — even when detection was not requested for this
+        section — so the auxiliary field can never reach ``inference_result``,
+        where it would be reported as an off-schema field, scored by assessment,
+        written to a reporting column and compared against a ground-truth
+        baseline that has no such key.
+        """
+        from idp_common.extraction.instance_probe import pop_probe_value
+
+        value = pop_probe_value(extracted_fields)
+        if value is not None:
+            logger.info(
+                "Multi-instance probe: model reports %d '%s' document(s) in this "
+                "section",
+                value,
+                self._class_label,
+            )
+        return value
+
+    def _strip_probe_from_instances(
+        self,
+        extracted_fields: Any,
+        recovered_instances: list[dict[str, Any]] | None,
+    ) -> int | None:
+        """Remove the detection probe from every per-instance record, in place.
+
+        A multi-instance response carries the auxiliary count inside EVERY
+        element, and the records can end up in either of two containers — the
+        synthesized ``instances`` list, or ``recovered_instances`` for an
+        unflagged class — so both are swept. Called after
+        ``_adapt_to_instances_wrapper``, because that is what decides which
+        container holds them.
+
+        Necessary because ``_filter_extracted_to_schema`` only filters TOP-LEVEL
+        keys: a probe left inside a record would reach ``inference_result``, be
+        scored by assessment, become a reporting column, and be diffed against a
+        baseline that has no such key.
+
+        Returns the LARGEST count found inside a record, or None. Normally the
+        caller already has the value from the top-level pop — but a model that
+        answers with the count only inside each record and never at the top level
+        would otherwise leave ``instance_probe`` unset and fire no warning at all,
+        so the value is not thrown away just because it arrived in an unexpected
+        place.
+        """
+        from idp_common.schema.multi_instance import INSTANCES_KEY
+
+        containers: list[Any] = []
+        if isinstance(extracted_fields, dict):
+            containers.append(extracted_fields.get(INSTANCES_KEY))
+        containers.append(recovered_instances)
+
+        best: int | None = None
+        for container in containers:
+            if not isinstance(container, list):
+                continue
+            for record in container:
+                value = self._read_instance_probe(record)
+                if value is not None and (best is None or value > best):
+                    best = value
+        return best
+
+    def _adapt_to_instances_wrapper(
+        self,
+        extracted_fields: Any,
+        recovered_instances: list[dict[str, Any]] | None,
+    ) -> tuple[Any, list[dict[str, Any]] | None]:
+        """Rescue a multi-instance response that ignored the wrapper (#715).
+
+        For a class in Synthesize mode the requested shape is
+        ``{"instances": [ … ]}``, but a model can answer in either of two other
+        shapes, and BOTH are total data loss without this:
+
+        - **A bare top-level array** of records. ``_normalize_list_result``
+          reduces it to element 0, and the off-schema filter — whose only allowed
+          top-level key is now ``instances`` — then deletes even that, emitting
+          ``{}``. Every record lost, from a response that contained all of them.
+        - **A single flat record** (the shape the class had before the flag was
+          set). Same ending: the filter deletes every key and emits ``{}``.
+
+        Both are re-expressed as the wrapper. Deliberately forgiving rather than
+        strict: the alternative to accepting a recoverable shape here is throwing
+        the section's data away, and this feature exists precisely to stop records
+        being discarded silently.
+
+        No-op for an unflagged class, and for a response that already used the
+        wrapper.
+        """
+        from idp_common.schema.multi_instance import INSTANCES_KEY, is_wrapped
+
+        if not is_wrapped(self._class_schema):
+            return extracted_fields, recovered_instances
+
+        # Already correct.
+        if isinstance(extracted_fields, dict) and isinstance(
+            extracted_fields.get(INSTANCES_KEY), list
+        ):
+            return extracted_fields, recovered_instances
+
+        # Shape 1: a bare array, already split out by _normalize_list_result.
+        if recovered_instances:
+            logger.warning(
+                "Class '%s' is multi-instance but the model returned a bare "
+                "array of %d record(s) instead of the '%s' wrapper; adopting the "
+                "array as the instance list",
+                self._class_label,
+                len(recovered_instances),
+                INSTANCES_KEY,
+            )
+            return {INSTANCES_KEY: list(recovered_instances)}, None
+
+        # Shape 2: a single flat record. Only when it actually looks like one —
+        # an error/raw_output sentinel must stay a parse failure.
+        if isinstance(extracted_fields, dict) and extracted_fields:
+            record_properties = (self._class_schema.get(SCHEMA_PROPERTIES) or {}).get(
+                INSTANCES_KEY, {}
+            ).get("items", {}).get(SCHEMA_PROPERTIES) or {}
+            if record_properties and set(extracted_fields) & set(record_properties):
+                logger.warning(
+                    "Class '%s' is multi-instance but the model returned a single "
+                    "flat record instead of the '%s' wrapper; adopting it as one "
+                    "instance",
+                    self._class_label,
+                    INSTANCES_KEY,
+                )
+                return {INSTANCES_KEY: [extracted_fields]}, None
+
+        return extracted_fields, recovered_instances
+
+    def _resolve_instance_reporting(
+        self, result: ExtractionResult
+    ) -> tuple[int, dict[str, Any]]:
+        """Decide the section's instance count and how it was arrived at.
+
+        Returns ``(instance_count, metadata_fragment)``. Split out of
+        ``_save_results`` because it is the whole of the multi-instance
+        reporting contract and needs to be testable without S3.
+
+        ``instance_source`` labels, in resolution order:
+
+        - ``single`` — the ordinary case: the model returned one object, so the
+          count is 1 and nothing was recovered. (Labelling this "recovered", as
+          an earlier version did once the count started reporting 1 for a plain
+          object, is simply untrue in the audit trail and would send someone
+          reading metadata hunting for records that never existed.)
+        - ``recovered`` — the model returned a LIST where the schema describes one
+          document, so the extra documents were unexpected and only the first is
+          scored. Worth a warning (``extraction_multi_instance_detected``).
+        - ``declared`` — the class named its own instance axis
+          (``x-aws-idp-instance-array``, Designate mode) or was transformed into
+          a List-of-Class shape (``x-aws-idp-multi-instance``, Synthesize mode).
+          Several documents are exactly what the config asked for and every one
+          is extracted and scored, so there is nothing to warn about.
+        - ``suspected`` — #753. The model's own answer to "how many separate
+          documents of this class are in these pages" EXCEEDS the number of
+          records in the result, so records were silently lost. The model's count
+          becomes the section's ``instance_count`` (it is the honest answer to
+          "how many documents are in this section") and the number actually
+          extracted is recorded beside it as ``instance_extracted_count``, so the
+          metadata cannot be misread as "3 records were extracted".
+
+          Deliberately NOT limited to unflagged classes: a class in Designate or
+          Synthesize mode whose array came back with fewer records than the model
+          says are present is under-extracting, which is the same data loss.
+        """
+        instance_count = result.instance_count
+        if not instance_count:
+            instance_source: str | None = None
+        elif result.recovered_instances:
+            instance_source = "recovered"
+        else:
+            instance_source = "single"
+
+        meta: dict[str, Any] = {}
+
+        designated = self._designated_instance_count(result.extracted_fields)
+        if designated is not None:
+            instance_count = designated
+            instance_source = "declared"
+
+        probe = result.instance_probe
+        if probe is not None:
+            meta["instance_probe"] = probe
+        if probe is not None and probe > max(instance_count, 1):
+            meta["instance_extracted_count"] = instance_count
+            instance_count = probe
+            instance_source = "suspected"
+            try:
+                metrics.put_metric("MultiInstanceSectionsSuspected", 1)
+            except Exception as e:  # noqa: BLE001 - telemetry must never fail a doc
+                logger.debug("Could not publish suspected-instance metric: %s", e)
+
+        if instance_count:
+            meta["instance_count"] = instance_count
+            meta["instance_source"] = instance_source
+        return instance_count, meta
+
+    def _designated_instance_count(self, extracted_fields: Any) -> int | None:
+        """Count instances via the class's declared instance axis, or None.
+
+        A class whose schema is already modelled as a *packet* — one top-level
+        array of objects, one element per record — can name that array with
+        ``x-aws-idp-instance-array``. This is the cheap half of multi-instance
+        support (plan D3, "Designate mode"): it performs **no** schema transform
+        and changes **no** output shape, so it costs nothing downstream. It only
+        tells the pipeline which existing array means "one document per element",
+        which is enough to populate ``Section.instance_count`` and light the UI
+        badge.
+
+        It exists so configs that already solved multi-record packets by hand —
+        the workaround validated in GitHub #565 — get the count without
+        restructuring their schema or migrating their evaluation baselines.
+
+        Returns None when the class declares no instance axis (the overwhelmingly
+        common case), or when the declared property is missing or not a list in
+        this particular result. Deliberately forgiving at runtime: a
+        misconfiguration should cost a log line, not an extraction. The shape of
+        the declaration itself is checked at config-validate time.
+        """
+        prop = (self._class_schema or {}).get(X_AWS_IDP_INSTANCE_ARRAY)
+        if not prop:
+            return None
+        if not isinstance(prop, str):
+            logger.warning(
+                "%s on class '%s' must be a property name (got %s); ignoring",
+                X_AWS_IDP_INSTANCE_ARRAY,
+                self._class_label,
+                type(prop).__name__,
+            )
+            return None
+        if not isinstance(extracted_fields, dict):
+            return None
+        if prop not in extracted_fields:
+            logger.warning(
+                "Class '%s' declares instance array '%s' but the extraction "
+                "result has no such field; instance count not determined",
+                self._class_label,
+                prop,
+            )
+            return None
+        value = extracted_fields[prop]
+        if value is None:
+            # Extracted as null — genuinely zero records found, not a config
+            # error. 0 reads back as "undetermined", which is the honest answer.
+            return 0
+        if not isinstance(value, list):
+            logger.warning(
+                "Class '%s' declares instance array '%s' but the extracted value "
+                "is %s, not a list; instance count not determined",
+                self._class_label,
+                prop,
+                type(value).__name__,
+            )
+            return None
+        return len(value)
+
+    @staticmethod
+    def _normalize_list_result(
+        parsed: Any, *, context: str
+    ) -> tuple[dict[str, Any], bool, int, list[dict[str, Any]] | None]:
+        """Normalize a top-level JSON array response into a single-object result.
+
+        The class schema describes ONE document, so a well-behaved model returns
+        an object. When it returns an array instead, that is nearly always
+        because the section actually contains several documents of the same
+        class — a section that classification failed to split (GitHub #565).
+
+        Returns ``(fields, parsing_succeeded, instance_count, recovered)``.
+
+        Behaviour by array length:
+
+        - **1** — unwrap to the single object. Indistinguishable from a correct
+          response; ``instance_count = 1``.
+        - **>1** — **keep every instance.** ``fields`` becomes the FIRST one so
+          the output shape is identical to a normal extraction and no downstream
+          consumer changes, ``recovered`` carries all of them, and
+          ``instance_count = N``. Parsing is reported as SUCCEEDED.
+
+          This replaces the previous behaviour, which stored the array under a
+          ``raw_array`` key that **nothing in the codebase ever read**, marked
+          the section FAILED, and then reported the misleading
+          ``extraction_sparse`` issue ("0/N schema fields populated"). Every
+          record had been extracted correctly and all of them were discarded —
+          the worst outcome available. The caller pairs this with a
+          ``extraction_multi_instance_detected`` warning and a section
+          ``instance_count``, so the situation is visible and reviewable instead
+          of either silent or fatal.
+
+          Note the asymmetry this does NOT fix: when the model returns a single
+          object for a two-document section, only the first record exists in the
+          response and there is nothing here to recover. That case needs
+          multi-instance extraction (an opt-in per-class list schema), not
+          response normalization.
+        - **0**, or elements that are not objects — genuinely unusable; reported
+          as a parse failure, unchanged.
+        """
+        if not isinstance(parsed, list):
+            # A plain object is one document, and we know that — so report 1
+            # rather than 0. 0 is reserved for "not determined" (an extraction
+            # that failed before producing a result, or a section written by
+            # older code), which the UI renders as "-" instead of a count.
+            return parsed, True, 1, None
+
+        if len(parsed) == 1 and isinstance(parsed[0], dict):
+            logger.warning(
+                "LLM returned single-element array instead of object, unwrapping",
+                extra={"original_type": "list", "element_count": 1, "context": context},
+            )
+            return parsed[0], True, 1, None
+
+        if len(parsed) == 0:
+            logger.error(
+                "LLM returned empty array when single object expected",
+                extra={"element_count": 0, "context": context},
+            )
+            return (
+                {"error": "Received empty array instead of single object"},
+                False,
+                0,
+                None,
+            )
+
+        instances = [item for item in parsed if isinstance(item, dict)]
+        if len(instances) != len(parsed):
+            logger.error(
+                "LLM returned an array containing non-object elements; cannot "
+                "interpret it as multiple document instances",
+                extra={
+                    "element_count": len(parsed),
+                    "object_count": len(instances),
+                    "context": context,
+                },
+            )
+            return (
+                {
+                    "error": (
+                        f"Received array with {len(parsed)} elements, "
+                        f"{len(parsed) - len(instances)} of which were not objects"
+                    )
+                },
+                False,
+                0,
+                None,
+            )
+
+        logger.warning(
+            "LLM returned %d objects for a single-document schema — treating the "
+            "section as multi-instance and preserving every instance. The first "
+            "is reported as the section's inference_result; all %d are recorded "
+            "in metadata.recovered_instances.",
+            len(instances),
+            len(instances),
+            extra={"element_count": len(instances), "context": context},
+        )
+        return instances[0], True, len(instances), instances
+
+    def _build_extraction_issues(
+        self,
+        *,
+        extracted_fields: dict[str, Any],
+        metadata: dict[str, Any],
+        section_id: str | None,
+    ) -> list[Any]:
+        """Detect extraction shortfalls and emit structured ProcessingIssues.
+
+        Runs for BOTH traditional (simple) and agentic extraction so an
+        under-produced extraction is never silently reported as SUCCESS. Two
+        signals:
+
+        - **Empty schema-defined list fields** (``extraction_incomplete``,
+          warning): a field the schema declares as an array came back empty. This
+          is the classic Simple-mode large-table failure (``PortfolioDetail: []``
+          on a 25-page statement). When extraction is NOT already agentic, the
+          message recommends toggling to Advanced (agentic) extraction, whose
+          deterministic table parser is built for exactly this.
+        - **Below-threshold population** (``extraction_sparse``, info): reuses the
+          existing ``population_check`` heuristic when present.
+        - **A response the model did not finish** (``extraction_output_truncated``,
+          warning): ``metadata["output_truncated"]``, set from the response's own
+          ``stopReason`` or from the JSON repair reader. The only certain signal
+          here; the others are estimates.
+
+        Best-effort and advisory: a genuinely empty section (no such data in the
+        document) will also flag, so these are warning/info, never hard errors.
+        """
+        from idp_common.config.schema_constants import (
+            SCHEMA_PROPERTIES,
+            SCHEMA_TYPE,
+            TYPE_ARRAY,
+        )
+        from idp_common.models import ProcessingIssue
+
+        issues: list[Any] = []
+        is_agentic = self.config.extraction.agentic.enabled
+        properties = (self._class_schema or {}).get(SCHEMA_PROPERTIES, {}) or {}
+
+        # 1) Empty OR ABSENT schema-defined array fields.
+        #
+        # "Absent" matters as much as "empty" and used to be missed entirely: the
+        # `isinstance(..., list)` guard meant a response that simply OMITTED a
+        # declared list produced no issue at all. Measured on an 800-row
+        # transaction document in integrated-confidence mode, the response came
+        # back with the `Transactions` key **not present** — status COMPLETED,
+        # scalar accuracy 1.000, and not one warning anywhere. A declared list
+        # that the model declined to emit is the single largest silent-data-loss
+        # shape this pipeline has.
+        array_fields = [
+            name
+            for name, spec in properties.items()
+            if isinstance(spec, dict) and spec.get(SCHEMA_TYPE) == TYPE_ARRAY
+        ]
+
+        # 0) Integrated confidence downgraded to a separate pass for this
+        # list-bearing class (see _simple_integrated_list_downgrade). Recorded in
+        # metadata and the Processing Flow, deliberately NOT as a ProcessingIssue:
+        # the list view's badge counts ProcessingIssueCount and is therefore
+        # severity-blind, so even an `info` issue would mark every document of a
+        # Simple + integrated deployment "Processing Issues: 1" for a routing
+        # decision that produced a complete, scored section.
+        if self._integrated_downgrade_reason:
+            metadata["confidence_mode_effective"] = "separate"
+            metadata["confidence_mode_downgraded_reason"] = (
+                self._integrated_downgrade_reason
+            )
+
+        empty_lists = [
+            name
+            for name in array_fields
+            if name not in extracted_fields
+            or extracted_fields.get(name) is None
+            or (
+                isinstance(extracted_fields.get(name), list)
+                and len(extracted_fields[name]) == 0
+            )
+        ]
+        if empty_lists:
+            # `map(str, ...)` because these names come from the class SCHEMA, not
+            # from the response: a schema read straight from YAML can carry a bare
+            # numeric key, which arrives as an `int`, and this function runs with
+            # no enclosing `try` (`_save_results` calls it directly), so a
+            # `TypeError` out of the join would cost the section its whole
+            # processing-issue list and fail the save. Same reason as the
+            # equivalent join in the truncation block below; fixed in both rather
+            # than in the one that happened to be new.
+            fields_str = ", ".join(str(name) for name in empty_lists)
+            rec = (
+                " This document has large/tabular fields; Advanced (agentic) "
+                "extraction with table parsing is recommended for it."
+                if not is_agentic
+                else ""
+            )
+            issues.append(
+                ProcessingIssue(
+                    stage="extraction",
+                    severity="warning",
+                    code="extraction_incomplete",
+                    message=(
+                        f"Extraction returned no rows for list field(s): "
+                        f"{fields_str}. If the document contains this data, it was "
+                        f"not captured. Note that scalar fields can still score "
+                        f"perfectly while a whole list is missing, so no other "
+                        f"signal will flag this.{rec}"
+                    ),
+                    root_cause=(
+                        f"{'agentic' if is_agentic else 'traditional'} extraction "
+                        f"with model "
+                        f"{self._pending_extraction_model or self.config.extraction.model}; "
+                        f"empty array field(s): {fields_str}"
+                    ),
+                    section_id=section_id,
+                    details={"empty_list_fields": empty_lists, "agentic": is_agentic},
+                )
+            )
+
+        # 1b) The model's output was cut off mid-answer.
+        #
+        # This is the one signal here that is not a heuristic: either the response
+        # carried a ``stopReason`` saying the output ceiling was reached, or the
+        # text did not parse and the repair reader found an unterminated structure.
+        # Both mean the answer stops in the middle, so every list in it is a prefix
+        # of what the model was producing.
+        #
+        # It was ALREADY detected and then went nowhere: ``output_truncated`` was
+        # recorded in the section's metadata and read by no report, no status path
+        # and no UI, so a run whose output was demonstrably cut off completed with
+        # zero processing issues (#1361). Reporting it here is what makes the loss
+        # visible.
+        #
+        # Deliberately independent of ``extraction_rows_below_ocr_estimate``, and
+        # both can fire on one section. That check needs OCR that emits Markdown
+        # tables (Textract ``TABLES`` or BDA) and a table whose width matches the
+        # list item, and it is silent above its half ratio; this one needs neither
+        # OCR nor a list. Where they overlap they say different things — this names
+        # the cause, that one counts the rows — and suppressing either would remove
+        # evidence from a report that has room for both.
+        if metadata.get("output_truncated"):
+            # Top-level declared arrays that came back holding rows. NOT "the lists
+            # that were truncated", and the name says so: a response is cut at ONE
+            # point, so every list emitted before the cut is complete and nothing
+            # here can tell a reader which one was interrupted. `extracted_fields`
+            # insertion order would, but `_filter_extracted_to_schema` and
+            # `_apply_missing_field_handling` rewrite the dict in between, so that
+            # order is not safe to lean on. Naming the wrong field is worse than
+            # naming none, so this reports presence and leaves the inference to the
+            # reader. `isinstance` rather than truthiness, so a declared array that
+            # came back as a string is not reported as a list.
+            #
+            # No `str(name)` here, unlike the empty-list join above, and the
+            # asymmetry is the point rather than an oversight — but be precise about
+            # WHY, because the obvious reason is the wrong one. A non-string schema
+            # property name (a bare `2024` read straight from YAML) reaching this
+            # join would raise `TypeError`, and this function has no enclosing
+            # `try`. Two things together keep it from arriving, and it is the second
+            # that is load-bearing:
+            #
+            # 1. The RESPONSE cannot supply such a key. `extracted_fields` comes
+            #    from `json.loads` or from a forced-tool payload, both string-keyed,
+            #    and `ExtractionResult.extracted_fields` is typed `dict[str, Any]`.
+            # 2. One path DOES key by schema name, so (1) alone is not enough:
+            #    `_apply_missing_field_handling` — whose output is what
+            #    `_save_results` passes here, not `result.extracted_fields` — does
+            #    `fields_out[prop_name] = None` or pops the key. So a non-string
+            #    name can be present, and what excludes it is the
+            #    `isinstance(..., list)` test below: the value is `None`, never a
+            #    list.
+            #
+            # So this list is **unreachable** with a non-string name rather than
+            # safe against one, and the `isinstance` guard is what makes the
+            # coercion unnecessary. A `str()` here would be dead defence, and the
+            # test written to cover it could not: it set an `int` schema key and a
+            # `str` response key, so `present` was empty and the mutation survived.
+            # `empty_lists` above is the opposite case — a schema-only name lands
+            # there by construction — which is why that join keeps its coercion.
+            present = [
+                name
+                for name in array_fields
+                if isinstance(extracted_fields.get(name), list)
+                and extracted_fields.get(name)
+            ]
+            # Advanced mode does not exist for the OpenAI Responses families:
+            # `_invoke_extraction_model` raises `ValueError` for `agentic.enabled`
+            # with one of those models. Recommending it to a deployment that cannot
+            # select it is advice that breaks the run — and `incomplete`, the stop
+            # reason those models report, is exactly the one that brings a reader
+            # here.
+            # No `str(... or "")` wrapper: `is_openai_responses_model` returns False
+            # for a falsy id, so the wrapper was unreachable defence — and a
+            # random-sample mutation of its fallback was semantically EQUIVALENT
+            # (no input could distinguish `""` from any other non-OpenAI string),
+            # which no test can catch. Deleting the line is the honest fix.
+            can_use_agentic = not is_openai_responses_model(
+                self._pending_extraction_model or self.config.extraction.model
+            )
+            if is_agentic:
+                rec = (
+                    " Reduce the rows a single shard is asked for "
+                    "(extraction.agentic max_pages_per_shard) or split the document."
+                )
+            else:
+                rec = (
+                    " Simple extraction returns one response per section, so a "
+                    "section whose answer does not fit in one response loses the "
+                    "tail; "
+                )
+                rec += (
+                    "use Advanced (agentic) extraction, which shards the section "
+                    "across requests, or split the document."
+                    if can_use_agentic
+                    else "split the document, or process it with a model that "
+                    "supports Advanced (agentic) extraction, which shards the "
+                    "section across requests."
+                )
+            lists_clause = (
+                f" List field(s) in the partial result: {', '.join(present)}."
+                if present
+                else ""
+            )
+            issues.append(
+                ProcessingIssue(
+                    stage="extraction",
+                    severity="warning",
+                    code=self.OUTPUT_TRUNCATED_CODE,
+                    message=(
+                        "The model's extraction response was cut off before it "
+                        "finished, so the result holds only the part that was "
+                        f"emitted.{lists_clause} Scalar fields and the rows that "
+                        "did arrive can still be perfectly correct, so no accuracy "
+                        f"or confidence signal flags this.{rec}"
+                    ),
+                    root_cause=(
+                        f"{'agentic' if is_agentic else 'traditional'} extraction "
+                        f"with model "
+                        f"{self._pending_extraction_model or self.config.extraction.model}; "
+                        f"response truncated before completion"
+                        + (
+                            f"; repaired by {metadata.get('repair_method')}"
+                            if metadata.get("output_repaired")
+                            else ""
+                        )
+                    ),
+                    section_id=section_id,
+                    details={
+                        # Present, not truncated — see the comment above the
+                        # comprehension. A key named for the stronger claim would
+                        # be read as the stronger claim.
+                        "list_fields_present": present,
+                        "output_repaired": bool(metadata.get("output_repaired")),
+                        "repair_method": metadata.get("repair_method"),
+                        "agentic": is_agentic,
+                        "advanced_mode_available": can_use_agentic,
+                    },
+                )
+            )
+
+        # 2) Off-schema fields dropped by the simple-mode schema-compliance filter.
+        # The model returned attributes the class schema does not define; they were
+        # dropped (mirroring agentic Pydantic validation) so they can't corrupt
+        # downstream assessment. Info severity — the data was never valid for this
+        # class — but surfaced so a systematic prompt/schema mismatch is visible.
+        # Row shortfall against the OCR's own evidence (BOTH modes). A list that
+        # came back with SOME rows passes every check above — population is fine,
+        # the empty-list check does not fire, and without `minItems` there is no
+        # schema signal — yet a Simple-mode section of 800 rows returned 43 with
+        # COMPLETED and nothing said so (measured 2026-09-10). The OCR text says
+        # how many table rows the section holds; the tables SHAPED LIKE the list
+        # (column count equal to the item's property count) are its
+        # evidence, so a Daily Balances table next to Transactions, a form's
+        # key/value blocks, or a prose line with a "|" do not count against it.
+        # Lists of scalars are not compared (their items are not table rows);
+        # an array of instances is compared through its inner lists. Advisory:
+        # the floor and the half ratio absorb reprinted heading rows.
+        if array_fields:
+            tables = self._ocr_tables(self._document_text or "")
+            # Lists of the same width share the OCR evidence — Deposits and
+            # Withdrawals are both (Date, Description, Amount) tables — so they are
+            # judged as a GROUP: total rows extracted across the width vs total
+            # matched OCR rows. Judging each against the shared sum warned on
+            # every complete statement with sibling tables.
+            groups: dict[int, list[tuple[str, list[Any], int | None]]] = {}
+            for label, n_props, rows, max_rows in self._object_list_targets(
+                self._class_schema or {}, extracted_fields
+            ):
+                groups.setdefault(n_props, []).append((label, rows, max_rows))
+            for n_props, members in sorted(groups.items()):
+                labels = [
+                    lb
+                    for lb, rows, _mx in members
+                    if any(isinstance(r, dict) for r in rows)
+                ]
+                if not labels:
+                    continue  # every list of this width is empty: extraction_incomplete
+                ocr_rows = self._expected_rows_for_width(n_props, tables)
+                # A declared `maxItems` is the config author's own statement of how
+                # many rows this group can legitimately hold, so OCR evidence above
+                # it is not evidence of a shortfall: `maxItems: 15` over a 40-row
+                # table, correctly capped at 15, used to score 15/41 (#1046 item 4),
+                # and `extraction/validation.py` already treats trimming to
+                # `maxItems` as a CORRECTION rather than a loss. The cap is the SUM
+                # over the group's members, because `extracted` is summed over them
+                # and `expected` is shared — and it applies only when EVERY member
+                # declares one, since a single undeclared member leaves the group's
+                # legitimate total unbounded. Declining to cap is the safe direction:
+                # a cap can only ever suppress a firing.
+                caps = [mx for _lb, _rows, mx in members]
+                group_cap = (
+                    sum(c for c in caps if c is not None)
+                    if caps and None not in caps
+                    else None
+                )
+                expected = ocr_rows if group_cap is None else min(ocr_rows, group_cap)
+                capped = expected < ocr_rows
+                extracted = sum(
+                    1 for _lb, rows, _mx in members for r in rows if isinstance(r, dict)
+                )
+                if expected < self._OCR_ROW_ESTIMATE_MIN:
+                    continue  # too little evidence to say anything either way
+                if extracted >= expected * self._OCR_ROW_SHORTFALL_RATIO:
+                    # The band #843's half ratio left silent. At 409 extracted of
+                    # 817 summed OCR rows — 409 of the document's 800 real rows,
+                    # 48.9% lost — NOTHING was reported, so a reader who knows
+                    # about the row check concluded the section was fine (#1361).
+                    # Same evidence, same group, same `maxItems` cap; the only
+                    # change is the bar, read against the OCR's DATA rows rather
+                    # than half of the heading-inflated count. See
+                    # `_OCR_ROW_GAP_MIN` for why the residual tolerance is a row
+                    # gap and not a ratio.
+                    heading_rows = self._heading_rows_for_width(n_props, tables)
+                    ocr_body = max(0, ocr_rows - heading_rows)
+                    body_bar = (
+                        ocr_body if group_cap is None else min(ocr_body, group_cap)
+                    )
+                    missing = body_bar - extracted
+                    if missing < self._OCR_ROW_GAP_MIN:
+                        continue
+                    # `missing >= _OCR_ROW_GAP_MIN` and `extracted >= 0` make
+                    # `body_bar` at least that floor, so the ratio below cannot
+                    # divide by zero.
+                    fields_str = ", ".join(labels)
+                    # Only when the declared ceiling actually binds, so the
+                    # wording is unchanged for every schema that declares none.
+                    partial_cap_clause = (
+                        f", bounded to {body_bar} by the declared maxItems of the "
+                        f"list field(s)"
+                        if group_cap is not None and group_cap < ocr_body
+                        else ""
+                    )
+                    partial_rec = (
+                        " Simple extraction returns one response per section and "
+                        "stops early on long lists; for documents this size use "
+                        "Advanced (agentic) extraction, which shards."
+                        if not is_agentic
+                        else " Check that the table-parsing tool was used."
+                    )
+                    issues.append(
+                        ProcessingIssue(
+                            stage="extraction",
+                            severity="warning",
+                            code=self.PARTIAL_ROW_SHORTFALL_CODE,
+                            message=(
+                                f"Extracted {extracted} row(s) for list field(s) "
+                                f"{fields_str}, but the section's OCR text holds "
+                                f"{body_bar} data row(s) in {n_props}-column "
+                                f"table(s) of that shape "
+                                f"({ocr_rows} counted, less {heading_rows} "
+                                f"reprinted column-heading row(s))"
+                                f"{partial_cap_clause} — "
+                                f"{missing} row(s) are unaccounted for. That is "
+                                f"at or above half the evidence, so "
+                                f"{self.ROW_SHORTFALL_CODE} does not fire and "
+                                "extraction.row_shortfall_action does not apply: "
+                                "the run reports success and scalar fields are "
+                                "unaffected. Evidence is matched on column width "
+                                "only and summed over the section, so an "
+                                "unrelated table of the same width inflates this "
+                                "figure; treat it as a shortfall to confirm "
+                                "rather than a certain loss." + partial_rec
+                            ),
+                            root_cause=(
+                                f"{'agentic' if is_agentic else 'traditional'} "
+                                f"extraction with model "
+                                f"{self._pending_extraction_model or self.config.extraction.model}; "
+                                f"{extracted} extracted rows vs {body_bar} "
+                                f"matching OCR table data rows for {fields_str}"
+                            ),
+                            section_id=section_id,
+                            details={
+                                "list_fields": labels,
+                                "item_property_count": n_props,
+                                "extracted_rows": extracted,
+                                # The bar the ratio is taken against, so
+                                # `extracted / ocr_estimated_rows == ratio` and
+                                # `extracted + missing_rows == ocr_estimated_rows`
+                                # both hold. `ocr_matched_table_rows` is the raw
+                                # sum this check does NOT use as its bar, and
+                                # `ocr_heading_rows` is the difference, so the
+                                # denominator is auditable from the issue alone.
+                                "ocr_estimated_rows": body_bar,
+                                "ocr_matched_table_rows": ocr_rows,
+                                "ocr_heading_rows": heading_rows,
+                                "missing_rows": missing,
+                                "declared_max_items": group_cap,
+                                "ratio": round(extracted / body_bar, 3),
+                                # What this issue is NOT: the material bar it sits
+                                # above, named so a report can show both.
+                                "material_shortfall_ratio": (
+                                    self._OCR_ROW_SHORTFALL_RATIO
+                                ),
+                                "ocr_tables": tables,
+                                "agentic": is_agentic,
+                            },
+                        )
+                    )
+                    continue
+                fields_str = ", ".join(labels)
+                # What `minItems` buys is MODE-DEPENDENT, and recommending it
+                # without the split is how a reader trades a warning for a lost
+                # document (#1048):
+                #
+                # * Simple — visibility only. It adds
+                #   `extraction_list_truncated` (a warning) and, when
+                #   `validation.enabled` is on, a JSON-Schema violation whose worst
+                #   outcome under `fail_action: reject` is
+                #   `parsing_succeeded=False`, read by the processing report and
+                #   the UI's report tab and by nothing in the status path. So
+                #   `extraction.row_shortfall_action` decides the outcome.
+                # * Advanced — a HARD floor. `_transport_model` keeps `minItems`
+                #   (`nullable_leaves_for_transport` nulls scalar leaves only), so
+                #   a short list is rejected at the `extraction_tool` boundary, the
+                #   agent spends its correction rounds, and
+                #   `structured_output_async` raises "Failed to generate valid
+                #   structured output" — failing the section with no rows kept.
+                mode_rec = (
+                    " Simple extraction returns one response per section and "
+                    "stops early on long lists; for documents this size use "
+                    "Advanced (agentic) extraction, which shards."
+                    if not is_agentic
+                    else " Check that the table-parsing tool was used."
+                )
+                minitems_rec = (
+                    " Setting minItems on the list field adds a second signal for "
+                    "the same shortfall; in Simple extraction it makes the loss "
+                    "visible without changing the outcome, and "
+                    "extraction.row_shortfall_action is what decides that."
+                    if not is_agentic
+                    else " Note that minItems is NOT advisory on this path: it is "
+                    "enforced at the agent's tool boundary, so a floor this "
+                    "section cannot reach spends the agent's correction rounds and "
+                    "then fails the extraction with no rows kept. Prefer "
+                    "extraction.row_shortfall_action, which saves the rows and "
+                    "this diagnosis first."
+                )
+                rec = mode_rec + minitems_rec
+                # What the shortfall COSTS follows extraction.row_shortfall_action,
+                # the way extraction_validation_failed's severity follows
+                # validation.fail_action: 'fail' means the section fails once this
+                # result and this issue are persisted, so the document's status
+                # cannot say COMPLETED over a list that lost most of its rows
+                # (#1032); 'warn' leaves the advisory-only behaviour in place.
+                # The DETECTION is identical either way — same floor, same ratio.
+                shortfall_action = self._row_shortfall_action()
+                # Only present when the ceiling actually binds, so the wording and
+                # the root cause are byte-identical to before for every schema that
+                # declares no `maxItems` — which is every shipped preset.
+                cap_clause = (
+                    f" (bounded to {expected} by the declared maxItems of the "
+                    f"list field(s))"
+                    if capped
+                    else ""
+                )
+                cap_note = f" (capped at maxItems {group_cap})" if capped else ""
+                outcome = (
+                    " The section is therefore marked FAILED (extraction."
+                    "row_shortfall_action is 'fail'); the rows that were extracted "
+                    "and this issue are still saved."
+                    if shortfall_action == "fail"
+                    else " The run still reports success and scalar fields are "
+                    "unaffected, so no other signal flags this."
+                )
+                issues.append(
+                    ProcessingIssue(
+                        stage="extraction",
+                        severity="error" if shortfall_action == "fail" else "warning",
+                        code=self.ROW_SHORTFALL_CODE,
+                        message=(
+                            f"Extracted {extracted} row(s) for list field(s) "
+                            f"{fields_str}, but the section's OCR text contains about "
+                            f"{ocr_rows} rows in {n_props}-column table(s) of that "
+                            f"shape{cap_clause} — the list is likely truncated."
+                            f"{outcome}{rec}"
+                        ),
+                        root_cause=(
+                            f"{'agentic' if is_agentic else 'traditional'} extraction "
+                            f"with model "
+                            f"{self._pending_extraction_model or self.config.extraction.model}; "
+                            f"{extracted} extracted rows vs ~{expected} matching OCR "
+                            f"table rows{cap_note} for {fields_str}"
+                        ),
+                        section_id=section_id,
+                        details={
+                            "list_fields": labels,
+                            "item_property_count": n_props,
+                            "extracted_rows": extracted,
+                            # The figure the ratio is taken against, so
+                            # `extracted / ocr_estimated_rows == ratio` still holds.
+                            # `ocr_matched_table_rows` is the unbounded OCR evidence
+                            # and `declared_max_items` the ceiling that shrank it
+                            # (None when the group declares none), so the capping is
+                            # visible in the processing report rather than implicit.
+                            "ocr_estimated_rows": expected,
+                            "ocr_matched_table_rows": ocr_rows,
+                            "declared_max_items": group_cap,
+                            "ratio": round(extracted / expected, 3),
+                            "ocr_tables": tables,
+                            "agentic": is_agentic,
+                            "row_shortfall_action": shortfall_action,
+                        },
+                    )
+                )
+        off_schema = list(getattr(self, "_off_schema_fields", []) or [])
+        if off_schema:
+            fields_str = ", ".join(off_schema)
+            rec = (
+                " Advanced (agentic) extraction enforces this automatically."
+                if not is_agentic
+                else ""
+            )
+            issues.append(
+                ProcessingIssue(
+                    stage="extraction",
+                    severity="info",
+                    code="extraction_off_schema_fields",
+                    message=(
+                        f"Extraction returned {len(off_schema)} field(s) not defined "
+                        f"in the class schema; they were dropped before assessment: "
+                        f"{fields_str}. This usually indicates a prompt/schema "
+                        f"mismatch or cross-class hallucination.{rec}"
+                    ),
+                    root_cause=(
+                        f"{'agentic' if is_agentic else 'traditional'} extraction "
+                        f"with model "
+                        f"{self._pending_extraction_model or self.config.extraction.model}; "
+                        f"off-schema field(s): {fields_str}"
+                    ),
+                    section_id=section_id,
+                    details={"off_schema_fields": off_schema, "agentic": is_agentic},
+                )
+            )
+
+        # 2b) The section holds MORE THAN ONE document of this class.
+        #
+        # Classification produced one section, but extraction found several
+        # distinct records in it (GitHub #565). The records are all preserved in
+        # metadata.recovered_instances and inference_result holds the first, so
+        # nothing is lost — but only the first is scored, reviewed and reported,
+        # so this must be visible rather than quietly accepted.
+        #
+        # A warning, not an error: the extracted data is real and usable, and
+        # failing the section would discard it. The point is to stop the loss
+        # being silent, which is exactly what made this hard to find — the old
+        # code marked the section FAILED and reported "0/N fields populated",
+        # which described neither what happened nor what to do about it.
+        # Only when the extra documents were UNEXPECTED. A class that declared its
+        # own instance axis (x-aws-idp-instance-array) is meant to hold several
+        # records, and every one of them is extracted and scored, so warning about
+        # it would be pure noise on a correctly-configured class.
+        # Only "recovered" warrants the warning. "declared" means the class asked
+        # for several records and every one is extracted and scored; "single"
+        # means one object, which the > 1 check already excludes. Naming both
+        # exclusions is clearer than excluding "declared" alone and leaving
+        # "single" to fall through by accident. An ABSENT source is treated as
+        # recovered, so metadata written before the label existed still warns.
+        instance_count = int(metadata.get("instance_count") or 0)
+        instance_source = metadata.get("instance_source")
+        if instance_count > 1 and instance_source not in (
+            "declared",
+            "single",
+            "suspected",
+        ):
+            issues.append(
+                ProcessingIssue(
+                    stage="extraction",
+                    severity="warning",
+                    code="extraction_multi_instance_detected",
+                    message=(
+                        f"This section contains {instance_count} separate "
+                        f"'{self._class_label}' documents. All {instance_count} were "
+                        f"extracted, but only the first is shown as the section "
+                        f"result — review the section and consider splitting it."
+                    ),
+                    root_cause=(
+                        "classification produced one section for several "
+                        "consecutive documents of the same class, so the model "
+                        "returned a list where the schema describes one document; "
+                        "every instance is preserved under "
+                        "metadata.recovered_instances"
+                    ),
+                    section_id=section_id,
+                    details={
+                        "instance_count": instance_count,
+                        "agentic": is_agentic,
+                    },
+                )
+            )
+
+        # 2c) The section holds MORE documents than the result contains (#753).
+        #
+        # THE silent case, and the common one. Classification produced one section
+        # over several consecutive records of this class; the schema describes one
+        # document, so the model answered with one object and records 2..N are
+        # simply absent. Nothing reported it: SUCCESS, COMPLETED,
+        # ProcessingIssueCount 0, instance_count 1. #687's array-recovery branch
+        # cannot help — it fires only when the model returned a list, which is the
+        # branch where nothing had been lost yet.
+        #
+        # The evidence is the model's own answer to the auxiliary count asked in
+        # the same inference. A warning, not an error: the extracted record is
+        # real and usable, and failing the section would discard it. The point is
+        # that the loss stops being invisible, so the section can be reviewed or
+        # routed instead of quietly shipping one record out of three.
+        if instance_source == "suspected" and instance_count > 1:
+            extracted_n = int(metadata.get("instance_extracted_count") or 1)
+            missing = max(instance_count - extracted_n, 0)
+            issues.append(
+                ProcessingIssue(
+                    stage="extraction",
+                    severity="warning",
+                    code="extraction_multi_instance_suspected",
+                    message=(
+                        f"These pages appear to contain {instance_count} separate "
+                        f"'{self._class_label}' documents, but extraction returned "
+                        f"{extracted_n}. {missing} document(s) are NOT in the "
+                        f"result. Review the section, then either split it "
+                        f"(classification sectionSplitting) or turn on "
+                        f"multi-instance extraction for this class so every "
+                        f"document is extracted."
+                    ),
+                    root_cause=(
+                        f"the extraction model reported {instance_count} document "
+                        f"instance(s) in this section while returning "
+                        f"{extracted_n}; the class schema describes a single "
+                        f"document, so the additional records had nowhere to go "
+                        f"(model "
+                        f"{self._pending_extraction_model or self.config.extraction.model})"
+                    ),
+                    section_id=section_id,
+                    details={
+                        "instance_count": instance_count,
+                        "extracted_instance_count": extracted_n,
+                        "detection": "model_self_report",
+                        "agentic": is_agentic,
+                    },
+                )
+            )
+
+        # 3) Below-threshold population heuristic (agentic populates this today).
+        pop = metadata.get("population_check")
+        if isinstance(pop, dict) and pop.get("below_threshold"):
+            issues.append(
+                ProcessingIssue(
+                    stage="extraction",
+                    severity="info",
+                    code="extraction_sparse",
+                    message=(
+                        f"Only {pop.get('fields_populated')}/{pop.get('fields_defined')} "
+                        f"schema fields were populated — possible silent extraction "
+                        f"loss."
+                    ),
+                    root_cause=(
+                        f"population ratio {pop.get('population_ratio')} below "
+                        f"threshold {pop.get('threshold')}"
+                    ),
+                    section_id=section_id,
+                    details={"empty_fields": pop.get("empty_fields", [])[:20]},
+                )
+            )
+
+        # 4) A list came back SHORTER than its declared `minItems`.
+        #
+        # This is the one unambiguous, mode-agnostic truncation signal available
+        # without ground truth: the config author asserted a floor and the
+        # extraction is under it. Previously the `minItems` check ran only on the
+        # agentic path, so simple mode — which is where the silent completeness
+        # cliff actually lives (recall 1.000 through ~800 rows, then 0.199 at
+        # 1,200 and 0.009 at 3,200) — had no completeness check of any kind.
+        #
+        # Deliberately a *warning*, not a failure: the partial rows are real data
+        # and are more useful than a discarded document. What matters is that it
+        # stops being silent, because neither status nor cost reveals it — a
+        # truncated run is actually CHEAPER than a complete one.
+        short_lists: list[dict[str, Any]] = []
+        for name in array_fields:
+            value = extracted_fields.get(name)
+            if not isinstance(value, list) or not value:
+                continue  # empty/absent already reported by (1)
+            raw_min = (properties.get(name) or {}).get("minItems")
+            if raw_min in (None, ""):
+                continue
+            try:
+                # minItems can arrive as a string after a config round-trip.
+                min_items = int(raw_min)
+            except (TypeError, ValueError):
+                continue
+            if min_items > 0 and len(value) < min_items:
+                short_lists.append(
+                    {"field": name, "rows": len(value), "min_items": min_items}
+                )
+
+        if short_lists:
+            detail = ", ".join(
+                f"{s['field']} ({s['rows']} of at least {s['min_items']})"
+                for s in short_lists
+            )
+            rec = (
+                " Advanced (agentic) extraction shards large lists and is "
+                "recommended for documents this size."
+                if not is_agentic
+                else ""
+            )
+            issues.append(
+                ProcessingIssue(
+                    stage="extraction",
+                    severity="warning",
+                    code="extraction_list_truncated",
+                    message=(
+                        f"List field(s) returned fewer rows than the schema's "
+                        f"minItems requires: {detail}. The extraction is very "
+                        f"likely truncated — the returned rows are usable but "
+                        f"incomplete.{rec}"
+                    ),
+                    root_cause=(
+                        f"{'agentic' if is_agentic else 'traditional'} extraction "
+                        f"with model "
+                        f"{self._pending_extraction_model or self.config.extraction.model}; "
+                        f"minItems violated on: {detail}"
+                    ),
+                    section_id=section_id,
+                    details={"short_lists": short_lists, "agentic": is_agentic},
+                )
+            )
+
+        # 5) The extraction result still violates the class JSON Schema.
+        #
+        # This is what makes `fail_action: warn` — the default, and the whole
+        # justification for turning validation ON by default — actually deliver
+        # something. Without it the outcome landed only in
+        # `metadata.validation` inside the section result JSON: no section status
+        # icon, nothing in the document list's Processing Issues column, nothing
+        # in the Processing Report. "Free and makes an otherwise-silent violation
+        # visible" was only half true; the violation was still silent.
+        #
+        # Applies to BOTH modes (agentic writes the same metadata block). Severity
+        # follows fail_action, because that is what the deployment decided the
+        # outcome MEANS: `reject` recorded the result as unparsed, so `error`;
+        # `warn` and `escalate` left it standing as a valid result, so `warning`.
+        # None of the three changes the section's or the document's outcome — see
+        # the consequence clause below.
+        validation = metadata.get("validation")
+        if isinstance(validation, dict) and validation.get("valid") is False:
+            failed = [str(f) for f in (validation.get("failed_fields") or [])]
+            error_count = int(validation.get("error_count") or 0)
+            fail_action = str(validation.get("fail_action") or "warn")
+            escalated = bool(validation.get("escalated"))
+            named = ", ".join(failed[:8]) or "unnamed fields"
+            if len(failed) > 8:
+                named += f", +{len(failed) - 8} more"
+            if fail_action == "reject":
+                # `reject` records the result as unparsed and makes the processing
+                # report read FAILED. It does not change the section's or the
+                # document's outcome — nothing in the status path reads
+                # `parsing_succeeded` — so the message says what it does (#1048).
+                consequence = (
+                    " Fail Action is 'reject', so the result is recorded as not "
+                    "parsed and this section's processing report reads FAILED. The "
+                    "values are stored as extracted and the document's status is "
+                    "unchanged."
+                )
+            elif escalated:
+                consequence = (
+                    " Re-extraction with the escalation model did not resolve it;"
+                    " the values are stored as extracted."
+                )
+            else:
+                consequence = " The values are stored as extracted."
+            issues.append(
+                ProcessingIssue(
+                    stage="extraction",
+                    severity="error" if fail_action == "reject" else "warning",
+                    code="extraction_validation_failed",
+                    message=(
+                        f"{error_count} schema violation(s) remain after "
+                        f"extraction, affecting: {named}.{consequence}"
+                    ),
+                    root_cause=(
+                        f"{'agentic' if is_agentic else 'traditional'} extraction "
+                        f"with model "
+                        f"{self._pending_extraction_model or self.config.extraction.model}; "
+                        f"full-schema validation failed (fail_action={fail_action})"
+                    ),
+                    section_id=section_id,
+                    details={
+                        "failed_fields": failed[:20],
+                        "error_count": error_count,
+                        "fail_action": fail_action,
+                        "escalated": escalated,
+                        # The first few concrete messages, so the issue is
+                        # actionable without opening the section result JSON.
+                        "errors": (validation.get("errors") or [])[:5],
+                        "agentic": is_agentic,
+                    },
+                )
+            )
+        return issues
+
+    def _build_processing_flow(
+        self,
+        metadata: dict[str, Any],
+        extraction_method: str,
+        tool_used: bool,
+    ) -> dict[str, Any]:
+        """Build a normalized, render-agnostic description of the processing path.
+
+        Returns ``{"stages": [ {key,label,detail,status,fanout?}, ... ],
+        "recovery": {...}|None}``. ``status`` is one of ``ok`` | ``info`` |
+        ``warning`` | ``skipped``. The UI renders ``stages`` as a left-to-right
+        flow graph and ``recovery`` as an explicit "what failed and was recovered"
+        callout; the text report renders the same data as lines. Populated for BOTH
+        simple and advanced so there is always a flow to show.
+        """
+        is_agentic = extraction_method == "agentic"
+        sizing = metadata.get("sizing_plan") or {}
+        geometry_mode = (
+            sizing.get("geometry_mode") or self.config.extraction.geometry.mode or ""
+        ).lower()
+        conf_cfg = self.config.extraction.confidence
+        conf_enabled = bool(conf_cfg.enabled)
+        conf_mode = (conf_cfg.mode or "").lower()  # separate | integrated | off
+        split = metadata.get("assessment_batch_split_stats") or {}
+        decision = metadata.get("tool_usage_decision") or {}
+        validation = metadata.get("validation") or {}
+
+        stages: list[dict[str, Any]] = []
+
+        # 1) OCR
+        ocr_info = metadata.get("ocr_analysis") or {}
+        tables_seen = ocr_info.get("tables_detected", 0)
+        stages.append(
+            {
+                "key": "ocr",
+                "label": "OCR",
+                "detail": (
+                    f"{tables_seen} markdown table(s) in text"
+                    if tables_seen
+                    else "no markdown tables"
+                ),
+                "status": "ok",
+            }
+        )
+        # 2) Classify
+        stages.append(
+            {"key": "classify", "label": "Classify", "detail": "", "status": "ok"}
+        )
+
+        # 3) Extract — mode + sharding fan-out.
+        num_shards = 0
+        shard_trace = metadata.get("shard_trace")
+        if isinstance(shard_trace, dict):
+            num_shards = shard_trace.get("num_shards", 0) or 0
+        if is_agentic:
+            if num_shards and num_shards > 1:
+                extract_detail = f"agentic · {num_shards} shards (concurrent)"
+                fanout = num_shards
+            else:
+                extract_detail = "agentic · single agent"
+                fanout = 0
+        else:
+            extract_detail = "single LLM pass"
+            fanout = 0
+        stages.append(
+            {
+                "key": "extract",
+                "label": "Extract",
+                "detail": extract_detail,
+                "status": "ok",
+                "fanout": fanout,
+                "model": metadata.get("extraction_model"),
+            }
+        )
+
+        # 4) Table tool (only meaningful for agentic) — used / declined / unavailable.
+        if is_agentic and (decision or "table_parsing_tool_used" in metadata):
+            if tool_used:
+                t_status, t_detail = "ok", "deterministic parser used"
+            elif not decision.get("tool_enabled", True):
+                t_status, t_detail = "skipped", "disabled in config"
+            elif not decision.get("ocr_had_markdown_tables", True):
+                t_status, t_detail = "skipped", "no markdown tables in OCR"
+            elif decision.get("expected") and not decision.get("actual"):
+                t_status, t_detail = "warning", "available but agent declined"
+            else:
+                t_status, t_detail = "skipped", "not needed"
+            stages.append(
+                {
+                    "key": "table_tool",
+                    "label": "Table tool",
+                    "detail": t_detail,
+                    "status": t_status,
+                }
+            )
+
+        # 5) Model escalation (extraction schema-validation escalation), if any.
+        if validation.get("escalated"):
+            stages.append(
+                {
+                    "key": "escalation",
+                    "label": "Escalation",
+                    "detail": (
+                        f"{validation.get('escalation_scope') or 'fields'} → "
+                        f"{validation.get('escalation_model') or 'stronger model'}"
+                        + (
+                            " (resolved)"
+                            if validation.get("resolved_by_escalation")
+                            else ""
+                        )
+                    ),
+                    "status": "warning",
+                }
+            )
+
+        # 6) Confidence — source (deterministic OCR-inline vs LLM), batching/concurrency.
+        if not conf_enabled or conf_mode == "off":
+            stages.append(
+                {
+                    "key": "confidence",
+                    "label": "Confidence",
+                    "detail": "disabled",
+                    "status": "skipped",
+                }
+            )
+        else:
+            batch_count = split.get("batch_count")
+            concurrent = split.get("concurrent_batches")
+            c_status = "ok"
+            if conf_mode == "integrated" and self._integrated_downgrade_reason:
+                # Configured integrated, ran separately (list-bearing class).
+                # Report what HAPPENED, not what was configured; the full reason
+                # is in metadata.confidence_mode_downgraded_reason, the box stays
+                # short so the flow graph keeps its shape.
+                c_detail = (
+                    f"{conf_cfg.model or 'model'} · separate pass "
+                    "(downgraded: list fields)"
+                )
+                if batch_count and batch_count > 1:
+                    c_detail += f" · {batch_count} batches"
+                fan = concurrent if (concurrent and concurrent > 1) else 0
+                c_status = "info"
+            elif conf_mode == "integrated":
+                c_detail = "integrated (inline with extraction)"
+                fan = 0
+            elif batch_count and batch_count > 1:
+                c_detail = f"{conf_cfg.model or 'model'} · {batch_count} batches"
+                if concurrent and concurrent > 1:
+                    c_detail += f" · {concurrent}× concurrent"
+                fan = concurrent if (concurrent and concurrent > 1) else 0
+            else:
+                c_detail = f"{conf_cfg.model or 'model'} · 1 pass"
+                fan = 0
+            stages.append(
+                {
+                    "key": "confidence",
+                    "label": "Confidence",
+                    "detail": c_detail,
+                    "status": c_status,
+                    "fanout": fan,
+                    "model": conf_cfg.model,
+                }
+            )
+
+            # 7) Geometry — OCR-grounded vs LLM-estimated box.
+            if geometry_mode in ("ocr_only", "llm_grounded"):
+                g_detail = (
+                    "OCR-grounded (deterministic)"
+                    if geometry_mode == "ocr_only"
+                    else "LLM box refined by OCR"
+                )
+            elif geometry_mode == "llm":
+                g_detail = "LLM-estimated box"
+            else:
+                g_detail = "none"
+            stages.append(
+                {
+                    "key": "geometry",
+                    "label": "Geometry",
+                    "detail": g_detail,
+                    "status": "skipped" if geometry_mode in ("", "off") else "ok",
+                }
+            )
+
+        # Recovery summary: what the confidence self-healing had to fix. Only
+        # present when there was truncation/splitting/escalation activity, so an
+        # "auto recovered" status can point at EXACTLY what failed and was rescued.
+        recovery = None
+        if split:
+            recovered = (split.get("rows_recovered_by_retry", 0) or 0) + (
+                split.get("rows_recovered_by_escalation", 0) or 0
+            )
+            truncated = split.get("truncated_calls", 0) or 0
+            unrecoverable = split.get("unrecoverable_rows", 0) or 0
+            if truncated or recovered or unrecoverable:
+                recovery = {
+                    "truncated_calls": truncated,
+                    "splits": split.get("splits", 0) or 0,
+                    "rows_recovered_by_retry": split.get("rows_recovered_by_retry", 0)
+                    or 0,
+                    "rows_recovered_by_escalation": split.get(
+                        "rows_recovered_by_escalation", 0
+                    )
+                    or 0,
+                    "escalation_model": split.get("escalation_model"),
+                    "unrecoverable_rows": unrecoverable,
+                    "deadline_reached": bool(split.get("deadline_reached")),
+                }
+
+        return {"stages": stages, "recovery": recovery}
+
+    def _generate_processing_report(self, metadata: dict[str, Any]) -> str:
+        """Generate user-friendly processing report."""
+
+        # Status reflects BOTH parse success AND any structured processing issues,
+        # so an extraction that parsed but under-produced (e.g. an empty large
+        # table) is not misreported as a clean SUCCESS.
+        issues_for_status = metadata.get("processing_issues") or []
+        severities = {str(i.get("severity", "")).lower() for i in issues_for_status}
+        # A row shortfall under row_shortfall_action='fail' is the one issue that
+        # fails the section outright (_fail_on_row_shortfall raises immediately
+        # after this report is written into the section output). So the report
+        # must not say COMPLETED: this artifact is the thing the reader opens to
+        # find out what happened, and it would have contradicted the outcome it
+        # was written to explain. Narrow on purpose — for every OTHER
+        # error-severity issue the section really did complete, and
+        # COMPLETED WITH ERRORS is the right line.
+        fails_section = any(
+            str(i.get("code", "")) == self.ROW_SHORTFALL_CODE
+            and str(i.get("severity", "")).lower() == "error"
+            for i in issues_for_status
+        )
+        if not metadata.get("parsing_succeeded"):
+            status_line = "FAILED"
+        elif fails_section:
+            status_line = "FAILED — EXTRACTION MATERIALLY INCOMPLETE"
+        elif "error" in severities:
+            status_line = "COMPLETED WITH ERRORS"
+        elif "warning" in severities:
+            status_line = "COMPLETED WITH WARNINGS"
+        else:
+            status_line = "SUCCESS"
+
+        report_lines = [
+            "=== EXTRACTION PROCESSING REPORT ===",
+            "",
+            f"Extraction Method: {metadata.get('extraction_method', 'N/A').upper()}",
+            f"Processing Time: {metadata.get('extraction_time_seconds', 0):.1f} seconds",
+            f"Status: {status_line}",
+            "",
+        ]
+
+        # Processing flow — systematic, single-line-per-stage depiction of the whole
+        # path (mirrors the UI graph): OCR → Classify → Extract(→shards) →
+        # [Table tool] → [Escalation] → Confidence(→batches) → Geometry.
+        flow = metadata.get("processing_flow") or {}
+        stages = flow.get("stages") or []
+        if stages:
+            icon = {"ok": "✓", "info": "•", "warning": "⚠", "skipped": "–"}
+            report_lines.append("Processing Flow:")
+            for st in stages:
+                mark = icon.get(str(st.get("status", "ok")), "•")
+                detail = st.get("detail")
+                report_lines.append(
+                    f"  {mark} {st.get('label', '?')}"
+                    + (f": {detail}" if detail else "")
+                )
+            # Explicit recovery callout — WHAT failed and was recovered by retry.
+            rec = flow.get("recovery")
+            if rec:
+                recovered = (rec.get("rows_recovered_by_retry", 0)) + (
+                    rec.get("rows_recovered_by_escalation", 0)
+                )
+                report_lines.append("")
+                report_lines.append("  Confidence self-healing (auto-recovery):")
+                report_lines.append(
+                    f"    - Truncated confidence calls: {rec.get('truncated_calls', 0)} "
+                    f"(batches split {rec.get('splits', 0)}×)"
+                )
+                report_lines.append(
+                    f"    - Rows recovered by same-model retry: "
+                    f"{rec.get('rows_recovered_by_retry', 0)}"
+                )
+                if rec.get("rows_recovered_by_escalation", 0):
+                    report_lines.append(
+                        f"    - Rows recovered by ESCALATION to "
+                        f"{rec.get('escalation_model') or 'stronger model'}: "
+                        f"{rec.get('rows_recovered_by_escalation', 0)}"
+                    )
+                report_lines.append(f"    - Total rows auto-recovered: {recovered}")
+                if rec.get("unrecoverable_rows", 0):
+                    report_lines.append(
+                        f"    - ⚠ Rows still unscored after recovery: "
+                        f"{rec.get('unrecoverable_rows', 0)}"
+                    )
+                if rec.get("deadline_reached"):
+                    report_lines.append(
+                        "    - ⚠ Stopped early on the Lambda wall-clock guard"
+                    )
+            report_lines.append("")
+
+        # Schema analysis
+        if "schema_analysis" in metadata:
+            schema_info = metadata["schema_analysis"]
+            report_lines.extend(
+                [
+                    "Schema Analysis:",
+                    f"  - Large array fields detected: {len(schema_info.get('large_array_fields', []))}",
+                    f"  - Maximum minItems constraint: {schema_info.get('max_min_items', 0)}",
+                    f"  - Tool usage recommendation: {schema_info.get('recommendation_strength', 'N/A')}",
+                    "",
+                ]
+            )
+
+        # OCR analysis
+        if "ocr_analysis" in metadata:
+            ocr_info = metadata["ocr_analysis"]
+            tables_detected = ocr_info.get("tables_detected", 0)
+            # Make the Markdown-table prerequisite explicit: the deterministic table
+            # parser can ONLY act on Markdown pipe-tables in the OCR text, and this
+            # pre-flight scan is what detects them.
+            if tables_detected > 0:
+                md_line = (
+                    f"  - Markdown tables in OCR text: YES "
+                    f"({tables_detected} region(s), ~{ocr_info.get('estimated_row_count', 0)} rows)"
+                )
+            else:
+                md_line = (
+                    "  - Markdown tables in OCR text: NONE — the OCR output has no "
+                    "Markdown pipe-tables, so the deterministic table parser cannot "
+                    "run on this section (enable Textract TABLES, or use an OCR "
+                    "backend that emits Markdown tables, to make it available)"
+                )
+            report_lines.extend(
+                [
+                    "OCR Table Detection (pre-flight scan of the OCR text):",
+                    md_line,
+                    f"  - Tool usage recommendation: {ocr_info.get('recommendation_strength', 'N/A')}",
+                    "",
+                ]
+            )
+
+        # Tool usage decision — make availability + the WHY prominent.
+        if "tool_usage_decision" in metadata:
+            decision = metadata["tool_usage_decision"]
+            status_icon = "✓" if not decision.get("mismatch") else "⚠"
+            # Availability status: enabled in config AND OCR had Markdown tables.
+            if not decision.get("tool_enabled", True):
+                avail = "DISABLED in configuration"
+            elif not decision.get("ocr_had_markdown_tables", True):
+                avail = "enabled, but UNAVAILABLE (no Markdown tables in OCR text)"
+            else:
+                avail = "ENABLED and AVAILABLE (Markdown tables present in OCR)"
+            report_lines.extend(
+                [
+                    f"{status_icon} Table Parsing Tool Decision:",
+                    f"  - Deterministic table parser: {avail}",
+                    f"  - Recommended: {'YES' if decision.get('expected') else 'NO'}",
+                    f"  - Actually used by agent: {'YES' if decision.get('actual') else 'NO'}",
+                    f"  - Why: {decision.get('explanation', 'N/A')}",
+                    "",
+                ]
+            )
+
+        # Completeness check
+        if "completeness_check" in metadata:
+            check = metadata["completeness_check"]
+            if not check.get("schema_constraints_met"):
+                status_icon = "✗"
+            elif check.get("unexplained_empty_lists"):
+                # No schema constraint broken, but a table's worth of rows is
+                # missing — a ✓ here is what made this read as healthy.
+                status_icon = "⚠"
+            else:
+                status_icon = "✓"
+            report_lines.extend(
+                [
+                    f"{status_icon} Completeness Validation:",
+                    f"  - {check.get('summary', 'N/A')}",
+                    "",
+                ]
+            )
+
+            if check.get("violations"):
+                report_lines.append("  Detected Issues:")
+                for v in check["violations"]:
+                    report_lines.append(f"    • Field '{v['field']}': {v['message']}")
+                    report_lines.append(f"      Possible cause: {v['possible_cause']}")
+                report_lines.append("")
+
+        # Table parsing stats (if used)
+        if (
+            metadata.get("table_parsing_tool_used")
+            and "table_parsing_stats" in metadata
+        ):
+            stats = metadata["table_parsing_stats"]
+            report_lines.extend(
+                [
+                    "✓ Table Parsing Tool Results:",
+                    f"  - Tables parsed: {stats.get('tables_parsed', 0)}",
+                    f"  - Total rows extracted: {stats.get('rows_parsed', 0)}",
+                    f"  - Parse success rate: {stats.get('parse_success_rate') or 0:.1%}",
+                    f"  - Avg OCR confidence: {stats.get('avg_confidence') or 0:.1f}%",
+                    "",
+                ]
+            )
+
+            if stats.get("warnings"):
+                report_lines.append("  Warnings:")
+                for w in stats["warnings"]:
+                    report_lines.append(f"    {w}")
+                report_lines.append("")
+
+        # Item 3: how the document was SIZED and SPLIT (model-aware auto-sizing).
+        # Always shown for agentic so the user can see the processing path.
+        sizing = metadata.get("sizing_plan")
+        if sizing:
+            report_lines.append("How this document was processed:")
+            report_lines.append(
+                f"  - Model: {sizing.get('model_id')} "
+                f"(input window {sizing.get('max_input_tokens'):,}, "
+                f"output cap {sizing.get('max_output_tokens'):,})"
+            )
+            report_lines.append(
+                f"  - Context buffer: {int(sizing.get('context_buffer', 0) * 100)}% "
+                f"kept free"
+            )
+            report_lines.append(
+                f"  - Auto shard budget: ~{sizing.get('shard_token_budget'):,} "
+                f"input tokens/shard, max {sizing.get('max_pages_per_shard')} "
+                f"pages/shard"
+            )
+            report_lines.append(
+                f"  - Auto confidence list-batch size: "
+                f"{sizing.get('list_batch_size')} rows"
+            )
+            if sizing.get("overrides"):
+                report_lines.append(
+                    f"  - Manual overrides in effect: {sizing['overrides']}"
+                )
+            report_lines.append("")
+
+        # Prompt cache: what the cache point actually did for this section (#780).
+        if metadata.get("prompt_cache"):
+            from idp_common.bedrock.prompt_cache import describe_cache_state
+
+            report_lines.append("Prompt cache (this section):")
+            report_lines.append(f"  - {describe_cache_state(metadata['prompt_cache'])}")
+            report_lines.append("")
+
+        # Assessment batch-splitting (only present when the confidence model
+        # truncated its output and batches had to shrink to recover coverage).
+        if "assessment_batch_split_stats" in metadata:
+            from idp_common.assessment.batching import format_split_stats_report
+
+            block = format_split_stats_report(metadata["assessment_batch_split_stats"])
+            if block:
+                report_lines.append("⚠ " + block)
+                report_lines.append("")
+
+        # Structured processing issues (1.4): the definitive, user-facing list of
+        # what went wrong / was auto-healed, with root cause and the model chain.
+        if metadata.get("processing_issues"):
+            _icons = {"error": "✗", "warning": "⚠", "info": "ℹ"}
+            report_lines.append("Processing Issues:")
+            for issue in metadata["processing_issues"]:
+                icon = _icons.get(issue.get("severity", "info"), "•")
+                report_lines.append(
+                    f"  {icon} [{issue.get('code', 'issue')}] "
+                    f"{issue.get('message', '')}"
+                )
+                if issue.get("root_cause"):
+                    report_lines.append(f"      Root cause: {issue['root_cause']}")
+            report_lines.append("")
+
+        report_lines.append("=" * 40)
+
+        return "\n".join(report_lines)
+
+    def _resolve_escalation_model(self) -> str | None:
+        """Pick the model used to re-extract on validation failure.
+
+        Precedence: per-class ``x-aws-idp-extraction-escalation-model`` >
+        global ``validation.escalation_model``. Returns None when neither is
+        set, in which case escalation falls back to the extraction model and is
+        effectively a plain retry (still useful as a second attempt).
+        """
+        return (
+            self._class_schema.get(X_AWS_IDP_EXTRACTION_ESCALATION_MODEL)
+            or self.config.extraction.validation.escalation_model
+        )
+
+    def _transport_model(self, schema: dict[str, Any], class_label: str) -> Any:
+        """The Pydantic model handed to the extraction agent for ``schema``.
+
+        Every scalar leaf is made nullable and ``required`` is KEPT
+        (``schema.nullable_leaves_for_transport``, #782), so the agent can abstain
+        on a cell it cannot read while an omitted key, a nulled list or a
+        misspelled key set still fail. Every transport-model site (in-process
+        agent, SFN shard plan, escalation subset) goes through here, so the rule
+        has one home and one test.
+        """
+        return create_pydantic_model_from_json_schema(
+            schema=nullable_leaves_for_transport(schema),
+            class_label=class_label,
+            clean_schema=False,
+        )
+
+    def _shard_transport_model(self, schema: dict[str, Any], class_label: str) -> Any:
+        """The Pydantic model handed to ONE SHARD's extraction agent for ``schema``.
+
+        :meth:`_transport_model`, plus: a **required array or nested object also
+        accepts null** (``schema.nullable_required_containers_for_shard``). That is
+        what makes the shard instruction — "if a field does not appear in your pages,
+        leave it null — another shard will provide it" — satisfiable for a declared
+        list or group. Without it the instruction names the one answer the shard's
+        own ``extraction_tool`` rejects, and a shard covering pages that genuinely
+        contain none of a required list spends a correction round discovering it must
+        emit ``[]`` rather than ``null``, with the in-loop feedback validator
+        reporting the payload as satisfying every constraint (#1078).
+
+        This is the tool-boundary half of the shard relaxation;
+        :meth:`_shard_schema_validator` is the feedback half. Both are shard-scoped
+        and they now agree about presence. ``required`` is still KEPT in both, so an
+        omitted key, an empty tool call and a misspelled key set still fail per shard
+        — the structural guard #782 deliberately preserved — and ``minItems`` still
+        reaches the tool boundary unchanged.
+
+        Presence is enforced once on the MERGED section: ``extraction.validation``
+        validates the merged result against the real schema, treats a null property
+        as absent, and reports ``'X' is a required property``. A required list or
+        group that no shard saw is therefore reported rather than forced, which is
+        the treatment a null required scalar already gets. Note the merge itself
+        normalises a list field to ``[]`` whatever the shards returned
+        (``runtime._merge_shard_results``), so for a list the merged value is
+        unchanged by this; it is the per-shard round that is saved.
+        """
+        return create_pydantic_model_from_json_schema(
+            schema=nullable_required_containers_for_shard(
+                nullable_leaves_for_transport(schema)
+            ),
+            class_label=class_label,
+            clean_schema=False,
+        )
+
+    def _shard_schema_validator(self):
+        """The in-loop validator for ONE shard: types/formats/enums only.
+
+        No presence checks — a shard legitimately leaves out-of-shard fields null
+        and a cover-page shard has no rows — and no OCR table evidence. Both
+        fan-out sites (in-process and SFN) use this, so the shard rule has one
+        home and one test. See ``_build_schema_validator(shard_scoped=True)``.
+
+        ⚠️ This relaxation reaches the agent's **self-correction feedback** only. It
+        is passed as ``schema_validator``, which ``structured_output_async`` consults
+        after a tool call; the ``extraction_tool`` itself is built from
+        ``data_format``, which is the **shard** transport model
+        (:meth:`_shard_transport_model`). That model relaxes *presence* for a required
+        container and carries every **row-count bound** unchanged, so a ``minItems``
+        floor IS enforced per shard at the tool boundary and a section-sized floor is
+        unsatisfiable by any shard. ``row_shortfall_action`` is the shard-aware
+        completeness lever. See the ``extraction_list_truncated`` entry in this
+        package's README.
+        """
+        return self._build_schema_validator(shard_scoped=True)
+
+    def _build_schema_validator(
+        self,
+        ocr_analysis: dict[str, Any] | None = None,
+        *,
+        shard_scoped: bool = False,
+    ):
+        """Return an in-loop validation callback for the agent's self-correction
+        round, or None when there is nothing to check.
+
+        ``shard_scoped=True`` builds the variant for ONE shard of a sharded
+        section: it validates against ``validation.shard_validation_schema`` (no
+        ``required``, no ``minItems``) and never applies the OCR table-evidence
+        check. A shard is told to leave out-of-shard fields null, so presence must
+        not be enforced on it — that produced up to three extra agent turns per
+        shard and told a cover-page shard to invent rows. Presence is enforced once
+        on the merged section against the real schema.
+
+        Two independent checks, with **independent enablement**:
+
+        1. **Full JSON-Schema validation** — gated on
+           ``extraction.validation.enabled``, **on by default as of v0.7**.
+           Catches what the generated Pydantic model does not, notably ``format``
+           keywords. Free at the default ``fail_action: warn``: no extra
+           inference, just a visible ProcessingIssue instead of a silent
+           violation.
+
+        2. **Empty declared list with OCR table evidence** — NOT gated. When the
+           pre-flight found a substantial table and *every* declared list field
+           came back with no rows, the result is rejected regardless of whether
+           schema validation is on.
+
+        Check 2 is deliberately ungated, and that is a considered decision rather
+        than an oversight. It was originally written behind ``validation.enabled``
+        and **live verification caught the mistake**: the very config that
+        produced the bug had ``validation.enabled: false`` — the documented
+        default at the time — so the safety net was dead on exactly the
+        configurations that needed it. A guard against *silent data loss* that is
+        itself off by default reproduces the problem it was written to fix.
+
+        v0.7 acted on that argument for check 1 as well by flipping its default
+        on. Check 2 nevertheless stays ungated: it guards against silent data
+        loss, and a config that explicitly turns validation off should not
+        thereby turn off a check that costs nothing and only ever asks the model
+        to try again.
+
+        The blast radius is small enough to justify that:
+
+        - It fires only on positive evidence (the OCR pre-flight's own >30
+          pipe-table-row rule, the same signal that produced the agent's tool
+          guidance) AND only when *no* declared list has any rows.
+        - Its effect is one more agent turn with specific feedback. It cannot
+          fail the extraction — after the last attempt the loop keeps the
+          best-effort result — so the worst case is one wasted turn on a document
+          that genuinely has no rows in a detected table.
+        - A populated sibling list suppresses it: the detected tables plausibly
+          belong to that one, so an empty sibling may be genuinely absent.
+
+        Observed live at Sonnet 5: an agent declined the deterministic parser
+        because one column was OCR-corrupted, returned ``Transactions: null`` for
+        a 100-row table, and the section was reported COMPLETED with scalar
+        accuracy 1.000.
+        """
+        vcfg = self.config.extraction.validation
+        class_schema = (
+            shard_validation_schema(self._class_schema)
+            if shard_scoped
+            else self._class_schema
+        )
+        check_formats = vcfg.check_formats
+        schema_checks = bool(vcfg.enabled)
+        ocr = {} if shard_scoped else (ocr_analysis or {})
+        table_evidence = bool(ocr.get("tool_usage_recommended")) and bool(
+            ocr.get("tables_detected")
+        )
+
+        if not schema_checks and not table_evidence:
+            return None
+
+        def _validate(data: dict[str, Any]) -> tuple[bool, str]:
+            # The agent's payload may carry the multi-instance detection probe
+            # (#772): on the unsharded agentic path it is a field of the transport
+            # model and is popped only AFTER the call returns. A class with
+            # additionalProperties: false would otherwise be told the probe is a
+            # violation, spend its self-correction turns on it and drop it —
+            # detection silently off on exactly the strict schemas. Validate a
+            # copy without it; the probe is never part of the declared fields.
+            from idp_common.extraction.instance_probe import INSTANCE_PROBE_FIELD
+
+            if isinstance(data, dict) and INSTANCE_PROBE_FIELD in data:
+                data = {k: v for k, v in data.items() if k != INSTANCE_PROBE_FIELD}
+            report = (
+                validate_extraction(data, class_schema, check_formats=check_formats)
+                if schema_checks
+                else ValidationReport(valid=True)
+            )
+            if table_evidence:
+                empty, populated = find_empty_declared_lists(data, class_schema)
+                if empty and not populated:
+                    logger.warning(
+                        "Declared list field(s) returned no rows despite OCR table "
+                        "evidence; asking the agent to extract them",
+                        extra={
+                            "empty_list_fields": empty,
+                            "ocr_tables_detected": ocr.get("tables_detected"),
+                            "ocr_estimated_rows": ocr.get("estimated_row_count"),
+                            "schema_validation_enabled": schema_checks,
+                        },
+                    )
+                    feedback = build_empty_list_feedback(
+                        empty,
+                        int(ocr.get("tables_detected") or 0),
+                        int(ocr.get("estimated_row_count") or 0),
+                    )
+                    if not report.valid:
+                        feedback = f"{report.agent_feedback()}\n\n{feedback}"
+                    return False, feedback
+            return report.valid, report.agent_feedback()
+
+        return _validate
+
+    def _coerce_simple_result(
+        self, extracted_fields: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        """Deterministically fix type/format mismatches before validating.
+
+        Returns ``(fields, coercion_metadata_or_None)``.
+
+        Constrained decoding makes a model emit *a* number; it does not make it
+        emit the *right* one. The mismatches that actually occur are
+        ``"$1,234.00"`` in a ``number`` field and ``"03/15/2024"`` under
+        ``format: date`` — cheap to fix exactly, and wasteful to fix by paying for
+        another inference. So this runs BEFORE validation, and validation then
+        only reports what could not be repaired deterministically.
+
+        Free: no model call. Every change is recorded in metadata so nothing is
+        silently rewritten, and anything ambiguous is refused rather than guessed
+        (see ``extraction.coercion``).
+
+        Runs on the simple path only. Agentic extraction validates through a
+        generated Pydantic model, which already coerces on the way in.
+        """
+        from idp_common.extraction.coercion import coerce_extraction
+
+        ccfg = self.config.extraction.coercion
+        if not ccfg.enabled:
+            # Explicitly disabled: leave the model's output exactly as returned.
+            # Validation still runs (if enabled) and will report the mismatches
+            # coercion would have repaired.
+            return extracted_fields, None
+
+        try:
+            report = coerce_extraction(
+                extracted_fields, self._class_schema, date_order=ccfg.date_order
+            )
+        except Exception as e:  # noqa: BLE001 - never fail extraction on a repair
+            logger.warning("Coercion failed; leaving values as extracted: %s", e)
+            return extracted_fields, None
+
+        if not report.changed and not report.refusals:
+            return extracted_fields, None
+
+        if report.changed:
+            logger.info("Coercion: %s", report.summary_line())
+        return report.data, report.to_metadata()
+
+    def _validate_simple_result(
+        self,
+        *,
+        extracted_fields: dict[str, Any],
+        content: list[dict[str, Any]],
+        system_prompt: str,
+        model_id: str,
+        metering: dict[str, Any],
+        section_info: SectionInfo,
+        parsing_succeeded: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any] | None, bool]:
+        """Validate a simple-mode result and act on ``fail_action``.
+
+        Returns ``(extracted_fields, validation_metadata_or_None,
+        parsing_succeeded)``.
+
+        Simple extraction had no validation at all: it did a raw ``json.loads``
+        and passed whatever came back downstream, so a wrong *type* or a
+        non-ISO date reached DynamoDB unchallenged. Agentic extraction has had
+        full-schema validation plus escalation for some time; this brings the
+        same guarantee to the path most deployments actually run.
+
+        Cost, which is the design constraint:
+
+        - ``warn`` (the default) — validate and record. **No extra inference.**
+          Validation is on by default precisely because this combination is free;
+          a default that quietly spent money on every schema violation would be a
+          cost surprise rather than a safety net.
+        - ``reject`` — same, plus ``parsing_succeeded=False``, which makes the
+          section's processing report and the UI's report tab read FAILED. Also
+          free. It does **not** change the section's or the document's outcome:
+          nothing in the status path reads ``parsing_succeeded``.
+        - ``escalate`` — one scoped re-extraction of ONLY the failing top-level
+          fields with the stronger ``escalation_model``, merged back over the
+          fields that already validated. This is the opt-in that costs money.
+
+        Deliberately NOT a same-model retry loop before escalating: re-asking the
+        model that just produced invalid output, with the same prompt, mostly buys
+        another invalid answer at full document cost. The escalation model is the
+        thing likely to do better.
+        """
+        vcfg = self.config.extraction.validation
+        if not vcfg.enabled or not parsing_succeeded:
+            return extracted_fields, None, parsing_succeeded
+
+        report = validate_extraction(
+            extracted_fields, self._class_schema, check_formats=vcfg.check_formats
+        )
+        initial_error_count = len(report.errors)
+        initial_failed_fields = sorted(report.failed_top_level_fields)
+
+        escalated = False
+        escalation_model: str | None = None
+        if not report.valid:
+            logger.warning(
+                "Simple extraction failed full-schema validation for '%s'",
+                section_info.class_label,
+                extra={
+                    "error_count": initial_error_count,
+                    "failed_fields": initial_failed_fields,
+                    "fail_action": vcfg.fail_action,
+                },
+            )
+
+        escalation_kept = False
+        escalation_decision: str | None = None
+        if not report.valid and vcfg.fail_action == "escalate":
+            escalation_model = self._resolve_escalation_model() or model_id
+            escalated = True
+            (
+                extracted_fields,
+                report,
+                escalation_metering,
+                escalation_kept,
+                escalation_decision,
+            ) = self._escalate_simple_fields(
+                extracted_fields=extracted_fields,
+                report=report,
+                escalation_model=escalation_model,
+                content=content,
+                system_prompt=system_prompt,
+                section_info=section_info,
+            )
+            if escalation_metering:
+                metering.update(
+                    utils.merge_metering_data(metering, escalation_metering)
+                )
+
+        if not report.valid and vcfg.fail_action == "reject":
+            parsing_succeeded = False
+
+        validation_metadata: dict[str, Any] = {
+            **report.to_metadata(),
+            "check_formats": vcfg.check_formats,
+            "fail_action": vcfg.fail_action,
+            "escalated": escalated,
+            "initial_error_count": initial_error_count,
+            "initial_failed_fields": initial_failed_fields,
+            "mode": "simple",
+        }
+        if escalated:
+            validation_metadata["escalation_model"] = escalation_model
+            validation_metadata["escalation_scope"] = "field-subset"
+            validation_metadata["escalation_fields"] = initial_failed_fields
+            validation_metadata["resolved_by_escalation"] = report.valid
+            validation_metadata["escalation_kept"] = escalation_kept
+            validation_metadata["escalation_decision"] = escalation_decision
+
+        return extracted_fields, validation_metadata, parsing_succeeded
+
+    def _escalate_simple_fields(
+        self,
+        *,
+        extracted_fields: dict[str, Any],
+        report: ValidationReport,
+        escalation_model: str,
+        content: list[dict[str, Any]],
+        system_prompt: str,
+        section_info: SectionInfo,
+    ) -> tuple[dict[str, Any], ValidationReport, dict[str, Any], bool, str]:
+        """Re-extract only the failing fields with a stronger model (simple mode).
+
+        Mirrors the agentic ``_escalate_failing_fields`` intent — scope the retry
+        to what actually failed, so the fields that already validated are neither
+        re-paid for nor put at risk of regressing — but over a single plain
+        Converse call rather than an agent loop.
+
+        Best-effort: on any failure the inputs are returned unchanged, because a
+        broken escalation must not be worse than no escalation.
+        """
+        failed_fields = sorted(report.failed_top_level_fields)
+        if not failed_fields:
+            return extracted_fields, report, {}, False, "no failing fields"
+
+        subset_schema = build_subset_schema(self._class_schema, failed_fields)
+        vcfg = self.config.extraction.validation
+
+        logger.info(
+            "Escalating simple extraction for '%s' to %s (fields=%s)",
+            section_info.class_label,
+            escalation_model,
+            failed_fields,
+        )
+
+        corrective = (
+            "\n\nA previous extraction attempt produced data that violated the "
+            "schema. Re-extract ONLY the following fields and correct these "
+            "issues. Return a JSON object containing exactly these keys: "
+            f"{failed_fields}\n\n{report.agent_feedback()}\n\n"
+            "Schema for these fields:\n"
+            f"{self._format_schema_for_prompt(subset_schema)}"
+        )
+        retry_content = [*content, {"text": corrective}]
+
+        try:
+            response = bedrock.invoke_model(
+                model_id=escalation_model,
+                system_prompt=system_prompt,
+                content=retry_content,
+                temperature=self.config.extraction.temperature,
+                top_k=self.config.extraction.top_k,
+                top_p=self.config.extraction.top_p,
+                max_tokens=None,
+                context="Extraction-Escalation",
+                model_lambda_hook_arn=self.config.extraction.model_lambda_hook_arn,
+                reasoning_effort=self.config.extraction.reasoning_effort,
+            )
+            text = bedrock.extract_text_from_response(dict(response))
+            corrected = json.loads(extract_json_from_text(text))
+            corrected, ok, _count, _rec = self._normalize_list_result(
+                corrected, context="escalation"
+            )
+            if not ok or not isinstance(corrected, dict):
+                logger.warning(
+                    "Escalation response was not a usable object; keeping the "
+                    "original extraction"
+                )
+                return (
+                    extracted_fields,
+                    report,
+                    response.get("metering", {}),
+                    False,
+                    "escalation response unusable",
+                )
+
+            # In integrated (1S-TopK) confidence mode the original content carries
+            # the top-K task prompt, so the escalation model may answer in the
+            # {"G1": ..., "P1": ...} candidate shape even though the corrective
+            # instruction asked for plain values. Merging that in would write a
+            # candidate object over an already-resolved value, and the confidence
+            # split has already run — so resolve_candidates would never unwrap it
+            # and the field would reach storage as an object. Keep the original.
+            if is_topk_response(corrected):
+                logger.warning(
+                    "Escalation answered in the top-K candidate shape rather than "
+                    "plain values; keeping the original extraction"
+                )
+                return (
+                    extracted_fields,
+                    report,
+                    response.get("metering", {}),
+                    False,
+                    "escalation response unusable",
+                )
+
+            # Merge back ONLY the fields we asked for, so an over-eager
+            # escalation response cannot overwrite fields that already validated.
+            candidate = dict(extracted_fields)
+            for field_name in failed_fields:
+                if field_name in corrected:
+                    candidate[field_name] = corrected[field_name]
+
+            candidate, _ = self._coerce_simple_result(candidate)
+            candidate_report = validate_extraction(
+                candidate, self._class_schema, check_formats=vcfg.check_formats
+            )
+            # Same keep-gate as the agentic path (#791). This path previously
+            # merged UNCONDITIONALLY — not even the total-count comparison — so a
+            # stronger model returning `Transactions: null` overwrote 100 rows
+            # every time. Each failing field is accepted on its own merits: no
+            # populated data lost, fewer errors than before.
+            merged, decisions = select_escalated_fields(
+                extracted_fields, candidate, report, candidate_report
+            )
+            kept = any(v.startswith("accepted") for v in decisions.values())
+            decision = "; ".join(f"{k} {v}" for k, v in sorted(decisions.items())) or (
+                "escalation changed nothing"
+            )
+            if not kept:
+                logger.warning(
+                    "Simple-mode escalation REJECTED, keeping original result: %s",
+                    decision,
+                )
+                return (
+                    extracted_fields,
+                    report,
+                    response.get("metering", {}),
+                    False,
+                    decision,
+                )
+            new_report = validate_extraction(
+                merged, self._class_schema, check_formats=vcfg.check_formats
+            )
+            logger.info(
+                "Simple-mode escalation kept (%s): %d -> %d violations",
+                decision,
+                len(report.errors),
+                len(new_report.errors),
+            )
+            return merged, new_report, response.get("metering", {}), True, decision
+        except Exception as e:  # noqa: BLE001 - escalation is best-effort
+            logger.warning("Simple-mode escalation failed: %s", e)
+            return extracted_fields, report, {}, False, _escalation_failure_reason(e)
+
+    def _validate_and_maybe_escalate(
+        self,
+        extracted_fields: dict[str, Any],
+        structured_data: Any,
+        data_model: Any,
+        model_id: str,
+        message_prompt: Any,
+        agentic_images: list[bytes],
+        custom_instruction: str | None,
+        section_info: SectionInfo,
+        parsing_succeeded: bool,
+    ) -> tuple[dict[str, Any], Any, dict[str, Any] | None, dict[str, Any], bool]:
+        """Validate the final extraction and optionally escalate to a stronger model.
+
+        Returns ``(extracted_fields, structured_data, validation_metadata,
+        escalation_metering, parsing_succeeded)``. A no-op (returns inputs
+        unchanged with ``validation_metadata=None``) unless
+        ``extraction.validation.enabled``.
+        """
+        vcfg = self.config.extraction.validation
+        escalation_metering: dict[str, Any] = {}
+        if not vcfg.enabled:
+            return (
+                extracted_fields,
+                structured_data,
+                None,
+                escalation_metering,
+                parsing_succeeded,
+            )
+
+        report: ValidationReport = validate_extraction(
+            extracted_fields, self._class_schema, check_formats=vcfg.check_formats
+        )
+        initial_error_count = len(report.errors)
+        initial_failed_fields = sorted(report.failed_top_level_fields)
+
+        escalated = False
+        escalation_model: str | None = None
+        escalation_scope: str | None = None
+        escalation_fields: list[str] = []
+        escalation_kept = False
+        escalation_decision: str | None = None
+        if not report.valid:
+            logger.warning(
+                "Extraction failed full-schema validation for "
+                f"'{section_info.class_label}'",
+                extra={
+                    "error_count": initial_error_count,
+                    "failed_fields": initial_failed_fields,
+                    "fail_action": vcfg.fail_action,
+                },
+            )
+
+        # Escalate: re-extract ONLY the failing top-level fields with a stronger
+        # model, then merge the corrected fields back into the full result. This
+        # is cheaper/faster than re-running the whole section and preserves the
+        # fields that already validated.
+        if not report.valid and vcfg.fail_action == "escalate":
+            escalation_model = self._resolve_escalation_model() or model_id
+            escalated = True
+            escalation_fields = initial_failed_fields
+            (
+                extracted_fields,
+                structured_data,
+                report,
+                escalation_metering,
+                escalation_scope,
+                escalation_kept,
+                escalation_decision,
+            ) = self._escalate_failing_fields(
+                extracted_fields=extracted_fields,
+                structured_data=structured_data,
+                data_model=data_model,
+                full_report=report,
+                escalation_model=escalation_model,
+                message_prompt=message_prompt,
+                agentic_images=agentic_images,
+                custom_instruction=custom_instruction,
+                section_info=section_info,
+            )
+
+        # reject: record the result as unparsed, which makes the processing report
+        # and the UI's report tab read FAILED. The section and the document still
+        # complete — nothing in the status path reads `parsing_succeeded`.
+        if not report.valid and vcfg.fail_action == "reject":
+            parsing_succeeded = False
+
+        # Rich audit trail: what was enforced, what failed, what we did about it.
+        validation_metadata: dict[str, Any] = {
+            **report.to_metadata(),
+            "check_formats": vcfg.check_formats,
+            "fail_action": vcfg.fail_action,
+            "escalated": escalated,
+            "initial_error_count": initial_error_count,
+            "initial_failed_fields": initial_failed_fields,
+        }
+        if escalated:
+            validation_metadata["escalation_model"] = escalation_model
+            validation_metadata["escalation_scope"] = escalation_scope
+            validation_metadata["escalation_fields"] = escalation_fields
+            validation_metadata["resolved_by_escalation"] = report.valid
+            # Whether the escalated result REPLACED the original, and why. A
+            # rejected escalation (data loss, or no per-field improvement) used to
+            # be indistinguishable from a kept-but-still-invalid one.
+            validation_metadata["escalation_kept"] = escalation_kept
+            validation_metadata["escalation_decision"] = escalation_decision
+
+        return (
+            extracted_fields,
+            structured_data,
+            validation_metadata,
+            escalation_metering,
+            parsing_succeeded,
+        )
+
+    def _escalate_failing_fields(
+        self,
+        extracted_fields: dict[str, Any],
+        structured_data: Any,
+        data_model: Any,
+        full_report: ValidationReport,
+        escalation_model: str,
+        message_prompt: Any,
+        agentic_images: list[bytes],
+        custom_instruction: str | None,
+        section_info: SectionInfo,
+    ) -> tuple[dict[str, Any], Any, ValidationReport, dict[str, Any], str, bool, str]:
+        """Re-extract only the failing top-level fields with a stronger model.
+
+        Builds a reduced schema containing just ``full_report.failed_top_level_fields``,
+        runs a scoped extraction, merges the corrected fields back into the full
+        result and re-validates. Falls back to a whole-section re-extraction when
+        a usable subset schema can't be built (e.g. failures are root-level only).
+
+        Returns ``(extracted_fields, structured_data, report, metering, scope,
+        kept, decision)`` where ``scope`` is ``"field-subset"`` or
+        ``"full-section"``, ``kept`` says whether ANY escalated field replaced the
+        original, and ``decision`` lists the per-field reasons (see
+        ``validation.select_escalated_fields``). On any error the original inputs
+        are returned unchanged with an empty metering dict.
+        """
+        failed_fields = sorted(full_report.failed_top_level_fields)
+        subset_schema = build_subset_schema(self._class_schema, failed_fields)
+        scope = (
+            "field-subset"
+            if subset_schema is not self._class_schema
+            else "full-section"
+        )
+
+        logger.info(
+            f"Escalating extraction for '{section_info.class_label}' to model "
+            f"{escalation_model} (scope={scope}, fields={failed_fields})",
+        )
+
+        check_formats = self.config.extraction.validation.check_formats
+        instruction = (
+            (custom_instruction + "\n\n" if custom_instruction else "")
+            + "A previous extraction attempt produced data that violated the "
+            "schema. Carefully re-extract and correct these issues:\n"
+            + full_report.agent_feedback()
+        )
+
+        try:
+            if scope == "field-subset":
+                # Nullable leaves for the same reason as the primary transport model
+                # (#782), and it matters MORE here: escalation is now triggered BY
+                # an abstention, so a strict subset model would send a stronger
+                # model in to fabricate the value the weaker one honestly declined
+                # to invent — a more convincing wrong answer. Re-extraction should
+                # try harder to READ the value and still be able to abstain.
+                subset_model = self._transport_model(
+                    subset_schema, f"{section_info.class_label}__escalation"
+                )
+                # Seed with current values for the failing fields only. Only when
+                # there is at least one non-null value: an all-null seed must be
+                # None, not an empty-but-constructible model, because a truthy
+                # existing_data triggers the "RESUME FROM CHECKPOINT — do NOT call
+                # extraction_tool again" prompt, which would tell the stronger
+                # model brought in to re-read the value that it must not
+                # re-extract. A strict model happened to raise here; a nullable
+                # one constructs, so the intent is now explicit (#791).
+                seed = {
+                    k: v
+                    for k in failed_fields
+                    if (v := extracted_fields.get(k)) is not None
+                }
+                existing_model = None
+                if seed:
+                    try:
+                        existing_model = subset_model(**seed)
+                    except Exception:
+                        existing_model = None
+
+                esc_data, esc_response = structured_output(
+                    model_id=escalation_model,
+                    data_format=subset_model,
+                    prompt=message_prompt,
+                    existing_data=existing_model,
+                    page_images=agentic_images,
+                    # Attachment is decided on the content; this pool is for view_image.
+                    attach_page_images=False,
+                    config=self.config,
+                    context="ExtractionEscalation",
+                    custom_instruction=instruction,
+                    schema_validator=None,  # validated against the full schema below
+                )
+                metering = esc_response.get("metering", {}) or {}
+                metering.pop("_table_parsing_stats", None)
+
+                # Merge corrected subset fields back into the full result.
+                merged = dict(extracted_fields)
+                merged.update(esc_data.model_dump(mode="json"))
+            else:
+                # Fallback: whole-section re-extraction with the full model.
+                try:
+                    existing_model = data_model(**extracted_fields)
+                except Exception:
+                    existing_model = None
+                esc_data, esc_response = structured_output(
+                    model_id=escalation_model,
+                    data_format=data_model,
+                    prompt=message_prompt,
+                    existing_data=existing_model,
+                    page_images=agentic_images,
+                    # Attachment is decided on the content; this pool is for view_image.
+                    attach_page_images=False,
+                    config=self.config,
+                    context="ExtractionEscalation",
+                    custom_instruction=instruction,
+                    schema_validator=self._build_schema_validator(),
+                )
+                metering = esc_response.get("metering", {}) or {}
+                metering.pop("_table_parsing_stats", None)
+                merged = esc_data.model_dump(mode="json")
+
+            esc_report = validate_extraction(
+                merged, self._class_schema, check_formats=check_formats
+            )
+
+            # Keep the escalated result only if it lost no populated data AND got
+            # better per field. NOT ``len(esc.errors) < len(full.errors)``: per-row
+            # errors scale with row count while a whole-field error is always one,
+            # so total counts favour the result with less data — a nulled 100-row
+            # list "improved" from 100 errors to 1 and was kept (#791).
+            # Accept each escalated field on its own merits (no populated data
+            # lost, fewer errors than before) rather than the whole result on its
+            # total error count — totals favour the result with LESS data (#791),
+            # and all-or-nothing let one field the stronger model got wrong sink
+            # the ones it got right.
+            selected, decisions = select_escalated_fields(
+                extracted_fields, merged, full_report, esc_report
+            )
+            kept = any(v.startswith("accepted") for v in decisions.values())
+            reason = "; ".join(f"{k} {v}" for k, v in sorted(decisions.items())) or (
+                "escalation changed nothing"
+            )
+            if kept:
+                final_report = validate_extraction(
+                    selected, self._class_schema, check_formats=check_formats
+                )
+                # Re-validate the merged dict through the full Pydantic model so
+                # the returned structured_data stays consistent with the fields.
+                try:
+                    structured_data = data_model(**selected)
+                except Exception:
+                    pass  # keep prior structured_data; fields dict is source of truth
+                logger.info(
+                    f"Escalation kept for '{section_info.class_label}': {reason}",
+                    extra={
+                        "original_errors": len(full_report.errors),
+                        "escalated_errors": len(final_report.errors),
+                    },
+                )
+                return (
+                    selected,
+                    structured_data,
+                    final_report,
+                    metering,
+                    scope,
+                    True,
+                    reason,
+                )
+
+            logger.warning(
+                f"Escalation REJECTED for '{section_info.class_label}', keeping "
+                f"original result: {reason}",
+                extra={
+                    "original_errors": len(full_report.errors),
+                    "escalated_errors": len(esc_report.errors),
+                    "original_errors_by_field": full_report.errors_by_field(),
+                    "escalated_errors_by_field": esc_report.errors_by_field(),
+                },
+            )
+            return (
+                extracted_fields,
+                structured_data,
+                full_report,
+                metering,
+                scope,
+                False,
+                reason,
+            )
+        except Exception as e:
+            logger.error(
+                "Escalation re-extraction failed; keeping original result",
+                extra={"error": str(e)},
+                exc_info=True,
+            )
+            return (
+                extracted_fields,
+                structured_data,
+                full_report,
+                {},
+                scope,
+                False,
+                _escalation_failure_reason(e),
+            )
+
+    def _check_extraction_completeness(
+        self,
+        extracted_data: Any,
+        data_model: Any,
+        section_label: str,
+    ) -> None:
+        """
+        Check if extraction meets schema constraints (e.g., min_length for arrays).
+
+        Logs warnings if extracted data appears incomplete based on schema constraints.
+        This helps catch cases where table parsing or extraction stopped early.
+
+        Args:
+            extracted_data: The extracted data instance (Pydantic model)
+            data_model: The Pydantic model class with constraints
+            section_label: Section label for logging context
+        """
+        if not hasattr(data_model, "model_fields"):
+            return
+
+        for field_name, field_info in data_model.model_fields.items():
+            field_value = getattr(extracted_data, field_name, None)
+
+            # Check array min_length constraints
+            if isinstance(field_value, list) and hasattr(field_info, "metadata"):
+                for constraint in field_info.metadata:
+                    if hasattr(constraint, "min_length"):
+                        expected_min = constraint.min_length
+                        actual_count = len(field_value)
+
+                        if actual_count < expected_min:
+                            logger.warning(
+                                f"Extraction may be INCOMPLETE for {section_label}: "
+                                f"field '{field_name}' has {actual_count} items, "
+                                f"but schema expects at least {expected_min}. "
+                                f"Verify all table rows were extracted.",
+                                extra={
+                                    "field": field_name,
+                                    "actual_count": actual_count,
+                                    "expected_min": expected_min,
+                                    "completeness_ratio": f"{actual_count}/{expected_min}",
+                                },
+                            )
+                        elif actual_count == expected_min:
+                            logger.info(
+                                f"Extraction meets minimum constraint for {section_label}: "
+                                f"field '{field_name}' has exactly {actual_count} items "
+                                f"(minimum: {expected_min})"
+                            )
+                        else:
+                            logger.debug(
+                                f"Extraction exceeds minimum constraint for {section_label}: "
+                                f"field '{field_name}' has {actual_count} items "
+                                f"(minimum: {expected_min})"
+                            )
+
     def _invoke_extraction_model(
         self,
         content: list[dict[str, Any]],
         system_prompt: str,
         section_info: SectionInfo,
+        checkpoint_data: dict[str, Any] | None = None,
     ) -> ExtractionResult:
         """
         Invoke Bedrock model (agentic or standard) and parse response.
@@ -902,16 +5917,33 @@ class ExtractionService:
             f"Extracting fields for {section_info.class_label} document, section"
         )
 
-        # Get extraction config
-        model_id = self.config.extraction.model
+        # Clear any per-section audit state from a previously processed section.
+        self._pending_validation_metadata = None
+        self._pending_abstained_fields = None
+        self._pending_coercion_metadata = None
+        self._pending_extraction_model = None
+        self._pending_forced_tool_metadata = None
+
+        # Get extraction config — use per-class model override if specified,
+        # otherwise fall back to the global extraction model.
+        class_model_override = self._class_schema.get(X_AWS_IDP_EXTRACTION_MODEL)
+        model_id = class_model_override or self.config.extraction.model
+        # Record the resolved model for audit metadata (set here so it is
+        # captured even on the non-agentic/standard path).
+        self._pending_extraction_model = model_id
+        if class_model_override:
+            logger.info(
+                f"Using per-class extraction model override for "
+                f"'{section_info.class_label}': {model_id}"
+            )
         temperature = self.config.extraction.temperature
         top_k = self.config.extraction.top_k
         top_p = self.config.extraction.top_p
-        max_tokens = (
-            self.config.extraction.max_tokens
-            if self.config.extraction.max_tokens
-            else None
-        )
+        reasoning_effort = self.config.extraction.reasoning_effort
+        # max_tokens is no longer a config knob — pass None so the Bedrock client
+        # resolves the model's maximum output (model_config_limits.yaml). Bedrock's
+        # default-when-omitted truncates, so the client always sets it explicitly.
+        max_tokens = None
 
         # Time the model invocation
         request_start_time = time.time()
@@ -921,18 +5953,70 @@ class ExtractionService:
         output_repaired = False
         repair_method = None
 
-        if self.config.extraction.agentic.enabled:
+        # Multi-instance tracking (see _normalize_list_result). Stays 0/None on
+        # the agentic path, which validates through a Pydantic model and so can
+        # never receive a bare array.
+        instance_count = 0
+        recovered_instances: list[dict[str, Any]] | None = None
+        # The model's own answer to "how many documents of this class are in
+        # these pages" (#753). Set by the shared pop below on the Simple path, and
+        # by the immediate pop after the unsharded agentic call (#772); None when
+        # detection is off, on sharded agentic sections, and on resumed runs.
+        instance_probe: int | None = None
+
+        # Initialize analysis tracking
+        schema_analysis: dict[str, Any] | None = None
+        ocr_analysis: dict[str, Any] | None = None
+
+        # OpenAI GPT-5.x models are served via the bedrock-mantle Responses API
+        # and are incompatible with agentic (Strands) extraction, which relies on
+        # the Converse API. This combination is rejected at config-validate time;
+        # fail loudly here too rather than silently changing the extraction mode,
+        # so a config that bypassed validation surfaces the error immediately.
+        use_agentic = self.config.extraction.agentic.enabled
+        if use_agentic and is_openai_responses_model(model_id):
+            raise ValueError(
+                f"OpenAI Responses model '{model_id}' is not compatible with agentic "
+                "extraction (extraction.agentic.enabled=true). Set agentic.enabled=false "
+                "or choose a non-OpenAI model. (This is also enforced by "
+                "'idp-cli config-validate'.)"
+            )
+
+        if use_agentic:
             if not AGENTIC_AVAILABLE:
                 raise ImportError(
-                    "Agentic extraction requires Python 3.10+ and strands-agents dependencies. "
-                    "Install with: pip install 'idp_common[agents]' or use agentic=False"
+                    "Agentic extraction requires Python 3.12+ and strands-agents dependencies. "
+                    "Install with: pip install -e 'lib/idp_common_pkg[agents]' or use agentic=False"
                 )
 
-            # Create dynamic Pydantic model from JSON Schema
-            dynamic_model = create_pydantic_model_from_json_schema(
-                schema=self._class_schema,
-                class_label=section_info.class_label,
-                clean_schema=False,  # Already cleaned
+            # Pre-flight analysis: Detect large tables and assess tool requirements
+            schema_analysis = self._analyze_schema_for_table_requirements(
+                self._class_schema
+            )
+            ocr_analysis = self._analyze_ocr_for_tables(self._document_text)
+
+            logger.info(
+                "Pre-flight analysis complete",
+                extra={
+                    "schema_recommendation": schema_analysis.get(
+                        "recommendation_strength"
+                    ),
+                    "ocr_recommendation": ocr_analysis.get("recommendation_strength"),
+                    "schema_max_min_items": schema_analysis.get("max_min_items"),
+                    "ocr_estimated_rows": ocr_analysis.get("estimated_row_count"),
+                },
+            )
+
+            # TRANSPORT model: scalar leaves made nullable so the agent can return
+            # null for a cell it genuinely cannot read. A required scalar renders as a
+            # non-nullable Pydantic field, which leaves a fabricated 0.0 as the only
+            # accepted answer for an unreadable number (#782). `required` itself is
+            # KEPT, so an omitted key, a nulled list or a misspelled key set still
+            # fails the model; a null CELL passes here and is then reported by
+            # ``extraction.validation`` as a 'required' violation, fed back for the
+            # agent's self-correction round, and escalatable.
+            dynamic_model = self._transport_model(
+                self._class_schema, section_info.class_label
             )
 
             # Log schema for debugging
@@ -949,20 +6033,407 @@ class ExtractionService:
             logger.info("Using Agentic extraction")
             logger.debug(f"Using input: {str(message_prompt)}")
 
-            structured_data, response_with_metering = structured_output(
-                model_id=model_id,
-                data_format=dynamic_model,
-                prompt=message_prompt,
-                page_images=self._page_images,
-                config=self.config,
-                context="Extraction",
+            # Convert checkpoint data for resume-on-timeout
+            existing_data_model = None
+            checkpoint_buffer = None
+            if checkpoint_data:
+                # Check if this is a buffer checkpoint (from intermediate_extraction)
+                checkpoint_source = checkpoint_data.pop(
+                    "_checkpoint_source", "current_extraction"
+                )
+                if checkpoint_source == "intermediate_extraction":
+                    # Buffer checkpoint — load into agent's intermediate_extraction state
+                    checkpoint_buffer = checkpoint_data
+                    logger.info(
+                        "Resuming agentic extraction from buffer checkpoint "
+                        "(intermediate_extraction)"
+                    )
+                else:
+                    # Validated extraction checkpoint — load as existing_data
+                    try:
+                        existing_data_model = dynamic_model(**checkpoint_data)
+                        logger.info("Resuming agentic extraction from checkpoint data")
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to validate checkpoint data, starting fresh: {e}"
+                        )
+                        existing_data_model = None
+
+            # Build dynamic custom instruction based on pre-flight analysis
+            custom_instruction = None
+            if schema_analysis and ocr_analysis:
+                dynamic_guidance = self._build_table_parsing_guidance(
+                    schema_analysis=schema_analysis, ocr_analysis=ocr_analysis
+                )
+                if dynamic_guidance:
+                    custom_instruction = dynamic_guidance
+                    logger.info(
+                        "Injecting dynamic table parsing guidance into agent instructions",
+                        extra={
+                            "schema_strength": schema_analysis.get(
+                                "recommendation_strength"
+                            ),
+                            "ocr_strength": ocr_analysis.get("recommendation_strength"),
+                        },
+                    )
+
+            # Pre-flight table parsing: parse all tables BEFORE LLM to avoid
+            # the LLM having to call parse_table and then generate JSON row-by-row.
+            # The LLM only needs to provide a column-to-field mapping, and the
+            # map_table_to_schema tool does the bulk transformation instantly.
+            # (`_preflight_table_parse` logs the parse itself, for both agentic
+            # paths; `_append_preflight_table_guidance` builds the instruction
+            # block, likewise for both paths.)
+            preflight_parse_result = self._preflight_table_parse(ocr_analysis)
+            # Kept as-is: the sharded branch below rebuilds the block with the
+            # shard scope note, which is inserted INSIDE the block (after the
+            # page-marker rule it qualifies) and so cannot be appended later.
+            pre_block_instruction = custom_instruction
+            custom_instruction = self._append_preflight_table_guidance(
+                custom_instruction, preflight_parse_result
             )
+
+            # Determine if images should be sent to the agentic model.
+            # If the task prompt does not reference {DOCUMENT_IMAGE}, sending
+            # page images is wasteful and can cause context-window overflow
+            # on large documents.
+            from idp_common.extraction.prompt_assembly import (
+                select_extraction_task_prompt,
+            )
+
+            # No `integrated_ok=` here: this is the agentic branch and the Simple +
+            # integrated downgrade never applies to it (cfg.agentic.enabled
+            # short-circuits _simple_integrated_list_downgrade).
+            prompt_template = (
+                select_extraction_task_prompt(self.config.extraction) or ""
+            )
+            prompt_wants_images = "{DOCUMENT_IMAGE}" in prompt_template
+            num_pages = len(self._page_images) or len(section_info.sorted_page_ids)
+            # Local+live A/B: identical completeness/accuracy (recall 1.0) with
+            # images off on this path.
+            send_images = self._apply_lazy_images(
+                prompt_wants_images, preflight_parse_result
+            )
+
+            # Enforce the decision on the CONTENT, which is where the images
+            # actually are (see _limit_content_images). `agentic_images` is the
+            # pool the view_image tool reads from — never a second attachment,
+            # hence attach_page_images=False at every call below.
+            #
+            # ``0 = unlimited`` per the config schema's documented "legacy
+            # behavior" (see ``max_images_per_agent`` in
+            # ``idp_common/config/models.py``). ``x or None`` collapses
+            # the operator-authored 0 to ``None`` here so downstream
+            # ``_limit_content_images`` treats it as "no cap". A recent
+            # code review flagged that ``image_limit == 0`` downstream
+            # is now ambiguous — it could mean either "operator wrote 0"
+            # (unlimited) or "lazy_images suppressed" (drop-all). Making
+            # ``0`` an actual cap of zero would fix the ambiguity but
+            # break the documented contract; a config-schema evolution
+            # to a nullable ``Optional[int]`` cap is the right fix, out
+            # of scope here.
+            cap = self.config.extraction.agentic.max_images_per_agent or None
+            image_limit = 0 if not send_images else cap
+            if isinstance(message_prompt, dict):
+                limited, kept_images, dropped_images = self._limit_content_images(
+                    message_prompt.get("content"), image_limit
+                )
+                message_prompt = {**message_prompt, "content": limited}
+            else:
+                (
+                    message_prompt,
+                    kept_images,
+                    dropped_images,
+                ) = self._limit_content_images(message_prompt, image_limit)
+            if dropped_images:
+                logger.info(
+                    "Agentic image policy applied to the prompt content",
+                    extra={
+                        "images_kept": kept_images,
+                        "images_dropped": dropped_images,
+                        "limit": image_limit,
+                        "reason": (
+                            "lazy_images" if not send_images else "max_images_per_agent"
+                        ),
+                    },
+                )
+            # ``view_image`` tool pool. Gated on ``prompt_wants_images``
+            # (not ``send_images``) — deliberate behavioural difference
+            # from the pre-lazy_images shape (``self._page_images if
+            # send_images else []``):
+            #
+            # * ``prompt_wants_images = False`` (no ``{DOCUMENT_IMAGE}`` in
+            #   prompt): registering ``view_image`` against the page list
+            #   would let the agent burn tokens fetching images the run
+            #   never asked for. Pass ``[]`` — no tool registration.
+            #   Matches the shard path, which never gets ``view_image``.
+            #
+            # * ``prompt_wants_images = True`` AND ``lazy_images`` suppressed
+            #   the up-front attachment (``send_images = False``): the whole
+            #   point of ``lazy_images`` is that the agent CAN still fetch
+            #   pages on demand while the up-front payload stays small.
+            #   Gating on ``send_images`` here would empty the pool and
+            #   defeat that.
+            #
+            # * ``prompt_wants_images = True`` AND images are being sent:
+            #   ``view_image`` remains available in addition to the
+            #   attached images (a page N > cap can still be fetched).
+            #
+            # ``_cap_agent_images`` is applied to the pool so ``view_image``
+            # respects the operator's ``max_images_per_agent`` cap — the
+            # original PR (#396) capped this pool and a later refactor
+            # dropped it. Without the cap, ``view_image`` could pull a
+            # page beyond the operator's constraint on demand.
+            agentic_images = (
+                self._cap_agent_images(self._page_images) if prompt_wants_images else []
+            )
+
+            if not prompt_wants_images and self._page_images:
+                logger.info(
+                    "Skipping image attachment for agentic extraction "
+                    "(task prompt does not reference {DOCUMENT_IMAGE})",
+                    extra={"page_count": num_pages},
+                )
+
+            # Build the in-loop schema validator (None unless validation enabled).
+            # This FULL validator is for the single-agent path. Shards get the
+            # shard-scoped variant (no required/minItems): per-shard presence
+            # checks would falsely fail before the shards are merged, so presence
+            # is validated once after merge below.
+            #
+            # ocr_analysis is the whole-document pre-flight, which is exactly the
+            # right scope here for the same reason: the single agent sees the
+            # whole section, so "the OCR has a 100-row table but every declared
+            # list came back empty" is a sound inference. It would NOT be sound
+            # per-shard, where a shard legitimately contains none of the rows.
+            schema_validator = self._build_schema_validator(ocr_analysis=ocr_analysis)
+
+            # Use concurrent SHARDED extraction if configured and enough pages.
+            # Each shard's prompt contains only its pages' text/images (built by
+            # _build_shard_payloads), so no agent loads the whole document —
+            # this bounds the context window in addition to parallelizing.
+            num_batches = self.config.extraction.agentic.max_concurrent_batches
+            shard_payloads: list[dict[str, Any]] = []
+            if (
+                num_batches > 1
+                and num_pages > 1
+                and len(self._page_texts) > 1
+                and not existing_data_model  # Don't use concurrent mode for resume
+                and not checkpoint_buffer
+            ):
+                shard_payloads = self._build_shard_payloads(
+                    prompt_template=prompt_template,
+                    send_images=send_images,
+                    max_shards=num_batches,
+                )
+
+            if shard_payloads:
+                import asyncio as _asyncio
+
+                logger.info(
+                    f"Using sharded concurrent extraction: {len(shard_payloads)} "
+                    f"shard(s), parallelism {num_batches}, for {num_pages} pages"
+                )
+                from idp_common.extraction.runtime import select_runtime
+
+                runtime = select_runtime(self.config, num_batches)
+                # These agents are shard agents too (in-process sharding), so
+                # they need the same scope note `_build_agentic_shard_plan`
+                # passes on the Step Functions route. Held in its own local:
+                # `custom_instruction` is reused after this branch by
+                # `_validate_and_maybe_escalate`, whose retry agent sees the
+                # WHOLE section and so must not be told it holds a slice.
+                shard_custom_instruction = self._append_preflight_table_guidance(
+                    pre_block_instruction,
+                    preflight_parse_result,
+                    scope_note=self._SHARD_SCOPE_NOTE,
+                )
+                # SHARD transport model: as `dynamic_model`, plus a required array or
+                # nested object may be null, because a shard covering none of its
+                # pages has no other representable answer and `_run_shard_agent`
+                # explicitly asks for null (#1078). Used for the shard tools and for
+                # the merge; `dynamic_model` stays the whole-section model and is what
+                # escalation and the completeness check below read.
+                shard_model = self._shard_transport_model(
+                    self._class_schema, section_info.class_label
+                )
+                structured_data, response_with_metering = _asyncio.run(
+                    concurrent_structured_output_async(
+                        model_id=model_id,
+                        data_format=shard_model,
+                        shard_payloads=shard_payloads,
+                        max_parallelism=num_batches,
+                        config=self.config,
+                        context="Extraction",
+                        checkpoint_callback=self._checkpoint_callback,
+                        custom_instruction=shard_custom_instruction,
+                        section_id=self._persist_section_id(section_info),
+                        persistence=self._shard_persistence,
+                        runtime=runtime,
+                        assess_runner=self._build_assess_runner(
+                            section_info, self._document
+                        ),
+                        schema_validator=self._shard_schema_validator(),
+                    )
+                )
+            else:
+                # Multi-instance detection probe on the single-agent path (#772).
+                probe_model, _probe_added = self._agentic_probe_model(
+                    dynamic_model,
+                    section_info.class_label,
+                    resuming=existing_data_model is not None,
+                )
+                structured_data, response_with_metering = structured_output(
+                    model_id=model_id,
+                    data_format=probe_model,
+                    prompt=message_prompt,
+                    existing_data=existing_data_model,
+                    page_images=agentic_images,
+                    # Attachment is decided on the content; this pool is for view_image.
+                    attach_page_images=False,
+                    config=self.config,
+                    context="Extraction",
+                    checkpoint_callback=self._checkpoint_callback,
+                    checkpoint_buffer_data=checkpoint_buffer,
+                    custom_instruction=custom_instruction,
+                    schema_validator=schema_validator,
+                    emit_field_assessment=self._integrated_assessment_enabled(),
+                )
 
             extracted_fields = structured_data.model_dump(mode="json")
             metering = response_with_metering["metering"]
             parsing_succeeded = True
+            # Multi-instance detection probe (#772): read and REMOVE it now, before
+            # validation/escalation rebuild the model and before the integrated
+            # assessment is lifted, so only declared fields flow on. Popped
+            # unconditionally, like the Simple path — an echoed field must never
+            # reach inference_result.
+            agentic_probe = self._read_instance_probe(extracted_fields)
+            if agentic_probe is not None:
+                instance_probe = agentic_probe
+            inline_assessment = metering.get("_integrated_field_assessment")
+            if isinstance(inline_assessment, dict):
+                from idp_common.extraction.instance_probe import INSTANCE_PROBE_FIELD
+
+                inline_assessment.pop(INSTANCE_PROBE_FIELD, None)
+
+            # Capture the agent's optional self-reported table-tool rationale (a
+            # "TABLE_TOOL_NOTE:" line it emits when it extracted a large table
+            # directly instead of calling parse_table). Best-effort; empty when the
+            # agent used the tool or added no note.
+            self._agent_table_tool_note = self._extract_table_tool_note(
+                response_with_metering
+            )
+
+            # Full JSON-Schema validation of the final result, with optional
+            # bounded escalation to a stronger model. No-op unless
+            # extraction.validation.enabled. Updates extracted_fields,
+            # may flip parsing_succeeded (fail_action="reject"), and records the
+            # outcome under metadata["validation"].
+            (
+                extracted_fields,
+                structured_data,
+                validation_metadata,
+                escalation_metering,
+                parsing_succeeded,
+            ) = self._validate_and_maybe_escalate(
+                extracted_fields=extracted_fields,
+                structured_data=structured_data,
+                data_model=dynamic_model,
+                model_id=model_id,
+                message_prompt=message_prompt,
+                agentic_images=agentic_images,
+                custom_instruction=custom_instruction,
+                section_info=section_info,
+                parsing_succeeded=parsing_succeeded,
+            )
+            if validation_metadata is not None:
+                self._pending_validation_metadata = validation_metadata
+            # Abstentions, recorded regardless of validation.enabled: with nullable
+            # scalar leaves a null cell no longer trips the Pydantic guard, so this
+            # is what makes an abstention attributable on a stack that has
+            # validation switched off (v0.6-migrated stacks carry enabled: false).
+            abstained, abstained_total = required_null_paths(
+                extracted_fields, self._class_schema
+            )
+            self._pending_abstained_fields = (
+                {"count": abstained_total, "paths": abstained}
+                if abstained_total
+                else None
+            )
+            if escalation_metering:
+                from idp_common.extraction.agentic_idp import _accumulate_metering
+
+                _accumulate_metering(metering, escalation_metering)
+
+            # Check extraction completeness (warns if schema constraints not met)
+            self._check_extraction_completeness(
+                extracted_data=structured_data,
+                data_model=dynamic_model,
+                section_label=section_info.class_label,
+            )
+
+            # In-shard assessment for the NON-sharded single-agent agentic path
+            # (sharding did not engage). Equivalent to a single full-section
+            # shard: assess the final (post-escalation) values over all pages,
+            # then let _save_results ground + emit explainability_info. Mirrors
+            # the sharded path's _merged_assessment metering marker.
+            if not shard_payloads and self._inshard_assessment_enabled():
+                self._assess_single_agent(
+                    extracted_fields=extracted_fields,
+                    section_info=section_info,
+                    metering=metering,
+                )
+            elif not shard_payloads and self._integrated_assessment_enabled():
+                # Integrated mode, single-agent: the agent already emitted
+                # confidence/bbox inline. Lift it from metering into the
+                # _merged_assessment slot so _save_results grounds + emits it.
+                inline = metering.pop("_integrated_field_assessment", None)
+                if inline:
+                    metering["_merged_assessment"] = inline
+                    metering["_merged_assessment_alerts"] = []
         else:
-            # Standard Bedrock invocation
+            # Optionally put the class schema on the wire as a FORCED tool instead
+            # of relying on the prompt's description of it (WS-05). Off by default
+            # and gated on a measured win — forcing constrains the response shape,
+            # not the values in it. The prompt is deliberately left unchanged so
+            # the A/B measures forcing alone; dropping the prose schema is #710's
+            # separate question, and bundling the two would confound both.
+            from idp_common.extraction.forced_tool import (
+                EXTRACTION_TOOL_NAME,
+                build_extraction_tool_config,
+                forced_tool_choice,
+                restore_extracted_fields,
+                should_force_tool,
+                unwrap_tool_payload,
+            )
+
+            # The WIRE schema, so a forced toolSpec carries the same shape the
+            # prompt describes — including the multi-instance detection probe
+            # (#753). A forced tool whose input schema lacks the probe would make
+            # the count structurally impossible to return, which is exactly the
+            # regression #753 warns about for forced tool use generally.
+            ft_cfg = self.config.extraction.forced_tool
+            wire_schema = self._wire_class_schema or self._class_schema
+            force, skip_reason = should_force_tool(
+                model_id, ft_cfg.enabled, wire_schema
+            )
+            tool_config = tool_choice = None
+            tool_name_map = None
+            if force:
+                tool_config, tool_name_map = build_extraction_tool_config(wire_schema)
+                tool_choice = forced_tool_choice()
+            elif skip_reason:
+                # Recorded, not just logged: an A/B in which "no effect" and
+                # "never ran" look identical is unreadable.
+                logger.info("Forced tool use skipped — %s", skip_reason)
+
+            self._simple_mode_input_preflight(
+                content=content,
+                system_prompt=system_prompt,
+                model_id=model_id,
+                section_id=getattr(section_info, "section_id", None),
+            )
             response_with_metering = bedrock.invoke_model(
                 model_id=model_id,
                 system_prompt=system_prompt,
@@ -973,7 +6444,59 @@ class ExtractionService:
                 max_tokens=max_tokens,
                 context="Extraction",
                 model_lambda_hook_arn=self.config.extraction.model_lambda_hook_arn,
+                reasoning_effort=reasoning_effort,
+                tool_config=tool_config,
+                tool_choice=tool_choice,
             )
+
+            # A model can accept a toolConfig and still answer in prose. That is a
+            # normal outcome (stopReason end_turn rather than tool_use), so an
+            # absent toolUse block falls back to the text path unless the operator
+            # has explicitly asked for it to be a failure.
+            forced_tool_input = None
+            if force:
+                # Unwrap BEFORE restoring names: the wrapper key is the model's
+                # invention and is not in the name map, while the payload inside it
+                # is keyed by the sanitized names the map knows about.
+                forced_tool_input = restore_extracted_fields(
+                    unwrap_tool_payload(
+                        bedrock.extract_tool_use_from_response(
+                            dict(response_with_metering),
+                            tool_name=EXTRACTION_TOOL_NAME,
+                        ),
+                        wire_schema,
+                        tool_name_map,
+                    ),
+                    tool_name_map,
+                )
+                self._pending_forced_tool_metadata = {
+                    "requested": True,
+                    "honored": forced_tool_input is not None,
+                    "tool_name": EXTRACTION_TOOL_NAME,
+                    "renamed_properties": len(tool_name_map.renamed)
+                    if tool_name_map
+                    else 0,
+                    # Definition names are rewritten too (#783); the audit count
+                    # must say so, or a class with one renamed group reports
+                    # fewer rewrites than actually happened.
+                    "renamed_definitions": tool_name_map.total_definition_renames()
+                    if tool_name_map
+                    else 0,
+                }
+                if forced_tool_input is None:
+                    logger.warning(
+                        "Forced tool use was requested but the model answered in "
+                        "prose; %s",
+                        "falling back to text parsing"
+                        if ft_cfg.fallback_to_prompt
+                        else "treating it as a parse failure (fallback disabled)",
+                    )
+            elif skip_reason:
+                self._pending_forced_tool_metadata = {
+                    "requested": True,
+                    "honored": False,
+                    "skipped": skip_reason,
+                }
 
             extracted_text = bedrock.extract_text_from_response(
                 dict(response_with_metering)
@@ -983,39 +6506,231 @@ class ExtractionService:
             # Parse response into JSON
             extracted_fields = {}
             parsing_succeeded = True
-            output_truncated = False
+            # Did the model stop because it ran out of OUTPUT budget? Read from the
+            # response's own ``stopReason`` BEFORE parsing, because a ceiling can be
+            # hit at a point where the text still parses — a complete JSON object
+            # followed by commentary that was cut off, or a repair that succeeds —
+            # and the parse-failure branch below is then never reached. The two
+            # sources are ORed rather than assigned: whichever notices first wins.
+            output_truncated = is_output_token_truncation(response_with_metering)
+            if output_truncated:
+                raw_response = response_with_metering.get("response")
+                logger.warning(
+                    "Extraction response for %s stopped at the model's output token "
+                    "ceiling (stopReason=%s) — the result is truncated and any list "
+                    "in it is incomplete. Section result: %s",
+                    section_info.class_label,
+                    raw_response.get("stopReason")
+                    if isinstance(raw_response, dict)
+                    else None,
+                    section_info.output_uri,
+                )
             output_repaired = False
             repair_method = None
+            instance_count = 0
+            recovered_instances = None
 
-            try:
-                extracted_fields = json.loads(extract_json_from_text(extracted_text))
-            except Exception as e:
+            if forced_tool_input is not None:
+                # The model called the tool, so the shape is the API's guarantee
+                # and there is no text to parse. Still run it through
+                # _normalize_list_result: a forced tool constrains the SHAPE, and a
+                # class whose schema is a packet of records can legitimately come
+                # back as a list, which is the multi-instance case (#565/#687).
+                (
+                    extracted_fields,
+                    parsing_succeeded,
+                    instance_count,
+                    recovered_instances,
+                ) = self._normalize_list_result(
+                    forced_tool_input, context="forced-tool"
+                )
+            elif force and not ft_cfg.fallback_to_prompt:
+                # Explicitly configured to treat an unhonored force as a failure.
+                # Only useful for measuring how often forcing is actually honored.
                 logger.warning(
-                    f"Error parsing LLM output - attempting JSON repair: {e}"
+                    "Forced tool use was not honored and fallback_to_prompt is "
+                    "off; marking the section as a parse failure"
+                )
+                extracted_fields = {
+                    "error": (
+                        "forced tool use was requested but the model answered in "
+                        "prose, and extraction.forced_tool.fallback_to_prompt is "
+                        "disabled"
+                    )
+                }
+                parsing_succeeded = False
+            else:
+                try:
+                    extracted_fields = json.loads(
+                        extract_json_from_text(extracted_text)
+                    )
+
+                    # A top-level array means either a needlessly wrapped single
+                    # object or — far more often — several documents of the same
+                    # class in one section. Both are handled (and preserved) here.
+                    (
+                        extracted_fields,
+                        parsing_succeeded,
+                        instance_count,
+                        recovered_instances,
+                    ) = self._normalize_list_result(extracted_fields, context="parsed")
+
+                except Exception as e:
+                    logger.warning(
+                        f"Error parsing LLM output - attempting JSON repair: {e}"
+                    )
+
+                    # Attempt to repair truncated JSON
+                    repaired_data, repair_info = repair_truncated_json(extracted_text)
+                    # OR, never assign: the stopReason read above is the stronger
+                    # evidence of the two (the model said so), and the repair
+                    # heuristic answering False must not erase it.
+                    output_truncated = output_truncated or repair_info.get(
+                        "was_truncated", False
+                    )
+
+                    if repaired_data:
+                        # Repair succeeded
+                        extracted_fields = repaired_data
+
+                        # Repaired output can be an array for the same reasons the
+                        # cleanly-parsed output can; normalize identically. A
+                        # truncated multi-instance response is exactly the case worth
+                        # salvaging — the earlier instances are complete.
+                        (
+                            extracted_fields,
+                            parsing_succeeded,
+                            instance_count,
+                            recovered_instances,
+                        ) = self._normalize_list_result(
+                            extracted_fields, context="repaired"
+                        )
+
+                        output_repaired = True
+                        repair_method = repair_info.get("repair_method")
+                        if parsing_succeeded:
+                            logger.info(
+                                f"JSON repair successful using '{repair_method}': "
+                                f"recovered {repair_info.get('fields_recovered', 0)} fields"
+                            )
+                    else:
+                        # Repair failed - store raw output
+                        logger.error(
+                            f"JSON repair failed: {repair_info.get('error', 'unknown error')}. "
+                            f"Raw output preview: {extracted_text[:500]}..."
+                        )
+                        extracted_fields = {"raw_output": extracted_text}
+                        parsing_succeeded = False
+
+            # Multi-instance detection probe (#753): read and REMOVE the auxiliary
+            # count before anything else looks at the result. It must come out
+            # ahead of the off-schema filter (which would otherwise report it as a
+            # hallucinated field), the integrated-confidence split, coercion,
+            # validation and every downstream stage. Popped unconditionally — even
+            # if detection is off for this section, an echoed field must not reach
+            # inference_result.
+            probe_value = self._read_instance_probe(extracted_fields)
+            if probe_value is not None:
+                instance_probe = probe_value
+
+            # Multi-instance (#715): re-express a response that ignored the
+            # wrapper, BEFORE the off-schema filter deletes every key and emits
+            # {}.
+            if parsing_succeeded:
+                extracted_fields, recovered_instances = (
+                    self._adapt_to_instances_wrapper(
+                        extracted_fields, recovered_instances
+                    )
                 )
 
-                # Attempt to repair truncated JSON
-                repaired_data, repair_info = repair_truncated_json(extracted_text)
-                output_truncated = repair_info.get("was_truncated", False)
+            # Strip the probe from EVERY instance, from whichever container ends up
+            # holding them, and do it AFTER the adapt above.
+            #
+            # This ran before the adapt and only over `recovered_instances`, which
+            # leaked: for a flagged class answering with a bare array, the adapt
+            # moves the records into `extracted_fields["instances"]` and returns
+            # `recovered_instances = None`, so the loop never ran — and
+            # `_filter_extracted_to_schema` only filters TOP-LEVEL keys, so the
+            # probe survived inside `inference_result["instances"][1..N]` to be
+            # scored by assessment, written to a reporting column and diffed
+            # against a baseline that has no such key. Element 0 looked clean
+            # because it is aliased to `extracted_fields`, which is why the
+            # isolated unit tests passed.
+            nested_probe = self._strip_probe_from_instances(
+                extracted_fields, recovered_instances
+            )
+            if instance_probe is None and nested_probe is not None:
+                instance_probe = nested_probe
 
-                if repaired_data:
-                    # Repair succeeded
-                    extracted_fields = repaired_data
-                    output_repaired = True
-                    repair_method = repair_info.get("repair_method")
-                    parsing_succeeded = True
-                    logger.info(
-                        f"JSON repair successful using '{repair_method}': "
-                        f"recovered {repair_info.get('fields_recovered', 0)} fields"
-                    )
-                else:
-                    # Repair failed - store raw output
-                    logger.error(
-                        f"JSON repair failed: {repair_info.get('error', 'unknown error')}. "
-                        f"Raw output preview: {extracted_text[:500]}..."
-                    )
-                    extracted_fields = {"raw_output": extracted_text}
-                    parsing_succeeded = False
+            # Schema-compliance filter (simple/traditional extraction only): drop
+            # any top-level fields the model returned that the class schema does
+            # NOT define. Unlike Advanced (agentic) extraction — which validates
+            # through a Pydantic model that structurally ignores off-schema keys —
+            # the simple path does a raw ``json.loads`` and keeps whatever the model
+            # emits, so hallucinated/cross-class attributes (e.g. a ``resume`` with
+            # ``publications`` or a ``scientific_publication`` with ``invoice_number``)
+            # flow downstream and later break assessment (the enhancer collapses a
+            # list-for-non-array field, leaving its rows permanently unscored). This
+            # closes that gap for simple mode at zero extra model cost; the dropped
+            # names are recorded in metadata and surfaced as an
+            # ``extraction_off_schema_fields`` issue. Runs only when parsing produced
+            # a real object (not an error/raw_output sentinel) and a schema exists.
+            if parsing_succeeded and isinstance(extracted_fields, dict):
+                extracted_fields = self._filter_extracted_to_schema(extracted_fields)
+
+            # Non-agentic INTEGRATED confidence: the single extraction inference
+            # was asked (via the 1S-TopK prompt) to return, per field, its top-K
+            # guesses with probabilities (G1/P1 … GK/PK). Split it so
+            # inference_result holds only the values (G1) and the confidence (P1)
+            # rides in metering under the same marker the agentic path uses
+            # (lifted in _save_results). This lets the standalone Assessment step
+            # be skipped (no 2nd pass); a flat response with no candidates passes
+            # through untouched so the standalone step runs as the fallback.
+            if self._integrated_assessment_enabled() and isinstance(
+                extracted_fields, dict
+            ):
+                extracted_fields = self._split_inline_confidence(
+                    extracted_fields, metering
+                )
+
+            # Deterministic type/format repair, then full-schema validation.
+            #
+            # Order matters twice over. Coercion before validation, so validation
+            # only reports what could NOT be fixed for free. And BOTH after the
+            # integrated-confidence split above: before it, a 1S-TopK response is
+            # {field: {"G1": ..., "P1": ...}} — candidate objects, not values — so
+            # coercion would refuse every field as a type-family mismatch (a
+            # silent no-op) and validation would report every field as failing.
+            # At the shipped default (validation on, fail_action=warn) that is
+            # 100% false failures on every section, which buries the real
+            # violations this exists to surface; under `reject` every section
+            # fails; under `escalate` every field of every section is re-extracted
+            # with the stronger model, and the plain value merged back would
+            # corrupt the candidate shape resolve_candidates reads. The split
+            # leaves resolved values that match the class schema, which is exactly
+            # what both steps expect.
+            if parsing_succeeded and isinstance(extracted_fields, dict):
+                extracted_fields, coercion_metadata = self._coerce_simple_result(
+                    extracted_fields
+                )
+                if coercion_metadata is not None:
+                    self._pending_coercion_metadata = coercion_metadata
+
+                (
+                    extracted_fields,
+                    validation_metadata,
+                    parsing_succeeded,
+                ) = self._validate_simple_result(
+                    extracted_fields=extracted_fields,
+                    content=content,
+                    system_prompt=system_prompt,
+                    model_id=model_id,
+                    metering=metering,
+                    section_info=section_info,
+                    parsing_succeeded=parsing_succeeded,
+                )
+                if validation_metadata is not None:
+                    self._pending_validation_metadata = validation_metadata
 
         total_duration = time.time() - request_start_time
         logger.info(f"Time taken for extraction: {total_duration:.2f} seconds")
@@ -1028,7 +6743,460 @@ class ExtractionService:
             output_truncated=output_truncated,
             output_repaired=output_repaired,
             repair_method=repair_method,
+            schema_analysis=schema_analysis,
+            ocr_analysis=ocr_analysis,
+            instance_count=instance_count,
+            recovered_instances=recovered_instances,
+            instance_probe=instance_probe,
         )
+
+    def _split_inline_confidence(
+        self, parsed: dict[str, Any], metering: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Split a simple-path integrated response into values + confidence.
+
+        The simple (non-agentic) integrated prompt is the 1S-TopK prompt: it asks
+        the model to return, per field, its top-K guesses with probabilities
+        (``G1/P1`` … ``GK/PK``). Two shapes result:
+
+        1. 1S-TopK: each field value is a ``{G1, P1, G2, P2, ...}`` candidate
+           object (or, for arrays, per-row/per-column candidates).
+           ``resolve_candidates()`` takes ``G1`` as the value and ``P1`` as the
+           confidence, splitting the response into ``inference_result`` + raw
+           per-field confidence leaves. The confidence is stashed in
+           ``metering["_integrated_field_assessment"]`` (enriched with thresholds
+           and emitted as ``explainability_info`` by ``_save_results``, so the
+           standalone Assessment step is skipped — integrated mode's whole point
+           is one inference, not two). The full candidate set is preserved in
+           ``metering["_topk_candidates"]`` for auditability.
+        2. Flat: no ``G1``/``P1`` candidates recognized (the model ignored the
+           TopK contract). Return as-is and stash nothing; the standalone
+           Assessment step then runs as the fallback (no regression).
+        """
+        # 1S-TopK candidate format — each field is {G1, P1, G2, P2, ...} (or,
+        # for arrays, candidates nested per row/column). resolve_candidates()
+        # splits into values (G1) + raw confidence (P1); thresholds/alerts are
+        # attached later by the shared enricher in _save_results.
+        if is_topk_response(parsed):
+            inference_result, assessment_data, candidates_meta = resolve_candidates(
+                parsed, self._class_schema
+            )
+            if assessment_data:
+                metering["_integrated_field_assessment"] = assessment_data
+                logger.info(
+                    "Non-agentic integrated confidence (1S-TopK): resolved "
+                    "%d fields from candidate format",
+                    len(assessment_data),
+                )
+            # Stash raw candidates for auditability in metadata.
+            metering["_topk_candidates"] = candidates_meta
+            return inference_result
+
+        # Flat response (no recognizable TopK candidates) — nothing to lift; the
+        # standalone Assessment step will run as the fallback.
+        logger.info(
+            "Non-agentic integrated mode: response was flat (no TopK "
+            "candidates); standalone Assessment step will run."
+        )
+        return parsed
+
+    def _apply_missing_field_handling(
+        self,
+        extracted_fields: dict[str, Any],
+        class_schema: dict[str, Any],
+        section_info: SectionInfo,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Mark or remove fields whose source pages were not present.
+
+        Returns the (possibly mutated) extracted_fields and a report listing
+        the fields treated as MISSING. When the feature is disabled, the
+        config doesn't declare page-types, or no top-level property has
+        ``x-aws-idp-source-page-types``, the input is returned unchanged
+        with an empty report.
+        """
+        cfg = self.config.extraction.missing_field_handling
+        presence = section_info.page_type_presence
+        if not cfg.enabled or presence is None or not presence.declared:
+            return extracted_fields, []
+
+        properties = class_schema.get(SCHEMA_PROPERTIES) or {}
+        if not properties:
+            return extracted_fields, []
+
+        present = presence.present_page_types
+        report: list[dict[str, Any]] = []
+        # Operate on a copy so we don't mutate the agent's result in place.
+        fields_out = dict(extracted_fields)
+
+        for prop_name, prop_schema in properties.items():
+            if not isinstance(prop_schema, dict):
+                continue
+            declared_pages = prop_schema.get(X_AWS_IDP_SOURCE_PAGE_TYPES)
+            if not declared_pages:
+                continue
+            if not isinstance(declared_pages, list):
+                logger.warning(
+                    "Property %s declares %s as %s; expected list — ignoring",
+                    prop_name,
+                    X_AWS_IDP_SOURCE_PAGE_TYPES,
+                    type(declared_pages).__name__,
+                )
+                continue
+            if any(p in present for p in declared_pages):
+                # At least one source page-type is present → field is BLANK
+                # if empty, not MISSING. Leave it alone.
+                continue
+            report.append(
+                {
+                    "field": prop_name,
+                    "reason": "page types not present",
+                    "expected_page_types": list(declared_pages),
+                }
+            )
+            if cfg.representation == "omit":
+                fields_out.pop(prop_name, None)
+            else:  # null_with_metadata
+                fields_out[prop_name] = None
+
+        return fields_out, report
+
+    @staticmethod
+    def _normalize_table_parsing_stats(stats: dict[str, Any]) -> dict[str, Any]:
+        """Sanitize merged table-parsing stats for display in metadata.
+
+        Drops the internal ``_rate_weight`` accumulator and defensively clamps
+        the quality metrics to their valid ranges (rate 0-1, confidence 0-100) so
+        a stats-merge regression can never again surface impossible values like
+        a 500% parse-success rate or 496% confidence in the Processing Report.
+        """
+        clean = {k: v for k, v in stats.items() if k != "_rate_weight"}
+        rate = clean.get("parse_success_rate")
+        if isinstance(rate, (int, float)):
+            clean["parse_success_rate"] = max(0.0, min(1.0, float(rate)))
+        conf = clean.get("avg_confidence")
+        if isinstance(conf, (int, float)):
+            clean["avg_confidence"] = max(0.0, min(100.0, float(conf)))
+        return clean
+
+    def _attach_explainability(
+        self,
+        *,
+        output_metadata: dict[str, Any],
+        merged_assessment: dict[str, Any],
+        merged_assessment_alerts: list[dict[str, Any]],
+        extracted_fields: dict[str, Any],
+        document: Document,
+        section: Any,
+        section_info: SectionInfo,
+    ) -> None:
+        """Ground the merged in-shard assessment and stage it for output.
+
+        Grounds field geometry in real OCR data over the whole section (one pass,
+        same as the standalone Assessment step), stashes the grounded assessment
+        in ``self._grounded_assessment`` for ``_save_results`` to emit as
+        ``explainability_info``, sets ``section.confidence_threshold_alerts``, and
+        records lightweight metadata mirroring the standalone path. Best-effort:
+        grounding never fails extraction.
+        """
+        # AUTHORITATIVE alignment point: reconcile the fully-merged assessment
+        # against the fully-merged, final extracted_fields here — AFTER shard
+        # merge (which drops phantom rows from data) and any escalation. Doing it
+        # only per-shard is not enough: the data list is phantom-filtered on
+        # merge, so per-shard counts can drift from the final data. This single
+        # post-merge reconcile guarantees explainability_info[field][i] lines up
+        # with inference_result[field][i] for every list field.
+        merged_assessment = self._reconcile_assessment_to_data(
+            merged_assessment, extracted_fields
+        )
+
+        # Robustness: INTEGRATED confidence comes inline from the extraction
+        # inference, which can silently drop some list rows (esp. single-shot,
+        # cramming values+confidence in one call). Those rows are currently
+        # null-confidence placeholders. Re-assess ONLY the missing rows with a
+        # focused standalone confidence call and splice real scores back, so
+        # integrated large-list coverage reaches 100% like the separate path
+        # (which retries inside assess_results_batched). No-op when nothing is
+        # missing. Best-effort: never fails extraction.
+        if self._integrated_assessment_enabled():
+            try:
+                merged_assessment, regenerated_alerts, split_stats = (
+                    self._retry_missing_integrated_rows(
+                        merged_assessment=merged_assessment,
+                        extracted_fields=extracted_fields,
+                        section_info=section_info,
+                    )
+                )
+                # The retry re-enriches the FINAL spliced assessment and returns
+                # the alerts that enrichment built — a projection of the merged
+                # list with globally-indexed row paths. It replaces (never
+                # extends) the incoming surface: extending would re-introduce
+                # the slice-local duplicates this exists to fix (upstream #813).
+                merged_assessment_alerts = regenerated_alerts
+                # Surface adaptive batch-splitting activity (only when the
+                # confidence model truncated and batches had to shrink).
+                from idp_common.assessment.batching import split_stats_are_notable
+
+                if split_stats_are_notable(split_stats):
+                    output_metadata["assessment_batch_split_stats"] = split_stats
+            except Exception as e:  # noqa: BLE001 - retry is advisory
+                logger.warning("Integrated missing-row retry failed: %s", e)
+
+        grounded = merged_assessment
+        geometry_mode = self.config.extraction.geometry.mode
+        if geometry_mode not in ("llm", "off"):
+            try:
+                from idp_common.assessment.ocr_grounding import (
+                    ground_assessment_geometry,
+                    load_page_ocr_data,
+                )
+
+                page_data_by_page = load_page_ocr_data(
+                    document.pages, section_info.sorted_page_ids
+                )
+                if page_data_by_page:
+                    # skip_grounded: in the sharded path each shard already
+                    # grounded its own rows against its own pages (in
+                    # _build_assess_runner), so this post-merge pass only needs to
+                    # ground residual leaves (e.g. reconcile-padded placeholder
+                    # rows) — the O(rows × all-pages) full-section fuzzy sweep that
+                    # blew the merge Lambda's 900s ceiling is skipped. On the
+                    # non-sharded single-agent path no leaf is pre-grounded, so
+                    # everything is grounded here exactly as before.
+                    grounded = ground_assessment_geometry(
+                        merged_assessment,
+                        extracted_fields,
+                        page_data_by_page,
+                        geometry_mode,
+                        self._class_schema,
+                        skip_grounded=True,
+                    )
+            except Exception as e:  # noqa: BLE001 - grounding is advisory
+                logger.warning(
+                    "OCR geometry grounding failed for in-shard assessment "
+                    "(keeping existing boxes): %s",
+                    e,
+                )
+
+        self._grounded_assessment = grounded
+        # Deduped at this boundary too: the integrated path accumulates alerts
+        # from the enrich pass, cross-shard merges, and the missing-row retry
+        # (whose extra_alerts re-emit the shared scalars per recovery chunk), so
+        # the same non-indexed finding can arrive several times. Idempotent;
+        # imported lazily like the other batching imports in this file.
+        from idp_common.assessment.batching import dedupe_alerts
+
+        section.confidence_threshold_alerts = dedupe_alerts(merged_assessment_alerts)
+        output_metadata["assessment_integrated_in_extraction"] = True
+        # Counts the list that was actually STORED. Reading the pre-dedupe list
+        # here let the recorded count contradict the data next to it — a section
+        # carrying 16 alerts reported 2,603. The raw figure is still worth having
+        # when it differs, because the gap IS the duplication this path removes,
+        # so it is recorded under its own name rather than smuggled into this one.
+        output_metadata["assessment_alert_count"] = len(
+            section.confidence_threshold_alerts
+        )
+        if len(merged_assessment_alerts) != len(section.confidence_threshold_alerts):
+            output_metadata["assessment_alert_count_before_dedupe"] = len(
+                merged_assessment_alerts
+            )
+
+    def _retry_missing_integrated_rows(
+        self,
+        *,
+        merged_assessment: dict[str, Any],
+        extracted_fields: dict[str, Any],
+        section_info: SectionInfo,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any] | None]:
+        """Re-score list rows the integrated extraction inference left unscored.
+
+        Integrated confidence rides inline on the extraction call, which can drop
+        rows on large tables (leaving null-confidence placeholders after reconcile).
+        For each list field with missing rows, run a focused standalone confidence
+        pass over ONLY those rows + the shared section context, then splice the
+        recovered per-row scores back by index. Bounded to 2 rounds; sequential.
+
+        Each retry chunk goes through the shared ``_assess_slice_adaptive`` helper,
+        so a chunk the confidence model TRUNCATES (e.g. Nova Lite over an
+        ``llm``-geometry batch too large for its output cap) is recursively halved
+        and re-assessed until it fits — the same recovery the ``separate`` path
+        gets inside ``assess_results_batched``. When rows STILL truncate after
+        shrinking, the shared self-healing ladder escalates the residual rows to
+        a stronger confidence model (bigger output cap) — the same ladder the
+        ``separate`` path uses — so integrated mode is equally robust.
+
+        Returns ``(merged_assessment, regenerated_alerts, split_stats)`` where
+        ``regenerated_alerts`` is the alert surface rebuilt from the final
+        spliced assessment (globally-indexed row paths — it replaces the
+        caller's surface, see upstream #813) and ``split_stats`` records any
+        adaptive-splitting/escalation activity (None when nothing was retried).
+        Best-effort — a failed retry keeps placeholders.
+        """
+        from idp_common.assessment.batching import (
+            _missing_row_indices,
+            _new_split_stats,
+            _retry_missing_rows,
+            compute_token_aware_batch_size,
+            enrich_assessment_with_thresholds,
+        )
+        from idp_common.assessment.service import AssessmentService
+
+        # Which list fields still have unscored rows?
+        targets = {
+            f: _missing_row_indices(merged_assessment.get(f), v)
+            for f, v in extracted_fields.items()
+            if isinstance(v, list) and _missing_row_indices(merged_assessment.get(f), v)
+        }
+        if not targets:
+            # Nothing to retry — but the caller REPLACES its alert surface with
+            # what this returns (#813), so an empty list here would leave every
+            # fully-scored integrated section with no confidence alerts at all
+            # (the common case; scalar-only classes always land here). Rebuild
+            # the surface from the merged assessment exactly as the retry path
+            # does below, so the replace is always a globally-indexed surface.
+            merged_assessment, regenerated_alerts = enrich_assessment_with_thresholds(
+                merged_assessment,
+                self._class_schema,
+                self.config.hitl.confidence_threshold,
+            )
+            return merged_assessment, regenerated_alerts, None
+
+        assessment_service = AssessmentService(region=self.region, config=self.config)
+        confidence_cfg = self.config.extraction.confidence
+        default_threshold = self.config.hitl.confidence_threshold
+        new_alerts: list[dict[str, Any]] = []
+        configured_batch_size = confidence_cfg.list_batch_size
+        geometry_mode = self.config.extraction.geometry.mode
+        split_stats = _new_split_stats()
+        split_stats["configured_batch_size"] = configured_batch_size
+
+        # 1.2 Resolve the escalation model (per-class override > global) so the
+        # ladder can rescue rows a small-cap confidence model keeps truncating.
+        escalation_model = assessment_service._resolve_confidence_escalation_model(
+            section_info.class_label
+        )
+        escalation_enabled = confidence_cfg.escalation_enabled
+
+        def _one_call(results: dict[str, Any]) -> Any:
+            return assessment_service.assess_results(
+                class_label=section_info.class_label,
+                extraction_results=results,
+                document_text=self._document_text,
+                page_images=self._page_images,
+                ocr_text_confidence="",
+            )
+
+        escalation_one_call: Callable[[dict[str, Any]], Any] | None = None
+        if (
+            escalation_enabled
+            and escalation_model
+            and confidence_cfg.max_escalation_rounds
+        ):
+
+            def _escalation_call(results: dict[str, Any]) -> Any:
+                return assessment_service.assess_results(
+                    class_label=section_info.class_label,
+                    extraction_results=results,
+                    document_text=self._document_text,
+                    page_images=self._page_images,
+                    ocr_text_confidence="",
+                    model_id_override=escalation_model,
+                )
+
+            escalation_one_call = _escalation_call
+
+        for field, _missing in targets.items():
+            rows = extracted_fields[field]
+            # 1.1 Token-aware first-pass size for this field's confidence model.
+            # Pass the whole row list — the widest row governs the batch, and rows
+            # are not guaranteed to carry the same keys.
+            batch_size = compute_token_aware_batch_size(
+                confidence_cfg.model, rows, geometry_mode, configured_batch_size
+            )
+            if split_stats["derived_batch_size"] is None:
+                split_stats["derived_batch_size"] = batch_size
+            esc_batch = (
+                compute_token_aware_batch_size(
+                    escalation_model, rows, geometry_mode, configured_batch_size
+                )
+                if escalation_one_call is not None
+                else batch_size
+            )
+            # Reuse the shared self-healing ladder: same-model retry rounds, then
+            # model escalation for whatever still truncates.
+            merged_assessment, _field_alerts, _metering, _dur = _retry_missing_rows(
+                _one_call,
+                extraction_results=extracted_fields,
+                big_field=field,
+                merged_assessment=merged_assessment,
+                merged_alerts=new_alerts,
+                merged_metering={},
+                batch_size=batch_size,
+                max_retries=2,
+                split_stats=split_stats,
+                escalation_one_call=escalation_one_call,
+                escalation_model=escalation_model if escalation_enabled else None,
+                escalation_batch_size=esc_batch,
+                max_escalation_rounds=confidence_cfg.max_escalation_rounds,
+                deadline_epoch=self._assessment_deadline_epoch,
+                model_id=confidence_cfg.model,
+            )
+            split_stats["unrecoverable_rows"] += len(
+                _missing_row_indices(merged_assessment.get(field), rows)
+            )
+
+        # #894: name the class alongside the oversized-row field(s) so the emitted
+        # issue points at the class whose list item does not fit the model's output
+        # budget (the ladder itself only sees field names).
+        if split_stats.get("oversized_row_fields"):
+            split_stats["oversized_row_class"] = section_info.class_label
+
+        # Re-enrich so any spliced-in rows carry confidence_threshold like the
+        # rest — and keep the alerts it builds: enumerating the full merged list
+        # makes their row indexes global, so they REPLACE the surface (upstream
+        # #813). The alerts accumulated during the retry itself carry indexes
+        # relative to the missing-row subset and are deliberately not returned.
+        merged_assessment, regenerated_alerts = enrich_assessment_with_thresholds(
+            merged_assessment, self._class_schema, default_threshold
+        )
+        return merged_assessment, regenerated_alerts, split_stats
+
+    def _record_prompt_cache_metadata(
+        self, metadata: dict[str, Any], metering: dict[str, Any]
+    ) -> None:
+        """Add ``metadata["prompt_cache"]`` — the section's cache read / write /
+        uncached input tokens and one of the states caching, write-only,
+        never-cached, disabled, no-cache-data (#780). Reporting only: never fails
+        the section, and adds nothing when the section made no Bedrock call."""
+        try:
+            from idp_common.bedrock.prompt_cache import (
+                model_supports_cache_point,
+                summarize_cache_usage,
+            )
+
+            # Did a cache point reach the model at all? Claude reports
+            # cacheReadInputTokens: 0 even without one, so zero/zero cannot say.
+            # Advanced mode always attempts one; Simple mode only if a marker
+            # survived the knob. Either way the model must support cache points
+            # (an inference-profile ARN is unknown here, never "unsupported").
+            attempted = (
+                self.config.extraction.agentic.enabled
+                or self._pending_cache_marker_seen
+            )
+            cache_point_sent: bool | None = False
+            if attempted:
+                cache_point_sent = model_supports_cache_point(
+                    self._pending_extraction_model or self.config.extraction.model
+                )
+            summary = summarize_cache_usage(
+                metering,
+                context_prefix="Extraction",
+                disabled=self.config.extraction.prompt_cache == "off",
+                cache_point_sent=cache_point_sent,
+            )
+            if summary is not None:
+                metadata["prompt_cache"] = summary
+        except Exception as e:  # noqa: BLE001 - reporting only
+            logger.debug("Could not summarize prompt-cache usage: %s", e)
 
     def _save_results(
         self,
@@ -1050,26 +7218,414 @@ class ExtractionService:
             section_id: Section ID
             t0: Start time
         """
-        # Build metadata - include truncation/repair info if applicable
-        metadata = {
+        # Determine extraction method
+        extraction_method = (
+            "agentic" if self.config.extraction.agentic.enabled else "traditional"
+        )
+
+        # Check if table parsing tool was used (extract from metering before building metadata)
+        tool_used = False
+        table_stats = None
+        shard_conflicts = None
+        merged_assessment = None
+        merged_assessment_alerts = None
+        assessment_split_stats = None
+        # One of this section's agent runs was cut off at the model's output ceiling
+        # and its already-validated extraction was salvaged from agent state rather
+        # than failing the section (#1363). ORed with ``result.output_truncated``
+        # below, which is the Simple path's own ``stopReason``-derived flag, so the
+        # two modes reach one issue. Popped regardless of mode: only the agentic path
+        # writes it, and popping it only there would leave a non-token-counter key in
+        # the metering report if that ever stopped being true.
+        agent_output_truncated = bool(
+            (result.metering or {}).pop("_output_truncated", False)
+        )
+        if extraction_method == "agentic" and result.metering:
+            table_stats = result.metering.pop("_table_parsing_stats", None)
+            tool_used = table_stats is not None
+            if table_stats:
+                table_stats = self._normalize_table_parsing_stats(table_stats)
+            # Scalar conflicts surfaced by sharded concurrent extraction.
+            shard_conflicts = result.metering.pop("_shard_scalar_conflicts", None)
+            # Per-field confidence/bbox assessment collated from in-shard
+            # assessment (integrated-assessment feature). Popped here so it does
+            # not leak into metering; emitted as explainability_info below.
+            merged_assessment = result.metering.pop("_merged_assessment", None)
+            merged_assessment_alerts = result.metering.pop(
+                "_merged_assessment_alerts", None
+            )
+            # Adaptive batch-splitting activity from the in-shard assessment
+            # (present only when the confidence model truncated its output and
+            # batches had to shrink). Popped so it doesn't leak into metering.
+            assessment_split_stats = result.metering.pop(
+                "_merged_assessment_split_stats", None
+            )
+        elif result.metering and self._integrated_assessment_enabled():
+            # Non-agentic INTEGRATED confidence: the extraction inference emitted
+            # confidence inline (split into this marker by _split_inline_confidence).
+            # Enrich the raw confidence leaves with per-field thresholds + alerts
+            # (same contract the standalone/separate path produces) and route it
+            # through the shared ground+emit path so explainability_info is written
+            # and the standalone Assessment step is skipped.
+            inline = result.metering.pop("_integrated_field_assessment", None)
+            if isinstance(inline, dict) and inline:
+                from idp_common.assessment.batching import (
+                    enrich_assessment_with_thresholds,
+                )
+
+                default_threshold = self.config.hitl.confidence_threshold
+                merged_assessment, merged_assessment_alerts = (
+                    enrich_assessment_with_thresholds(
+                        inline, self._class_schema, default_threshold
+                    )
+                )
+
+        # Pop 1S-TopK raw candidates (all K guesses per field) for metadata
+        # auditability. Present only on the simple integrated (TopK) path; popped
+        # here so it does not leak into metering.
+        topk_candidates = (
+            result.metering.pop("_topk_candidates", None) if result.metering else None
+        )
+
+        # Build base metadata
+        metadata: dict[str, Any] = {
             "parsing_succeeded": result.parsing_succeeded,
             "extraction_time_seconds": result.total_duration,
+            "extraction_method": extraction_method,
         }
 
+        # How many documents of this class the section turned out to hold, and —
+        # when more than one — every instance the model produced. inference_result
+        # keeps the first so the output shape is unchanged; these carry the rest
+        # so nothing is discarded, and _build_extraction_issues turns the count
+        # into a user-visible warning.
+        instance_count, instance_meta = self._resolve_instance_reporting(result)
+        metadata.update(instance_meta)
+
+        # Assigned unconditionally, including 0. A re-extraction (reprocess, or a
+        # reclassify that reuses the section) starts from the RESTORED section,
+        # which still carries the previous run's count — so a guarded write would
+        # leave a stale "3 documents" badge on a section this run found one
+        # document in, or failed on entirely. 0 renders as "-" (undetermined),
+        # which is the honest reading of a run that determined nothing.
+        section.instance_count = instance_count
+        if result.recovered_instances:
+            metadata["recovered_instances"] = result.recovered_instances
+            # Surface on the dashboard so multi-document sections are visible
+            # without opening a document.
+            try:
+                metrics.put_metric("MultiInstanceSections", 1)
+                metrics.put_metric(
+                    "MultiInstanceRecordsRecovered", len(result.recovered_instances)
+                )
+            except Exception as e:  # noqa: BLE001 - telemetry must never fail a doc
+                logger.debug("Could not publish multi-instance metrics: %s", e)
+
+        # Record 1S-TopK raw candidates for auditability (all K guesses per
+        # field). assessment_method is an audit breadcrumb only — the downstream
+        # Assessment Lambda skips on explainability_info presence, not this field.
+        if topk_candidates:
+            metadata["topk_candidates"] = topk_candidates
+            metadata["assessment_method"] = "1s_topk"
+
+        # Audit: which model actually ran this section, and whether it came from
+        # a per-class override vs the global extraction model.
+        if self._pending_extraction_model is not None:
+            metadata["extraction_model"] = self._pending_extraction_model
+            metadata["extraction_model_overridden"] = (
+                self._class_schema.get(X_AWS_IDP_EXTRACTION_MODEL) is not None
+            )
+
+        # Add pre-flight analysis results (if agentic)
+        if extraction_method == "agentic":
+            if result.schema_analysis:
+                metadata["schema_analysis"] = result.schema_analysis
+            if result.ocr_analysis:
+                metadata["ocr_analysis"] = result.ocr_analysis
+
+            # Track tool usage decision
+            tool_expected = False
+            if result.schema_analysis or result.ocr_analysis:
+                tool_expected = (
+                    result.schema_analysis.get("tool_usage_recommended", False)
+                    if result.schema_analysis
+                    else False
+                ) or (
+                    result.ocr_analysis.get("tool_usage_recommended", False)
+                    if result.ocr_analysis
+                    else False
+                )
+
+                # Facts that determine WHY the tool was or wasn't used, so the
+                # report can distinguish "tool unavailable" from "available but the
+                # agent declined it":
+                #  - tool_enabled: is the deterministic parser turned on in config?
+                #  - ocr_had_markdown_tables: did the OCR text actually contain
+                #    Markdown pipe-tables? The parser can ONLY run on those, and
+                #    ocr_analysis (a pre-flight scan of the OCR text) is what detects
+                #    them — so this is known before extraction, regardless of which
+                #    Textract features produced the text.
+                tool_enabled = self.config.extraction.agentic.table_parsing.enabled
+                ocr_had_markdown_tables = bool(
+                    result.ocr_analysis
+                    and result.ocr_analysis.get("tables_detected", 0) > 0
+                )
+                # Agent's optional self-reported rationale for skipping the tool
+                # (captured from its final message). Only meaningful when it was
+                # recommended but not used.
+                agent_note = getattr(self, "_agent_table_tool_note", None)
+                decision: dict[str, Any] = {
+                    "expected": tool_expected,
+                    "actual": tool_used,
+                    "mismatch": tool_expected != tool_used,
+                    "tool_enabled": tool_enabled,
+                    "ocr_had_markdown_tables": ocr_had_markdown_tables,
+                    "explanation": self._explain_tool_usage_decision(
+                        expected=tool_expected,
+                        actual=tool_used,
+                        schema_analysis=result.schema_analysis,
+                        ocr_analysis=result.ocr_analysis,
+                        tool_enabled=tool_enabled,
+                        ocr_had_markdown_tables=ocr_had_markdown_tables,
+                        agent_note=agent_note,
+                    ),
+                }
+                if agent_note and tool_expected and not tool_used:
+                    decision["agent_stated_reason"] = agent_note
+                metadata["tool_usage_decision"] = decision
+
+            # Validate completeness
+            if result.schema_analysis or result.ocr_analysis:
+                metadata["completeness_check"] = self._check_completeness_detailed(
+                    extracted_fields=result.extracted_fields,
+                    schema=self._class_schema,
+                    tool_used=tool_used,
+                    ocr_analysis=result.ocr_analysis,
+                )
+
+        # Population heuristic: flag suspiciously sparse extractions (e.g.
+        # nested fields silently returning null). Advisory only.
+        #
+        # Deliberately OUTSIDE the `extraction_method == "agentic"` block above.
+        # It used to run only on the agentic path, which is backwards: simple mode
+        # is the one with no validation step and the one where the silent
+        # completeness cliff lives (recall 1.000 through ~800 list rows, then 0.199
+        # at 1,200 and 0.009 at 3,200 — reported as success either way). The
+        # consumer that turns this into a surfaced ProcessingIssue was already
+        # mode-agnostic; only the producer was gated.
+        if self._class_schema:
+            metadata["population_check"] = self._check_population_completeness(
+                extracted_fields=result.extracted_fields,
+                schema=self._class_schema,
+            )
+
+        # Add table parsing stats if tool was used
+        if tool_used and table_stats:
+            metadata["table_parsing_tool_used"] = True
+            metadata["table_parsing_stats"] = table_stats
+        elif (
+            extraction_method == "agentic"
+            and self.config.extraction.agentic.table_parsing.enabled
+        ):
+            metadata["table_parsing_tool_used"] = False
+
+        # Surface adaptive assessment batch-splitting activity (only when the
+        # confidence model truncated output and batches had to shrink).
+        from idp_common.assessment.batching import split_stats_are_notable
+
+        if split_stats_are_notable(assessment_split_stats):
+            metadata["assessment_batch_split_stats"] = assessment_split_stats
+
+        # Item 3: record HOW the document was split/sized so the processing report
+        # (and the UI process graph) can show it. Emit the model-aware sizing plan
+        # + the shard count for this section. Best-effort.
+        if extraction_method == "agentic":
+            try:
+                plan = self._get_sizing_plan()
+                metadata["sizing_plan"] = plan.to_dict()
+            except Exception as e:  # noqa: BLE001 - reporting only
+                logger.debug("Could not record sizing_plan: %s", e)
+            shard_meta = (
+                result.metering.pop("_shard_process_trace", None)
+                if result.metering
+                else None
+            )
+            if shard_meta:
+                metadata["shard_trace"] = shard_meta
+
         # Add truncation/repair metadata when relevant
-        if result.output_truncated:
+        if result.output_truncated or agent_output_truncated:
             metadata["output_truncated"] = True
         if result.output_repaired:
             metadata["output_repaired"] = True
             metadata["repair_method"] = result.repair_method
 
-        # Write to S3
-        output = {
+        # Add full-schema validation outcome (set by _validate_and_maybe_escalate
+        # on the agentic path, or _validate_simple_result on the simple path, when
+        # extraction.validation.enabled).
+        if self._pending_validation_metadata is not None:
+            metadata["validation"] = self._pending_validation_metadata
+        if self._pending_abstained_fields is not None:
+            metadata["abstained_fields"] = self._pending_abstained_fields
+        if self._pending_forced_tool_metadata is not None:
+            # Recorded so an A/B can tell "forcing had no effect" from "forcing
+            # never ran" — a skipped route or an unhonored force are both normal
+            # and both invisible without this.
+            metadata["forced_tool"] = self._pending_forced_tool_metadata
+
+        # Deterministic type/format repairs. Recorded so a human can audit exactly
+        # what was rewritten and what was refused — coercion must never silently
+        # alter extracted document data.
+        if self._pending_coercion_metadata is not None:
+            metadata["coercion"] = self._pending_coercion_metadata
+
+        # Page images that had to be downscaled to fit Bedrock's per-image limit
+        # (#778). Without this the model silently saw a lower resolution than the
+        # stored page and nothing in the output said so.
+        if self._pending_image_fit_metadata:
+            metadata["image_downscale"] = self._pending_image_fit_metadata
+
+        # Record scalar-field conflicts detected when merging sharded concurrent
+        # extraction (two shards disagreed on a scalar; first value kept).
+        if shard_conflicts:
+            metadata["shard_scalar_conflicts"] = shard_conflicts
+
+        # Apply BLANK vs MISSING field handling (no-op unless configured + declared).
+        fields_for_output, missing_fields_report = self._apply_missing_field_handling(
+            result.extracted_fields,
+            self._class_schema,
+            section_info,
+        )
+
+        # In-shard assessment (integrated-assessment feature): ground the merged
+        # per-field assessment in real OCR geometry over the WHOLE section (one
+        # pass, identical to the standalone Assessment step) and emit it as
+        # explainability_info — the same output contract the standalone path
+        # produces, so all downstream consumers (HITL, UI, evaluation) are
+        # unchanged. No-op when in-shard assessment did not run. Runs BEFORE the
+        # processing report so any adaptive batch-splitting it records
+        # (assessment_batch_split_stats) is reflected in the report too.
+        if merged_assessment:
+            # Align against fields_for_output (what becomes inference_result), so
+            # explainability_info[field][i] matches inference_result[field][i]
+            # exactly — including after missing-field handling.
+            self._attach_explainability(
+                output_metadata=metadata,
+                merged_assessment=merged_assessment,
+                merged_assessment_alerts=merged_assessment_alerts or [],
+                extracted_fields=fields_for_output,
+                document=document,
+                section=section,
+                section_info=section_info,
+            )
+
+        # Structured issues (1.4) + completeness gate (1.3): translate the
+        # in-shard assessment's split_stats + a coverage audit of the grounded
+        # assessment into user-surfacing ProcessingIssues attached to the section.
+        section_issues: list[Any] = []
+        if merged_assessment is not None:
+            from idp_common.assessment.batching import (
+                audit_explainability,
+                build_assessment_issues,
+            )
+
+            geometry_mode = self.config.extraction.geometry.mode
+            # Ladder issues FIRST — the audit's coverage rung is suppressed when the
+            # ladder already reported an error for this section (see
+            # audit_explainability's ``ladder_issues``).
+            ladder_issues = build_assessment_issues(
+                metadata.get("assessment_batch_split_stats"),
+                section_id=section_id,
+                confidence_model=self.config.extraction.confidence.model,
+                geometry_mode=geometry_mode,
+            )
+            _gaps, audit_issues = audit_explainability(
+                self._grounded_assessment,
+                fields_for_output,
+                geometry_mode=geometry_mode,
+                section_id=section_id,
+                ladder_issues=ladder_issues,
+            )
+            section_issues = ladder_issues + audit_issues
+
+        # Extraction-completeness issue (BOTH modes): flag empty / suspiciously
+        # sparse extractions — e.g. a large list schema field that came back
+        # empty (the exact simple-mode failure on large tables). Recommends
+        # Advanced (agentic) extraction when Simple under-produced.
+        section_issues += self._build_extraction_issues(
+            extracted_fields=fields_for_output,
+            metadata=metadata,
+            section_id=section_id,
+        )
+
+        # Replace the issues THIS step owns, unconditionally — including with an
+        # empty list. A re-extraction starts from the restored section, which still
+        # carries the previous run's warnings, so a guarded write left a stale
+        # "list came back empty" on a section this run extracted correctly. Issues
+        # from other stages (OCR, classification) are preserved: the DynamoDB
+        # writer replaces the whole section map, so dropping them here would
+        # delete them.
+        owned_stages = {"extraction", "assessment"}
+        preserved = [
+            issue
+            for issue in (section.processing_issues or [])
+            if getattr(issue, "stage", None) not in owned_stages
+        ]
+        section.processing_issues = preserved + section_issues
+        if section.processing_issues:
+            metadata["processing_issues"] = [
+                pi.to_dict() for pi in section.processing_issues
+            ]
+        else:
+            metadata.pop("processing_issues", None)
+
+        # Normalized processing-flow summary: ONE object capturing every stage
+        # decision so the report (text + UI graph) depicts the whole path
+        # systematically — extraction mode, sharding, table-tool use+rationale,
+        # confidence source (LLM vs deterministic) + batching/concurrency, geometry
+        # source (OCR-grounded vs LLM box), model escalations, and what (if
+        # anything) was recovered by retry. Built for BOTH simple and advanced so
+        # the UI always has a flow to render. Best-effort; consumers tolerate
+        # missing keys.
+        try:
+            metadata["processing_flow"] = self._build_processing_flow(
+                metadata, extraction_method, tool_used
+            )
+        except Exception as e:  # noqa: BLE001 - reporting only
+            logger.debug("Could not build processing_flow: %s", e)
+
+        # Prompt-cache efficiency for THIS section (#780 item 2). Captured here,
+        # before result.metering is folded into the document total below, because
+        # the metering key carries phase and model but not class.
+        self._record_prompt_cache_metadata(metadata, result.metering or {})
+
+        # Generate user-friendly processing report
+        processing_report = self._generate_processing_report(metadata)
+        logger.info(f"Processing Report:\n{processing_report}")
+
+        # Write to S3 with processing report
+        output: dict[str, Any] = {
             "document_class": {"type": section_info.class_label},
             "split_document": {"page_indices": section_info.page_indices},
-            "inference_result": result.extracted_fields,
+            "inference_result": fields_for_output,
             "metadata": metadata,
+            "processing_report": processing_report,
         }
+        if merged_assessment is not None:
+            output["explainability_info"] = [self._grounded_assessment]
+        # Surface page-type resolution and the missing-field report when the
+        # feature is in use, so downstream consumers can act on the signal.
+        presence = section_info.page_type_presence
+        if presence is not None and presence.declared:
+            output["page_type_resolution"] = presence.to_output_dict()
+        if missing_fields_report:
+            output["missing_fields_report"] = missing_fields_report
+            if self.config.extraction.missing_field_handling.representation == (
+                "null_with_metadata"
+            ):
+                output["missing_fields"] = [
+                    entry["field"] for entry in missing_fields_report
+                ]
         s3.write_content(
             output,
             section_info.output_bucket,
@@ -1088,23 +7644,113 @@ class ExtractionService:
             f"Total extraction time for section {section_id}: {t3 - t0:.2f} seconds"
         )
 
-    def process_document_section(self, document: Document, section_id: str) -> Document:
+        # LAST thing this method does, and deliberately so (#1032). Everything a
+        # reader needs is already durable by this point — the partial
+        # inference_result and the error-severity issue are in the section's S3
+        # output, the section and the document's metering are updated — so the
+        # only thing left to decide is what the section's OUTCOME was, and a
+        # section that lost most of a list did not succeed.
+        #
+        # ONE site for both call sites of _save_results (the in-process
+        # process_document_section path and the Step Functions shard-merge entry
+        # point), which is why it lives here rather than in either caller: the
+        # two modes cannot drift apart on it.
+        self._fail_on_row_shortfall(document, section, section_id)
+
+    def _fail_on_row_shortfall(
+        self, document: Document, section: Any, section_id: str
+    ) -> None:
+        """Raise :class:`ExtractionOutputIncomplete` for a persisted row shortfall.
+
+        Fires only on an ``error``-severity ``ROW_SHORTFALL_CODE`` issue, which
+        ``_build_extraction_issues`` produces only when
+        ``extraction.row_shortfall_action`` is ``fail``. Reading the severity back
+        off the issue rather than re-testing the action keeps ONE decision: if the
+        issue a consumer can see says ``warning``, nothing here fails, and the
+        message the exception carries is the message that was persisted.
+        """
+        blocking = [
+            issue
+            for issue in (section.processing_issues or [])
+            if getattr(issue, "code", None) == self.ROW_SHORTFALL_CODE
+            and str(getattr(issue, "severity", "")).lower() == "error"
+        ]
+        if not blocking:
+            return
+        detail = "; ".join(issue.message for issue in blocking)
+        msg = (
+            f"Section {section_id} extraction is materially incomplete: {detail} "
+            f"Set extraction.row_shortfall_action to 'warn' to accept a partial "
+            f"list as success."
+        )
+        logger.error(msg)
+        document.errors.append(msg)
+        raise ExtractionOutputIncomplete(msg)
+
+    def process_document_section(
+        self,
+        document: Document,
+        section_id: str,
+        checkpoint_data: dict[str, Any] | None = None,
+        deadline_epoch: float | None = None,
+    ) -> Document:
         """
         Process a single section from a Document object.
 
         Args:
             document: Document object containing section to process
             section_id: ID of the section to process
+            checkpoint_data: Optional partial extraction data from a previous
+                timed-out invocation.  When provided the agentic agent will
+                resume from this state instead of starting from scratch.
+            deadline_epoch: Optional absolute epoch (seconds) by which this Lambda
+                must finish (from ``context.get_remaining_time_in_millis()``).
+                Threaded into the in-shard assessment self-healing ladder's
+                wall-clock guard so escalation stops before a hard timeout (1.5).
 
         Returns:
             Document: Updated Document object with extraction results for the section
         """
         # Reset state
         self._reset_context()
+        self._assessment_deadline_epoch = deadline_epoch
 
         # Validate and get section
         section = self._validate_and_find_section(document, section_id)
         if not section:
+            return document
+
+        # Short-circuit: skip sections whose class is marked
+        # x-aws-idp-exclude-from-processing=true (e.g., static instruction
+        # pages). A stub result.json is written so reporting / UI can show
+        # a meaningful message.
+        from idp_common.section_exclusion import (
+            is_section_excluded,
+            write_skipped_stub,
+        )
+
+        if is_section_excluded(section):
+            output_bucket = document.output_bucket
+            output_key = (
+                f"{document.input_key}/sections/{section.section_id}/result.json"
+                if document.input_key
+                else None
+            )
+            stub_uri = write_skipped_stub(
+                document,
+                section,
+                stage="extraction",
+                output_bucket=output_bucket,
+                output_key=output_key,
+            )
+            if stub_uri:
+                section.extraction_result_uri = stub_uri
+            logger.info(
+                "Extraction skipped for excluded section %s (class=%s, reason=%s)",
+                section.section_id,
+                section.classification,
+                section.exclusion_reason or "excluded",
+            )
             return document
 
         # Prepare section metadata
@@ -1116,47 +7762,969 @@ class ExtractionService:
         try:
             t0 = time.time()
 
-            # Load document content
-            document_text = self._load_document_text(
-                document, section_info.sorted_page_ids
-            )
-            page_images = self._load_document_images(
-                document, section_info.sorted_page_ids
-            )
-
-            # Initialize extraction context
-            class_schema, attribute_descriptions = self._initialize_extraction_context(
-                section_info.class_label,
-                document_text,
-                page_images,
-                section_info.sorted_page_ids,
-                document,
-            )
-
-            # Handle empty schema case (early return)
-            if (
-                not class_schema.get(SCHEMA_PROPERTIES)
-                or not attribute_descriptions.strip()
-            ):
+            prepared = self._prepare_section_context(document, section, section_info)
+            if prepared is None:
+                # Empty schema — already handled (stub written).
                 return self._handle_empty_schema(
                     document, section, section_info, section_id, t0
                 )
+            content, system_prompt = prepared
 
-            # Build prompt content
-            content, system_prompt = self._build_extraction_content(
-                document, page_images
+            # Invoke model (pass checkpoint_data for agentic resume-on-timeout)
+            result = self._invoke_extraction_model(
+                content, system_prompt, section_info, checkpoint_data=checkpoint_data
             )
-
-            # Invoke model
-            result = self._invoke_extraction_model(content, system_prompt, section_info)
 
             # Save results
             self._save_results(document, section, result, section_info, section_id, t0)
 
+        except ExtractionOutputIncomplete:
+            # Already logged, already appended to document.errors, and already
+            # persisted as an error-severity issue by _fail_on_row_shortfall.
+            # Re-raised untouched so the two Bedrock-error matchers below cannot
+            # reclassify a row-shortfall message as an input overflow or an image
+            # rejection on some future wording change, and so the Step Functions
+            # cause stays the sentence a reader can act on.
+            raise
         except Exception as e:
+            from idp_common.utils.bedrock_utils import (
+                is_image_request_rejection,
+                is_input_token_overflow,
+            )
+
+            if is_image_request_rejection(e):
+                # Checked FIRST so the image case can never be absorbed by the
+                # overflow branch as Bedrock's wording evolves: the two families
+                # share vocabulary ("exceeds", "too large"), and overflow advice
+                # — fewer pages per shard, switch extraction mode — cannot fix an
+                # image that is too many pixels per side (#994). Measured against
+                # today's wording the overflow matcher does NOT claim
+                # "image exceed max allowed size for many-image requests", so this
+                # branch is what gives that error an explanation at all rather
+                # than a correction of a misrouting.
+                error_msg = self._explain_image_rejection(e, section_id)
+                logger.error(error_msg)
+                document.errors.append(error_msg)
+                raise ExtractionImageRejected(error_msg) from e
+            if is_input_token_overflow(e):
+                # The failure itself is the signal: the section never reaches the
+                # record, so the explanation travels in the exception (Step
+                # Functions cause, CloudWatch) and in document.errors. A new
+                # class name keeps #787's classification hard (not retried).
+                error_msg = self._explain_input_overflow(
+                    e,
+                    section_id,
+                    is_agentic=bool(self.config.extraction.agentic.enabled),
+                )
+                logger.error(error_msg)
+                document.errors.append(error_msg)
+                raise ExtractionInputTooLarge(error_msg) from e
             error_msg = f"Error processing section {section_id}: {str(e)}"
             logger.error(error_msg)
             document.errors.append(error_msg)
             raise
 
+        return document
+
+    def _prepare_section_context(
+        self,
+        document: Document,
+        section: Section,
+        section_info: SectionInfo,
+    ) -> tuple[list[dict[str, Any]], str] | None:
+        """Load page text/images, resolve page types, init context, build prompt.
+
+        Populates the per-section instance state (``self._page_texts``,
+        ``self._document_text``, ``self._page_images``, ``self._class_schema`` …)
+        and returns ``(content, system_prompt)``. Returns ``None`` when the class
+        schema is empty (caller writes the skip stub). Extracted from
+        ``process_document_section`` so the SFN shard/merge entry points can reuse
+        the identical preparation without duplicating it (single source of truth).
+        """
+        # Stash the document so per-shard grounding (in _build_assess_runner) can
+        # load each shard's OCR pageData without threading `document` through
+        # _invoke_extraction_model.
+        self._document = document
+
+        # Load per-page text first so the page-type resolver and the
+        # prompt-formatter can both consume it without re-reading S3.
+        page_id_to_text = self._load_page_texts(document, section_info.sorted_page_ids)
+        class_schema_for_resolver = self._get_class_schema(section_info.class_label)
+        section_info.page_type_presence = resolve_page_types(
+            class_schema_for_resolver, page_id_to_text
+        )
+        if section_info.page_type_presence.declared:
+            logger.info(
+                "Page-type resolution for section %s: present=%s missing=%s",
+                section.section_id,
+                sorted(section_info.page_type_presence.present_page_types),
+                sorted(section_info.page_type_presence.missing_page_types),
+            )
+        document_text = self._format_document_text(
+            section_info.sorted_page_ids,
+            page_id_to_text,
+            section_info.page_type_presence,
+        )
+        # Stash the per-page OCR text (in section page order) so the agentic
+        # path can shard the input by page range when concurrent batches are
+        # configured. Pages missing from page_id_to_text contribute "".
+        # Built BEFORE the images are loaded because the many-image dimension cap
+        # (#994) depends on how the pages will be sharded, and that is decided by
+        # the page TEXT — see _agentic_images_per_request.
+        self._page_texts = [
+            page_id_to_text.get(pid, "") for pid in section_info.sorted_page_ids
+        ]
+        page_images = self._load_document_images(
+            document, section_info.sorted_page_ids, page_texts=self._page_texts
+        )
+
+        # Initialize extraction context
+        class_schema, attribute_descriptions = self._initialize_extraction_context(
+            section_info.class_label,
+            document_text,
+            page_images,
+            section_info.sorted_page_ids,
+            document,
+        )
+
+        # Handle empty schema case (signal to caller).
+        if (
+            not class_schema.get(SCHEMA_PROPERTIES)
+            or not attribute_descriptions.strip()
+        ):
+            return None
+
+        # Build prompt content
+        content, system_prompt = self._build_extraction_content(document, page_images)
+
+        # Load OCR confidence data for table parsing tool (if enabled)
+        # Confidence data is only available from Textract OCR backend.
+        # For Bedrock OCR or other backends, skip loading — the tool
+        # handles missing confidence gracefully (confidence_available=false).
+        if (
+            AGENTIC_AVAILABLE
+            and self.config.extraction.agentic.enabled
+            and self.config.extraction.agentic.table_parsing.enabled
+            and self.config.extraction.agentic.table_parsing.use_confidence_data
+            and self.config.ocr.backend == "textract"
+        ):
+            confidence_data_by_page = self._load_confidence_data(
+                document, section_info.sorted_page_ids
+            )
+            set_confidence_data(confidence_data_by_page)
+            logger.info(
+                f"Loaded OCR confidence data for table parsing tool: "
+                f"{len(confidence_data_by_page)} pages"
+            )
+        elif AGENTIC_AVAILABLE and self.config.extraction.agentic.enabled:
+            set_confidence_data(None)
+            if (
+                self.config.extraction.agentic.table_parsing.enabled
+                and self.config.ocr.backend != "textract"
+            ):
+                logger.info(
+                    "Table parsing tool enabled without confidence data "
+                    f"(OCR backend: {self.config.ocr.backend})"
+                )
+
+        return content, system_prompt
+
+    def _inshard_assessment_enabled(self) -> bool:
+        """Whether the SEPARATE-mode in-shard assessment pass should run.
+
+        True only when assessment is enabled AND the integration mode keeps a
+        *separate* assessment inference (the second-turn per-shard path). The
+        ``integrated`` (single-prompt) mode does NOT use this — the extraction
+        inference itself emits confidence/bbox via ``_integrated_assessment_enabled``.
+        Either way the standalone AssessmentStep is bypassed for the agentic path.
+        """
+        if not self.config.extraction.confidence.enabled:
+            return False
+        return self.config.extraction.confidence.mode == "separate"
+
+    def _simple_integrated_list_downgrade(self) -> str | None:
+        """Why this section must NOT run Simple + integrated confidence, or None.
+
+        Simple + ``integrated`` (1S-TopK) puts values AND per-cell confidence for
+        the whole section into ONE response, and on a list-bearing class the
+        model stops emitting rows rather than erroring. Measured at the shipped
+        default extraction model on the v0.6.7 benchmark grid: 1–10 of 100 rows
+        across 4 of 4 repeats with none matching ground truth; 5–10 of 400; the
+        800-row document's list ABSENT entirely — every one reported COMPLETED
+        with scalar accuracy 1.000, and it is the cheapest and fastest cell
+        because it does the least work. Mean recall 0.294 (config-guidance §2.1).
+        Advanced + integrated is unaffected because sharding keeps each call small.
+
+        So when the section's class declares a top-level array property and
+        extraction is Simple, integrated confidence is downgraded to a SEPARATE
+        pass: the extraction prompt is the plain one, no inline confidence is
+        emitted, and the standalone Assessment step — which skips only when
+        ``explainability_info`` is already present — therefore runs. The section
+        gets complete rows plus batched confidence at the cost of one extra
+        inference; ``metadata.confidence_mode_effective`` /
+        ``confidence_mode_downgraded_reason`` and the Processing Flow say so (not
+        a ProcessingIssue — that flag is severity-blind and would badge every
+        document). Two opt-outs keep a class on 1S-TopK: a per-class
+        ``x-aws-idp-extraction-task-prompt`` (the downgrade works by swapping
+        the prompt, so a user-controlled prompt must not be half-applied) and
+        the explicit ``x-aws-idp-allow-integrated-lists: true`` flag for a class
+        whose lists the author has verified come back complete. Deliberately a
+        per-section runtime decision and not a config rejection: a stored config
+        that validated yesterday must still load today (the rollback trap), and
+        a scalar-only class keeps the single-inference saving.
+        """
+        if self._integrated_downgrade_checked:
+            return self._integrated_downgrade_reason
+        self._integrated_downgrade_checked = True
+        cfg = self.config.extraction
+        if (
+            not cfg.confidence.enabled
+            or cfg.confidence.mode != "integrated"
+            or cfg.agentic.enabled
+        ):
+            return None
+        from idp_common.config.schema_constants import (
+            SCHEMA_PROPERTIES,
+            SCHEMA_TYPE,
+            TYPE_ARRAY,
+        )
+
+        properties = (self._class_schema or {}).get(SCHEMA_PROPERTIES, {}) or {}
+        list_fields = sorted(
+            name
+            for name, spec in properties.items()
+            if isinstance(spec, dict) and spec.get(SCHEMA_TYPE) == TYPE_ARRAY
+        )
+        if not list_fields:
+            return None
+        from idp_common.config.flags import flag_is_true
+
+        if flag_is_true(
+            (self._class_schema or {}).get(X_AWS_IDP_ALLOW_INTEGRATED_LISTS)
+        ):
+            # Explicit opt-in (tolerant of the "true"/"false" strings a config
+            # round-trip can produce, and in agreement with the Prompt Preview). For a multi-instance class the flag rides on the
+            # wrapper (wrap_class_schema keeps every non-record-shape key there),
+            # so this reads it for both plain and wrapped classes.
+            logger.info(
+                "Class '%s' declares list fields %s but sets %s; keeping "
+                "integrated confidence as configured",
+                self._class_label,
+                list_fields,
+                X_AWS_IDP_ALLOW_INTEGRATED_LISTS,
+            )
+            return None
+        if (self._class_schema or {}).get(X_AWS_IDP_EXTRACTION_TASK_PROMPT):
+            # The class carries its own extraction task prompt. The downgrade
+            # works by swapping the prompt; when the user controls the prompt we
+            # must not half-apply it (plain-prompt gate False but TopK prompt
+            # sent would leave raw {G1,P1} candidate objects in the result). The
+            # override is an explicit choice, so that class keeps integrated mode.
+            logger.info(
+                "Class '%s' declares list fields but carries a per-class extraction "
+                "task prompt; leaving integrated confidence as configured",
+                self._class_label,
+            )
+            return None
+        self._integrated_downgrade_reason = (
+            "Simple extraction with integrated confidence loses list rows "
+            "silently (benchmarked mean recall 0.294; an 800-row list came back "
+            "absent while reporting COMPLETED). Class "
+            f"'{self._class_label}' declares list field(s) {list_fields}, so "
+            "confidence for this section is scored in a separate pass instead."
+        )
+        logger.warning(
+            "Downgrading integrated confidence to a separate pass for section "
+            f"class '{self._class_label}': list fields {list_fields}"
+        )
+        return self._integrated_downgrade_reason
+
+    def _integrated_assessment_enabled(self) -> bool:
+        """Whether the extraction inference should emit confidence/bbox INLINE.
+
+        True when confidence is enabled AND ``confidence.mode == "integrated"``,
+        EXCEPT for a Simple-mode section whose class declares list fields, which
+        is downgraded to a separate pass (see ``_simple_integrated_list_downgrade``
+        for the measured reason). In integrated mode the agent calls
+        ``provide_field_assessment`` in its own session (document already in
+        cached context — no second Bedrock pass), and the result rides the same
+        collation/grounding/emit path as separate mode.
+        """
+        if not self.config.extraction.confidence.enabled:
+            return False
+        if self.config.extraction.confidence.mode != "integrated":
+            return False
+        return self._simple_integrated_list_downgrade() is None
+
+    @staticmethod
+    def _reconcile_assessment_to_data(
+        assessment: dict[str, Any], extraction_results: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Force per-field assessment to index-align with the extracted data.
+
+        Thin delegate to the shared
+        :func:`idp_common.assessment.batching.reconcile_assessment_to_data` so the
+        agentic in-shard path and the standalone Assessment step share one
+        implementation. See that function for the full contract.
+        """
+        from idp_common.assessment.batching import reconcile_assessment_to_data
+
+        return reconcile_assessment_to_data(assessment, extraction_results)
+
+    def _assess_results_batched(
+        self,
+        assessment_service: Any,
+        *,
+        class_label: str,
+        extraction_results: dict[str, Any],
+        document_text: str,
+        page_images: list[bytes],
+    ) -> dict[str, Any]:
+        """Assess one scope, batching large list fields across multiple inferences.
+
+        Thin delegate to the shared
+        :func:`idp_common.assessment.batching.assess_results_batched` (the same
+        implementation the standalone Assessment step now uses) with the batch size
+        read from ``extraction.confidence.list_batch_size``. Threads the confidence
+        model + geometry mode (for token-aware first-pass sizing) and the resolved
+        escalation model (for the self-healing ladder) so the agentic in-shard
+        ``separate`` path is exactly as robust as the standalone step. Returns
+        ``{"assessment", "alerts", "metering", "parsing_succeeded",
+        "duration_seconds", "split_stats"}``.
+        """
+        from idp_common.assessment.batching import assess_results_batched
+
+        confidence_cfg = self.config.extraction.confidence
+        return assess_results_batched(
+            assessment_service,
+            class_label=class_label,
+            extraction_results=extraction_results,
+            document_text=document_text,
+            page_images=page_images,
+            batch_size=confidence_cfg.list_batch_size,
+            confidence_model_id=confidence_cfg.model,
+            geometry_mode=self.config.extraction.geometry.mode,
+            escalation_enabled=confidence_cfg.escalation_enabled,
+            escalation_model=assessment_service._resolve_confidence_escalation_model(
+                class_label
+            ),
+            max_escalation_rounds=confidence_cfg.max_escalation_rounds,
+            deadline_epoch=self._assessment_deadline_epoch,
+            max_concurrent_batches=self.config.extraction.agentic.max_concurrent_batches,
+            class_schema=assessment_service._get_class_schema(class_label),
+            default_confidence_threshold=self.config.hitl.confidence_threshold,
+        )
+
+    def _build_assess_runner(
+        self, section_info: SectionInfo, document: Document | None = None
+    ) -> "Any | None":
+        """Build the per-shard assess_runner closure (or None when disabled).
+
+        The closure reuses ``AssessmentService.assess_results`` over a single
+        shard's extracted values + that shard's already-loaded text/images, so
+        the in-shard assessment is byte-for-byte the same logic the standalone
+        Assessment step runs — just scoped to the shard and with no S3 round
+        trip. Returns ``None`` when in-shard assessment is not enabled, leaving
+        the default (no-assessment) extraction path completely unchanged.
+
+        When ``document`` is provided and OCR geometry grounding is on
+        (``geometry.mode`` not ``llm``/``off``), the shard also GROUNDS its own
+        rows against ONLY its own pages' OCR data right here — so grounding
+        scales per-shard exactly like the confidence assessment does, instead of
+        being deferred to a single full-section sweep in the merge step (which is
+        O(rows × all-pages) fuzzy matching and blew the merge Lambda's 900s ceiling
+        on large tables). The merge step then re-grounds with ``skip_grounded=True``,
+        a near-instant no-op over already-grounded leaves.
+        """
+        if not self._inshard_assessment_enabled():
+            return None
+
+        from idp_common.assessment.service import AssessmentService
+
+        assessment_service = AssessmentService(region=self.region, config=self.config)
+        class_label = section_info.class_label
+        geometry_mode = self.config.extraction.geometry.mode
+        sorted_page_ids = section_info.sorted_page_ids
+        ground_in_shard = (
+            document is not None
+            and geometry_mode not in ("llm", "off")
+            and bool(sorted_page_ids)
+        )
+
+        async def _assess_runner(
+            *, extracted_fields: dict[str, Any], payload: dict[str, Any]
+        ) -> dict[str, Any] | None:
+            extraction_results = extracted_fields or {}
+            if not extraction_results:
+                return None
+            document_text = payload.get("assess_document_text", "") or ""
+            page_images = payload.get("assess_page_images", []) or []
+
+            # assess_results does Bedrock I/O; run it off the event loop so the
+            # concurrent shard scheduler is not blocked.
+            import asyncio as _asyncio
+
+            def _run() -> dict[str, Any]:
+                # Batch large list fields across multiple inferences so the model
+                # reliably enumerates every row (a single call over a big list
+                # under-enumerates/omits it). Reconciliation inside keeps the
+                # per-row assessment index-aligned with the shard's data.
+                result = self._assess_results_batched(
+                    assessment_service,
+                    class_label=class_label,
+                    extraction_results=extraction_results,
+                    document_text=document_text,
+                    page_images=page_images,
+                )
+                shard_assessment = result.get("assessment") or {}
+                if ground_in_shard:
+                    self._ground_shard_assessment(
+                        assessment=shard_assessment,
+                        extracted_fields=extraction_results,
+                        payload=payload,
+                        document=document,
+                        section_info=section_info,
+                        geometry_mode=geometry_mode,
+                    )
+                # Prune assessment rows for phantom DATA rows in lockstep with
+                # what the merge drops from the data, so the persisted (already
+                # grounded) per-shard assessment stays index-aligned with the
+                # phantom-filtered merged data. MUST run AFTER grounding (grounding
+                # needs full 1:1 alignment); it only shrinks, so grounded rows that
+                # survive keep their boxes.
+                from idp_common.extraction.runtime import (
+                    _prune_phantom_rows_from_assessment,
+                )
+
+                _prune_phantom_rows_from_assessment(
+                    extraction_results, shard_assessment
+                )
+                return result
+
+            return await _asyncio.to_thread(_run)
+
+        return _assess_runner
+
+    def _ground_shard_assessment(
+        self,
+        *,
+        assessment: dict[str, Any],
+        extracted_fields: dict[str, Any],
+        payload: dict[str, Any],
+        document: Document,
+        section_info: SectionInfo,
+        geometry_mode: str,
+    ) -> None:
+        """Ground ONE shard's per-field assessment against ONLY its own pages.
+
+        Loads OCR ``pageData.json`` for just the shard's page slice (keyed by the
+        real global 1-indexed page number, exactly like the full-section path) and
+        grounds the shard's assessment leaves in place. Scoping to the shard's
+        pages both bounds the work (O(shard-rows × shard-pages) instead of
+        O(all-rows × all-pages)) and improves correctness — a row's value can only
+        appear on its own pages, so cross-page false matches are avoided. Row-order
+        disambiguation of repeated values is naturally scoped to the shard's rows.
+        Best-effort: grounding never fails the shard's assessment.
+        """
+        if not assessment:
+            return
+        try:
+            from idp_common.assessment.ocr_grounding import (
+                ground_assessment_geometry,
+                load_page_ocr_data,
+            )
+
+            sorted_page_ids = section_info.sorted_page_ids
+            page_start = payload.get("page_start", 0)
+            page_end = payload.get("page_end", len(sorted_page_ids))
+            shard_page_ids = sorted_page_ids[page_start:page_end]
+            # page_offset=page_start so this shard's pages number relative to the
+            # WHOLE section (section page 1 = section's first page), giving the same
+            # section-relative geometry.page the merge/standalone paths produce.
+            page_data_by_page = load_page_ocr_data(
+                document.pages, shard_page_ids, page_offset=page_start
+            )
+            if not page_data_by_page:
+                return
+            # Observability: grounding is pure-CPU value→OCR-line matching; on a
+            # large table it used to run for minutes SILENTLY (the exact-index fast
+            # path now keeps it ~seconds, but log the size + duration so a
+            # regression is never an invisible hang again — the user asked for every
+            # heavy step to be traceable in CloudWatch).
+            row_count = sum(
+                len(v) for v in extracted_fields.values() if isinstance(v, list)
+            )
+            _t0 = time.time()
+            ground_assessment_geometry(
+                assessment,
+                extracted_fields,
+                page_data_by_page,
+                geometry_mode,
+                self._class_schema,
+            )
+            logger.info(
+                "In-shard OCR grounding: pages %s-%s, %d page(s), ~%d list row(s) "
+                "grounded in %.2fs (geometry=%s)",
+                page_start,
+                page_end,
+                len(page_data_by_page),
+                row_count,
+                time.time() - _t0,
+                geometry_mode,
+            )
+        except Exception as e:  # noqa: BLE001 - grounding is advisory
+            logger.warning(
+                "In-shard OCR grounding failed for pages %s-%s (keeping ungrounded): %s",
+                payload.get("page_start"),
+                payload.get("page_end"),
+                e,
+            )
+
+    def _assess_single_agent(
+        self,
+        *,
+        extracted_fields: dict[str, Any],
+        section_info: SectionInfo,
+        metering: dict[str, Any],
+    ) -> None:
+        """Run assessment over the whole section for the non-sharded agentic path.
+
+        Equivalent to a single full-section shard: builds the assessment over the
+        already-loaded section text/images (no S3 re-read) and writes the result
+        into ``metering`` under the same ``_merged_assessment`` markers the
+        sharded path uses, so ``_save_results`` grounds + emits it identically.
+        Best-effort: assessment never fails extraction.
+        """
+        if not extracted_fields:
+            return
+        try:
+            from idp_common.assessment.service import AssessmentService
+            from idp_common.extraction.agentic_idp import _accumulate_metering
+
+            assessment_service = AssessmentService(
+                region=self.region, config=self.config
+            )
+            # Batch large list fields (same as the sharded path) so the model
+            # reliably enumerates every row instead of omitting/under-counting it.
+            batched = self._assess_results_batched(
+                assessment_service,
+                class_label=section_info.class_label,
+                extraction_results=extracted_fields,
+                document_text=self._document_text,
+                page_images=self._page_images,
+            )
+            metering["_merged_assessment"] = batched["assessment"]
+            metering["_merged_assessment_alerts"] = batched["alerts"]
+            if batched.get("split_stats"):
+                metering["_merged_assessment_split_stats"] = batched["split_stats"]
+            _accumulate_metering(metering, batched["metering"])
+        except Exception as e:  # noqa: BLE001 - assessment is advisory
+            logger.warning(
+                "Single-agent in-shard assessment failed (keeping extraction): %s", e
+            )
+
+    def _build_agentic_shard_plan(
+        self, section_info: SectionInfo
+    ) -> tuple[str, type, list[dict[str, Any]], str | None]:
+        """Build the agentic shard plan for the SFN runtime.
+
+        Returns ``(model_id, shard_model, shard_payloads, custom_instruction)``
+        mirroring the construction in ``_invoke_extraction_model``'s agentic
+        branch, but standalone so the per-shard SFN Lambda (and the merge step)
+        can each rebuild the identical plan deterministically. Requires
+        ``_prepare_section_context`` to have populated the per-section state.
+
+        The model is the SHARD transport model (``_shard_transport_model``), which is
+        what both consumers of this plan need: it is the shard Lambda's
+        ``extraction_tool``, and it is what the merge step re-hydrates each shard's
+        persisted fields with. The whole-section model is a different object — the
+        merge step builds it separately for the validation/escalation and
+        completeness passes, which must see the real presence and row-count rules.
+
+        The returned ``custom_instruction`` is ONE instruction for **all** of the
+        section's shards (the in-process runtime shares it the same way), so it
+        cannot name a single shard's page range. It does not need to:
+        ``agentic_idp._run_shard_agent`` appends each shard's own "shard i of N,
+        covering pages A-B of T" sentence directly after it.
+        """
+        class_model_override = self._class_schema.get(X_AWS_IDP_EXTRACTION_MODEL)
+        model_id = class_model_override or self.config.extraction.model
+
+        # SHARD transport model — scalar leaves nullable so the agent can abstain on
+        # a cell (#782), and a required array or nested object nullable too because a
+        # shard is told to leave an out-of-shard field null (#1078). `required` is
+        # KEPT in both, so an omitted key or an empty tool call still fails.
+        shard_model = self._shard_transport_model(
+            self._class_schema, section_info.class_label
+        )
+
+        schema_analysis = self._analyze_schema_for_table_requirements(
+            self._class_schema
+        )
+        ocr_analysis = self._analyze_ocr_for_tables(self._document_text)
+        # Pre-flight parse FIRST: its result feeds BOTH the shard agents'
+        # instruction block and the lazy_images decision below. It used to run
+        # only for lazy_images, after the instruction was already built, so the
+        # shard agents never learned that their tables had already been parsed
+        # (issue #900) — no row/column summary and no "finalize reads the rows
+        # from state" workflow, which is exactly the guidance that stops an agent
+        # re-emitting every row as output tokens.
+        preflight_parse_result = self._preflight_table_parse(ocr_analysis)
+        custom_instruction = self._append_preflight_table_guidance(
+            self._build_table_parsing_guidance(
+                schema_analysis=schema_analysis, ocr_analysis=ocr_analysis
+            ),
+            preflight_parse_result,
+            # Shard agents read the block's page-marker rule and its section-wide
+            # row totals against a slice of the section; the note reconciles both.
+            scope_note=self._SHARD_SCOPE_NOTE,
+        )
+
+        # Same prompt-selection as the single-pass agentic path — use
+        # ``select_extraction_task_prompt`` so integrated-confidence variants
+        # (which have different ``{DOCUMENT_IMAGE}`` slot presence) are
+        # honoured here too. Reading ``self.config.extraction.task_prompt``
+        # directly missed those variants, so a stack running with
+        # ``confidence.mode == 'integrated'`` would see the sharded path's
+        # send-images decision disagree with the single-pass path's for the
+        # same document. Falling back to ``self.config.extraction.task_prompt``
+        # matches the historical default when no selector rule fires.
+        from idp_common.extraction.prompt_assembly import (
+            select_extraction_task_prompt,
+        )
+
+        prompt_template = (
+            select_extraction_task_prompt(self.config.extraction)
+            or self.config.extraction.task_prompt
+            or ""
+        )
+        # Same lazy_images decision as the single-pass agentic path. This path is
+        # the DEFAULT for multi-page table documents, and it used to skip the
+        # check entirely: every shard carried its page images on every agent
+        # turn, so the shipped `lazy_images: true` default had no effect where it
+        # mattered most.
+        #
+        # ``preflight_parse_result`` was computed above (line 7247) to feed
+        # BOTH ``custom_instruction`` (#900 wired the shard agents into the
+        # pre-flight guidance) AND this lazy_images decision, so we reuse
+        # it here rather than parsing twice. My earlier "skip preflight
+        # when prompt has no ``{DOCUMENT_IMAGE}``" optimization was
+        # obsoleted by #900 — the parse now runs unconditionally for the
+        # instruction block, so gating the lazy_images-side call on the
+        # prompt saved nothing.
+        prompt_wants_images = "{DOCUMENT_IMAGE}" in prompt_template
+        send_images = self._apply_lazy_images(
+            prompt_wants_images,
+            preflight_parse_result,
+        )
+        shard_payloads = self._build_shard_payloads(
+            prompt_template=prompt_template,
+            send_images=send_images,
+            max_shards=self.config.extraction.agentic.max_concurrent_batches,
+        )
+        return model_id, shard_model, shard_payloads, custom_instruction
+
+    def _persist_section_id(self, section_info: SectionInfo) -> str:
+        """Deterministic per-section id used for shard persistence keys.
+
+        Delegates to ``runtime.shard_persistence_section_id`` so this value and the
+        prefix ``_cleanup_shards`` / ``delete_shard_results`` list have exactly one
+        definition between them.
+        """
+        from idp_common.extraction.runtime import shard_persistence_section_id
+
+        return shard_persistence_section_id(
+            section_info.class_label, section_info.sorted_page_ids
+        )
+
+    def run_one_section_shard(
+        self,
+        document: Document,
+        section_id: str,
+        shard_index: int,
+        persistence: Any,
+        deadline_epoch: float | None = None,
+    ) -> dict[str, Any]:
+        """Run ONE shard of a section — the nested-SFN Distributed Map body.
+
+        Reuses ``extract_one_shard`` (idempotent skip-if-complete) over the SAME
+        shard plan the in-process runtime builds. The shard's full result is
+        persisted to S3 via ``persistence``; this returns a small descriptor so
+        the Map collects only pointers. This is the SFN counterpart to one
+        asyncio task in ``InProcessRuntime`` — same primitive, different scheduler.
+
+        ``deadline_epoch`` (absolute epoch seconds, from the shard Lambda's
+        ``context.get_remaining_time_in_millis()``) bounds the in-shard confidence
+        self-healing ladder so a truncation-retry storm on a small-cap confidence
+        model stops -- keeping every row already recovered, and reporting
+        ``assessment_incomplete`` with the time budget named if any row is still
+        unscored (``assessment_deadline_reached`` only when coverage completed
+        anyway) -- instead of running the shard Lambda into its 900s wall.
+        """
+        import asyncio as _asyncio
+
+        from idp_common.extraction.agentic_idp import default_shard_runner
+        from idp_common.extraction.runtime import extract_one_shard
+
+        self._reset_context()
+        self._assessment_deadline_epoch = deadline_epoch
+        section = self._validate_and_find_section(document, section_id)
+        if not section:
+            raise ValueError(f"Section {section_id} not found")
+        section_info = self._prepare_section_info(document, section)
+        if self._prepare_section_context(document, section, section_info) is None:
+            return {"status": "empty_schema", "shard_index": shard_index}
+
+        model_id, shard_model, shard_payloads, custom_instruction = (
+            self._build_agentic_shard_plan(section_info)
+        )
+        if not shard_payloads or shard_index >= len(shard_payloads):
+            raise ValueError(
+                f"Shard index {shard_index} out of range "
+                f"(planned {len(shard_payloads)} shards)"
+            )
+        payload = shard_payloads[shard_index]
+
+        fields, response = _asyncio.run(
+            self._run_shard_or_explain_overflow(
+                extract_one_shard,
+                shard_index=shard_index,
+                total_shards=len(shard_payloads),
+                payload=payload,
+                model_id=model_id,
+                data_format=shard_model,
+                config=self.config,
+                section_id=self._persist_section_id(section_info),
+                custom_instruction=custom_instruction,
+                persistence=persistence,
+                shard_runner=default_shard_runner,
+                assess_runner=self._build_assess_runner(section_info, self._document),
+                schema_validator=self._shard_schema_validator(),
+            )
+        )
+        return {
+            "status": "complete",
+            "shard_index": shard_index,
+            "page_start": payload["page_start"],
+            "page_end": payload["page_end"],
+        }
+
+    def plan_section_shards(
+        self, document: Document, section_id: str
+    ) -> dict[str, Any]:
+        """Plan the shards for a section (the SFN runtime's planning step).
+
+        Returns ``{shard_mode, num_shards, shards:[{shard_index,page_start,
+        page_end}]}``. ``shard_mode`` is False when sharding does not apply
+        (single-pass, in-process runtime, or <=1 shard) — the caller then runs
+        the normal whole-section path instead of the Distributed Map.
+        """
+        self._reset_context()
+        section = self._validate_and_find_section(document, section_id)
+        if not section:
+            raise ValueError(f"Section {section_id} not found")
+        section_info = self._prepare_section_info(document, section)
+        # Diagnostic: what the plan step actually sees for this section — page
+        # count on the section, on the resolved section_info, and how many pages
+        # are present in the document. A large section that reports few pages here
+        # is why it would fall to single-pass.
+        logger.info(
+            "plan_section_shards ENTRY: section=%s class=%s section.page_ids=%d "
+            "section_info.sorted_page_ids=%d document.pages=%d",
+            section_id,
+            getattr(section, "classification", "?"),
+            len(getattr(section, "page_ids", []) or []),
+            len(getattr(section_info, "sorted_page_ids", []) or []),
+            len(getattr(document, "pages", {}) or {}),
+        )
+
+        agentic = self.config.extraction.agentic
+        runtime_choice = (getattr(agentic, "runtime", None) or "in_process").lower()
+        num_batches = agentic.max_concurrent_batches
+        if (
+            not agentic.enabled
+            or runtime_choice not in ("step_functions", "stepfunctions", "sfn")
+            or num_batches <= 1
+        ):
+            logger.info(
+                "plan_section_shards: single-pass (agentic=%s runtime=%s "
+                "max_concurrent_batches=%s) for section %s",
+                agentic.enabled,
+                runtime_choice,
+                num_batches,
+                section_id,
+            )
+            return {"shard_mode": False, "num_shards": 0, "shards": []}
+
+        if self._prepare_section_context(document, section, section_info) is None:
+            logger.info(
+                "plan_section_shards: empty schema for section %s (class=%s) — "
+                "single-pass",
+                section_id,
+                section_info.class_label,
+            )
+            return {"shard_mode": False, "num_shards": 0, "shards": []}
+
+        _model_id, _dyn, shard_payloads, _ci = self._build_agentic_shard_plan(
+            section_info
+        )
+        # Explicit trace of the shard decision (item 3 observability): page count,
+        # budgets, and resulting shard count — so a "why didn't it shard?" is
+        # answerable from CloudWatch alone.
+        logger.info(
+            "plan_section_shards: section=%s class=%s pages=%d "
+            "shard_token_budget=%d max_pages_per_shard=%d max_concurrent_batches=%d "
+            "-> %d shard payload(s)",
+            section_id,
+            section_info.class_label,
+            len(self._page_texts),
+            self._shard_token_budget(),
+            self._max_pages_per_shard(),
+            num_batches,
+            len(shard_payloads),
+        )
+        if len(shard_payloads) <= 1:
+            return {
+                "shard_mode": False,
+                "num_shards": len(shard_payloads),
+                "shards": [],
+            }
+
+        shards = [
+            {
+                "shard_index": i,
+                "page_start": p["page_start"],
+                "page_end": p["page_end"],
+            }
+            for i, p in enumerate(shard_payloads)
+        ]
+        return {
+            "shard_mode": True,
+            "num_shards": len(shards),
+            "shards": shards,
+            "persist_section_id": self._persist_section_id(section_info),
+        }
+
+    def merge_section_shards(
+        self,
+        document: Document,
+        section_id: str,
+        persistence: Any,
+        deadline_epoch: float | None = None,
+    ) -> Document:
+        """Merge per-shard results from S3 into the final section result.
+
+        The SFN merge state calls this after the Distributed Map completes. It
+        reloads every shard's persisted result, merges them with
+        ``merge_shard_dicts`` (page-ordered), runs the same validation/escalation
+        + completeness checks as the in-process path, and saves results — so the
+        SFN path and in-process path produce identical output.
+
+        ``deadline_epoch`` (from the merge Lambda's remaining time) bounds any
+        residual confidence self-healing done here (e.g. re-scoring reconcile-padded
+        rows) so it can't run the merge Lambda into its 900s wall.
+        """
+        from idp_common.extraction.runtime import merge_shard_dicts
+
+        t0 = time.time()
+        self._reset_context()
+        self._assessment_deadline_epoch = deadline_epoch
+        section = self._validate_and_find_section(document, section_id)
+        if not section:
+            raise ValueError(f"Section {section_id} not found")
+        section_info = self._prepare_section_info(document, section)
+        if self._prepare_section_context(document, section, section_info) is None:
+            return self._handle_empty_schema(
+                document, section, section_info, section_id, t0
+            )
+
+        model_id, shard_model, shard_payloads, _ci = self._build_agentic_shard_plan(
+            section_info
+        )
+        # The merge re-hydrates each shard with the model that produced it, then hands
+        # the validation/escalation and completeness passes the WHOLE-SECTION model,
+        # whose presence and row-count rules are the ones that apply to the merged
+        # result (#1078).
+        dynamic_model = self._transport_model(
+            self._class_schema, section_info.class_label
+        )
+        persist_section_id = self._persist_section_id(section_info)
+
+        # Load each shard's persisted result.
+        shard_dicts: list[dict[str, Any]] = []
+        missing: list[int] = []
+        for i, p in enumerate(shard_payloads):
+            cached = persistence.load(
+                persist_section_id, p["page_start"], p["page_end"]
+            )
+            if not cached or cached.get("extracted_fields") is None:
+                missing.append(i)
+            else:
+                shard_dicts.append(cached)
+        if missing:
+            raise RuntimeError(
+                f"Cannot merge section {section_id}: shard(s) {missing} have no "
+                "persisted result (Distributed Map should have completed them)."
+            )
+
+        merged_dict, merged_metering, conflicts = merge_shard_dicts(
+            shard_dicts, shard_model
+        )
+        structured_data = shard_model(**merged_dict)
+        extracted_fields = structured_data.model_dump(mode="json")
+        if conflicts:
+            merged_metering["_shard_scalar_conflicts"] = conflicts
+        parsing_succeeded = True
+
+        # Same validation/escalation + completeness as the in-process path.
+        self._pending_validation_metadata = None
+        self._pending_abstained_fields = None
+        self._pending_extraction_model = model_id
+        message_prompt: Any = ""
+        (
+            extracted_fields,
+            structured_data,
+            validation_metadata,
+            escalation_metering,
+            parsing_succeeded,
+        ) = self._validate_and_maybe_escalate(
+            extracted_fields=extracted_fields,
+            structured_data=structured_data,
+            data_model=dynamic_model,
+            model_id=model_id,
+            message_prompt=message_prompt,
+            agentic_images=[],
+            custom_instruction=None,
+            section_info=section_info,
+            parsing_succeeded=parsing_succeeded,
+        )
+        if validation_metadata is not None:
+            self._pending_validation_metadata = validation_metadata
+        # Abstentions, recorded regardless of validation.enabled: with nullable
+        # scalar leaves a null cell no longer trips the Pydantic guard, so this
+        # is what makes an abstention attributable on a stack that has
+        # validation switched off (v0.6-migrated stacks carry enabled: false).
+        abstained, abstained_total = required_null_paths(
+            extracted_fields, self._class_schema
+        )
+        self._pending_abstained_fields = (
+            {"count": abstained_total, "paths": abstained} if abstained_total else None
+        )
+        if escalation_metering:
+            from idp_common.extraction.agentic_idp import _accumulate_metering
+
+            _accumulate_metering(merged_metering, escalation_metering)
+        self._check_extraction_completeness(
+            extracted_data=structured_data,
+            data_model=dynamic_model,
+            section_label=section_info.class_label,
+        )
+
+        result = ExtractionResult(
+            extracted_fields=extracted_fields,
+            metering=merged_metering,
+            parsing_succeeded=parsing_succeeded,
+            total_duration=time.time() - t0,
+        )
+        self._save_results(document, section, result, section_info, section_id, t0)
         return document

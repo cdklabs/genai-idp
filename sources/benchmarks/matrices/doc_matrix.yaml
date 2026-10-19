@@ -1,0 +1,163 @@
+# =============================================================================
+# Benchmark document matrix
+# =============================================================================
+# Two corpora (per the ground-truth strategy):
+#   A. SYNTHETIC (exact GT) — generated with known field values + SEQ-tagged list
+#      rows, so completeness/accuracy/scaling are measured EXACTLY. Controls size,
+#      list count, row width, OCR-noise.
+#   B. REFERENCE (real, labeled) — existing test sets with human/curated baselines,
+#      for real-world accuracy (messy documents the synthetic set can't emulate).
+# Each doc names its GT source and the config-class it should run under.
+# =============================================================================
+
+# --- A. Synthetic, exact ground truth (generators in corpus/generators) --------
+synthetic:
+  # generator: bank_statement (list-heavy, the scaling workhorse)
+  #   params: rows, cols(3|8), lists, desc_len(short|long), ocr_noise(0..1)
+  - {id: tiny_form,       gen: bank_statement, rows: 5,    cols: 3, lists: 1, tag: doc_type=form}
+  - {id: small_narrow,    gen: bank_statement, rows: 100,  cols: 3, lists: 1, tag: size=small}
+  - {id: med_narrow,      gen: bank_statement, rows: 400,  cols: 3, lists: 1, tag: size=medium}
+  - {id: large_narrow,    gen: bank_statement, rows: 800,  cols: 3, lists: 1, tag: size=large}
+  - {id: xl_narrow,       gen: bank_statement, rows: 1600, cols: 3, lists: 1, tag: size=xl}
+  # scaling series (row-count sweep for the scaling suite)
+  - {id: scale_25,        gen: bank_statement, rows: 25,   cols: 3, lists: 1, series: scaling}
+  - {id: scale_100,       gen: bank_statement, rows: 100,  cols: 3, lists: 1, series: scaling}
+  - {id: scale_400,       gen: bank_statement, rows: 400,  cols: 3, lists: 1, series: scaling}
+  - {id: scale_800,       gen: bank_statement, rows: 800,  cols: 3, lists: 1, series: scaling}
+  - {id: scale_1200,      gen: bank_statement, rows: 1200, cols: 3, lists: 1, series: scaling}
+  - {id: scale_1600,      gen: bank_statement, rows: 1600, cols: 3, lists: 1, series: scaling}
+  - {id: scale_3200,      gen: bank_statement, rows: 3200, cols: 3, lists: 1, series: scaling}
+  # list-content variation (isolate row-count vs width vs #lists vs noise)
+  - {id: wide_400,        gen: bank_statement, rows: 400,  cols: 8, lists: 1, tag: shape=wide}
+  - {id: manylists_400,   gen: bank_statement, rows: 400,  cols: 3, lists: 8, tag: shape=manylists}
+  - {id: longdesc_100,    gen: bank_statement, rows: 100,  cols: 3, lists: 1, desc_len: long, tag: shape=longtext}
+  - {id: noisy_400,       gen: bank_statement, rows: 400,  cols: 3, lists: 1, ocr_noise: 0.15, tag: shape=noisy}
+  # a non-list doc type for breadth (flat key/value form)
+  - {id: kv_form,         gen: kv_form,        fields: 25,  tag: doc_type=keyvalue}
+  # value_noise: cells rendered the way real statements render them (currency
+  # symbols, accounting negatives, both thousands conventions, named months) with
+  # the TYPED value as truth. This is the only doc in the corpus where per-row
+  # value handling is measurable — every other doc renders values essentially as
+  # the model returns them, which is why an enforcement A/B on them showed 81
+  # value repairs and an accuracy delta of exactly zero. Scored by cell_accuracy.
+  - {id: valuenoise_100,  gen: bank_statement, rows: 100,  cols: 3, lists: 1, value_noise: true, tag: shape=valuenoise}
+  - {id: valuenoise_400,  gen: bank_statement, rows: 400,  cols: 3, lists: 1, value_noise: true, tag: shape=valuenoise}
+  # Boundary detection, OVER-MERGE direction (#653). Two complete back-to-back
+  # statements, each with its own identity block, so the correct answer is
+  # unambiguously 2 sections. This is the case a naive over-split fix REGRESSES:
+  # a prompt biased toward "continue" collapses both into one section, and #653
+  # measured the unfixed prompt at 1/10 here. Testing only the over-split
+  # direction (`small_narrow` under llm_determined) would hide that.
+  - {id: twodocs_2x20,    gen: bank_statement, rows: 20,   cols: 3, lists: 1, documents: 2, tag: shape=twodocs}
+  # Boundary detection with PAGINATION — the signal the #653 rules check FIRST.
+  # `small_narrow` deliberately has none, which makes it the hard case; real
+  # statements paginate, so this is the COMMON case and the pair isolates whether
+  # a residual over-split is "the rules do not work" or "this document withholds
+  # their primary evidence".
+  - {id: paginated_3pg,   gen: bank_statement, rows: 100,  cols: 3, lists: 1, paginate: true, tag: shape=paginated}
+  # Running identity header (title + account number + period) reprinted on every
+  # page, NO pagination — the #750 shape, which DOES reproduce with this knob
+  # (0/5 correct on Nova 2 Lite and Haiku 4.5, before and after #726). Not in any
+  # release-gate suite: it is a documented hard case whose supported fix is the
+  # per-class `BOUNDARY:` description sentence, kept here so a candidate rule can
+  # be checked against it (see docs/classification.md, "Known failure mode").
+  - {id: repeathdr_3pg,   gen: bank_statement, rows: 100,  cols: 3, lists: 1, repeat_header: true, tag: shape=runninghdr}
+  # --- High-difficulty doc for the OpenAI GPT-6 Astra value study -----------------
+  #
+  # SIZE A FIXTURE BY PAGE COUNT, NOT BY TEXT. This is the lesson of the first
+  # attempt at this study, which shipped a 164-page fixture believing it was
+  # ~100,000 tokens and watched every model reject it. What Simple mode actually
+  # sends is dominated by PAGE IMAGES, not OCR text:
+  #
+  #   a 300-DPI Letter page image = 2550 x 3300 / 750 = ~11,220 tokens
+  #   the OCR text of that same page                  =     ~600 tokens
+  #
+  # (750 px/token is Bedrock's own image formula, which
+  # ExtractionService._estimate_simple_input applies.) So the pipeline costs
+  # ~12,000 tokens PER PAGE, ~19x the text, and the practical Simple-mode ceiling
+  # is a PAGE count:
+  #
+  #   Sonnet 5   (200K window, 140,000 usable at the 0.30 buffer) -> ~11 pages
+  #   Astra      (1.05M window, 735,000 usable)                   -> ~61 pages
+  #
+  # Measured live on IDP1 (2026-09-11), which is where those numbers come from:
+  # an 81-page doc estimated 964,223 tokens and a 164-page doc 1,971,931 — both
+  # rejected by Astra as well as Sonnet 5. The discriminating band for a
+  # "big window earns its price" cell is therefore roughly 12-61 PAGES, and three
+  # pre-existing fixtures already sit in it: large_narrow (17pp, ~203K),
+  # scale_1200 (25pp, ~299K) and scale_1600 (33pp, ~395K). Only a DIFFICULTY
+  # fixture had to be added.
+  #
+  # `dense_250` — every hard knob at once at a size Astra can actually hold
+  # (26 pages, ~304,000 est. tokens): 8 columns, 4 interleaved lists, long
+  # free-text descriptions, 15% OCR noise, and value_noise so per-row truth is
+  # TYPED (currency symbols, accounting negatives, both thousands conventions,
+  # named months). Sonnet 5 cannot take it in one request, so pair it with
+  # advanced mode (which shards) to separate "more capable" from "bigger window".
+  - {id: dense_250,       gen: bank_statement, rows: 250,  cols: 8, lists: 4, desc_len: long, ocr_noise: 0.15, value_noise: true, tag: shape=dense}
+
+# --- B. Reference, real labeled sets (already in the stack testset bucket) ------
+# Reference corpora are test SETS on the stack (no local PDF). run_matrix launches
+# each through the TestRunner with the cell's config version and `n` documents,
+# and scores every document with analyze.score_reference (#766). `class` names the
+# make_configs.py --class whose base config the cell axes are merged onto — build
+# it before running a suite that names the corpus:
+#   make_configs.py --suite <suite> --class realkie [--set ...]
+reference:
+  - {id: realkie,   class: realkie,        testset: realkie-fcc-verified, config: realkie-fcc-verified, n: 20, tag: real=forms}
+  - {id: ocr_bench, class: ocr_bench,      testset: ocr-benchmark,        config: ocr-benchmark,        n: 20, tag: real=mixed}
+  - {id: bank_real, class: bank_statement, testset: samples-tables,       config: bank-statement-sample, n: 1, tag: real=bankstmt}
+
+# --- Doc groupings referenced by suites in config_matrix.yaml ------------------
+# NOTE: core_docs are all bank_statement-class (transaction-list) documents, scored
+# against that schema. kv_form is a FLAT key/value form and must NOT be scored under
+# the bank_statement schema (it pins scalar_accuracy to a meaningless ~0.04); it needs
+# its own doc-class config (future work) — so it is intentionally excluded here.
+groups:
+  core_docs:      [tiny_form, small_narrow, med_narrow, large_narrow, wide_400, manylists_400, longdesc_100, realkie, ocr_bench]
+  # corefast: the reliably-completable subset (all lists <=100 rows). Advanced/
+  # agentic mode + granular assessment on >=400-row docs TIMES OUT the 900s
+  # assessment Lambda on v0.5.16 (Step Functions then retries up to 8x @2.5x
+  # backoff -> ~2h/doc before failing), so a full-grid cross-version A/B must use
+  # docs whose assessment fits one Lambda invocation on BOTH versions.
+  corefast:       [tiny_form, small_narrow, longdesc_100]
+  # core_synth: core_docs minus the two reference CORPORA (realkie, ocr_bench are
+  # 20-doc test sets each, so a 10-cell grid over them is 400 extra document runs).
+  # This is the grid the config-guidance paper's cross-config matrix is computed on:
+  # exact-ground-truth synthetic list docs only, one run per (cell, doc).
+  core_synth:     [tiny_form, small_narrow, med_narrow, large_narrow, wide_400, manylists_400, longdesc_100]
+  scaling_series: [scale_25, scale_100, scale_400, scale_800, scale_1200, scale_1600, scale_3200]
+  # astra_docs: the model-premium study (see the `astravalue` suite). Ordered by
+  # PAGE COUNT, because pages — not rows and not text — are what decides whether a
+  # document fits (see the sizing note above the `dense_250` entry):
+  #   small_narrow  3pp  ~35K   both models fit: the control where a premium model
+  #                             should NOT pay for itself
+  #   med_narrow    9pp  ~108K  both still fit, at 3x the size: still a control
+  #   large_narrow 17pp  ~203K  Sonnet 5 CANNOT take this in one request; Astra can
+  #   dense_250    26pp  ~304K  Astra-only AND maximally difficult (8 cols, 4 lists,
+  #                             long text, OCR noise, typed value truth)
+  # `scale_3200` (66pp, ~790K) is deliberately excluded — it exceeds ASTRA too, so
+  # it belongs to `astracap`, where that ceiling is the finding.
+  astra_docs:     [small_narrow, med_narrow, large_narrow, dense_250]
+  # opus_docs: the Opus 5.5 vs Opus 5 pair (see the `opus55value` suite). A SUBSET
+  # of astra_docs, and the two it drops are dropped for a reason that would
+  # otherwise waste the whole suite: `large_narrow` (17pp ~203K) and `dense_250`
+  # (26pp ~304K) are what they are in astra_docs because Astra's window reaches
+  # them and Sonnet 5's does not — that asymmetry IS the Astra finding. Opus 5 and
+  # Opus 5.5 share one window and one sizing budget, so in simple mode both arms
+  # would be refused on both documents, and an A/B whose two arms fail identically
+  # measures nothing while still being billed. The advanced arms would survive by
+  # sharding, but then only half the suite carries information.
+  #
+  # So the cost/quality ratio is measured where both arms actually run, and the
+  # ceiling question is left to `astracap`, which already owns it for every model.
+  opus_docs:      [small_narrow, med_narrow]
+  all:            "*"
+
+# Notes:
+# - Synthetic docs carry exact GT (corpus/manifest.yaml -> <id>.truth.json). Accuracy
+#   = field-exact match; list completeness = distinct SEQ recovered / total; plus the
+#   truncation point (longest contiguous prefix) and dup/gap counts.
+# - Reference docs use the stack's evaluation baseline (weighted_overall_score).
+# - Each synthetic doc runs under the matching generator's schema/config class; the
+#   bank_statement class carries the Transactions list; kv_form a flat schema.

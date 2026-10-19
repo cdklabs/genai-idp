@@ -1,13 +1,13 @@
 # DynamoDB Module - Direct DynamoDB Integration
 
-The `dynamodb` module provides direct DynamoDB integration for the IDP Common package, allowing Lambda functions to interact with the TrackingTable without going through AppSync GraphQL API.
+The `dynamodb` module provides direct DynamoDB integration for the IDP Common package. It is **the only** path by which Lambda functions read and write document tracking state: they interact with the TrackingTable through this module, either directly or through the [document service factory](../docs_service_README.md), which always returns `DocumentDynamoDBService`. AWS AppSync was removed from the solution — see [AppSync → REST API Migration](../../../../docs/migration-appsync-to-rest.md).
 
 ## Overview
 
-This module is designed to replace AppSync dependencies in Lambda functions while maintaining the same functionality and data structures. It provides:
+The module provides:
 
 - Direct DynamoDB operations using boto3
-- Document CRUD operations matching AppSync schema
+- Document CRUD operations against the TrackingTable
 - Transaction support for atomic operations
 - Error handling and logging
 - TTL support for document expiration
@@ -24,6 +24,24 @@ Low-level client for DynamoDB operations:
 - `scan()` - Scan table with filters
 - `query()` - Query with key conditions
 
+`put_item()` and `update_item()` both take an optional `condition_expression`,
+evaluated by DynamoDB against the item as it exists at write time and surfaced as a
+`DynamoDBError` with `error_code == "ConditionalCheckFailedException"`. **Pass one
+whenever the value you are writing was computed from a value you read.** Without it
+the write is unconditional, so two callers that read the same state both succeed and
+the loser's contribution is gone with nothing raising — the read cannot serve as its
+own guard, because nothing ties it to the write. `attribute_exists(<key>)` is the
+narrowest useful form: `update_item` is an upsert, so with no condition an item
+deleted between the read and the write is silently re-created holding only the
+attributes the expression sets.
+
+**Prefer a targeted `update_item` over a `put_item` that re-lists the attributes to
+keep.** `put_item` replaces the whole item, so any attribute absent from the dict is
+deleted; a hand-maintained list of attributes to carry forward fails silently and
+permanently the first time somebody adds a field and does not extend it.
+`scripts/tests/test_config_head_writers.py` enforces this for the configuration
+profile head record, which is where it went wrong.
+
 ### DocumentDynamoDBService
 
 High-level service for document operations:
@@ -34,6 +52,61 @@ High-level service for document operations:
 - `list_documents_date_hour()` - List by specific date/hour
 - `list_documents_date_shard()` - List by date/shard
 - `calculate_ttl()` - Generate TTL timestamps
+
+#### Document run (version) records
+
+Each successful processing run of a document is recorded as an immutable "run"
+item so prior results can be retained and compared (see the user-facing
+[Document Versions](../../../../docs/document-versions.md) guide and the
+companion `idp_common.document_versions` module, which pins each run's output
+S3 object versions into a manifest):
+
+- `create_document_run(document, run_id, manifest_uri, file_count, expires_after)`
+  - Writes `PK = doc#<key>`, `SK = run#<run_id>` and increments a
+    `VersionCount` counter on the doc item.
+- `list_document_runs(object_key)` - All runs for a document, newest first.
+- `get_document_run(object_key, run_id)` - A single run record.
+- `delete_document_run(object_key, run_id)` - Remove a run record and decrement
+  `VersionCount` (S3 artifact cleanup is the caller's responsibility via
+  `document_versions.delete_run_artifacts`).
+
+**Purging output before a re-run:**
+
+```python
+delete_current_output_objects(
+    s3_client, output_bucket: str, input_key: str,
+    subprefixes: Sequence[str] | None = None,
+) -> int   # number of objects deleted
+```
+
+Deletes the *current* output artifacts for a document key. Used by the queue
+sender and the reprocess resolver so a re-upload sharing a filename cannot
+inherit the previous document's results: OCR's retry-safe recovery reads
+`pages/`, and without the purge it would reinstate stale output (issue #719).
+
+⚠️ **`subprefixes` is a safety scope, and it defaults to `None` — meaning
+unscoped.** Both shipped callers pass `("pages/",)` deliberately: scoping to the
+one subprefix OCR recovery actually reads makes it impossible for an upload of
+`foo` to remove a nested document at `foo/bar.pdf/*`. A new caller that omits it
+gets the broad delete, so pass it explicitly.
+
+Failures are swallowed so ingest still proceeds, and emit the
+`StaleOutputPurgeFailed` metric — alarmed, because the alternative is silent stale
+extraction.
+
+> **GSI safety.** Run items deliberately omit the `ItemType` and
+> `InitialEventTime` attributes so they never enter the `TypeDateIndex` GSI
+> (which keys on both), and `VersionCount` is **not** in that GSI's INCLUDE
+> projection. Document versioning therefore required **no GSI schema change** —
+> GSIs cannot be modified without replacing/rehydrating the index.
+
+### JobDynamoDBService
+
+Service for managing batch job records (used by the `/jobs` REST API):
+- `create_job_record()` - Create a job metadata record with optional TTL and metadata
+- `get_job_record()` - Retrieve a job record by job ID (Files map values returned as Status enum)
+- `update_job_files()` - Replace the entire Files map on a job record
+- `update_file_status()` - Update a single file's status within a job record
 
 ## Usage
 
@@ -94,9 +167,43 @@ hourly_docs = service.list_documents_date_hour(
 )
 ```
 
+### Job Operations
+
+```python
+from idp_common.job_service import create_job_service
+from idp_common.models import Status
+
+# Initialize service (uses TRACKING_TABLE env var)
+job_service = create_job_service()
+
+# Create a job record
+job_service.create_job_record(
+    job_id="a1b2c3d4",
+    metadata={"source": "api"}
+)
+
+# Get job record (Files values returned as Status enum)
+record = job_service.get_job_record("a1b2c3d4")
+
+# Update a single file's status
+job_service.update_file_status("a1b2c3d4", "doc.pdf", Status.COMPLETED)
+
+# Replace entire Files map
+job_service.update_job_files("a1b2c3d4", {
+    "doc_a.pdf": Status.COMPLETED,
+    "doc_b.pdf": Status.IN_PROGRESS,
+})
+```
+
 ## Data Structure Compatibility
 
-The module maintains full compatibility with the existing AppSync schema:
+The attribute names this module writes still match the field names in the
+retained GraphQL contract at `nested/api-resolvers/src/api/schema.graphql`. That
+file is no longer served by a live GraphQL service: it is now a typed contract
+used for UI type codegen (`src/ui/codegen.config.mjs` reads it) and as the
+authoritative baseline for the REST dispatcher's input-shape validation and
+per-resolver RBAC checks. Keep the names below in sync with it — a mismatch
+shows up as a missing field in the UI, not as a schema error.
 
 ### Document Table Structure
 - **PK**: `doc#{ObjectKey}` - Primary partition key
@@ -113,6 +220,15 @@ The module maintains full compatibility with the existing AppSync schema:
 - **SK**: `ts#{timestamp}#id#{ObjectKey}` - Sort key for chronological ordering
 - **ObjectKey**: Document identifier
 - **QueuedTime**: When document was queued
+
+### Job Record Structure
+- **PK**: `job#{job_id}` - Primary partition key
+- **SK**: `metadata` - Sort key (always "metadata" for job records)
+- **Files**: Map of filenames to status values (e.g., `{"doc.pdf": "COMPLETED"}`)
+- **CreatedAt**: ISO 8601 timestamp of job creation
+- **UpdatedAt**: ISO 8601 timestamp of last update
+- **Metadata**: Optional JSON string of job metadata
+- **ExpiresAfter**: Optional TTL timestamp
 
 ## Error Handling
 
@@ -135,9 +251,15 @@ The module uses these environment variables:
 - `TRACKING_TABLE` - DynamoDB table name
 - `AWS_REGION` - AWS region
 
-## Migration from AppSync
+## Historical: migrating code written before AppSync was removed
 
-To migrate from AppSync to direct DynamoDB:
+> **This section is a historical note, not a live choice.** AppSync is gone from
+> the solution and `idp_common.appsync` no longer exists, so there is no "AppSync
+> vs DynamoDB" decision to make — direct DynamoDB is the only option. The steps
+> below apply only if you are porting old code (an out-of-tree fork, an old
+> branch, or a stale copy of a resolver) that still imports the deleted module;
+> those imports fail with an `ImportError`. New code should call
+> `create_document_service()` from [`docs_service`](../docs_service_README.md).
 
 1. Replace imports:
    ```python
@@ -157,9 +279,8 @@ To migrate from AppSync to direct DynamoDB:
    service = DocumentDynamoDBService(table_name=table_name)
    ```
 
-3. Method calls remain the same:
+3. Method names are unchanged, so call sites do not need edits:
    ```python
-   # These work with both services
    service.create_document(document)
    service.update_document(document)
    service.get_document(object_key)

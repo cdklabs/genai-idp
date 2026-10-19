@@ -14,12 +14,15 @@ system_defaults/
    base-ocr.yaml               # Textract OCR configuration
    base-classification.yaml    # LLM classification settings
    base-extraction.yaml        # LLM extraction settings
-   base-assessment.yaml        # LLM confidence scoring
+   base-confidence.yaml        # Per-field confidence assessment + HITL thresholds
+   base-geometry.yaml          # Field bounding-box geometry mode
    base-summarization.yaml     # Document summarization
+   base-chat.yaml              # Chat-with-Document (interactive Q&A)
    base-evaluation.yaml        # Evaluation/testing
-   base-criteria-validation.yaml # Criteria validation
+   base-rule-validation.yaml   # Rule validation settings
    base-agents.yaml            # Error analyzer, chat companion
    base-discovery.yaml         # Schema discovery
+   base-rule-discovery.yaml    # Rule discovery from policy documents
    pattern-1.yaml              # BDA pattern (selective inheritance)
    pattern-2.yaml              # Bedrock LLM pattern (full inheritance)
    README.md
@@ -42,12 +45,15 @@ _inherits:
   - base-ocr.yaml
   - base-classification.yaml
   - base-extraction.yaml
-  - base-assessment.yaml
+  - base-confidence.yaml
+  - base-geometry.yaml
   - base-summarization.yaml
+  - base-chat.yaml
   - base-evaluation.yaml
-  - base-criteria-validation.yaml
+  - base-rule-validation.yaml
   - base-agents.yaml
   - base-discovery.yaml
+  - base-rule-discovery.yaml
 ```
 
 ### Selective Inheritance (Pattern-1 - BDA)
@@ -56,49 +62,41 @@ _inherits:
 _inherits:
   - base-notes.yaml
   - base-classes.yaml
-  - base-assessment.yaml
+  - base-confidence.yaml
+  - base-geometry.yaml
   - base-summarization.yaml
   - base-evaluation.yaml
-  - base-criteria-validation.yaml
   - base-agents.yaml
   - base-discovery.yaml
 ```
 
 BDA handles OCR, classification, and extraction internally, so it doesn't inherit those modules.
 
-### Selective Inheritance (Pattern-3 - UDOP)
-```yaml
-# Pattern-3 (UDOP) - includes OCR and extraction, excludes classification only
-_inherits:
-  - base-notes.yaml
-  - base-classes.yaml
-  - base-ocr.yaml
-  - base-extraction.yaml
-  - base-assessment.yaml
-  - base-summarization.yaml
-  - base-evaluation.yaml
-  - base-criteria-validation.yaml
-  - base-agents.yaml
-  - base-discovery.yaml
-```
-
-UDOP uses Textract for OCR, LLM for extraction, and its own fine-tuned model for classification only.
+`base-confidence.yaml` and `base-geometry.yaml` are inherited even though `extraction`
+is not: from v0.6 onward, per-field confidence lives at `extraction.confidence`,
+bounding-box geometry at `extraction.geometry` and the review thresholds at top-level
+`hitl`, so those two modules contribute only those sub-sections and none of the LLM
+extraction settings BDA does not use. Keeping both is what gives Pattern-1 the same
+confidence, geometry and HITL defaults as Pattern-2.
 
 ## Module Contents
 
 | Module | Section | Description | Used By |
 |--------|---------|-------------|---------|
-| `base-notes.yaml` | `notes` | Configuration description | All patterns |
-| `base-classes.yaml` | `classes` | Document class definitions | All patterns |
-| `base-ocr.yaml` | `ocr` | Textract OCR | Pattern-2, Pattern-3 |
-| `base-classification.yaml` | `classification` | LLM classification | Pattern-2 only |
-| `base-extraction.yaml` | `extraction` | LLM extraction | Pattern-2, Pattern-3 |
-| `base-assessment.yaml` | `assessment` | Confidence scoring | All patterns |
-| `base-summarization.yaml` | `summarization` | Doc summarization | All patterns |
-| `base-evaluation.yaml` | `evaluation` | Testing/evaluation | All patterns |
-| `base-criteria-validation.yaml` | `criteria_validation` | Criteria checks | All patterns |
-| `base-agents.yaml` | `agents` | Error analyzer, chat | All patterns |
-| `base-discovery.yaml` | `discovery` | Schema discovery | All patterns |
+| `base-notes.yaml` | `notes` | Configuration description | Both modes |
+| `base-classes.yaml` | `classes` | Document class definitions | Both modes |
+| `base-ocr.yaml` | `ocr` | Textract OCR | Pipeline mode |
+| `base-classification.yaml` | `classification` | LLM classification | Pipeline mode |
+| `base-extraction.yaml` | `extraction` | LLM extraction | Pipeline mode |
+| `base-confidence.yaml` | `extraction.confidence`, `hitl` | Per-field confidence scoring, review thresholds | Both modes |
+| `base-geometry.yaml` | `extraction.geometry` | Field bounding-box geometry | Both modes |
+| `base-summarization.yaml` | `summarization` | Doc summarization | Both modes |
+| `base-chat.yaml` | `chat` | Chat-with-Document | Pipeline mode |
+| `base-evaluation.yaml` | `evaluation` | Testing/evaluation | Both modes |
+| `base-rule-validation.yaml` | `rule_validation` | Rule validation | Pipeline mode |
+| `base-agents.yaml` | `agents` | Error analyzer, chat | Both modes |
+| `base-discovery.yaml` | `discovery` | Schema discovery | Both modes |
+| `base-rule-discovery.yaml` | `discovery.rules` | Rule discovery from policy documents | Pipeline mode |
 
 ## Merge Priority
 
@@ -153,4 +151,4 @@ classes:
         type: string
 ```
 
-Everything else (OCR settings, prompts, assessment config, agents, etc.) comes from system defaults.
+Everything else (OCR settings, prompts, confidence config, agents, etc.) comes from system defaults.

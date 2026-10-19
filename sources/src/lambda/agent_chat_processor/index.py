@@ -12,20 +12,22 @@ import asyncio
 import json
 import logging
 import os
-import re
+import time
 import uuid
+from datetime import datetime
 
 import boto3
 import botocore.exceptions
-
 from idp_common.agents.analytics import get_analytics_config
 from idp_common.agents.common.config import configure_logging
 from idp_common.agents.factory import agent_factory
-from idp_common.appsync.client import AppSyncClient
+from idp_common.utils.log_sanitizer import sanitize_event_for_logging
 
 # Import Bedrock error handling
 try:
-    from idp_common.agents.common.bedrock_error_messages import BedrockErrorMessageHandler
+    from idp_common.agents.common.bedrock_error_messages import (
+        BedrockErrorMessageHandler,
+    )
     _BEDROCK_ERROR_HANDLING_AVAILABLE = True
 except ImportError:
     _BEDROCK_ERROR_HANDLING_AVAILABLE = False
@@ -39,130 +41,390 @@ logger = logging.getLogger(__name__)
 
 # Sub-agent streaming is always enabled
 
+_CHAT_MESSAGES_TABLE = os.environ.get("CHAT_MESSAGES_TABLE")
+_CHAT_SESSIONS_TABLE = os.environ.get("CHAT_SESSIONS_TABLE")
+_DATA_RETENTION_DAYS = int(os.environ.get("DATA_RETENTION_DAYS", "30"))
+
+# Agent Chat is available to Admin/Author/Viewer. This deployment declares FIVE
+# Cognito groups (Admin, Annotator, Author, Reviewer, Viewer — see the
+# AWS::Cognito::UserPoolGroup resources in template.yaml), so the excluded set is
+# Reviewer AND Annotator. Must stay equal to _AGENT_CHAT_GROUPS in the
+# agent_chat_resolver — the two enforce the same operation on two different entry
+# paths.
+_AGENT_CHAT_GROUPS = ("Admin", "Author", "Viewer")
+
+
+def _caller_in_groups(event, allowed):
+    """Defense-in-depth RBAC check against the caller's Cognito groups.
+
+    Same idiom as ``_caller_in_groups`` in the agent_chat_resolver, so the two
+    entry paths to Agent Chat read the caller's groups the same way.
+
+    A caller whose groups are known always carries a non-None ``identity``;
+    invocations that carry none are IAM-gated backend calls and are handled by
+    ``_enforce_agent_chat_groups`` rather than here.
+    """
+    groups = (event.get("identity") or {}).get("claims", {}).get("cognito:groups") or []
+    if isinstance(groups, str):
+        groups = [groups]
+    return bool(set(allowed).intersection(groups))
+
+
+def _enforce_agent_chat_groups(event):
+    """Reject a caller who is not in a group permitted to use Agent Chat.
+
+    The resolver in front of the dispatcher path already applies this check; this
+    is the same gate applied where the work actually happens, so an invocation
+    that arrives by another route is subject to it too.
+
+    ``PermissionError`` is raised for consistency with the resolver, but note
+    where the HTTP 403 on the dispatcher path actually comes from: it is the
+    *resolver's own* ``PermissionError``. The dispatcher invokes the resolver
+    synchronously and reads ``errorType`` out of the invoke response
+    (``nested/api-resolvers/src/lambda/http_api_dispatcher/index.py``), so only
+    an exception from the resolver reaches that mapping. The resolver in turn
+    invokes THIS function with ``InvocationType="Event"``, and an async
+    invocation returns no payload to inspect — by the time this runs the client
+    already holds the resolver's 200. An exception raised here is therefore
+    logged, retried by Lambda, and never seen by the caller.
+
+    The same is true on the streaming path, for a different reason: see
+    ``_enforce_groups_or_403`` in src/lambda/chat_stream_processor/app.py, which
+    applies this gate synchronously in the route so a denial can still become a
+    real 403 before the response is committed. This copy of the check remains the
+    last line of defence for any invocation that reaches the function directly.
+
+    Invocations with no ``identity`` are not group-checked: they are the backend
+    paths (a direct ``lambda:InvokeFunction``, and the streaming Function URL,
+    whose transport forwards no Cognito group claim — see ``_caller_identity`` in
+    src/lambda/chat_stream_processor/app.py). Those are gated by IAM instead.
+    """
+    if event.get("identity") is None:
+        return
+    if not _caller_in_groups(event, _AGENT_CHAT_GROUPS):
+        logger.warning("Rejecting agent chat: caller is not in an authorized group")
+        raise PermissionError(
+            "Unauthorized: Agent Chat requires Admin, Author or Viewer group"
+        )
+
+
+def _persist_chat_turn(
+    session_id, user_id, surface, prompt, assistant_text, persist_user_message=True
+):
+    """Persist a chat turn to the history tables.
+
+    ``persist_user_message=False`` is used when the invoker (the agent_chat
+    resolver on the non-streaming path) has ALREADY stored the user message and
+    session metadata — then only the assistant reply is written here, and the
+    session messageCount is bumped by 1 instead of 2.
+    """
+    if not session_id or not user_id:
+        logger.warning(
+            "No caller identity for session %s; skipping chat history write "
+            "(assistant reply will NOT be visible to the polling UI path)",
+            session_id,
+        )
+        return
+    if not _CHAT_MESSAGES_TABLE or not _CHAT_SESSIONS_TABLE:
+        logger.warning("Chat persistence tables not configured; skipping history write")
+        return
+    try:
+        dynamodb = boto3.resource("dynamodb")
+        messages_table = dynamodb.Table(_CHAT_MESSAGES_TABLE)
+        sessions_table = dynamodb.Table(_CHAT_SESSIONS_TABLE)
+        expires_after = int(time.time()) + (_DATA_RETENTION_DAYS * 24 * 60 * 60)
+        user_ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        if persist_user_message:
+            messages_table.put_item(
+                Item={
+                    "PK": session_id,
+                    "SK": user_ts,
+                    "role": "user",
+                    "content": prompt,
+                    "timestamp": user_ts,
+                    "isProcessing": False,
+                    "ExpiresAfter": expires_after,
+                }
+            )
+        if assistant_text:
+            assistant_ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            messages_table.put_item(
+                Item={
+                    "PK": session_id,
+                    "SK": assistant_ts,
+                    "role": "assistant",
+                    "content": assistant_text,
+                    "timestamp": assistant_ts,
+                    "isProcessing": False,
+                    "ExpiresAfter": expires_after,
+                }
+            )
+        last_message = prompt[:100] + "..." if len(prompt) > 100 else prompt
+        # Count only the messages THIS call stored.
+        stored_count = (1 if persist_user_message else 0) + (1 if assistant_text else 0)
+        existing = sessions_table.get_item(
+            Key={"userId": user_id, "sessionId": session_id}
+        ).get("Item")
+        if existing:
+            if stored_count:
+                sessions_table.update_item(
+                    Key={"userId": user_id, "sessionId": session_id},
+                    UpdateExpression=(
+                        "SET updatedAt = :ts, messageCount = messageCount + :inc, "
+                        "lastMessage = :last, surface = :surface"
+                    ),
+                    ExpressionAttributeValues={
+                        ":ts": user_ts,
+                        ":inc": stored_count,
+                        ":last": last_message,
+                        ":surface": surface,
+                    },
+                )
+        else:
+            title = prompt.strip()
+            if len(title) > 50:
+                title = title[:47] + "..."
+            sessions_table.put_item(
+                Item={
+                    "userId": user_id,
+                    "sessionId": session_id,
+                    "title": title,
+                    "createdAt": user_ts,
+                    "updatedAt": user_ts,
+                    # The user message exists in the session even when the
+                    # resolver stored it (persist_user_message=False), so the
+                    # count includes it either way on first write.
+                    "messageCount": 2 if assistant_text else 1,
+                    "lastMessage": last_message,
+                    "surface": surface,
+                    "ExpiresAfter": expires_after,
+                }
+            )
+    except Exception as e:
+        logger.error(f"Failed to persist chat turn for session {session_id}: {e}")
+
+
 # Track Lambda cold/warm starts for debugging
 _lambda_invocation_count = 0
 
 # Global client cache for warm Lambda containers
 # Reusing clients significantly reduces latency in warm starts
 _client_cache = {}
-_appsync_client_cache = None
 
 def get_cached_boto3_session():
     """
     Get or create a cached boto3 session for warm Lambda containers.
-    
+
     Returns:
         Cached boto3.Session instance
     """
     global _client_cache
-    
+
     if 'session' not in _client_cache:
         _client_cache['session'] = boto3.Session()
         logger.info("Created new boto3 session (will be cached for warm starts)")
     else:
         logger.info("Reusing cached boto3 session from warm container")
-    
+
     return _client_cache['session']
 
-def get_cached_appsync_client():
-    """
-    Get or create a cached AppSync client for warm Lambda containers.
-    
-    Returns:
-        Cached AppSyncClient instance
-    """
-    global _appsync_client_cache
-    
-    if _appsync_client_cache is None:
-        _appsync_client_cache = AppSyncClient()
-        logger.info("Created new AppSync client (will be cached for warm starts)")
-    else:
-        logger.info("Reusing cached AppSync client from warm container")
-    
-    return _appsync_client_cache
 
-# GraphQL mutation for streaming agent chat messages
-STREAMING_MUTATION = """
-mutation SendAgentChatMessage($prompt: String!, $sessionId: String, $method: String, $toolMetadata: ToolMetadataInput) {
-    sendAgentChatMessage(prompt: $prompt, sessionId: $sessionId, method: $method, toolMetadata: $toolMetadata) {
-        role
-        content
-        timestamp
-        isProcessing
-        sessionId
-        messageType
-        toolMetadata {
-            toolName
-            toolUseId
-        }
-    }
-}
-"""
+# --- Emission sink -------------------------------------------------------
+#
+# Streaming events flow through ``publish_stream_update`` to the active sink.
+# This processor always runs behind the Lambda Function URL streaming endpoint
+# (``chat_stream_processor``), which injects a sink via ``set_sink`` that writes
+# SSE ``data: {json}`` chunks to the HTTP response stream. If no sink is
+# installed, events are dropped with a warning — there is no AppSync fallback.
+#
+# A sink is a callable: sink(session_id, content, method, is_processing,
+# tool_metadata) -> None (it may be sync; it is invoked from async code).
+_active_sink = None
 
 
-def clean_content_for_display(content):
+def set_sink(sink) -> None:
+    """Install the emission sink (used by the streaming endpoint).
+
+    Pass ``None`` to clear the installed sink.
     """
-    Remove thinking tags from content for display.
-    
-    Agents may use <thinking>...</thinking> tags for internal reasoning.
-    This function removes those tags so only the final response is shown to users.
-    
-    Args:
-        content: The raw content from the agent
-        
-    Returns:
-        Cleaned content without thinking tags
+    global _active_sink
+    _active_sink = sink
+
+
+_THINKING_OPEN = "<thinking>"
+_THINKING_CLOSE = "</thinking>"
+
+
+def _longest_partial_tag_suffix(text, tag):
     """
-    cleaned = re.sub(r'<thinking>.*?</thinking>', '', content, flags=re.DOTALL)
-    return cleaned.strip()
+    Length of the longest proper prefix of ``tag`` that ``text`` ends with.
+
+    This is how many trailing characters cannot yet be classified: they may turn
+    out to be the front of a tag that the next chunk completes. Zero means the
+    whole of ``text`` is decided.
+    """
+    for length in range(min(len(tag) - 1, len(text)), 0, -1):
+        if text.endswith(tag[:length]):
+            return length
+    return 0
+
+
+class ThinkingFilter:
+    """
+    Remove ``<thinking>...</thinking>`` from a stream that arrives in pieces.
+
+    A chunk boundary can fall anywhere — a ``{"data": ...}`` event carries one
+    Bedrock ``contentBlockDelta`` verbatim and unbuffered, so the split point is
+    chosen by the service and can land in the middle of either tag. Deciding what
+    to show by re-running a regex over the accumulated buffer cannot cope with
+    that: with no closing tag in the buffer yet the block matches nothing, so the
+    reasoning is streamed to the browser, and when the closing tag finally arrives
+    the cleaned text is *shorter* than the character count already emitted, so the
+    answer that follows is dropped or sent from the middle.
+
+    So this holds a boundary instead of re-deriving one. Text is released only
+    once it is known to sit outside a block, which means holding back any trailing
+    run of characters that could still be the front of a tag. Whatever is released
+    is final: the emitted text only ever grows, so the ``assistant_stream`` deltas
+    the UI *appends* stay a correct prefix of the answer at every moment, and there
+    is no cursor into a buffer that shrinks underneath it. The held state is
+    bounded at ``len(tag) - 1`` characters.
+
+    An instance is **single-use**: ``close`` drains what is held but does not
+    return the instance to its opening state, so ``stream_agent_response`` builds
+    one per response rather than reusing one.
+    """
+
+    def __init__(self):
+        self._held = ""
+        self._pending_space = ""
+        self._inside = False
+        self._started = False
+
+    def feed(self, chunk):
+        """Add a streamed chunk and return the text that is now safe to emit."""
+        self._held += chunk
+        released = []
+
+        while True:
+            if self._inside:
+                end = self._held.find(_THINKING_CLOSE)
+                if end != -1:
+                    self._held = self._held[end + len(_THINKING_CLOSE):]
+                    self._inside = False
+                    continue
+                # Still inside the block: this is reasoning and is discarded, bar
+                # any tail that could be the start of the closing tag.
+                keep = _longest_partial_tag_suffix(self._held, _THINKING_CLOSE)
+                self._held = self._held[len(self._held) - keep:] if keep else ""
+                break
+
+            start = self._held.find(_THINKING_OPEN)
+            if start != -1:
+                released.append(self._held[:start])
+                self._held = self._held[start + len(_THINKING_OPEN):]
+                self._inside = True
+                continue
+            keep = _longest_partial_tag_suffix(self._held, _THINKING_OPEN)
+            if keep:
+                released.append(self._held[:len(self._held) - keep])
+                self._held = self._held[len(self._held) - keep:]
+            else:
+                released.append(self._held)
+                self._held = ""
+            break
+
+        return self._present("".join(released))
+
+    def close(self):
+        """
+        Return whatever is still held and is genuinely text, once per response.
+
+        A response that ends mid-tag leaves a few held characters that no chunk
+        will ever complete; they are ordinary text and are released, because
+        silently dropping the end of an answer is the same class of failure as
+        dropping the start of one. A response that ends inside an unterminated
+        block leaves reasoning, which is discarded — an agent that stops
+        mid-thought has no answer to show, and showing the thought is the defect
+        this class exists to prevent.
+        """
+        tail = "" if self._inside else self._held
+        self._held = ""
+        return self._present(tail)
+
+    def _present(self, text):
+        """
+        Apply the whitespace trimming the previous whole-buffer ``.strip()`` gave.
+
+        Leading whitespace is dropped until the first real output. Trailing
+        whitespace is *deferred* rather than dropped, because more text may follow
+        it and the space between two words belongs on screen — so it is emitted in
+        front of whatever comes next, and a run still deferred when the stream ends
+        is never emitted. That is what the old whole-buffer ``.strip()`` amounted
+        to, and keeping it is what makes this a no-op for every response that
+        contains no block at all.
+        """
+        text = self._pending_space + text
+        self._pending_space = ""
+        if text and not self._started:
+            text = text.lstrip()
+        visible = text.rstrip()
+        self._pending_space = text[len(visible):]
+        if visible:
+            self._started = True
+        return visible
 
 
 async def publish_stream_update(
     appsync_client, session_id, content, method, message_id, is_processing=True, tool_metadata=None
 ):
     """
-    Publish streaming updates via AppSync mutation.
-    
-    This function sends chunks of the agent's response to the frontend
-    via AppSync GraphQL mutations, which trigger subscriptions for real-time updates.
-    
+    Publish a streaming update to the active emission sink.
+
+    This processor always runs behind the Lambda Function URL streaming
+    endpoint, which installs a sink via ``set_sink``. The ``appsync_client``
+    parameter is retained for call-site compatibility but is unused — there is
+    no AppSync fallback. If no sink is installed, the event is dropped with a
+    warning.
+
     Args:
-        appsync_client: The AppSync client instance to use
+        appsync_client: Unused (retained for call-site compatibility).
         session_id: The conversation session ID
         content: The content to send
         method: The message method (e.g., "assistant_stream", "assistant_final_response")
         message_id: Unique ID for this message
         is_processing: Whether the agent is still processing
         tool_metadata: Optional tool metadata for tool-related messages
-        
+
     Returns:
-        The AppSync response
+        None
     """
     try:
         # Clean and truncate content if needed
         cleaned_content = str(content).replace('\r', ' ')
         if len(cleaned_content) > 10000:
             cleaned_content = cleaned_content[:10000] + "..."
-        
-        # Prepare variables for the mutation
-        variables = {
-            "prompt": cleaned_content,
-            "sessionId": str(session_id),
-            "method": method
-        }
-        
-        # Add tool metadata if provided
-        if tool_metadata:
-            variables["toolMetadata"] = tool_metadata
-        
-        # Execute the GraphQL mutation
-        response = appsync_client.execute_mutation(
-            STREAMING_MUTATION,
-            variables
+
+        if _active_sink is None:
+            logger.warning(
+                "No emission sink installed; dropping agent chat event "
+                "(method=%s)",
+                method,
+            )
+            return None
+
+        # Route the event to the streaming sink. The sink mirrors the same
+        # payload shape the UI consumes.
+        _active_sink(
+            session_id=str(session_id),
+            content=cleaned_content,
+            method=method,
+            is_processing=bool(is_processing),
+            tool_metadata=tool_metadata,
         )
-        logger.info(f"Published message via AppSync: {method}")
-        return response
-        
+        logger.info(f"Published message via stream sink: {method}")
+        return None
+
     except Exception as e:
         logger.error(f"Error publishing stream update: {e}")
         return None
@@ -185,7 +447,9 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
         The final displayed text (without thinking tags)
     """
     try:
-        full_text_buffer = ""
+        # One filter per response: it carries a boundary through the whole stream
+        # and `close` does not reset it (see ThinkingFilter).
+        thinking = ThinkingFilter()
         displayed_text = ""
         message_id = str(uuid.uuid4())
         current_subagent = None
@@ -194,7 +458,28 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
         sent_tool_use_ids = set()  # Track which nested tool use IDs we've already announced
         tool_input_buffers = {}  # Track input text sent for each tool use ID
         skip_content = False  # Flag to skip content containing JSON markers
-        
+
+        async def release_held_text():
+            """
+            Emit whatever the filter withheld, once no further chunk can arrive.
+
+            Sent as an ``assistant_stream`` delta rather than folded into the final
+            message only, because the UI appends those deltas and a stream that
+            ends without a ``result`` event has no final message to correct them.
+            """
+            nonlocal displayed_text
+            tail = thinking.close()
+            if tail:
+                displayed_text += tail
+                await publish_stream_update(
+                    appsync_client,
+                    session_id,
+                    tail,
+                    "assistant_stream",
+                    message_id,
+                    True
+                )
+
         logger.info(f"Starting to stream response for session {session_id}")
         
         # Stream the agent's response asynchronously
@@ -274,7 +559,7 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                         message_id,
                         False
                     )
-                    logger.info(f"Published force_stop error to frontend")
+                    logger.info("Published force_stop error to frontend")
                 except Exception as publish_error:
                     logger.error(f"Failed to publish force_stop error: {publish_error}")
                 
@@ -284,17 +569,16 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
             if "data" in event:
                 # Handle streaming chunk
                 chunk_text = event["data"]
-                full_text_buffer += chunk_text
-                
-                # Clean the content (remove thinking tags)
-                clean_text = clean_content_for_display(full_text_buffer)
-            
-                # Only send new text that hasn't been displayed yet
-                if len(clean_text) > len(displayed_text):
-                    new_text = clean_text[len(displayed_text):]
-                    displayed_text = clean_text
-                    
-                    # Publish the chunk to AppSync
+
+                # Text the filter releases is outside every thinking block and is
+                # final, so it can be appended and sent as a delta. There is no
+                # cursor into a buffer here: nothing already sent is ever revised.
+                new_text = thinking.feed(chunk_text)
+
+                if new_text:
+                    displayed_text += new_text
+
+                    # Publish the chunk to the streaming sink
                     await publish_stream_update(
                         appsync_client,
                         session_id, 
@@ -413,7 +697,7 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                             message_id,
                             False
                         )
-                        logger.info(f"Published sub-agent Bedrock error to frontend")
+                        logger.info("Published sub-agent Bedrock error to frontend")
                     except Exception as publish_error:
                         logger.error(f"Failed to publish sub-agent Bedrock error: {publish_error}")
                     
@@ -664,10 +948,11 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
             
             elif "result" in event:
                 # Handle final response
-                
-                if len(displayed_text) < len(full_text_buffer):
-                    displayed_text = clean_content_for_display(full_text_buffer)
-                
+
+                # Whatever the filter is still withholding is answer text no
+                # further chunk will complete, so release it before the final.
+                await release_held_text()
+
                 # Publish the final response
                 await publish_stream_update(
                     appsync_client,
@@ -680,9 +965,17 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                 
                 logger.info(f"Completed streaming for session {session_id}")
                 break
-        
+
+        # A stream can end without a "result" event -- the force_stop branch above
+        # `continue`s, so the generator can simply run out. `_persist_chat_turn`
+        # writes this return value to the chat history table, so the held tail has
+        # to be released here too or the stored answer is a few characters short.
+        # `close` is idempotent for the value it returns, so the normal path
+        # reaching this line after the branch above gets "".
+        await release_held_text()
+
         return displayed_text
-        
+
     except (botocore.exceptions.ClientError, botocore.exceptions.EventStreamError) as e:
         # Handle Bedrock-specific errors (raised after boto3 Config retries are exhausted)
         logger.error(f"Bedrock error in stream_agent_response: {e}")
@@ -788,8 +1081,22 @@ def handler(event, context):
     is_cold_start = _lambda_invocation_count == 1
     
     logger.info(f"Lambda invocation #{_lambda_invocation_count} ({'COLD START' if is_cold_start else 'WARM'})")
-    logger.info(f"Received agent chat processor event: {json.dumps(event)}")
-    
+    # Redacted, not raw: this event carries the user's chat prompt, the caller's
+    # Cognito `sub` and the caller's group list, and the log group is readable by
+    # anyone with CloudWatch Logs access — a wider audience than the people
+    # entitled to read a given user's conversation. The sanitizer keeps the shape
+    # of the event, which is what diagnosing a failed turn actually needs.
+    logger.info(
+        f"Received agent chat processor event: "
+        f"{json.dumps(sanitize_event_for_logging(event))}"
+    )
+
+    # Authorize before any work. Deliberately outside the try/except below: that
+    # handler converts an exception into a 200-with-error-body stream frame plus a
+    # 500 return, which would turn a denial into an application error. Raising
+    # PermissionError here matches the resolver so the dispatcher maps it to 403.
+    _enforce_agent_chat_groups(event)
+
     try:
         # Use cached boto3 session for warm Lambda containers (significant performance improvement)
         session = get_cached_boto3_session()
@@ -797,10 +1104,16 @@ def handler(event, context):
         # Extract parameters from event
         prompt = event.get("prompt", "")
         session_id = event.get("sessionId")
+        # Default off: the Code Intelligence Agent sends repository context
+        # to a third-party MCP service, so callers must opt in explicitly.
+        # `is True` so a non-boolean in the invoke payload cannot opt in.
+        enable_code_intelligence = event.get("enableCodeIntelligence") is True
         method = event.get("method", "chat")
-        timestamp = event.get("timestamp")
-        enable_code_intelligence = event.get("enableCodeIntelligence", True)
-        
+        caller_sub = event.get("callerSub", "")
+        # False when invoked by the agent_chat resolver (non-streaming path),
+        # which already stored the user message + session metadata itself.
+        persist_user_message = event.get("persistUserMessage", True)
+
         # Validate required parameters
         if not prompt or not session_id:
             error_msg = "prompt and sessionId are required"
@@ -815,38 +1128,72 @@ def handler(event, context):
         # No user selection needed - orchestrator has access to all agents
         all_agents = agent_factory.list_available_agents()
         agent_ids = [agent["agent_id"] for agent in all_agents]
-        
-        # Filter out Code Intelligence Agent if not enabled by user
-        CODE_INTELLIGENCE_AGENT_ID = "Code-Intelligence-Agent"
-        if not enable_code_intelligence and CODE_INTELLIGENCE_AGENT_ID in agent_ids:
-            agent_ids.remove(CODE_INTELLIGENCE_AGENT_ID)
-            logger.info(f"Code Intelligence Agent disabled by user, excluding from orchestrator")
-        
-        logger.info(f"Creating orchestrator with {len(agent_ids)} agents: {agent_ids}")
-        
-        # Create conversational orchestrator with memory and streaming support
-        orchestrator = agent_factory.create_conversational_orchestrator(
-            agent_ids=agent_ids,
-            session_id=session_id,
-            config=config,
-            session=session
+
+        QUICK_START_AGENT_ID = "Quick-Start-Agent"
+        use_direct_quick_start = (
+            method == "quick_start" and QUICK_START_AGENT_ID in agent_ids
         )
-        logger.info(f"Conversational orchestrator created for session {session_id}")
+
+        if method == "quick_start" and not use_direct_quick_start:
+            logger.warning(
+                "Quick Start mode requested but Quick-Start-Agent not registered; "
+                "falling back to full agent list"
+            )
+        elif method != "quick_start":
+            if QUICK_START_AGENT_ID in agent_ids:
+                agent_ids.remove(QUICK_START_AGENT_ID)
+            # Filter out Code Intelligence Agent if not enabled by user
+            CODE_INTELLIGENCE_AGENT_ID = "Code-Intelligence-Agent"
+            if not enable_code_intelligence and CODE_INTELLIGENCE_AGENT_ID in agent_ids:
+                agent_ids.remove(CODE_INTELLIGENCE_AGENT_ID)
+                logger.info("Code Intelligence Agent disabled by user, excluding from orchestrator")
+
+        if use_direct_quick_start:
+            logger.info("Quick Start mode: running Quick-Start-Agent directly with memory")
+            orchestrator = agent_factory.create_conversational_agent(
+                agent_id=QUICK_START_AGENT_ID,
+                session_id=session_id,
+                config=config,
+                session=session,
+            )
+            logger.info(f"Conversational Quick Start agent created for session {session_id}")
+        else:
+            logger.info(f"Creating orchestrator with {len(agent_ids)} agents: {agent_ids}")
+            # Create conversational orchestrator with memory and streaming support
+            orchestrator = agent_factory.create_conversational_orchestrator(
+                agent_ids=agent_ids,
+                session_id=session_id,
+                config=config,
+                session=session
+            )
+            logger.info(f"Conversational orchestrator created for session {session_id}")
         
         # Set up async event loop for streaming
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
         try:
-            # Use cached AppSync client for warm Lambda containers
-            appsync_client = get_cached_appsync_client()
-            logger.info("AppSync client ready")
-            
+            # Events are delivered through the streaming sink installed via
+            # set_sink (Function URL transport); no transport client is needed.
+            if _active_sink is None:
+                logger.warning(
+                    "No emission sink installed; agent chat events will be dropped"
+                )
+
             # Stream the agent response
-            result = loop.run_until_complete(
-                stream_agent_response(appsync_client, orchestrator, prompt, session_id)
+            final_text = loop.run_until_complete(
+                stream_agent_response(None, orchestrator, prompt, session_id)
             )
             logger.info(f"Streaming completed successfully for session {session_id}")
+            surface = "quick_start" if method == "quick_start" else "chat"
+            _persist_chat_turn(
+                session_id,
+                caller_sub,
+                surface,
+                prompt,
+                final_text,
+                persist_user_message=persist_user_message,
+            )
         finally:
             # Clean up orchestrator resources (MCP clients, etc.)
             try:
@@ -905,15 +1252,14 @@ def handler(event, context):
         try:
             session_id = event.get("sessionId")
             if session_id:
-                # Create fresh AppSync client for error publishing
-                error_appsync_client = AppSyncClient()
+                # Publish the error through the streaming sink (if installed).
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     loop.run_until_complete(
                         publish_stream_update(
-                            error_appsync_client,
-                            session_id, 
+                            None,
+                            session_id,
                             f"Error: {str(e)}", 
                             "assistant_error", 
                             str(uuid.uuid4()), 

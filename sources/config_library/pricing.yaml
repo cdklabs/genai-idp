@@ -16,6 +16,111 @@
 # - Lambda: https://aws.amazon.com/lambda/pricing/
 #
 # For private pricing agreements, update this file or use the UI Pricing editor.
+#
+# -----------------------------------------------------------------------------
+# Long-context (":1m") entries carry the same rates as their base model
+# -----------------------------------------------------------------------------
+# ":1m" selects the 1M-token context window. It is a context-window opt-in, not
+# a pricing tier: there is no price difference, so every ":1m" entry below holds
+# exactly the rates of the entry it shadows.
+#
+# Verified against the AWS Price List bulk offer file for
+# "AmazonBedrockFoundationModels" (version 20260911124410, published
+# 2026-09-11, retrieved 2026-09-17), which is where Bedrock publishes per-model
+# token rates for these six models, under serviceName
+# "Claude <model> (Amazon Bedrock Edition)":
+#   * Each of the six carries exactly ONE input-token rate per routing mode and
+#     service tier — e.g. Sonnet 5 input $2.20/MTok regional, $2.00/MTok global;
+#     Opus 4.7/4.8/5 $5.50 / $5.00 — matching the base entries below.
+#   * Every price dimension in that file and in the "AmazonBedrock" offer file
+#     spans StartingRange 0 to EndingRange Inf. There is not one token-volume
+#     band on any model, so there is no threshold at which a rate changes.
+#   * No Anthropic SKU in THAT file names a long context (see the next paragraph
+#     for what changed when Haiku 5.5 launched).
+# A long-context band IS expressible in the Bedrock price list — it appears as a
+# distinct "-long-ctx" usage type (tokenType "input-tokens-long-ctx" and friends).
+# openai.gpt-5.6-luna-mantle and openai.gpt-5.6-terra-mantle have one, and so does
+# ONE Claude model: Claude Haiku 5.5, as of offer file version 20261008165109
+# (published 2026-10-08, retrieved the same day). Its long-context rates are 5x the
+# standard ones on every token type — $0.55/MTok input against $0.11, $2.75
+# against $0.55 output, regional — and they start at 100,000 input tokens. The
+# Haiku 5.5 entries below carry the STANDARD band only, so a cost report
+# UNDER-REPORTS by 5x for any request above that; this is handled the way the
+# GPT-6 Astra rows handle the same shape, and the note on those rows and on both
+# models' model_config_limits.yaml entries spells out the options. The ":1m"
+# discussion above does not apply to this model — it has no ":1m" id, because 1M
+# is its default window, which is also why it is the one exception in the quoted
+# sentence below.
+#
+# Anthropic says the same first-hand, and the parenthetical is load-bearing —
+# quote it: "Claude 4.6 and later models (except Claude Haiku 5.5) ... include
+# the full 1M token context window at standard pricing. (A 900k-token request is
+# billed at the same per-token rate as a 9k-token request.)"
+# (platform.claude.com/docs/en/about-claude/pricing#long-context-pricing,
+# retrieved 2026-10-08). Every ":1m" entry here is a 4.6-or-later model: Sonnet
+# 4.6, Sonnet 5, Opus 4.6, Opus 4.7, Opus 4.8 and Opus 5 — none of them is the
+# exception, so the sentence supports every ":1m" rate below. Haiku 5.5 is the
+# exception and has no ":1m" entry.
+#
+# These entries used to charge a flat 2x input / 1.5x output premium on every
+# request. That premium was Anthropic's pricing for the earlier Sonnet 4 /
+# Sonnet 4.5 1M-context beta and never applied to any model listed here; it
+# inflated every reported cost on a ":1m" model, making a benchmark arm read
+# $125.42 against $68.82 for the same work. See issue #899.
+#
+# Metering keys no longer carry the suffix at all (see metering_model_id in
+# idp_common/bedrock/model_utils.py), so these entries exist for three other
+# reasons and MUST NOT be deleted:
+#   1. This file doubles as the list of model IDs configuration validation
+#      accepts (idp_common.config.merge_utils._load_valid_bedrock_models), and a
+#      model ID missing from it is a hard validation error, not a warning.
+#   2. ":1m" still reaches a price lookup from the raw configured model ID: the
+#      Athena data-mart rollups build the key from the CloudWatch "Model"
+#      dimension (src/lambda/data_mart_rollup/index.py), as does the
+#      PII-anonymizer hook's token tracker.
+#   3. Metering records written before the key changed still carry ":1m" and
+#      must keep resolving to an exact price.
+#
+# -----------------------------------------------------------------------------
+# Before adding or editing an entry: the coverage rules live in a test, not here
+# -----------------------------------------------------------------------------
+# `lib/idp_common_pkg/tests/unit/reporting/test_pricing_lookup.py` enumerates every
+# model id a deployment can select — from template.yaml's parameter enums and the
+# shipped configurations — and requires each to have an exact entry here pricing all
+# four token units. An entry may omit the two cache units only via that module's
+# `_NO_CACHE_UNITS_EXPECTED` allowlist, which records the reason per model AND
+# asserts the condition that makes the reason true: the model must be absent from
+# `bedrock.client.CACHEPOINT_SUPPORTED_MODELS` and not an implicit cacher, so a
+# cache-read token can never be metered for it and there is no rate to miss.
+#
+# ⚠️ That enumeration is NOT the set of entries in this file, and the difference is
+# why the guard below exists as well. This file doubles as the list of model ids
+# configuration validation accepts (reason 1 above), so an entry here is selectable
+# by a custom config even when no template enum and no shipped preset names it —
+# which was true of three of the eleven entries omitting cache units, and they were
+# covered by nothing. `test_cache_unit_omission_basis.py` therefore derives its
+# universe from THIS FILE: every `bedrock/` entry that omits a cache unit must
+# record its basis, per entry and per unit, in
+# `idp_common.metering_units.EXPECTED_CACHE_UNIT_OMISSIONS`. See issue #1206.
+#
+# Two consequences worth knowing before you edit a row:
+#   * Do NOT copy cache rates from a regional profile onto a bare model id to
+#     "fill a gap". The bare `amazon.nova-*-v1:0` entries are the GovCloud ids
+#     (see template.yaml's model parameter descriptions); their omission of cache
+#     units is a deliberate, asserted decision, not an oversight, and pricing them
+#     from the commercial `us.` profiles would assert a GovCloud rate nobody has
+#     verified. AWS's own published GovCloud rate, cited and dated, is the thing
+#     to use if a rate is needed.
+#   * A missing unit on an entry that DOES exist resolves to $0.00 only when a
+#     declaration in `idp_common.metering_units` says that unit costs nothing;
+#     otherwise it resolves to a NULL cost with a WARNING naming the entry (issues
+#     #1212 and #1206). For the two cache units the declaration is per entry, so
+#     omitting one from a NEW row reports rather than zeroes it. That is why a
+#     basis has to show the unit is either unpriced by AWS or unreachable in code
+#     rather than merely undocumented: an unpriced-but-reachable unit understates
+#     spend silently. Historically the same gap resolved to the fresh-input price
+#     instead, up to 10x too high, which is what put four published cost figures
+#     out by an unknown factor (issues #926 and #966).
 # =============================================================================
 
 pricing:
@@ -65,9 +170,72 @@ pricing:
       - name: pages
         price: "0.01"
 
+  # NOT a chargeable BDA call. This key is a deliberate COUNTER: the BDA
+  # process-results function emits `BDAProject/bda/documents-skip` = 1 document
+  # when it skips BDA processing (patterns/unified/src/bda_processresults_function
+  # /index.py). Nothing is invoked, so the real price is genuinely $0 — but the
+  # row has to EXIST, because a missing pricing entry now records NULL and warns
+  # that reported spend is incomplete (see save_reporting_data._get_unit_cost).
+  # Stating the zero here keeps the intent in the data rather than special-casing
+  # the counter in the warning code.
+  - name: bda/documents-skip
+    units:
+      - name: documents
+        price: "0.0"
+
   # ---------------------------------------------------------------------------
   # Amazon Bedrock Models - Amazon Nova (US)
   # ---------------------------------------------------------------------------
+  #
+  # ⚠️ Every Nova row in this file — us., eu. and global., Lite / Pro / 2-Lite and
+  # the priority and flex tiers — prices cacheWriteInputTokens at "0.0", and that
+  # is a reading of AWS's price list rather than a convention. Nova charges for
+  # cache READS and not for the write that populates the cache, which is the
+  # opposite of Claude (1.25x input) and the reason the two families must not
+  # share a multiplier. Every cache-write dimension AWS publishes for a Nova model
+  # is exactly $0.0000000000, in every region and in all three service tiers
+  # (standard, flex, priority) — read from the public AmazonBedrock offer file,
+  # which is the same source `bedrock_cache_dimension_digest.py` digests and where
+  # Nova Lite, Nova Pro, Nova Micro and Nova 2.0 Lite each carry exactly ONE
+  # distinct cache-write rate: zero. These rows used to charge the full input
+  # rate.
+  #
+  # The rate is only half the fact, and the other half is what makes a zero
+  # correct rather than merely cheap: `cacheWriteInputTokens` is DISJOINT from
+  # `inputTokens` in Bedrock's Converse usage block, so a zero rate drops a charge
+  # AWS does not make instead of discounting one it does. Measured on
+  # us.amazon.nova-lite-v1:0, same content, nonce held fixed (see
+  # tests/unit/reporting/test_nova_cache_write_pricing.py, which carries the usage
+  # blocks as a fixture and prices them):
+  #
+  #   no cachePoint     inputTokens=39011                      totalTokens=39013
+  #   cachePoint, cold  inputTokens=10    cacheWrite=39001     totalTokens=39013
+  #   cachePoint, warm  inputTokens=10    cacheRead=39001      totalTokens=39013
+  #
+  # `inputTokens` falls to a 10-token residual and the 39,001 prefix tokens move
+  # into the cache unit; totalTokens is invariant and equals the sum of the four
+  # units in all three calls. So the units partition the prompt exactly, and the
+  # over-report the old rate produced was cache-write volume x the input rate —
+  # which is the entire input cost of the prefix, meaning a cold cached call was
+  # reported at exactly what an uncached one would have cost and the write-side
+  # saving of prompt caching did not appear in the cost report at all. Had the
+  # units been INCLUSIVE the same entry would have been a double-count and the
+  # remedy would have been in the metering rather than here; that is why this was
+  # measured and not reasoned about.
+  #
+  # Priced at "0.0" rather than omitted and registered in
+  # `idp_common.metering_units.EXPECTED_CACHE_UNIT_OMISSIONS`, deliberately. That
+  # register answers "why does this entry OMIT a unit", and these entries do not
+  # omit one — AWS publishes a dimension here, at zero, and an explicit rate
+  # states that where `priced_by_aws=False` would flatten "published at $0.00"
+  # and "no such dimension" into one flag. It is also the only option that reaches
+  # the whole class: the register's price-list premise identifies a model by
+  # matching the entry's own input and output rates against the committed digest,
+  # the digest excludes the flex and priority variants on purpose, and 7 of these
+  # 14 rows therefore have an empty candidate set and cannot be registered without
+  # widening a shared gate's exemption. A zero rate reaches all 14 identically,
+  # and `test_every_selectable_model_prices_all_four_token_units` wants all four
+  # units present on a selectable model anyway.
   - name: bedrock/us.amazon.nova-lite-v1:0
     units:
       - name: inputTokens
@@ -77,7 +245,7 @@ pricing:
       - name: cacheReadInputTokens
         price: "1.5E-8"
       - name: cacheWriteInputTokens
-        price: "6.0E-8"
+        price: "0.0"
   
   - name: bedrock/us.amazon.nova-pro-v1:0
     units:
@@ -88,7 +256,7 @@ pricing:
       - name: cacheReadInputTokens
         price: "2.0E-7"
       - name: cacheWriteInputTokens
-        price: "8.0E-7"
+        price: "0.0"
   
   - name: bedrock/us.amazon.nova-2-lite-v1:0
     units:
@@ -99,7 +267,7 @@ pricing:
       - name: cacheReadInputTokens
         price: "7.5E-8"
       - name: cacheWriteInputTokens
-        price: "3.0E-7"
+        price: "0.0"
   
   - name: bedrock/us.amazon.nova-2-lite-v1:0:priority
     units:
@@ -110,7 +278,7 @@ pricing:
       - name: cacheReadInputTokens
         price: "1.31E-7"
       - name: cacheWriteInputTokens
-        price: "5.25E-7"
+        price: "0.0"
   
   - name: bedrock/us.amazon.nova-2-lite-v1:0:flex
     units:
@@ -121,14 +289,35 @@ pricing:
       - name: cacheReadInputTokens
         price: "3.75E-8"
       - name: cacheWriteInputTokens
-        price: "1.5E-7"
+        price: "0.0"
   
+  # Nova Premier reached end of life on 2026-09-14 and is no longer selectable
+  # (removed from every model enum). This entry stays because pricing lookup is
+  # retrospective: a cost report over documents processed while Premier WAS
+  # selectable resolves the rate from this table by model id, so deleting the
+  # entry would silently re-price historical runs at zero. Rates are frozen as
+  # of the EOL date and will not change again.
+  #
+  # The cache-read rate is $0.625/MTok, a quarter of input, read from the
+  # AmazonBedrock offer file version 20261010182242 (published 2026-10-10,
+  # retrieved 2026-10-13) where it is identical in all three regions this model
+  # was served from (us-east-1, us-east-2, us-west-2). It is here rather than
+  # omitted for the retrospective reason above: an omitted unit is priced at
+  # $0.00, so a stored metering row carrying cache reads on this model would
+  # report as free against a rate AWS does publish.
+  # There is no cacheWriteInputTokens rate because AWS publishes no standard-tier
+  # cache-write dimension for this model at all; the flex and priority tiers,
+  # which this project never invokes, publish one at exactly $0.0000000000.
+  # That omission's basis is recorded per unit in
+  # idp_common.metering_units.EXPECTED_CACHE_UNIT_OMISSIONS.
   - name: bedrock/us.amazon.nova-premier-v1:0
     units:
       - name: inputTokens
         price: "2.5E-6"
       - name: outputTokens
         price: "1.25E-5"
+      - name: cacheReadInputTokens
+        price: "6.25E-7"
 
   # ---------------------------------------------------------------------------
   # Amazon Bedrock Models - Anthropic Claude (US)
@@ -140,17 +329,6 @@ pricing:
       - name: outputTokens
         price: "1.25E-6"
   
-  - name: bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0
-    units:
-      - name: inputTokens
-        price: "8.0E-7"
-      - name: outputTokens
-        price: "4.0E-6"
-      - name: cacheReadInputTokens
-        price: "8.0E-8"
-      - name: cacheWriteInputTokens
-        price: "1.0E-6"
-  
   - name: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
     units:
       - name: inputTokens
@@ -161,7 +339,68 @@ pricing:
         price: "1.1E-7"
       - name: cacheWriteInputTokens
         price: "1.4E-6"
-  
+
+  # Claude Haiku 5.5 — exactly 10x cheaper per token than Haiku 4.5 above, which is
+  # worth stating because the launch announcement says "around 75% less ... for most
+  # tasks". Both are right and they measure different things: the per-token rate is
+  # 90% lower, and the ~75% figure is a per-task estimate that absorbs this model's
+  # reasoning tokens (it is the first Haiku with effort controls, default "medium").
+  # Rates are the US regional / geo-CRIS band, matching every other "us." entry in
+  # this file, read from the AWS price list offer file for
+  # AmazonBedrockFoundationModels version 20261007183733 (retrieved 2026-10-08).
+  # The 5m cache-write rate is 1.25x input exactly ($0.1375), not rounded as the
+  # Haiku 4.5 entry above is. A 1-hour-TTL cache write is a separate, higher rate
+  # ($0.22/MTok) that this file has no unit for on any model; IDP writes 5-minute
+  # cache points only.
+  #
+  # LONG CONTEXT BAND NOT REPRESENTED — read before trusting a cost report.
+  # Any request whose input exceeds 100,000 tokens is billed entirely at the long
+  # band, 5x on every one of the five token types: $0.55 in / $2.75 out / $0.055
+  # cache-read / $0.6875 cache-write (us., eu.), and $0.50 / $2.50 / $0.05 /
+  # $0.625 (global.). The metering schema carries one price per unit per model ID
+  # with no way to express a usage-dependent band, and model_config_limits.yaml
+  # intentionally states the full 1M window, so costs for prompts above 100,000
+  # are UNDER-REPORTED here by 5x. This is the same shape as the GPT-6 Astra rows
+  # below and is handled the same way; the difference is the multiplier (5x on
+  # everything, against Astra's 2x input / 1.5x output) and that Anthropic
+  # publishes this threshold while AWS does not. The auto-sizers cross it by
+  # DEFAULT: the agentic shard budget is 578,400 tokens and the summarization
+  # budget 850,000. Two ways to remove the discrepancy if it matters for your
+  # account: lower max_input_tokens in model_config_limits.yaml (read the warning
+  # on that entry first — 100000 leaves a 2,000-token shard budget and makes
+  # Advanced mode unusable), or edit these rows to the long-band rates, which
+  # then over-reports every small request by 5x instead.
+  - name: bedrock/us.anthropic.claude-haiku-5-5
+    units:
+      - name: inputTokens
+        price: "1.1E-7"
+      - name: outputTokens
+        price: "5.5E-7"
+      - name: cacheReadInputTokens
+        price: "1.1E-8"
+      - name: cacheWriteInputTokens
+        price: "1.375E-7"
+
+  # Claude 3.5 Sonnet v1. Selected by the shipped ocr-benchmark and docsplit
+  # presets in config_library/, but it had no pricing entry, so the whole model
+  # costed as $0.00 (no pricing key is a substring of this ID, so even the old
+  # fuzzy lookup found nothing). Rates are those of the v2 row below — AWS prices
+  # both 3.5 Sonnet versions identically at $3/$15 per million tokens.
+  # This model has also reached end of life and is no longer selectable or
+  # defaulted anywhere. The entry stays for the same reason as Nova Premier's
+  # above: pricing lookup is retrospective, so deleting it would re-price
+  # historical cost reports at zero.
+  - name: bedrock/us.anthropic.claude-3-5-sonnet-20240620-v1:0
+    units:
+      - name: inputTokens
+        price: "3.0E-6"
+      - name: outputTokens
+        price: "1.5E-5"
+      - name: cacheReadInputTokens
+        price: "3.0E-7"
+      - name: cacheWriteInputTokens
+        price: "3.75E-6"
+
   - name: bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0
     units:
       - name: inputTokens
@@ -195,17 +434,6 @@ pricing:
       - name: cacheWriteInputTokens
         price: "3.75E-6"
   
-  - name: bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0:1m
-    units:
-      - name: inputTokens
-        price: "6.0E-6"
-      - name: outputTokens
-        price: "2.25E-5"
-      - name: cacheReadInputTokens
-        price: "6.0E-7"
-      - name: cacheWriteInputTokens
-        price: "7.5E-6"
-  
   - name: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
     units:
       - name: inputTokens
@@ -216,17 +444,102 @@ pricing:
         price: "3.3E-7"
       - name: cacheWriteInputTokens
         price: "4.125E-6"
-  
-  - name: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m
+
+  # GovCloud cross-region inference profile for the same underlying model as
+  # bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0 above.
+  #
+  # The rates below are the GovCloud band, which is higher than the commercial
+  # one. AWS publishes it in the AmazonBedrockFoundationModels offer file —
+  # version 20261012084008 (published 2026-10-12, retrieved 2026-10-13) — where
+  # this model is priced identically in us-gov-west-1 and us-gov-east-1: $3.60
+  # input, $18.00 output, $0.36 cache read and $4.50 five-minute cache write, all
+  # per MTok. ⚠️ A GovCloud cost figure this deployment reported before issue
+  # #1404 was 8.3% LOW on both token axes, because this row carried the
+  # commercial $3.30 / $16.50 band, so GovCloud costs are not continuous across
+  # that change. The reading is re-derivable with no credential:
+  # tests/unit/reporting/bedrock_govcloud_rate_digest.py --refresh, and
+  # test_govcloud_pricing_rates.py asserts every rate here against it.
+  #
+  # The cache units are priced even though a cachePoint is not expected to buy
+  # anything here, and that combination is deliberate. Verified live against
+  # us-gov-west-1 that cachePoint does not reduce input tokens through this
+  # inference profile (a repeated identical prompt still reported
+  # cacheReadInputTokens=0), and this id is absent from
+  # bedrock.client.CACHEPOINT_SUPPORTED_MODELS, so no cachePoint is sent to it in
+  # the first place and both counters should meter zero. A zero count costs
+  # nothing whatever the rate is. What the rates buy is the other case: if the
+  # profile ever does honour a cache point, the tokens are costed at the rate AWS
+  # charges rather than reported as an unpriced NULL cost, which is what an
+  # omitted unit on a row AWS prices resolves to (issues #1212 and #1206).
+  #
+  # Omitting a unit from an entry that otherwise exists resolves to $0.00 only
+  # when a declaration in idp_common.metering_units says the unit costs nothing;
+  # anything else is reported as a NULL cost. Before the GitHub issue #926 fix the
+  # old substring lookup matched an absent "cacheReadInputTokens" against this
+  # row's "inputTokens" price, so the omission bought a 10x cache-read rate rather
+  # than the intended zero — hence the explicit units.
+  #
+  # No one-hour-TTL cache write rate, and it is not an omission: AWS publishes one
+  # for this model in both GovCloud regions at $7.20/MTok, but a Converse cache
+  # point carries "type" and has no TTL member, so a one-hour point cannot be
+  # requested from this codebase — both construction sites build type="default".
+  # Bedrock meters a write of either TTL into the same cacheWriteInputTokens
+  # counter (the TTL breakdown comes back separately in usage.cacheDetails), so
+  # the five-minute rate is the right one for the only write this code can
+  # produce. test_govcloud_pricing_rates.py asserts that, at the construction
+  # sites, so a one-hour point added later fails rather than silently under-
+  # reporting its own writes by 37.5% ($4.50 charged against $7.20 published).
+  - name: bedrock/us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0
     units:
       - name: inputTokens
-        price: "6.6E-6"
+        price: "3.6E-6"
       - name: outputTokens
-        price: "2.475E-5"
+        price: "1.8E-5"
       - name: cacheReadInputTokens
-        price: "6.6E-7"
+        price: "3.6E-7"
       - name: cacheWriteInputTokens
-        price: "8.25E-6"
+        price: "4.5E-6"
+
+  # GovCloud Nova models are invoked with bare model IDs (the us. cross-region
+  # inference-profile prefix is invalid in GovCloud), so the us.-prefixed entries
+  # above never match at cost-calc time: save_reporting_data._get_unit_cost
+  # resolves by EXACT key, and "bedrock/amazon.nova-pro-v1:0" is a different key
+  # from "bedrock/us.amazon.nova-pro-v1:0". Without these rows a bare GovCloud
+  # Nova call would be reported as UNPRICED (NULL cost).
+  #
+  # The rates are therefore the GovCloud band, as on the us-gov Claude row above,
+  # and GovCloud is 1.2x commercial on both Nova models. AWS publishes it in the
+  # AmazonBedrock offer file version 20261010182242 (published 2026-10-10,
+  # retrieved 2026-10-13): in us-gov-west-1, Nova Pro at $0.96/MTok input and
+  # $3.84/MTok output, Nova Lite at $0.072 / $0.288. ⚠️ A GovCloud cost figure
+  # this deployment reported before issue #1404 was 16.7% LOW on both token axes,
+  # because these rows carried the commercial us-east-1 $0.80 / $3.20 and $0.06 /
+  # $0.24 band. Note that only us-gov-west-1 sells these two models; AWS publishes
+  # no us-gov-east-1 Nova dimension at all.
+  #
+  # Cache units omitted, and the basis is per unit in
+  # idp_common.metering_units.EXPECTED_CACHE_UNIT_OMISSIONS rather than inherited from
+  # the us-gov Claude row. The two units differ: AWS publishes a cache-WRITE
+  # dimension for every Nova model at exactly $0.0000000000, so omitting it hides
+  # nothing; it publishes a real cache-READ rate ($0.24/MTok in us-gov-west-1,
+  # $0.20/MTok in us-east-1 for Pro), so omitting that is justified only by the
+  # bare id being absent from bedrock.client.CACHEPOINT_SUPPORTED_MODELS — no
+  # cachePoint is ever sent to it and Nova does not cache implicitly, so no cache
+  # read can be metered against this key. A cache read that does turn up is
+  # reported as unpriced rather than billed at $0.00.
+  - name: bedrock/amazon.nova-pro-v1:0
+    units:
+      - name: inputTokens
+        price: "9.6E-7"
+      - name: outputTokens
+        price: "3.84E-6"
+
+  - name: bedrock/amazon.nova-lite-v1:0
+    units:
+      - name: inputTokens
+        price: "7.2E-8"
+      - name: outputTokens
+        price: "2.88E-7"
 
   - name: bedrock/us.anthropic.claude-sonnet-4-6
     units:
@@ -239,17 +552,87 @@ pricing:
       - name: cacheWriteInputTokens
         price: "4.125E-6"
 
+  # ⚠️ KNOWN DISCREPANCY, left as-is deliberately and tracked separately: these
+  # Sonnet 5 rows carry Sonnet 4.6's rates. The AWS price list gives Sonnet 5
+  # $2.20 in / $11.00 out per 1M on us./eu. and $2.00 / $10.00 on global. (offer
+  # 20261008165109), and the header of this file already states those figures, so
+  # the six Sonnet 5 rows below — us., eu., global. and each one's ":1m" twin —
+  # read a uniform 1.50x high on every unit. Correcting them is a clean multiply
+  # rather than a re-derivation, but it moves every Sonnet 5 cost figure this
+  # repository has published, so it belongs in its own change with the benchmark
+  # baselines restated alongside it. Until then: a cost REPORT from this file
+  # overstates Sonnet 5 by 50%, while a per-token ratio against another model
+  # quoted in the docs is computed from the price list, not from here.
+  - name: bedrock/us.anthropic.claude-sonnet-5
+    units:
+      - name: inputTokens
+        price: "3.3E-6"
+      - name: outputTokens
+        price: "1.65E-5"
+      - name: cacheReadInputTokens
+        price: "3.3E-7"
+      - name: cacheWriteInputTokens
+        price: "4.125E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
   - name: bedrock/us.anthropic.claude-sonnet-4-6:1m
     units:
       - name: inputTokens
-        price: "6.6E-6"
+        price: "3.3E-6"
       - name: outputTokens
-        price: "2.475E-5"
+        price: "1.65E-5"
       - name: cacheReadInputTokens
-        price: "6.6E-7"
+        price: "3.3E-7"
       - name: cacheWriteInputTokens
-        price: "8.25E-6"
+        price: "4.125E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  # ⚠️ Carries Sonnet 4.6's rates, a uniform 1.50x high, like the other five
+  # Sonnet 5 rows. The full explanation and the correct figures are on the
+  # us.anthropic.claude-sonnet-5 block above; fix all six together or none.
+  - name: bedrock/us.anthropic.claude-sonnet-5:1m
+    units:
+      - name: inputTokens
+        price: "3.3E-6"
+      - name: outputTokens
+        price: "1.65E-5"
+      - name: cacheReadInputTokens
+        price: "3.3E-7"
+      - name: cacheWriteInputTokens
+        price: "4.125E-6"
   
+  # Claude Sonnet 5.5. Rates are the US regional / geo-CRIS band, read from the AWS
+  # price list offer file for AmazonBedrockFoundationModels version 20261012084008
+  # (retrieved 2026-10-14): $2.20 input / $11.00 output / $0.11 cache read / $2.75
+  # 5-minute cache write per 1M tokens. A 1-hour-TTL cache write is a separate,
+  # higher rate ($4.40/MTok) that this file has no unit for on any model; IDP writes
+  # 5-minute cache points only. There is no ':1m' twin to add — the 1M window is
+  # this model's default and there is no such model id (see model_config_limits.yaml).
+  #
+  # ⚠️ DO NOT read a cost report as saying Sonnet 5.5 is cheaper than Sonnet 5 per
+  # token on input or output. The price list gives the two models the IDENTICAL
+  # $2.20/$11.00 band; the one real difference is cache read, where 5.5 is half the
+  # price ($0.11 against $0.22). The rows below are the measured rates and the six
+  # Sonnet 5 rows are knowingly 1.50x high (the ⚠️ block on
+  # us.anthropic.claude-sonnet-5 above explains why they are left alone), so a
+  # report comparing the two is reading that discrepancy, not a price difference.
+  # Correcting the Sonnet 5 rows removes the artefact; until then, compare the two
+  # from the price list rather than from a report generated out of this file.
+  # These rows are deliberately NOT inflated to match: a second known-wrong figure
+  # is not consistency, and it would have to be un-done by whoever fixes the first.
+  - name: bedrock/us.anthropic.claude-sonnet-5-5
+    units:
+      - name: inputTokens
+        price: "2.2E-6"
+      - name: outputTokens
+        price: "1.1E-5"
+      - name: cacheReadInputTokens
+        price: "1.1E-7"
+      - name: cacheWriteInputTokens
+        price: "2.75E-6"
+
   - name: bedrock/us.anthropic.claude-opus-4-20250514-v1:0
     units:
       - name: inputTokens
@@ -294,16 +677,290 @@ pricing:
       - name: cacheWriteInputTokens
         price: "6.25E-6"
 
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
   - name: bedrock/us.anthropic.claude-opus-4-6-v1:1m
     units:
       - name: inputTokens
-        price: "10.0E-6"
+        price: "5.0E-6"
       - name: outputTokens
-        price: "3.75E-5"
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  - name: bedrock/us.anthropic.claude-opus-4-7
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/us.anthropic.claude-opus-4-7:1m
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  - name: bedrock/us.anthropic.claude-opus-4-8
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/us.anthropic.claude-opus-4-8:1m
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # Claude Opus 5 — same pricing as Opus 4.8 ($5/$25 per MTok). The 1M context
+  # window is the model default and is priced at these standard rates.
+  - name: bedrock/us.anthropic.claude-opus-5
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/us.anthropic.claude-opus-5:1m
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # Claude Opus 5.5 — CHEAPER than Opus 5 in every category: $4/$20 per MTok
+  # (vs $5/$25) and, uniquely in the Claude family here, a cache read priced at
+  # 0.05x input rather than the usual 0.1x — $0.20/MTok, not $0.40. Do NOT derive
+  # cacheReadInputTokens from inputTokens by the 0.1x rule that holds for every
+  # other entry in this file; it would overstate cached reads by 2x. The 5-minute
+  # cache write keeps the standard 1.25x ($5/MTok). Source: Anthropic's published
+  # per-model rates, which Bedrock mirrors for Anthropic models.
+  - name: bedrock/us.anthropic.claude-opus-5-5
+    units:
+      - name: inputTokens
+        price: "4.0E-6"
+      - name: outputTokens
+        price: "2.0E-5"
+      - name: cacheReadInputTokens
+        price: "2.0E-7"
+      - name: cacheWriteInputTokens
+        price: "5.0E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/us.anthropic.claude-opus-5-5:1m
+    units:
+      - name: inputTokens
+        price: "4.0E-6"
+      - name: outputTokens
+        price: "2.0E-5"
+      - name: cacheReadInputTokens
+        price: "2.0E-7"
+      - name: cacheWriteInputTokens
+        price: "5.0E-6"
+
+  # ---------------------------------------------------------------------------
+  # Amazon Bedrock Models - OpenAI GPT-5.x (bedrock-mantle Responses API)
+  # ---------------------------------------------------------------------------
+  # Pricing matches OpenAI first-party rates on Bedrock (in-region on-demand).
+  # Per 1M tokens: input / cache-write (30m) / cache-read / output.
+  # GPT-5.4:       $2.75  / -      / $0.275 / $16.50   (automatic caching, no write cost)
+  # GPT-5.5:       $5.50  / -      / $0.55  / $33.00   (automatic caching, no write cost)
+  # GPT-5.6 Sol:   $5.50  / $6.88  / $0.55  / $33.00   (explicit caching, has write cost)
+  # GPT-5.6 Terra: $2.75  / $3.44  / $0.28  / $16.50
+  # GPT-5.6 Luna:  $1.10  / $1.38  / $0.11  / $6.60
+  # 5.4/5.5 cache automatically (no write cost); 5.6 caches via explicit
+  # breakpoints and bills a 30-min cache-write.
+  - name: bedrock/openai.gpt-5.4
+    units:
+      - name: inputTokens
+        price: "2.75E-6"
+      - name: outputTokens
+        price: "1.65E-5"
+      - name: cacheReadInputTokens
+        price: "2.75E-7"
+      - name: cacheWriteInputTokens
+        price: "0.0"
+
+  - name: bedrock/openai.gpt-5.5
+    units:
+      - name: inputTokens
+        price: "5.5E-6"
+      - name: outputTokens
+        price: "3.3E-5"
+      - name: cacheReadInputTokens
+        price: "5.5E-7"
+      - name: cacheWriteInputTokens
+        price: "0.0"
+
+  - name: bedrock/openai.gpt-5.6-sol
+    units:
+      - name: inputTokens
+        price: "5.5E-6"
+      - name: outputTokens
+        price: "3.3E-5"
+      - name: cacheReadInputTokens
+        price: "5.5E-7"
+      - name: cacheWriteInputTokens
+        price: "6.88E-6"
+
+  - name: bedrock/openai.gpt-5.6-terra
+    units:
+      - name: inputTokens
+        price: "2.75E-6"
+      - name: outputTokens
+        price: "1.65E-5"
+      - name: cacheReadInputTokens
+        price: "2.8E-7"
+      - name: cacheWriteInputTokens
+        price: "3.44E-6"
+
+  - name: bedrock/openai.gpt-5.6-luna
+    units:
+      - name: inputTokens
+        price: "1.1E-6"
+      - name: outputTokens
+        price: "6.6E-6"
+      - name: cacheReadInputTokens
+        price: "1.1E-7"
+      - name: cacheWriteInputTokens
+        price: "1.38E-6"
+
+  # ---------------------------------------------------------------------------
+  # Amazon Bedrock Models - OpenAI GPT-6 Astra (Converse, CRIS-only)
+  # ---------------------------------------------------------------------------
+  # Astra does NOT share the GPT-5.x rows above: those models are billed on the
+  # bedrock-mantle Responses API, Astra on bedrock-runtime Converse via the
+  # us./global. inference profiles. There is no in-region form, so there is no
+  # bare `bedrock/openai.gpt-6-astra` row.
+  #
+  # Per 1M tokens (Standard tier — the only tier this model supports), from the
+  # GPT-6 Astra model card, SHORT context band (input <= 272K):
+  #   Geo CRIS (us.):    $11.00 in / $55.00 out / $1.10 cache-read / $13.75 cache-write
+  #   Global CRIS:       $10.00 in / $50.00 out / $1.00 cache-read / $12.50 cache-write
+  # Global is cheaper, so the two prefixes need separate rows.
+  #
+  # LONG CONTEXT BAND NOT REPRESENTED — read before trusting a cost report.
+  # Any request whose input exceeds 272K tokens is billed entirely at the long
+  # band: $22.00/$82.50 (us.) or $20.00/$75.00 (global.) in/out, with cache-read
+  # $2.20/$2.00 and cache-write $27.50/$25.00. The metering schema carries one
+  # price per unit per model ID with no way to express a usage-dependent band, and
+  # model_config_limits.yaml intentionally allows the full 1.05M window, so costs
+  # for prompts above 272K are UNDER-REPORTED here — up to 2x on input and 1.5x on
+  # output. Note the auto-sizers cross that boundary by DEFAULT: the agentic shard
+  # budget is 613,400 tokens and the summarization budget 892,500 (both derived
+  # from the 1.05M window). Two ways to remove the discrepancy if it matters for
+  # your account: cap max_input_tokens at 272000 in model_config_limits.yaml
+  # (which shrinks both budgets with it), or edit these rows to the long-band
+  # rates (which then over-reports small requests instead).
+  #
+  # cacheWriteInputTokens is a REAL charge here, unlike the Grok rows below: the
+  # model card prices a 30-minute cache write, and implicit caching genuinely
+  # engages on this path — a repeated 2,707-token prefix billed inputTokens=2 with
+  # cacheReadInputTokens=2707 (us-west-2 Converse, 2026-09-10). No cachePoint
+  # block is needed (and an explicit one is rejected); the discount arrives on its
+  # own and the existing metering records it.
+  #
+  # No :flex / :priority rows: the model card lists Standard only, and Converse
+  # rejects both ("The provided service tier is not supported for this model"),
+  # verified 2026-09-10.
+  - name: bedrock/us.openai.gpt-6-astra
+    units:
+      - name: inputTokens
+        price: "1.1E-5"
+      - name: outputTokens
+        price: "5.5E-5"
+      - name: cacheReadInputTokens
+        price: "1.1E-6"
+      - name: cacheWriteInputTokens
+        price: "1.375E-5"
+
+  - name: bedrock/global.openai.gpt-6-astra
+    units:
+      - name: inputTokens
+        price: "1.0E-5"
+      - name: outputTokens
+        price: "5.0E-5"
       - name: cacheReadInputTokens
         price: "1.0E-6"
       - name: cacheWriteInputTokens
-        price: "12.5E-6"
+        price: "1.25E-5"
+
+  # ---------------------------------------------------------------------------
+  # Amazon Bedrock Models - xAI Grok (Converse, CRIS-only)
+  # ---------------------------------------------------------------------------
+  # Per 1M tokens (Standard tier), from the Grok 4.6 model card:
+  #   Geo CRIS (us.):    $2.20 in / $6.60 out / $0.55 cache-read
+  #   Global CRIS:       $2.00 in / $6.00 out / $0.50 cache-read
+  # Global is cheaper, so the two prefixes need separate rows.
+  #
+  # cacheWriteInputTokens is 0.0: Grok's model card advertises IMPLICIT prompt
+  # caching only (no explicit breakpoints, hence no write charge), and explicit
+  # cachePoint blocks are rejected outright. Note the cache-read rate is recorded
+  # for completeness but was not observed to engage — four back-to-back identical
+  # 20,033-token prompts all reported cacheReadInputTokens=0 (us-west-2,
+  # 2026-09-02), so do not count on a caching discount.
+  #
+  # No :flex / :priority rows: despite the model card advertising both tiers,
+  # Converse rejects them ("The provided service tier is not supported for this
+  # model") on both prefixes in us-west-2 and us-east-1, verified 2026-09-02.
+  - name: bedrock/us.xai.grok-4.6
+    units:
+      - name: inputTokens
+        price: "2.2E-6"
+      - name: outputTokens
+        price: "6.6E-6"
+      - name: cacheReadInputTokens
+        price: "5.5E-7"
+      - name: cacheWriteInputTokens
+        price: "0.0"
+
+  - name: bedrock/global.xai.grok-4.6
+    units:
+      - name: inputTokens
+        price: "2.0E-6"
+      - name: outputTokens
+        price: "6.0E-6"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "0.0"
 
   # ---------------------------------------------------------------------------
   # Amazon Bedrock Models - Amazon Nova (EU)
@@ -317,7 +974,7 @@ pricing:
       - name: cacheReadInputTokens
         price: "1.9E-8"
       - name: cacheWriteInputTokens
-        price: "7.8E-8"
+        price: "0.0"
   
   - name: bedrock/eu.amazon.nova-pro-v1:0
     units:
@@ -328,7 +985,7 @@ pricing:
       - name: cacheReadInputTokens
         price: "2.6E-7"
       - name: cacheWriteInputTokens
-        price: "1.0E-6"
+        price: "0.0"
   
   - name: bedrock/eu.amazon.nova-2-lite-v1:0
     units:
@@ -339,7 +996,40 @@ pricing:
       - name: cacheReadInputTokens
         price: "9.75E-8"
       - name: cacheWriteInputTokens
-        price: "3.9E-7"
+        price: "0.0"
+
+  # EU Priority / Flex service tiers for eu.amazon.nova-2-lite. Both IDs are
+  # template AllowedValues AND members of CACHEPOINT_SUPPORTED_MODELS, so they do
+  # report nonzero cacheReadInputTokens — but they had no pricing entry at all
+  # until GitHub issue #926, and the old substring lookup silently priced them off
+  # the base-tier row above (so Flex was billed at 2x its rate, Priority at 0.57x,
+  # and cache reads at the base-tier FRESH INPUT rate — an 8x overcharge).
+  #
+  # Derived from the eu. base rates above with the same tier multipliers the
+  # us. and global. tier rows use (Priority 1.75x, Flex 0.5x, applied to every
+  # unit, rounded to 3 s.f.) rather than copied from a price list. If AWS
+  # publishes EU tier rates that differ, replace these.
+  - name: bedrock/eu.amazon.nova-2-lite-v1:0:priority
+    units:
+      - name: inputTokens
+        price: "6.83E-7"
+      - name: outputTokens
+        price: "5.72E-6"
+      - name: cacheReadInputTokens
+        price: "1.71E-7"
+      - name: cacheWriteInputTokens
+        price: "0.0"
+
+  - name: bedrock/eu.amazon.nova-2-lite-v1:0:flex
+    units:
+      - name: inputTokens
+        price: "1.95E-7"
+      - name: outputTokens
+        price: "1.64E-6"
+      - name: cacheReadInputTokens
+        price: "4.88E-8"
+      - name: cacheWriteInputTokens
+        price: "0.0"
 
   # ---------------------------------------------------------------------------
   # Amazon Bedrock Models - Anthropic Claude (EU)
@@ -361,7 +1051,24 @@ pricing:
         price: "1.1E-7"
       - name: cacheWriteInputTokens
         price: "1.4E-6"
-  
+
+  # Claude Haiku 5.5, EU geo. Identical to the "us." band: the price list carries
+  # the same $0.11 / $0.55 regional rate in every commercial region that sells this
+  # model (checked across Frankfurt, Ireland and US East). GovCloud is the one
+  # exception at $0.12 / $0.60. This file's only "us-gov." row is Claude Sonnet
+  # 4.5's, which is the one GovCloud Claude model the GovCloud preset selects, so
+  # the Haiku 5.5 GovCloud band is unrepresented here.
+  - name: bedrock/eu.anthropic.claude-haiku-5-5
+    units:
+      - name: inputTokens
+        price: "1.1E-7"
+      - name: outputTokens
+        price: "5.5E-7"
+      - name: cacheReadInputTokens
+        price: "1.1E-8"
+      - name: cacheWriteInputTokens
+        price: "1.375E-7"
+
   - name: bedrock/eu.anthropic.claude-3-5-sonnet-20241022-v2:0
     units:
       - name: inputTokens
@@ -406,17 +1113,6 @@ pricing:
       - name: cacheWriteInputTokens
         price: "4.125E-6"
   
-  - name: bedrock/eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m
-    units:
-      - name: inputTokens
-        price: "6.6E-6"
-      - name: outputTokens
-        price: "2.475E-5"
-      - name: cacheReadInputTokens
-        price: "6.6E-7"
-      - name: cacheWriteInputTokens
-        price: "8.25E-6"
-
   - name: bedrock/eu.anthropic.claude-sonnet-4-6
     units:
       - name: inputTokens
@@ -428,17 +1124,65 @@ pricing:
       - name: cacheWriteInputTokens
         price: "4.125E-6"
 
+  # ⚠️ Carries Sonnet 4.6's rates, a uniform 1.50x high, like the other five
+  # Sonnet 5 rows. The full explanation and the correct figures are on the
+  # us.anthropic.claude-sonnet-5 block above; fix all six together or none.
+  - name: bedrock/eu.anthropic.claude-sonnet-5
+    units:
+      - name: inputTokens
+        price: "3.3E-6"
+      - name: outputTokens
+        price: "1.65E-5"
+      - name: cacheReadInputTokens
+        price: "3.3E-7"
+      - name: cacheWriteInputTokens
+        price: "4.125E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
   - name: bedrock/eu.anthropic.claude-sonnet-4-6:1m
     units:
       - name: inputTokens
-        price: "6.6E-6"
+        price: "3.3E-6"
       - name: outputTokens
-        price: "2.475E-5"
+        price: "1.65E-5"
       - name: cacheReadInputTokens
-        price: "6.6E-7"
+        price: "3.3E-7"
       - name: cacheWriteInputTokens
-        price: "8.25E-6"
+        price: "4.125E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  # ⚠️ Carries Sonnet 4.6's rates, a uniform 1.50x high, like the other five
+  # Sonnet 5 rows. The full explanation and the correct figures are on the
+  # us.anthropic.claude-sonnet-5 block above; fix all six together or none.
+  - name: bedrock/eu.anthropic.claude-sonnet-5:1m
+    units:
+      - name: inputTokens
+        price: "3.3E-6"
+      - name: outputTokens
+        price: "1.65E-5"
+      - name: cacheReadInputTokens
+        price: "3.3E-7"
+      - name: cacheWriteInputTokens
+        price: "4.125E-6"
   
+  # Claude Sonnet 5.5, EU regional / geo-CRIS band. Identical to the us. band in the
+  # price list (offer 20261012084008, retrieved 2026-10-14) — $2.20 / $11.00 / $0.11
+  # / $2.75 — which is the normal shape for this file: only the global. band differs.
+  # Read the ⚠️ note on the us.anthropic.claude-sonnet-5-5 block before comparing a
+  # cost report for this model against one for Sonnet 5.
+  - name: bedrock/eu.anthropic.claude-sonnet-5-5
+    units:
+      - name: inputTokens
+        price: "2.2E-6"
+      - name: outputTokens
+        price: "1.1E-5"
+      - name: cacheReadInputTokens
+        price: "1.1E-7"
+      - name: cacheWriteInputTokens
+        price: "2.75E-6"
+
   - name: bedrock/eu.anthropic.claude-opus-4-5-20251101-v1:0
     units:
       - name: inputTokens
@@ -461,20 +1205,174 @@ pricing:
       - name: cacheWriteInputTokens
         price: "6.25E-6"
 
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
   - name: bedrock/eu.anthropic.claude-opus-4-6-v1:1m
     units:
       - name: inputTokens
-        price: "10.0E-6"
+        price: "5.0E-6"
       - name: outputTokens
-        price: "3.75E-5"
+        price: "2.5E-5"
       - name: cacheReadInputTokens
-        price: "1.0E-6"
+        price: "5.0E-7"
       - name: cacheWriteInputTokens
-        price: "12.5E-6"
+        price: "6.25E-6"
+
+  - name: bedrock/eu.anthropic.claude-opus-4-7
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/eu.anthropic.claude-opus-4-7:1m
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  - name: bedrock/eu.anthropic.claude-opus-4-8
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/eu.anthropic.claude-opus-4-8:1m
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # Claude Opus 5 — same pricing as Opus 4.8 (the :1m variant is priced the same)
+  - name: bedrock/eu.anthropic.claude-opus-5
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/eu.anthropic.claude-opus-5:1m
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # Claude Opus 5.5 — $4/$20 per MTok, and a cache read at 0.05x input
+  # ($0.20/MTok), not the 0.1x that every other model here uses. See the us.
+  # entry above for why that must not be derived.
+  - name: bedrock/eu.anthropic.claude-opus-5-5
+    units:
+      - name: inputTokens
+        price: "4.0E-6"
+      - name: outputTokens
+        price: "2.0E-5"
+      - name: cacheReadInputTokens
+        price: "2.0E-7"
+      - name: cacheWriteInputTokens
+        price: "5.0E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/eu.anthropic.claude-opus-5-5:1m
+    units:
+      - name: inputTokens
+        price: "4.0E-6"
+      - name: outputTokens
+        price: "2.0E-5"
+      - name: cacheReadInputTokens
+        price: "2.0E-7"
+      - name: cacheWriteInputTokens
+        price: "5.0E-6"
+
+  # ---------------------------------------------------------------------------
+  # Amazon Bedrock Models - Amazon Nova (Canada)
+  # ---------------------------------------------------------------------------
+  # Canada (Central) rates from the AWS Price List API (usagetype CAN1-NovaLite-*,
+  # retrieved 2026-10-11); cache writes billed at the input rate, as the US/EU
+  # Nova rows.
+  - name: bedrock/ca.amazon.nova-lite-v1:0
+    units:
+      - name: inputTokens
+        price: "6.4E-8"
+      - name: outputTokens
+        price: "2.56E-7"
+      - name: cacheReadInputTokens
+        price: "1.6E-8"
+      # "0.0" for the same reason every other Nova row carries it — see the ⚠️
+      # note on the Nova section above. This row shipped at the input rate
+      # (6.4E-8), which is the one value that is never right: not zero (the Nova
+      # rule) and not 1.25x input (the Claude rule), and `cacheWriteInputTokens`
+      # is DISJOINT from `inputTokens`, so it billed the whole cached prefix at
+      # full input price for a dimension AWS publishes at $0.0000000000. Canada
+      # matters more than most: this model is the confidence-assessment default
+      # for a ca-* stack and prompt caching is enabled on it, so the over-report
+      # was on the hottest path in the deployment.
+      - name: cacheWriteInputTokens
+        price: "0.0"
 
   # ---------------------------------------------------------------------------
   # Amazon Bedrock Models - Global/Cross-Region
   # ---------------------------------------------------------------------------
+  # Same rates as bedrock/us.amazon.nova-pro-v1:0 — the global inference profile
+  # is priced identically to the us. one, which is the convention the
+  # global.amazon.nova-2-lite-v1:0 entry below already follows.
+  #
+  # This model is offered by two configuration-schema dropdowns in
+  # patterns/unified/template.yaml and had NO pricing entry at all, so every call
+  # to it recorded a NULL cost. It went unnoticed because the coverage test read
+  # only CloudFormation `AllowedValues:` lists and these dropdowns are JSON-Schema
+  # `enum:` blocks under Metadata — see test_pricing_lookup._enumerated_values.
+  #
+  # The cache units are priced even though this ID is not currently in
+  # bedrock.client.CACHEPOINT_SUPPORTED_MODELS, so nothing emits cache tokens for
+  # it yet. That asymmetry is deliberate: pricing a unit that is never metered
+  # costs nothing, whereas the reverse — metering a unit that is not priced —
+  # silently reports $0.00 for real spend.
+  - name: bedrock/global.amazon.nova-pro-v1:0
+    units:
+      - name: inputTokens
+        price: "8.0E-7"
+      - name: outputTokens
+        price: "3.2E-6"
+      - name: cacheReadInputTokens
+        price: "2.0E-7"
+      - name: cacheWriteInputTokens
+        price: "0.0"
+
   - name: bedrock/global.amazon.nova-2-lite-v1:0
     units:
       - name: inputTokens
@@ -484,7 +1382,7 @@ pricing:
       - name: cacheReadInputTokens
         price: "7.5E-8"
       - name: cacheWriteInputTokens
-        price: "3.0E-7"
+        price: "0.0"
   
   - name: bedrock/global.amazon.nova-2-lite-v1:0:priority
     units:
@@ -495,7 +1393,7 @@ pricing:
       - name: cacheReadInputTokens
         price: "1.31E-7"
       - name: cacheWriteInputTokens
-        price: "5.25E-7"
+        price: "0.0"
   
   - name: bedrock/global.amazon.nova-2-lite-v1:0:flex
     units:
@@ -506,7 +1404,7 @@ pricing:
       - name: cacheReadInputTokens
         price: "3.75E-8"
       - name: cacheWriteInputTokens
-        price: "1.5E-7"
+        price: "0.0"
   
   - name: bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0
     units:
@@ -518,7 +1416,21 @@ pricing:
         price: "1.0E-7"
       - name: cacheWriteInputTokens
         price: "1.25E-6"
-  
+
+  # Claude Haiku 5.5, global cross-region. The global band is ~9% below the
+  # regional one (the regional rate carries the usual 10% premium), the same
+  # relationship the Haiku 4.5 pair above has.
+  - name: bedrock/global.anthropic.claude-haiku-5-5
+    units:
+      - name: inputTokens
+        price: "1.0E-7"
+      - name: outputTokens
+        price: "5.0E-7"
+      - name: cacheReadInputTokens
+        price: "1.0E-8"
+      - name: cacheWriteInputTokens
+        price: "1.25E-7"
+
   - name: bedrock/global.anthropic.claude-sonnet-4-5-20250929-v1:0
     units:
       - name: inputTokens
@@ -530,17 +1442,6 @@ pricing:
       - name: cacheWriteInputTokens
         price: "3.75E-6"
   
-  - name: bedrock/global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m
-    units:
-      - name: inputTokens
-        price: "6.0E-6"
-      - name: outputTokens
-        price: "2.25E-5"
-      - name: cacheReadInputTokens
-        price: "6.0E-7"
-      - name: cacheWriteInputTokens
-        price: "7.5E-6"
-
   - name: bedrock/global.anthropic.claude-sonnet-4-6
     units:
       - name: inputTokens
@@ -552,17 +1453,65 @@ pricing:
       - name: cacheWriteInputTokens
         price: "3.75E-6"
 
+  # ⚠️ Carries Sonnet 4.6's rates, a uniform 1.50x high, like the other five
+  # Sonnet 5 rows. The full explanation and the correct figures are on the
+  # us.anthropic.claude-sonnet-5 block above; fix all six together or none.
+  - name: bedrock/global.anthropic.claude-sonnet-5
+    units:
+      - name: inputTokens
+        price: "3.0E-6"
+      - name: outputTokens
+        price: "1.5E-5"
+      - name: cacheReadInputTokens
+        price: "3.0E-7"
+      - name: cacheWriteInputTokens
+        price: "3.75E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
   - name: bedrock/global.anthropic.claude-sonnet-4-6:1m
     units:
       - name: inputTokens
-        price: "6.0E-6"
+        price: "3.0E-6"
       - name: outputTokens
-        price: "2.25E-5"
+        price: "1.5E-5"
       - name: cacheReadInputTokens
-        price: "6.0E-7"
+        price: "3.0E-7"
       - name: cacheWriteInputTokens
-        price: "7.5E-6"
+        price: "3.75E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  # ⚠️ Carries Sonnet 4.6's rates, a uniform 1.50x high, like the other five
+  # Sonnet 5 rows. The full explanation and the correct figures are on the
+  # us.anthropic.claude-sonnet-5 block above; fix all six together or none.
+  - name: bedrock/global.anthropic.claude-sonnet-5:1m
+    units:
+      - name: inputTokens
+        price: "3.0E-6"
+      - name: outputTokens
+        price: "1.5E-5"
+      - name: cacheReadInputTokens
+        price: "3.0E-7"
+      - name: cacheWriteInputTokens
+        price: "3.75E-6"
   
+  # Claude Sonnet 5.5, global. band — the 1/1.1 of the us./eu. rates this file's
+  # header describes: $2.00 input / $10.00 output / $0.10 cache read / $2.50
+  # 5-minute cache write per 1M tokens (offer 20261012084008, retrieved
+  # 2026-10-14). Read the ⚠️ note on the us.anthropic.claude-sonnet-5-5 block before
+  # comparing a cost report for this model against one for Sonnet 5.
+  - name: bedrock/global.anthropic.claude-sonnet-5-5
+    units:
+      - name: inputTokens
+        price: "2.0E-6"
+      - name: outputTokens
+        price: "1.0E-5"
+      - name: cacheReadInputTokens
+        price: "1.0E-7"
+      - name: cacheWriteInputTokens
+        price: "2.5E-6"
+
   - name: bedrock/global.anthropic.claude-opus-4-5-20251101-v1:0
     units:
       - name: inputTokens
@@ -585,16 +1534,118 @@ pricing:
       - name: cacheWriteInputTokens
         price: "6.25E-6"
 
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
   - name: bedrock/global.anthropic.claude-opus-4-6-v1:1m
     units:
       - name: inputTokens
-        price: "10.0E-6"
+        price: "5.0E-6"
       - name: outputTokens
-        price: "3.75E-5"
+        price: "2.5E-5"
       - name: cacheReadInputTokens
-        price: "1.0E-6"
+        price: "5.0E-7"
       - name: cacheWriteInputTokens
-        price: "12.5E-6"
+        price: "6.25E-6"
+
+  - name: bedrock/global.anthropic.claude-opus-4-7
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/global.anthropic.claude-opus-4-7:1m
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  - name: bedrock/global.anthropic.claude-opus-4-8
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/global.anthropic.claude-opus-4-8:1m
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # Claude Opus 5 — same pricing as Opus 4.8 (the :1m variant is priced the same)
+  - name: bedrock/global.anthropic.claude-opus-5
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/global.anthropic.claude-opus-5:1m
+    units:
+      - name: inputTokens
+        price: "5.0E-6"
+      - name: outputTokens
+        price: "2.5E-5"
+      - name: cacheReadInputTokens
+        price: "5.0E-7"
+      - name: cacheWriteInputTokens
+        price: "6.25E-6"
+
+  # Claude Opus 5.5 — $4/$20 per MTok, and a cache read at 0.05x input
+  # ($0.20/MTok), not the 0.1x that every other model here uses. See the us.
+  # entry above for why that must not be derived.
+  - name: bedrock/global.anthropic.claude-opus-5-5
+    units:
+      - name: inputTokens
+        price: "4.0E-6"
+      - name: outputTokens
+        price: "2.0E-5"
+      - name: cacheReadInputTokens
+        price: "2.0E-7"
+      - name: cacheWriteInputTokens
+        price: "5.0E-6"
+
+  # ":1m" long-context variant — same rates as the base entry above. The 1M
+  # context window carries no price premium; see the header note.
+  - name: bedrock/global.anthropic.claude-opus-5-5:1m
+    units:
+      - name: inputTokens
+        price: "4.0E-6"
+      - name: outputTokens
+        price: "2.0E-5"
+      - name: cacheReadInputTokens
+        price: "2.0E-7"
+      - name: cacheWriteInputTokens
+        price: "5.0E-6"
 
   # ---------------------------------------------------------------------------
   # Amazon Bedrock Models - Third-Party
@@ -634,6 +1685,38 @@ pricing:
       - name: outputTokens
         price: "6.0E-7"
 
+
+  # ---------------------------------------------------------------------------
+  # LambdaHook OCR providers (per-page) — see samples/lambda-hook-inference/
+  # ---------------------------------------------------------------------------
+  # Keys are `lambda_hook/<function-name>`, matching the metering key the Bedrock
+  # client emits: `{context}/lambda_hook/{function-name}`. The function name is
+  # used rather than the configured ARN because an ARN embeds an account id and a
+  # region, so it could never be a shippable default (see
+  # bedrock.client.lambda_hook_metering_name). A pricing config that still keys
+  # these on the bare function name keeps working: `_get_unit_cost` walks the
+  # `/`-delimited suffixes, so `GENAIIDP-mistral-ocr-hook` also resolves.
+  #
+  # Mistral OCR hosted API list price: $4 / 1,000 pages. "pages" comes from the
+  # hook's usage.pages.
+  - name: lambda_hook/GENAIIDP-mistral-ocr-hook
+    units:
+      - name: pages
+        price: "0.004"
+
+  # Cohere Parse hosted API list price: $1.50 / 1,000 pages.
+  #
+  # Source: the Parse announcement (https://cohere.com/blog/parse), verbatim —
+  # "access Parse through the Cohere API for just $1.50 per 1,000 pages".
+  # Note that https://cohere.com/pricing does NOT list a per-page rate for
+  # Parse; it prices Model Vault by dedicated instance instead ($4.00/hr Medium,
+  # $7.00/hr XL). So this default is right for the hosted-API hook, and anyone
+  # self-hosting Parse on Model Vault or SageMaker should override it — their
+  # cost is per instance-hour, not per page.
+  - name: lambda_hook/GENAIIDP-cohere-parse-hook
+    units:
+      - name: pages
+        price: "0.0015"
 
   # ---------------------------------------------------------------------------
   # AWS Lambda Pricing (US East - N. Virginia)

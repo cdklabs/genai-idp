@@ -14,6 +14,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from strands import Agent
 from strands.tools.mcp import MCPClient
 
+from ..common.cost_metrics import with_cost_hook
 from ..common.oauth_auth import get_cognito_bearer_token
 from ..common.strands_bedrock_model import create_strands_bedrock_model
 
@@ -166,7 +167,7 @@ def create_external_mcp_agent(
     model_id: str = None,
     mcp_server_config: Dict[str, Any] = None,
     **kwargs,
-) -> Agent:
+) -> tuple[Agent, MCPClient]:
     """
     Create External MCP Agent that connects to external MCP servers.
 
@@ -178,7 +179,8 @@ def create_external_mcp_agent(
         **kwargs: Additional arguments
 
     Returns:
-        Agent: Configured Strands agent instance with MCP tools
+        The configured Strands agent and the MCP client it holds open. The
+        caller owns the client's lifetime — `IDPAgent` closes it.
 
     Raises:
         Exception: If authentication or MCP connection fails
@@ -260,7 +262,10 @@ def create_external_mcp_agent(
 
             # Create Strands agent with MCP tools
             strands_agent = Agent(
-                tools=tools, system_prompt=system_prompt, model=bedrock_model
+                tools=tools,
+                system_prompt=system_prompt,
+                model=bedrock_model,
+                hooks=with_cost_hook(kwargs.get("hooks"), "external-mcp", model_id),
             )
 
         # Return the Strands agent - the MCP client will be managed by IDPAgent

@@ -10,7 +10,7 @@ The Conversational Agent System enables natural, multi-turn conversations with A
 
 - **Multi-Turn Conversations**: Maintains context across multiple exchanges
 - **Persistent Memory**: Stores conversation history in DynamoDB
-- **Real-Time Streaming**: Streams responses as they're generated via AppSync
+- **Real-Time Streaming**: Streams responses as they are generated, over a Lambda Function URL with `InvokeMode=RESPONSE_STREAM`
 - **Automatic Agent Selection**: Orchestrator routes queries to the best agent
 - **All Agents Available**: No manual agent selection needed
 - **Session-Based**: Each conversation has a unique session ID
@@ -20,24 +20,31 @@ The Conversational Agent System enables natural, multi-turn conversations with A
 ```
 User Message
     ↓
-AgentChatResolver (Lambda)
-    ↓
-Store in ChatMessagesTable (DynamoDB)
-    ↓
-Invoke AgentChatProcessor (Lambda)
+Browser SigV4-signs and POSTs directly to the chat streaming
+Lambda Function URL (POST /chat/agent, InvokeMode=RESPONSE_STREAM)
     ↓
 Create Conversational Orchestrator
     ├─ Load conversation history from memory
     ├─ Include all registered agents
     └─ Configure context management
     ↓
-Stream Response via AppSync
-    ├─ Publish chunks in real-time
+Stream Response as Server-Sent Events on the open response body
+    ├─ Emit each chunk as one SSE frame in real time
     ├─ Store in memory table
-    └─ Publish final response
+    └─ Emit the final response event
     ↓
 User receives streaming response
 ```
+
+There is a second, non-streaming delivery path for environments where Lambda
+Function URLs are unavailable (notably AWS GovCloud, where `VITE_STREAM_URL` is
+empty). In that case the UI calls the `sendAgentChatMessage` field on the API
+Gateway REST API, which routes through the dispatcher to `AgentChatResolver`;
+that Lambda stores the user message in `ChatMessagesTable` and async-invokes
+`AgentChatProcessor`, and the UI polls `getChatMessages` until the final
+assistant message appears (see `src/ui/src/api/chat-poll.ts`). Because the
+processors persist only the final message, this path shows a spinner followed by
+the complete answer rather than token-by-token output.
 
 ## Components
 
@@ -146,7 +153,111 @@ Stores conversation history for agent memory.
 **Schema**:
 - **PK**: `conversation#{session_id}`
 - **SK**: `timestamp` (ISO-8601 format)
-- **Attributes**: conversation_history (JSON), message_count, last_updated
+- **Attributes**: conversation_history (JSON), message_count, last_updated,
+  conversation_version
+
+Appending a message rewrites the whole newest item, so `conversation_version`
+guards it: the write is conditional on the value that was read and advances it in
+the same call, and a rejected write is rebuilt on a fresh read rather than
+replacing the message another writer appended in between. Two invocations serving
+one session — a resubmitted request, or a retried Lambda — are what make that
+overlap possible. Items written before the guard existed carry no version
+attribute; the first append to one adds it, so no migration is needed.
+
+#### AgentTable (DynamoDB)
+
+Stores the analytics agent's job records, including the conversation transcript the
+analytics UI replays. Written by `DynamoDBMessageLogger` in
+`agents/common/dynamodb_logger.py`.
+
+**Schema**:
+- **PK**: `agent#{user_id}`
+- **SK**: `job_id`
+- **Attributes**: `agent_messages` (JSON **string**, not a list), `agent_messages_version`
+
+Each message inside `agent_messages` carries a `sequence_number`, and it is the
+message's 1-based position in the stored array. The writer computes it as
+`len(stored) + 1` from the array it read, inside the same conditional write — so it
+costs no extra round trip, and the condition is what makes it exact: a write commits
+only if nothing appended in between, so no two stored messages can have computed the
+same length. It is unique across every logger writing the record, which matters
+because each sub-agent in a turn has its own.
+
+It is **not** a sort key: the writer appends, so the stored array is already in commit
+order and the UI renders that order as it is. What the ordinal is for is naming one
+message unambiguously. Two limits on how far to read it. Among messages written by this
+code the series is `1..N` with no duplicates and no gaps, but a transcript written
+before this behaviour existed keeps whatever its per-logger counters produced, and
+during the Lambda version rollover a writer still on pre-upgrade code appends without
+touching the version attribute, so the two can collide or skip — the same window the
+version guard itself cannot close. And a position in the stored array is not a row
+number on screen: the UI drops empty-content messages and splits a mixed
+text-plus-`toolUse` assistant message into several rows.
+
+`agent_messages` is the whole transcript held in one attribute, so appending a
+message means reading the array, growing it by one and writing it back.
+`agent_messages_version` guards that: each write is conditional on the value that
+was read and advances it in the same call, so an append that overlapped another
+writer's is rejected by DynamoDB and rebuilt on a fresh read instead of replacing
+the other writer's message. Items written before the guard existed carry no version
+attribute; the first append to one adds it, so no migration is needed.
+
+Two things differ from `IdHelperChatMemoryTable` above, and both raise the stakes:
+
+- **The overlap is the normal case, not an edge case.** Every sub-agent in a turn
+  builds its own logger on the *same* `PK`/`SK`, and nothing caps how many
+  sub-agents a turn may use, so several writers on one record is the ordinary
+  shape rather than something a retry has to produce.
+- **A rejected append is retried with jittered backoff**, because re-reading alone
+  paces the loop without lowering the collision rate — the losers simply re-enter
+  the same race in phase. The measured retention across writer counts is recorded
+  in the module beside `_MAX_APPEND_ATTEMPTS`.
+
+A message that still cannot be stored after the retry budget is dropped rather than
+forced through by overwriting the transcript, which would trade one lost message for
+all of them. The drop is logged with the job id and the message's role and timestamp
+**and** counted on the `AgentTranscriptMessageDropped` CloudWatch metric in the
+stack's namespace, which `AgentTranscriptMessageDroppedAlarm` reads. The metric
+matters because a log line cannot be alarmed on, and invisibility is why the
+unguarded version of this append went unnoticed
+([#1098](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/1098)).
+The log line names role and timestamp rather than a sequence number because a message
+that was never stored has no position in the transcript to name.
+
+**The write pool is drained at `IDPAgent.__exit__`.** Writes are queued on a thread
+pool so a DynamoDB round trip stays off the agent's critical path, and a Lambda
+invocation ends with the execution environment being *frozen* rather than shut down —
+the process is not signalled and does not exit, so nothing flushes the queue on its own.
+An interpreter-exit hook is no substitute: the mechanism that would flush a pool is
+`threading._register_atexit(_python_exit)` in `concurrent/futures/thread.py`, which
+`join`s every worker with **no timeout**, and reaching it needs an orderly interpreter
+shutdown that neither a freeze nor Python's default `SIGTERM` disposition provides.
+`__exit__` calls the tracker's `shutdown`, and every logger built in production belongs
+to an agent that passes through it: `agent_processor`'s `with agent:` and a sub-agent's
+`with specialized_agent:` in the orchestrator.
+
+The drain is **bounded** (`_DRAIN_TIMEOUT_SECONDS`, two seconds) because for a
+sub-agent that exit happens mid-turn with the user waiting, and anything still
+outstanding when the bound expires is reported on a **second** metric,
+`AgentTranscriptDrainIncomplete`, rather than waited on indefinitely. It is a separate
+metric from `AgentTranscriptMessageDropped` because the two license different
+conclusions: a dropped message is gone, whereas `shutdown` stops waiting without
+cancelling, so an abandoned write frequently commits when that execution environment is
+next thawed — just after the session reading the transcript has moved on. It is lost
+only if the environment is reclaimed instead of reused. Closing the pool also releases
+its worker thread, which is not a daemon thread and otherwise idles for the remaining
+life of a warm execution environment — one per sub-agent.
+
+The drain is at `__exit__` rather than on the hook registry's own
+`AfterInvocationEvent`, which does exist for teardown, because `shutdown` closes the
+pool and `submit` then raises: an agent invoked twice would silently stop transcribing
+after the first call.
+
+⚠️ **Only the analytics agent records a transcript at all.** A tracker needs `job_id`
+and `user_id`, which agent chat does not pass, and `AGENT_TABLE`, which is set on
+`AgentProcessorFunction` and on `AgentCoreMCPHandlerFunction` (which builds no agent)
+and on nothing else. Agent chat's multi-turn history lives in
+`IdHelperChatMemoryTable` above, which is a different attribute with its own guard.
 
 ### 4. GraphQL API
 
@@ -275,37 +386,59 @@ This tests:
 - `BEDROCK_REGION`: AWS region for Bedrock/DynamoDB
 - `MEMORY_METHOD`: Memory storage method (default: "dynamodb")
 - `STREAMING_ENABLED`: Enable streaming (default: true)
-- `MAX_CONVERSATION_TURNS`: Max turns to load (default: 20)
+- `MAX_CONVERSATION_TURNS`: Max turns to load (default: 20). `0` loads no history at
+  all, which is how to turn conversation memory off
 - `MAX_MESSAGE_SIZE_KB`: Max message size (default: 8.5)
-- `APPSYNC_API_URL`: AppSync endpoint for streaming
+- `APPSYNC_API_URL`: **Vestigial and always the empty string.** AppSync has been
+  removed, but the root `template.yaml` still sets `APPSYNC_API_URL: ""` on about
+  a dozen Lambdas (including this one) on purpose: the pre-migration publish
+  helpers check the variable and no-op when it is empty, falling back to writing
+  DynamoDB directly. If you grep and find it, that is why — do not set it to a
+  URL, and do not expect streaming to depend on it.
 
 ### CloudFormation Resources
 
 The system is deployed via CloudFormation with these key resources:
 
-- `AgentChatResolverFunction`: Resolver Lambda
+- `ChatStreamProcessorFunction` / `ChatStreamProcessorUrl`: the streaming endpoint
+  (root `template.yaml`) — a Lambda behind the AWS Lambda Web Adapter with a
+  Function URL (`AuthType=AWS_IAM`, `InvokeMode=RESPONSE_STREAM`). It runs the
+  *same* processor source in-process and emits SSE frames.
+- `AgentChatResolverFunction`: Resolver Lambda for the non-streaming path
+  (`nested/api-resolvers/template.yaml`), reached via the REST API dispatcher's
+  `sendAgentChatMessage` → function mapping
 - `AgentChatProcessorFunction`: Processor Lambda
 - `ChatMessagesTable`: Message storage
 - `IdHelperChatMemoryTable`: Memory storage
-- `SendAgentChatMessageResolver`: AppSync resolver
-- `OnAgentChatMessageUpdate`: AppSync subscription
 
 ## How It Works
 
 ### 1. User Sends Message
 
-User sends a message via GraphQL mutation:
-```graphql
-sendAgentChatMessage(prompt: "Hello", sessionId: "session-123")
+On the streaming path the browser POSTs the message straight to the chat
+streaming Function URL, SigV4-signed with the caller's Cognito Identity Pool
+credentials:
+
+```
+POST https://<id>.lambda-url.<region>.on.aws/chat/agent
+{"sessionId": "session-123", "prompt": "Hello"}
 ```
 
-### 2. Resolver Stores Message
+On the non-streaming fallback path the UI instead calls the REST API's
+`sendAgentChatMessage` field (`POST <apiBaseUrl>/op/sendAgentChatMessage`), which
+the dispatcher routes to `AgentChatResolver`.
+
+### 2. Resolver Stores Message (non-streaming path only)
 
 `AgentChatResolver` Lambda:
 - Validates the message
 - Stores in `ChatMessagesTable` with PK=sessionId, SK=timestamp
 - Invokes `AgentChatProcessor` asynchronously
 - Returns immediate acknowledgment
+
+On the streaming path there is no separate resolver hop: the streaming function
+runs the processor code in-process so it can emit deltas on the response body as
+they are produced.
 
 ### 3. Processor Creates Orchestrator
 
@@ -327,10 +460,17 @@ The orchestrator:
 ### 5. Response Streams Back
 
 As the response is generated:
-- Chunks are published via AppSync mutation
-- Frontend receives real-time updates via subscription
+- Each chunk is written as one Server-Sent-Events frame on the still-open Function
+  URL response body (`data: {...}\n\n`)
+- The frontend reads the frames incrementally from that response — the event
+  shapes are the same objects the old subscription delivered, so the UI's message
+  handling is unchanged
 - Thinking tags are removed for clean display
 - Final response is stored in memory
+
+On the non-streaming fallback path nothing is emitted mid-flight: only the final
+assistant message is written to `ChatMessagesTable`, and the UI polls
+`getChatMessages` for it.
 
 ### 6. Memory Persists
 
@@ -376,15 +516,24 @@ agent = agent_factory.create_agent(
 response = agent("test query")
 ```
 
-### Running Unit Tests
+### Running Tests
+
+The offline unit tests for this subpackage live in
+`lib/idp_common_pkg/tests/unit/agents/` and run in the normal gate:
 
 ```bash
-# Test conversational orchestrator
-cd lib/idp_common_pkg/idp_common/agents/testing
-python run_conversational_orchestrator_test.py
+cd lib/idp_common_pkg && make test-unit
+```
 
-# Or with pytest
-pytest test_conversational_orchestrator.py -v
+The scripts in `lib/idp_common_pkg/manual_tests/agents/` are a different thing:
+they drive real Bedrock, Athena and DynamoDB, so they are run by hand against a
+deployed stack and are excluded from every automated invocation. See
+`manual_tests/agents/README.md` for the credentials and `.env` they need.
+
+```bash
+cd lib/idp_common_pkg
+python manual_tests/agents/test_analytics.py -q "How many documents were processed today?"
+python manual_tests/agents/test_orchestrator_with_subagents.py
 ```
 
 ## Troubleshooting
@@ -411,10 +560,19 @@ Look for:
 
 ### Streaming Not Working
 
-**Check AppSync**:
-- Verify `APPSYNC_API_URL` is set correctly
-- Check IAM permissions for `appsync:GraphQL`
-- Verify subscription is active in frontend
+**Check the streaming Function URL**:
+- Verify the UI has `VITE_STREAM_URL` set to the `ChatStreamProcessorUrl` Function
+  URL. When it is empty the UI silently falls back to the non-streaming polling
+  path, which looks like "streaming is broken" but is working as designed.
+- Check that the authenticated Cognito role grants **`lambda:InvokeFunction`** on
+  `ChatStreamProcessorFunction`. A Function URL invocation requires
+  `lambda:InvokeFunction` — `lambda:InvokeFunctionUrl` alone returns a 403
+  `AccessDeniedException` at invoke time.
+- Confirm the browser request is SigV4-signed with Identity Pool credentials; the
+  Function URL is `AuthType=AWS_IAM`, so an unsigned request is rejected at the
+  function edge before any code runs.
+- Ignore `APPSYNC_API_URL` here. It is deliberately empty (see Environment
+  Variables above) and has nothing to do with streaming.
 
 ### Context Not Maintained
 
@@ -433,8 +591,13 @@ Look for:
 
 ## Security
 
-- **Authentication**: Cognito User Pools or IAM
-- **Authorization**: AppSync resolvers enforce auth
+- **Authentication**: the REST API's Cognito User Pools authorizer for the
+  `sendAgentChatMessage` path; IAM (SigV4 with Identity Pool credentials) at the
+  Function URL for the streaming path
+- **Authorization**: enforced in the resolver/processor code from the caller's
+  identity — group membership from the `cognito:groups` claim, plus session
+  ownership checks against the caller's Cognito `sub`. The REST authorizer only
+  authenticates; it does not evaluate any group policy.
 - **Encryption**: KMS encryption for DynamoDB tables
 - **TTL**: Messages expire after 30 days (configurable)
 - **VPC**: Not required (uses AWS service APIs)
@@ -446,7 +609,8 @@ Look for:
 - Lambda invocations (resolver and processor)
 - Lambda duration and errors
 - DynamoDB read/write capacity
-- AppSync request count
+- API Gateway request count and 4xx/5xx rate on the REST API
+- Invocations, duration and errors on the streaming function
 - Bedrock API calls
 
 ### CloudWatch Logs
@@ -467,7 +631,9 @@ Consider setting up alarms for:
 - **DynamoDB**: On-demand pricing, TTL reduces storage
 - **Lambda**: Pay per invocation, warm starts reduce cost
 - **Bedrock**: Pay per token, context management reduces usage
-- **AppSync**: Pay per request and data transfer
+- **API Gateway**: Pay per request on the REST API transport
+- **Streaming function**: Pay for the invocation's full duration (the Lambda stays
+  billed while the response streams) plus streamed-response data transfer
 
 ## Future Enhancements
 

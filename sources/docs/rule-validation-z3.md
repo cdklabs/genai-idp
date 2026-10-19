@@ -1,0 +1,195 @@
+---
+title: "Z3 Symbolic Rule Validation Engine"
+---
+
+<!-- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. -->
+<!-- SPDX-License-Identifier: MIT-0 -->
+
+# Z3 Dual-Engine Rule Validation
+
+## Overview
+
+The Z3 engine provides **deterministic, formal** rule validation using the [Z3 theorem prover](https://github.com/Z3Prover/z3). It runs alongside the existing LLM engine — each rule can be individually routed to either engine via the `x-aws-idp-validation-engine` schema extension.
+
+| Engine | Approach | Deterministic | Best For |
+|--------|----------|---------------|----------|
+| LLM (default) | Semantic reasoning over extracted facts | No | Subjective rules, complex language |
+| Z3 | Formal SMT-LIB constraint solving | Yes | Mathematical rules, threshold checks, comparisons |
+
+## Configuration
+
+### Per-Rule Engine Selection
+
+In your `policy_classes` config, set `x-aws-idp-validation-engine` on each rule property:
+
+```yaml
+policy_classes:
+  - x-aws-idp-policy-type: invoice_validation
+    rule_properties:
+      total_check:
+        type: string
+        description: "Total must equal subtotal + tax"
+        x-aws-idp-validation-engine: z3    # Formal validation
+        x-aws-idp-rule-id: total_check
+        x-aws-idp-rule-json:              # Generated via Config Editor button
+          rule_id: total_check
+          version: "1.0"
+          description: "Total equals subtotal plus tax"
+          natural_language_rule: "Total must equal subtotal + tax"
+          parameters:
+            - name: total
+              type: Real
+              required: true
+              description: "Invoice total amount"
+            - name: subtotal
+              type: Real
+              required: true
+              description: "Invoice subtotal"
+            - name: tax
+              type: Real
+              required: true
+              description: "Tax amount"
+          constraints:
+            - "(= total (+ subtotal tax))"
+          path_mappings: []
+          metadata: {}
+      signature_check:
+        type: string
+        description: "Document must be signed"
+        x-aws-idp-validation-engine: llm   # Semantic validation
+```
+
+Valid values: `"llm"` (default) or `"z3"` (case-sensitive). If the field is absent, the rule defaults to the LLM engine.
+
+Z3 rules require:
+- `x-aws-idp-rule-id` — unique identifier for the rule
+- `x-aws-idp-rule-json` — the RuleJSON object (generate via the "Generate RuleJSON" button in the Config Editor)
+
+### Z3 Engine Settings (Optional)
+
+Add these to the `rule_validation` section to customize Z3 behavior:
+
+```yaml
+rule_validation:
+  z3_timeout_ms: 5000          # Solver timeout (1–300000 ms, default 5000)
+  z3_rule_translator:          # LLM for rule → SMT-LIB translation
+    model: us.anthropic.claude-sonnet-4-6
+    temperature: 0
+    max_tokens: 4096
+    system_prompt: "..."
+    task_prompt: "..."
+    few_shot_examples: [...]
+  z3_value_extraction:         # LLM for parameter value extraction
+    model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    temperature: 0
+    max_tokens: 2048
+    system_prompt: "..."
+    task_prompt: "..."
+```
+
+If `z3_rule_translator` and `z3_value_extraction` are both omitted, the engine uses built-in default prompts from `z3/config/translator_config.yaml`.
+
+## How It Works
+
+```
+Rule (natural language) → [LLM Translation] → RuleJSON (SMT-LIB)
+                                                    ↓
+Document Data → [Path Extraction or LLM Extraction] → Parameter Values
+                                                    ↓
+                              [Z3 Solver] → sat (Pass) / unsat (Fail) / error (Information Not Found)
+```
+
+1. **Translation**: An LLM converts the natural-language rule into a `RuleJSON` structure containing typed parameters and SMT-LIB constraints. Translation is triggered via the "Generate RuleJSON" button in the Config Editor; the result is stored inline in the config under `x-aws-idp-rule-json`.
+
+   A translation whose constraints reference a name the rule does not declare is
+   **rejected at this point**, and the "Generate RuleJSON" button reports which
+   token could not be resolved — so a misspelled parameter (`incom` for `income`)
+   costs one translation to retry rather than one failed rule per document. What it
+   covers is names: an undeclared parameter reference and an operator outside the
+   supported set. Parenthesis balance, operator arity and a token that is neither a
+   name nor a numeral are still reported by the solver at step 3, as
+   *Information Not Found* for that rule.
+
+   ⚠️ **This applies to the generated path only.** A `RuleJSON` **pasted** into
+   `x-aws-idp-rule-json` by hand is checked for JSON syntax when you save it and
+   for nothing else: no constraint validation runs at save time. A pasted rule with
+   a misspelled parameter is stored without complaint and first refused when a
+   document is processed, at the same moment the solver would have refused it. It
+   is also the worse case to be in, because an inline rule has no translation to
+   retry and no cache entry to replace — it will report *Information Not Found* for
+   every document until the schema is edited. Prefer "Generate RuleJSON", or run a
+   document through after pasting.
+
+   The `rule_id` inside the generated `RuleJSON` is a digest of the rule text alone,
+   so re-generating the same rule produces the same id and a regeneration shows no id
+   change in a config diff. Two rules whose text is byte-identical therefore share an
+   id; nothing keys on it — it identifies the rule in log lines and error context, and
+   the translation cache is keyed on the rule text. ⚠️ This is **not** the
+   `x-aws-idp-rule-id` schema field described above, which you author and which does
+   need to be unique.
+
+2. **Extraction**: In the orchestration step, an LLM call extracts typed parameter values from the collected facts (gathered per-section in the prior step).
+
+3. **Validation**: The Z3 solver checks whether the extracted values satisfy the constraints:
+   - `sat` → **Pass** (rule satisfied)
+   - `unsat` → **Fail** (rule violated)
+   - `error` / missing parameters → **Information Not Found**
+
+### A numeric reading must be exact in its declared type
+
+A reading is checked against the type its parameter was declared as before it
+reaches the solver, and a numeric reading that cannot be represented in that type
+without losing information makes the rule report **Information Not Found** with
+the reason. A parameter declared `Int` whose reading comes back as `30.9` is the
+case worth knowing about: the reading is refused rather than truncated to `30`. A
+decimal that happens to be whole, such as `30.0` or `"30.0"`, still binds as
+`30`, and declaring the parameter `Real` accepts `30.9` exactly — `Real` readings
+are held as exact rationals, not rounded to a double, so an equality rule decides
+on the reading rather than on 17 digits of it.
+
+(`Bool` and `String` do convert rather than insist: `"Yes"` is read as true, and a
+numeric reading for a `String` parameter becomes its text.)
+
+**Declaring the right type is a correctness requirement, not type hygiene.** `Int`
+says the quantity is whole, so `days_late <= 30` cannot be evaluated against a
+reading of 30.9 — there is no whole number of days the document supports, and
+truncating to 30 would report a Pass while rounding to 31 would report a Fail
+against `days_late >= 31`. If the quantity you are reading is genuinely
+fractional, declare it `Real`. The constraint language compares `Int` and `Real`
+values against each other, so a `Real` parameter works with a whole-number
+threshold and you lose nothing by choosing it.
+
+⚠️ **The type you declare also shapes what the extraction model answers, and that
+happens before any of this can see it.** Asked for an `Int` from a document whose
+underlying fact was 30.9, a Bedrock model answered `31` — a whole number, which is
+accepted as exact, because nothing downstream can know the fact was fractional.
+The refusal above only fires when the model *reports* a fraction. So an `Int`
+parameter over a fractional quantity is not made safe by the check; declaring it
+`Real` is what makes the rule read the quantity it is about.
+
+## Strict Mode (Default)
+
+Z3 validation enforces strict mode: if the RuleJSON is missing, the rule_id is not configured, or required parameters cannot be extracted from the document, the rule returns a hard failure or "Information Not Found" — it does NOT silently fall back to LLM-based reasoning. This ensures the configured engine always runs and misconfigurations are visible.
+
+## UI: Schema Builder Dropdown
+
+When editing rule properties in the Schema Builder (`isRuleSchema=true`), a "Validation Engine" dropdown appears with options:
+- **Semantic (LLM)** — default
+- **Symbolic (Z3)**
+
+The dropdown only writes the field to the schema when the user explicitly interacts with it. Invalid stored values auto-correct to "llm".
+
+## Lambda Deployment Note
+
+The `z3-solver` package (~50 MB native shared object) is included in the `rule_validation` optional extra and is loaded **lazily** — it is only imported when a Z3 rule is actually encountered at runtime. If your config has no `x-aws-idp-validation-engine: z3` rules, the package is never loaded and has zero cold-start impact. For Lambda deployments with Z3 rules, ensure the unzipped package size stays under 250 MB or use a container-based Lambda.
+
+## Limitations
+
+- The deployed pipeline extracts Z3 parameter values with the LLM call described above and validates them directly, so the library's **path-mapping** extractor (`DataExtractor`, reached through `ValidationSystem` or `Z3EngineAdapter`) is a route for notebooks and for code embedding the library rather than part of the pipeline. If you use it, note that it keeps no state between calls: one instance is safe to reuse across documents, and reading a document that has been modified in place returns the modified values.
+- Z3 results include `supporting_pages` collected from the extracted facts' page citations. These indicate which pages contained the evidence used for parameter extraction.
+- The SMT-LIB constraint language supports: arithmetic (`+`, `-`, `*`, `/`, `mod`/`%`), comparison (`=`, `<`, `>`, `<=`, `>=`, `distinct`/`!=`), logical (`and`, `or`, `not`, `implies`/`=>`, `ite`), and type coercion for Int/Real/Bool/String. An operator outside that set is rejected when the rule is generated rather than when a document is processed.
+- String equality checks are exact (case-sensitive). For fuzzy matching, use the LLM engine.
+
+## Demo
+
+See [`notebooks/examples/dual-engine-rule-validation.ipynb`](../notebooks/examples/dual-engine-rule-validation.ipynb) for an end-to-end comparison of both engines on the same rules.
