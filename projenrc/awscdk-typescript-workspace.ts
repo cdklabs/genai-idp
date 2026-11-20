@@ -20,7 +20,17 @@ export class AwsCdkTypeScriptWorkspace extends TypeScriptWorkspace {
     constructor(options: AwsCdkTypeScriptWorkspaceOptions) {
         super({
             ...options,
-            disableTsconfig: true
+            disableTsconfig: true,
+            // Lint against tsconfig.dev.json: the jsii tsconfig.json only includes src/, so the
+            // project service (projen default) can't resolve test files.
+            eslintOptions: {
+                dirs: ['src'],
+                devdirs: ['test', 'build-tools'],
+                fileExtensions: ['.ts', '.tsx'],
+                tsconfigPath: './tsconfig.dev.json',
+                projectService: false,
+                ...options.eslintOptions,
+            },
         });
 
         this.addFields({ stability: options.stability });

@@ -13,7 +13,7 @@
   "parserOptions": {
     "ecmaVersion": 2018,
     "sourceType": "module",
-    "projectService": true
+    "project": "./tsconfig.dev.json"
   },
   "extends": [
     "plugin:import/typescript",
