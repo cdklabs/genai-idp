@@ -216,7 +216,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: lts/*
+          node-version: 24.x
           package-manager-cache: false
       - name: Download build artifacts
         id: download_build_artifacts
@@ -251,7 +251,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: lts/*
+          node-version: 24.x
           package-manager-cache: false
       - name: Download build artifacts
         id: download_build_artifacts
@@ -284,7 +284,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: lts/*
+          node-version: 24.x
           package-manager-cache: false
       - uses: actions/setup-python@v7.1.0
         with:
@@ -317,7 +317,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: lts/*
+          node-version: 24.x
           package-manager-cache: false
       - uses: actions/setup-dotnet@v6.1.0
         with:

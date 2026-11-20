@@ -56,6 +56,10 @@ const genaiIdp = new AwsCdkTypeScriptWorkspace({
   peerDeps: idpDeps,
   bundledDeps: ['yaml'],
   prettier: true,
+
+  // Limited by the engines restriction of @cdklabs/generative-ai-cdk-constructs (currently requires <= 25.x)
+  workflowNodeVersion: '24.x',
+
   jest: true,
   cdkVersion: CDK_VERSION,
   constructsVersion: CONSTRUCTS_VERSION,
