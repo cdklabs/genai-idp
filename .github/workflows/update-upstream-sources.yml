@@ -14,14 +14,19 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v5
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        id: setup_node_js
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
+          package-manager-cache: false
       - name: Install dependencies
+        id: install_dependencies
         run: yarn install --check-files --frozen-lockfile
       - name: Update upstream sources
+        id: update_upstream_sources
         run: |-
           bash -c '
           # Get latest release tag from GitHub API
@@ -96,6 +101,7 @@ jobs:
           branch: update-upstream-sources
           base: main
       - name: add-instructions
+        id: add-instructions
         if: ${{ steps.create-pr.outputs.pull-request-number }}
         env:
           GH_TOKEN: ${{ github.token }}

@@ -13,7 +13,7 @@
   "parserOptions": {
     "ecmaVersion": 2018,
     "sourceType": "module",
-    "project": "./tsconfig.dev.json"
+    "projectService": true
   },
   "extends": [
     "plugin:import/typescript",
@@ -40,7 +40,8 @@
     "node_modules/",
     "*.generated.ts",
     "coverage",
-    "test/**/*.snapshot/*"
+    "test/**/*.snapshot/*",
+    "src/sagemaker-classification-hook-function.ts"
   ],
   "rules": {
     "curly": [

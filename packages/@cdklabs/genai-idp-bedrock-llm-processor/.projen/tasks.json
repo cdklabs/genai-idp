@@ -1,4 +1,8 @@
 {
+  "manifestVersion": 3,
+  "env": {
+    "PATH": "$(npx -c \"node --print process.env.PATH\")"
+  },
   "tasks": {
     "build": {
       "name": "build",
@@ -31,18 +35,39 @@
         "RELEASETAG": "dist/releasetag.txt",
         "RELEASE_TAG_PREFIX": "@cdklabs/genai-idp-bedrock-llm-processor@",
         "VERSIONRCOPTIONS": "{\"path\":\".\"}",
-        "BUMP_PACKAGE": "commit-and-tag-version@^12",
-        "RELEASABLE_COMMITS": "git log --no-merges --oneline $LATEST_TAG..HEAD -E --grep \"^(feat|fix){1}(\\([^()[:space:]]+\\))?(!)?:[[:blank:]]+.+\" -- ."
+        "BUMP_PACKAGE": "commit-and-tag-version@^13"
       },
       "steps": [
         {
           "spawn": "gather-versions"
         },
         {
-          "builtin": "release/bump-version"
+          "builtin": "release/resolve-latest-tag",
+          "outputEnv": "LATEST_TAG"
+        },
+        {
+          "spawn": "bump:releasable-commits",
+          "outputEnv": "RELEASABLE_COMMITS",
+          "condition": "git rev-parse --verify --quiet \"refs/tags/$LATEST_TAG\""
+        },
+        {
+          "builtin": "release/suggest-version-bump",
+          "outputEnv": "SUGGESTED_BUMP"
+        },
+        {
+          "builtin": "release/apply-version-bump"
         }
       ],
-      "condition": "git log --oneline -1 | grep -qv \"chore(release):\""
+      "condition": "git log --oneline -1 | grep -v \"chore(release):\" > /dev/null"
+    },
+    "bump:releasable-commits": {
+      "name": "bump:releasable-commits",
+      "description": "Print the releasable commits since the latest release",
+      "steps": [
+        {
+          "exec": "git log --no-merges --oneline $LATEST_TAG..HEAD -E --grep '^(feat|fix){1}(\\([^()[:space:]]+\\))?(!)?:[[:blank:]]+.+' -- ."
+        }
+      ]
     },
     "bundle": {
       "name": "bundle"
@@ -54,7 +79,16 @@
       },
       "steps": [
         {
-          "exec": "npx npm-check-updates@18 --upgrade --target=minor --peer --no-deprecated --dep=dev,peer,prod,optional --filter=@aws-cdk/cx-api,@types/jest,@types/node,cdk-nag,eslint-config-prettier,eslint-import-resolver-typescript,eslint-plugin-import,eslint-plugin-prettier,jest,jsii-diff,jsii-docgen,jsii-pacmak,prettier,ts-jest,ts-node,typescript"
+          "execArgs": [
+            "npx",
+            "npm-check-updates@20",
+            "--upgrade",
+            "--target=minor",
+            "--peer",
+            "--no-deprecated",
+            "--dep=dev,prod,peer,optional",
+            "--filter=@aws-cdk/cx-api,@types/jest,@types/node,cdk-nag,eslint-config-prettier,eslint-import-resolver-typescript,eslint-plugin-import,eslint-plugin-prettier,jest,jsii-diff,jsii-docgen,jsii-pacmak,prettier,ts-jest,ts-node,typescript"
+          ]
         }
       ]
     },
@@ -81,7 +115,8 @@
       "description": "Synthesize project files",
       "steps": [
         {
-          "exec": "cd ../../.. && npx projen default"
+          "exec": "projen default",
+          "cwd": "../../.."
         }
       ]
     },
@@ -90,7 +125,11 @@
       "description": "Generate API.md from .jsii manifest",
       "steps": [
         {
-          "exec": "jsii-docgen -o API.md"
+          "execArgs": [
+            "jsii-docgen",
+            "-o",
+            "API.md"
+          ]
         }
       ]
     },
@@ -103,7 +142,17 @@
       },
       "steps": [
         {
-          "exec": "eslint --ext .ts,.tsx --fix --no-error-on-unmatched-pattern $@ src test build-tools",
+          "execArgs": [
+            "eslint",
+            "--ext",
+            ".ts,.tsx",
+            "--fix",
+            "--no-error-on-unmatched-pattern",
+            "$@",
+            "src",
+            "test",
+            "build-tools"
+          ],
           "receiveArgs": true
         }
       ]
@@ -140,13 +189,45 @@
       "description": "assert the snapshot of integration test 'lambda-hook'",
       "steps": [
         {
-          "exec": "[ -d \"test/integ/lambda-hook.integ.snapshot\" ] || (echo \"No snapshot available for integration test 'lambda-hook'. Run 'projen integ:lambda-hook:deploy' to capture.\" && exit 1)"
+          "execArgs": [
+            "node",
+            "-e",
+            "const [dir, name, task] = process.argv.slice(1); const stat = require('fs').statSync(dir, { throwIfNoEntry: false }); if (!stat || !stat.isDirectory()) { console.error(`No snapshot available for integration test '${name}'. Run 'projen ${task}' to capture.`); process.exit(1); }",
+            "test/integ/lambda-hook.integ.snapshot",
+            "lambda-hook",
+            "integ:lambda-hook:deploy"
+          ]
         },
         {
-          "exec": "cdk synth --app \"ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata -o test/integ/.tmp/lambda-hook.integ/assert.cdk.out > /dev/null"
+          "execArgs": [
+            "cdk",
+            "synth",
+            "--quiet",
+            "--app",
+            "ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts",
+            "--no-notices",
+            "--no-version-reporting",
+            "--no-asset-metadata",
+            "--no-path-metadata",
+            "-o",
+            "test/integ/.tmp/lambda-hook.integ/assert.cdk.out"
+          ]
         },
         {
-          "exec": "diff -r -x asset.* -x cdk.out -x manifest.json -x tree.json test/integ/lambda-hook.integ.snapshot/ test/integ/.tmp/lambda-hook.integ/assert.cdk.out/"
+          "execArgs": [
+            "diff",
+            "-r",
+            "-x",
+            "asset.*",
+            "-x",
+            "cdk.out",
+            "-x",
+            "manifest.json",
+            "-x",
+            "tree.json",
+            "test/integ/lambda-hook.integ.snapshot/",
+            "test/integ/.tmp/lambda-hook.integ/assert.cdk.out/"
+          ]
         }
       ]
     },
@@ -155,16 +236,41 @@
       "description": "deploy integration test 'lambda-hook' and capture snapshot",
       "steps": [
         {
-          "exec": "rm -fr test/integ/.tmp/lambda-hook.integ/deploy.cdk.out"
+          "execArgs": [
+            "rm",
+            "-fr",
+            "test/integ/.tmp/lambda-hook.integ/deploy.cdk.out"
+          ]
         },
         {
-          "exec": "cdk deploy --app \"ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata '**' --require-approval=never -o test/integ/.tmp/lambda-hook.integ/deploy.cdk.out"
+          "execArgs": [
+            "cdk",
+            "deploy",
+            "--app",
+            "ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts",
+            "--no-notices",
+            "--no-version-reporting",
+            "--no-asset-metadata",
+            "--no-path-metadata",
+            "**",
+            "--require-approval=never",
+            "-o",
+            "test/integ/.tmp/lambda-hook.integ/deploy.cdk.out"
+          ]
         },
         {
-          "exec": "rm -fr test/integ/lambda-hook.integ.snapshot"
+          "execArgs": [
+            "rm",
+            "-fr",
+            "test/integ/lambda-hook.integ.snapshot"
+          ]
         },
         {
-          "exec": "mv test/integ/.tmp/lambda-hook.integ/deploy.cdk.out test/integ/lambda-hook.integ.snapshot"
+          "execArgs": [
+            "mv",
+            "test/integ/.tmp/lambda-hook.integ/deploy.cdk.out",
+            "test/integ/lambda-hook.integ.snapshot"
+          ]
         },
         {
           "spawn": "integ:lambda-hook:destroy"
@@ -176,7 +282,14 @@
       "description": "destroy integration test 'lambda-hook'",
       "steps": [
         {
-          "exec": "cdk destroy --app test/integ/lambda-hook.integ.snapshot '**' --no-version-reporting"
+          "execArgs": [
+            "cdk",
+            "destroy",
+            "--app",
+            "test/integ/lambda-hook.integ.snapshot",
+            "**",
+            "--no-version-reporting"
+          ]
         }
       ]
     },
@@ -185,7 +298,19 @@
       "description": "update snapshot for integration test \"lambda-hook\"",
       "steps": [
         {
-          "exec": "cdk synth --app \"ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata -o test/integ/lambda-hook.integ.snapshot > /dev/null"
+          "execArgs": [
+            "cdk",
+            "synth",
+            "--quiet",
+            "--app",
+            "ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts",
+            "--no-notices",
+            "--no-version-reporting",
+            "--no-asset-metadata",
+            "--no-path-metadata",
+            "-o",
+            "test/integ/lambda-hook.integ.snapshot"
+          ]
         }
       ]
     },
@@ -194,7 +319,19 @@
       "description": "watch integration test 'lambda-hook' (without updating snapshots)",
       "steps": [
         {
-          "exec": "cdk watch --app \"ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata '**' -o test/integ/.tmp/lambda-hook.integ/deploy.cdk.out"
+          "execArgs": [
+            "cdk",
+            "watch",
+            "--app",
+            "ts-node -P tsconfig.dev.json test/integ/lambda-hook.integ.ts",
+            "--no-notices",
+            "--no-version-reporting",
+            "--no-asset-metadata",
+            "--no-path-metadata",
+            "**",
+            "-o",
+            "test/integ/.tmp/lambda-hook.integ/deploy.cdk.out"
+          ]
         }
       ]
     },
@@ -203,13 +340,45 @@
       "description": "assert the snapshot of integration test 'pattern'",
       "steps": [
         {
-          "exec": "[ -d \"test/integ/pattern.integ.snapshot\" ] || (echo \"No snapshot available for integration test 'pattern'. Run 'projen integ:pattern:deploy' to capture.\" && exit 1)"
+          "execArgs": [
+            "node",
+            "-e",
+            "const [dir, name, task] = process.argv.slice(1); const stat = require('fs').statSync(dir, { throwIfNoEntry: false }); if (!stat || !stat.isDirectory()) { console.error(`No snapshot available for integration test '${name}'. Run 'projen ${task}' to capture.`); process.exit(1); }",
+            "test/integ/pattern.integ.snapshot",
+            "pattern",
+            "integ:pattern:deploy"
+          ]
         },
         {
-          "exec": "cdk synth --app \"ts-node -P tsconfig.dev.json test/integ/pattern.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata -o test/integ/.tmp/pattern.integ/assert.cdk.out > /dev/null"
+          "execArgs": [
+            "cdk",
+            "synth",
+            "--quiet",
+            "--app",
+            "ts-node -P tsconfig.dev.json test/integ/pattern.integ.ts",
+            "--no-notices",
+            "--no-version-reporting",
+            "--no-asset-metadata",
+            "--no-path-metadata",
+            "-o",
+            "test/integ/.tmp/pattern.integ/assert.cdk.out"
+          ]
         },
         {
-          "exec": "diff -r -x asset.* -x cdk.out -x manifest.json -x tree.json test/integ/pattern.integ.snapshot/ test/integ/.tmp/pattern.integ/assert.cdk.out/"
+          "execArgs": [
+            "diff",
+            "-r",
+            "-x",
+            "asset.*",
+            "-x",
+            "cdk.out",
+            "-x",
+            "manifest.json",
+            "-x",
+            "tree.json",
+            "test/integ/pattern.integ.snapshot/",
+            "test/integ/.tmp/pattern.integ/assert.cdk.out/"
+          ]
         }
       ]
     },
@@ -218,16 +387,41 @@
       "description": "deploy integration test 'pattern' and capture snapshot",
       "steps": [
         {
-          "exec": "rm -fr test/integ/.tmp/pattern.integ/deploy.cdk.out"
+          "execArgs": [
+            "rm",
+            "-fr",
+            "test/integ/.tmp/pattern.integ/deploy.cdk.out"
+          ]
         },
         {
-          "exec": "cdk deploy --app \"ts-node -P tsconfig.dev.json test/integ/pattern.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata '**' --require-approval=never -o test/integ/.tmp/pattern.integ/deploy.cdk.out"
+          "execArgs": [
+            "cdk",
+            "deploy",
+            "--app",
+            "ts-node -P tsconfig.dev.json test/integ/pattern.integ.ts",
+            "--no-notices",
+            "--no-version-reporting",
+            "--no-asset-metadata",
+            "--no-path-metadata",
+            "**",
+            "--require-approval=never",
+            "-o",
+            "test/integ/.tmp/pattern.integ/deploy.cdk.out"
+          ]
         },
         {
-          "exec": "rm -fr test/integ/pattern.integ.snapshot"
+          "execArgs": [
+            "rm",
+            "-fr",
+            "test/integ/pattern.integ.snapshot"
+          ]
         },
         {
-          "exec": "mv test/integ/.tmp/pattern.integ/deploy.cdk.out test/integ/pattern.integ.snapshot"
+          "execArgs": [
+            "mv",
+            "test/integ/.tmp/pattern.integ/deploy.cdk.out",
+            "test/integ/pattern.integ.snapshot"
+          ]
         },
         {
           "spawn": "integ:pattern:destroy"
@@ -239,7 +433,14 @@
       "description": "destroy integration test 'pattern'",
       "steps": [
         {
-          "exec": "cdk destroy --app test/integ/pattern.integ.snapshot '**' --no-version-reporting"
+          "execArgs": [
+            "cdk",
+            "destroy",
+            "--app",
+            "test/integ/pattern.integ.snapshot",
+            "**",
+            "--no-version-reporting"
+          ]
         }
       ]
     },
@@ -248,7 +449,19 @@
       "description": "update snapshot for integration test \"pattern\"",
       "steps": [
         {
-          "exec": "cdk synth --app \"ts-node -P tsconfig.dev.json test/integ/pattern.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata -o test/integ/pattern.integ.snapshot > /dev/null"
+          "execArgs": [
+            "cdk",
+            "synth",
+            "--quiet",
+            "--app",
+            "ts-node -P tsconfig.dev.json test/integ/pattern.integ.ts",
+            "--no-notices",
+            "--no-version-reporting",
+            "--no-asset-metadata",
+            "--no-path-metadata",
+            "-o",
+            "test/integ/pattern.integ.snapshot"
+          ]
         }
       ]
     },
@@ -257,7 +470,19 @@
       "description": "watch integration test 'pattern' (without updating snapshots)",
       "steps": [
         {
-          "exec": "cdk watch --app \"ts-node -P tsconfig.dev.json test/integ/pattern.integ.ts\" --no-notices --no-version-reporting --no-asset-metadata --no-path-metadata '**' -o test/integ/.tmp/pattern.integ/deploy.cdk.out"
+          "execArgs": [
+            "cdk",
+            "watch",
+            "--app",
+            "ts-node -P tsconfig.dev.json test/integ/pattern.integ.ts",
+            "--no-notices",
+            "--no-version-reporting",
+            "--no-asset-metadata",
+            "--no-path-metadata",
+            "**",
+            "-o",
+            "test/integ/.tmp/pattern.integ/deploy.cdk.out"
+          ]
         }
       ]
     },
@@ -364,7 +589,11 @@
       "description": "Run tests",
       "steps": [
         {
-          "exec": "jest --passWithNoTests --updateSnapshot",
+          "execArgs": [
+            "jest",
+            "--passWithNoTests",
+            "--updateSnapshot"
+          ],
           "receiveArgs": true
         },
         {
@@ -383,7 +612,10 @@
       "description": "Run jest in watch mode",
       "steps": [
         {
-          "exec": "jest --watch"
+          "execArgs": [
+            "jest",
+            "--watch"
+          ]
         }
       ]
     },
@@ -424,9 +656,6 @@
         }
       ]
     }
-  },
-  "env": {
-    "PATH": "$(npx -c \"node --print process.env.PATH\")"
   },
   "//": "~~ Generated by projen. To modify, edit .projenrc.js and run \"npx projen\"."
 }
