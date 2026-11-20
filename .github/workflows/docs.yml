@@ -17,18 +17,23 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - id: auto_c3fe249f
+        uses: actions/checkout@v4
         with:
           fetchDepth: 0
       - name: Setup Python
+        id: setup_python
         uses: actions/setup-python@v4
         with:
           python-version: 3.x
       - name: Install dependencies
+        id: install_dependencies
         run: pip install -r docs/requirements.txt
       - name: Build documentation
+        id: build_documentation
         run: cd docs && mkdocs build
       - name: Upload Pages artifact
+        id: upload_pages_artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/site

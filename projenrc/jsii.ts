@@ -110,7 +110,7 @@ export class Jsii extends pj.Component {
       this.addPackagingTarget('java', task, extraJobOptions);
     }
 
-    const pypi = options.publishToPypi ?? options.python;
+    const pypi = options.publishToPypi;
     if (pypi) {
       targets.python = {
         distName: pypi.distName,
@@ -128,7 +128,7 @@ export class Jsii extends pj.Component {
       this.addPackagingTarget('python', task, extraJobOptions);
     }
 
-    const nuget = options.publishToNuget ?? options.dotnet;
+    const nuget = options.publishToNuget;
     if (nuget) {
       targets.dotnet = {
         namespace: nuget.dotNetNamespace,
@@ -221,7 +221,7 @@ export class Jsii extends pj.Component {
         ]
       }
     });
-    
+
   }
 
   private addPackagingTask(language: string): pj.Task {

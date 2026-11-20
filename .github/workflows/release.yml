@@ -5,7 +5,23 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Dry run (skip actual publishing)
+        required: false
+        type: boolean
+      package:
+        description: Select specific package to release
+        required: false
+        type: choice
+        options:
+          - "*all packages*"
+          - "@cdklabs/genai-idp"
+          - "@cdklabs/genai-idp-bda-processor"
+          - "@cdklabs/genai-idp-bedrock-llm-processor"
+          - "@cdklabs/genai-idp-sagemaker-udop-processor"
+        default: "*all packages*"
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -21,20 +37,26 @@ jobs:
       CI: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
       - name: Set git identity
+        id: set_git_identity
         run: |-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        id: setup_node_js
+        uses: actions/setup-node@v7.1.0
         with:
-          node-version: lts/*
+          node-version: 24.x
+          package-manager-cache: false
       - name: Install dependencies
+        id: install_dependencies
         run: yarn install --check-files --frozen-lockfile
       - name: release
+        id: release
         run: npx projen release
       - id: check-publish-cdklabs-genai-idp
         run: (git ls-remote -q --exit-code --tags origin $(cat dist/releasetag.txt) && (echo "publish=false" >> $GITHUB_OUTPUT)) || echo "publish=true" >> $GITHUB_OUTPUT
@@ -50,7 +72,9 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp-sagemaker-udop-processor
       - name: Check for new commits
         id: git_remote
-        run: echo "latest_commit=$(git ls-remote origin -h ${{ github.ref }} | cut -f1)" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_REF: ${{ github.ref }}
+        run: echo "latest_commit=$(git ls-remote origin -h "$GITHUB_REF" | cut -f1)" >> $GITHUB_OUTPUT
       - name: "@cdklabs/genai-idp: Backup artifact permissions"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
         run: cd dist && getfacl -R . > permissions-backup.acl
@@ -58,7 +82,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp
       - name: "@cdklabs/genai-idp: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: cdklabs-genai-idp_build-artifact
           path: packages/@cdklabs/genai-idp/dist
@@ -70,7 +94,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp-bda-processor
       - name: "@cdklabs/genai-idp-bda-processor: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: cdklabs-genai-idp-bda-processor_build-artifact
           path: packages/@cdklabs/genai-idp-bda-processor/dist
@@ -82,7 +106,7 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp-bedrock-llm-processor
       - name: "@cdklabs/genai-idp-bedrock-llm-processor: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: packages/@cdklabs/genai-idp-bedrock-llm-processor/dist
@@ -94,456 +118,733 @@ jobs:
         working-directory: packages/@cdklabs/genai-idp-sagemaker-udop-processor
       - name: "@cdklabs/genai-idp-sagemaker-udop-processor: Upload artifact"
         if: ${{ steps.git_remote.outputs.latest_commit == github.sha }}
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: packages/@cdklabs/genai-idp-sagemaker-udop-processor/dist
           overwrite: true
+  release_gate:
+    name: Publish gate
+    needs: release
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      packages_to_publish: ${{ steps.collect.outputs.packages_to_publish }}
+    if: ${{ needs.release.outputs.latest_commit == github.sha }}
+    steps:
+      - name: "@cdklabs/genai-idp: Check publish"
+        id: cdklabs_genai-idp_check_publish
+        run: |-
+          should_publish="${{ needs.release.outputs.publish-cdklabs-genai-idp }}"
+          package_filter="${{ (!github.event.inputs.package || github.event.inputs.package == '*all packages*' || contains(fromJSON('["@cdklabs/genai-idp","@cdklabs/genai-idp-bda-processor","@cdklabs/genai-idp-bedrock-llm-processor","@cdklabs/genai-idp-sagemaker-udop-processor"]'), github.event.inputs.package)) }}"
+          if [[ "$should_publish" != "true" ]]; then
+            echo "⏭️ Skipping @cdklabs/genai-idp: release tag already exists"
+          elif [[ "$package_filter" != "true" ]]; then
+            echo "⏭️ Skipping @cdklabs/genai-idp: not selected for release"
+          else
+            echo "✅ Will publish @cdklabs/genai-idp"
+            echo "@cdklabs/genai-idp" >> publish.txt
+          fi
+      - name: "@cdklabs/genai-idp-bda-processor: Check publish"
+        id: cdklabs_genai-idp-bda-processor_check_publish
+        run: |-
+          should_publish="${{ needs.release.outputs.publish-cdklabs-genai-idp-bda-processor }}"
+          package_filter="${{ (!github.event.inputs.package || github.event.inputs.package == '*all packages*' || contains(fromJSON('["@cdklabs/genai-idp-bda-processor"]'), github.event.inputs.package)) }}"
+          if [[ "$should_publish" != "true" ]]; then
+            echo "⏭️ Skipping @cdklabs/genai-idp-bda-processor: release tag already exists"
+          elif [[ "$package_filter" != "true" ]]; then
+            echo "⏭️ Skipping @cdklabs/genai-idp-bda-processor: not selected for release"
+          else
+            echo "✅ Will publish @cdklabs/genai-idp-bda-processor"
+            echo "@cdklabs/genai-idp-bda-processor" >> publish.txt
+          fi
+      - name: "@cdklabs/genai-idp-bedrock-llm-processor: Check publish"
+        id: cdklabs_genai-idp-bedrock-llm-processor_check_publish
+        run: |-
+          should_publish="${{ needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor }}"
+          package_filter="${{ (!github.event.inputs.package || github.event.inputs.package == '*all packages*' || contains(fromJSON('["@cdklabs/genai-idp-bedrock-llm-processor"]'), github.event.inputs.package)) }}"
+          if [[ "$should_publish" != "true" ]]; then
+            echo "⏭️ Skipping @cdklabs/genai-idp-bedrock-llm-processor: release tag already exists"
+          elif [[ "$package_filter" != "true" ]]; then
+            echo "⏭️ Skipping @cdklabs/genai-idp-bedrock-llm-processor: not selected for release"
+          else
+            echo "✅ Will publish @cdklabs/genai-idp-bedrock-llm-processor"
+            echo "@cdklabs/genai-idp-bedrock-llm-processor" >> publish.txt
+          fi
+      - name: "@cdklabs/genai-idp-sagemaker-udop-processor: Check publish"
+        id: cdklabs_genai-idp-sagemaker-udop-processor_check_publish
+        run: |-
+          should_publish="${{ needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor }}"
+          package_filter="${{ (!github.event.inputs.package || github.event.inputs.package == '*all packages*' || contains(fromJSON('["@cdklabs/genai-idp-sagemaker-udop-processor"]'), github.event.inputs.package)) }}"
+          if [[ "$should_publish" != "true" ]]; then
+            echo "⏭️ Skipping @cdklabs/genai-idp-sagemaker-udop-processor: release tag already exists"
+          elif [[ "$package_filter" != "true" ]]; then
+            echo "⏭️ Skipping @cdklabs/genai-idp-sagemaker-udop-processor: not selected for release"
+          else
+            echo "✅ Will publish @cdklabs/genai-idp-sagemaker-udop-processor"
+            echo "@cdklabs/genai-idp-sagemaker-udop-processor" >> publish.txt
+          fi
+      - name: Collect packages to publish
+        id: collect
+        run: |-
+          if [ -f publish.txt ]; then
+            packages=$(jq -Rc '.' publish.txt | jq -sc '.')
+          else
+            packages='[]'
+          fi
+          echo "packages_to_publish=$packages" >> $GITHUB_OUTPUT
+          echo "Publishing: $packages"
+  cdklabs-genai-idp_release:
+    name: "@cdklabs/genai-idp: Release"
+    needs: release_gate
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: ${{ contains(fromJSON(needs.release_gate.outputs.packages_to_publish), '@cdklabs/genai-idp') }}
+    steps:
+      - id: auto_e1315a9a
+        run: echo "Releasing @cdklabs/genai-idp..."
   cdklabs-genai-idp_release_github:
     name: "@cdklabs/genai-idp: Publish to GitHub Releases"
     needs:
-      - release
       - cdklabs-genai-idp_release_npm
       - cdklabs-genai-idp_release_pypi
       - cdklabs-genai-idp_release_nuget
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: lts/*
+          node-version: 24.x
+          package-manager-cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp_build-artifact
           path: dist
+          name: cdklabs-genai-idp_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
+        if: ${{ !inputs.dry_run }}
         env:
+          RELEASE_TAG_FILE: dist/releasetag.txt
+          CHANGELOG_FILE: dist/changelog.md
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: errout=$(mktemp); gh release create $(cat dist/releasetag.txt) -R $GITHUB_REPOSITORY -F dist/changelog.md -t $(cat dist/releasetag.txt) --target $GITHUB_SHA 2> $errout && true; exitcode=$?; if [ $exitcode -ne 0 ] && ! grep -q "Release.tag_name already exists" $errout; then cat $errout; exit $exitcode; fi
+        run: |-
+          tag=$(cat "$RELEASE_TAG_FILE") &&
+          gh release view "$tag" -R "$GITHUB_REPOSITORY" 2>/dev/null ||
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" -F "$CHANGELOG_FILE" -t "$tag" --target "$GITHUB_SHA"
   cdklabs-genai-idp_release_npm:
     name: "@cdklabs/genai-idp: Publish to npm"
-    needs: release
+    needs: cdklabs-genai-idp_release
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: lts/*
+          node-version: 24.x
+          package-manager-cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp_build-artifact
           path: dist
+          name: cdklabs-genai-idp_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           NPM_DIST_TAG: latest
           NPM_REGISTRY: registry.npmjs.org
           NPM_CONFIG_PROVENANCE: "true"
           NPM_TRUSTED_PUBLISHER: "true"
-        run: npx -p publib@latest publib-npm
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-npm'
   cdklabs-genai-idp_release_pypi:
     name: "@cdklabs/genai-idp: Publish to PyPI"
-    needs: release
+    needs: cdklabs-genai-idp_release
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: lts/*
-      - uses: actions/setup-python@v6
+          node-version: 24.x
+          package-manager-cache: false
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp_build-artifact
           path: dist
+          name: cdklabs-genai-idp_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           PYPI_TRUSTED_PUBLISHER: "true"
-        run: npx -p publib@latest publib-pypi
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-pypi'
   cdklabs-genai-idp_release_nuget:
     name: "@cdklabs/genai-idp: Publish to NuGet Gallery"
-    needs: release
+    needs: cdklabs-genai-idp_release
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: lts/*
-      - uses: actions/setup-dotnet@v5
+          node-version: 24.x
+          package-manager-cache: false
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: 6.x
+          cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp_build-artifact
           path: dist
+          name: cdklabs-genai-idp_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           NUGET_TRUSTED_PUBLISHER: "true"
           NUGET_USERNAME: ${{ secrets.NUGET_USERNAME }}
-        run: npx -p publib@latest publib-nuget
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-nuget'
+  cdklabs-genai-idp_release_done:
+    name: "@cdklabs/genai-idp: Release complete"
+    needs:
+      - cdklabs-genai-idp_release_github
+      - cdklabs-genai-idp_release_npm
+      - cdklabs-genai-idp_release_pypi
+      - cdklabs-genai-idp_release_nuget
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: ${{ !cancelled() && !failure() }}
+    steps:
+      - id: auto_9c3c4914
+        run: echo "All publish jobs complete"
+  cdklabs-genai-idp-bda-processor_release:
+    name: "@cdklabs/genai-idp-bda-processor: Release"
+    needs: release_gate
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: ${{ contains(fromJSON(needs.release_gate.outputs.packages_to_publish), '@cdklabs/genai-idp-bda-processor') }}
+    steps:
+      - id: auto_5c6840f0
+        run: echo "Releasing @cdklabs/genai-idp-bda-processor..."
   cdklabs-genai-idp-bda-processor_release_github:
     name: "@cdklabs/genai-idp-bda-processor: Publish to GitHub Releases"
     needs:
-      - release
       - cdklabs-genai-idp-bda-processor_release_npm
       - cdklabs-genai-idp-bda-processor_release_pypi
       - cdklabs-genai-idp-bda-processor_release_nuget
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-bda-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
+          package-manager-cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-bda-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
+        if: ${{ !inputs.dry_run }}
         env:
+          RELEASE_TAG_FILE: dist/releasetag.txt
+          CHANGELOG_FILE: dist/changelog.md
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: errout=$(mktemp); gh release create $(cat dist/releasetag.txt) -R $GITHUB_REPOSITORY -F dist/changelog.md -t $(cat dist/releasetag.txt) --target $GITHUB_SHA 2> $errout && true; exitcode=$?; if [ $exitcode -ne 0 ] && ! grep -q "Release.tag_name already exists" $errout; then cat $errout; exit $exitcode; fi
+        run: |-
+          tag=$(cat "$RELEASE_TAG_FILE") &&
+          gh release view "$tag" -R "$GITHUB_REPOSITORY" 2>/dev/null ||
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" -F "$CHANGELOG_FILE" -t "$tag" --target "$GITHUB_SHA"
   cdklabs-genai-idp-bda-processor_release_npm:
     name: "@cdklabs/genai-idp-bda-processor: Publish to npm"
-    needs: release
+    needs:
+      - cdklabs-genai-idp-bda-processor_release
+      - cdklabs-genai-idp_release_done
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-bda-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
+          package-manager-cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-bda-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           NPM_DIST_TAG: latest
           NPM_REGISTRY: registry.npmjs.org
           NPM_CONFIG_PROVENANCE: "true"
           NPM_TRUSTED_PUBLISHER: "true"
-        run: npx -p publib@latest publib-npm
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-npm'
   cdklabs-genai-idp-bda-processor_release_pypi:
     name: "@cdklabs/genai-idp-bda-processor: Publish to PyPI"
-    needs: release
+    needs:
+      - cdklabs-genai-idp-bda-processor_release
+      - cdklabs-genai-idp_release_done
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-bda-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
-      - uses: actions/setup-python@v6
+          package-manager-cache: false
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-bda-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           PYPI_TRUSTED_PUBLISHER: "true"
-        run: npx -p publib@latest publib-pypi
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-pypi'
   cdklabs-genai-idp-bda-processor_release_nuget:
     name: "@cdklabs/genai-idp-bda-processor: Publish to NuGet Gallery"
-    needs: release
+    needs:
+      - cdklabs-genai-idp-bda-processor_release
+      - cdklabs-genai-idp_release_done
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bda-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-bda-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
-      - uses: actions/setup-dotnet@v5
+          package-manager-cache: false
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: 6.x
+          cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-bda-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-bda-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           NUGET_TRUSTED_PUBLISHER: "true"
           NUGET_USERNAME: ${{ secrets.NUGET_USERNAME }}
-        run: npx -p publib@latest publib-nuget
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-nuget'
+  cdklabs-genai-idp-bda-processor_release_done:
+    name: "@cdklabs/genai-idp-bda-processor: Release complete"
+    needs:
+      - cdklabs-genai-idp-bda-processor_release_github
+      - cdklabs-genai-idp-bda-processor_release_npm
+      - cdklabs-genai-idp-bda-processor_release_pypi
+      - cdklabs-genai-idp-bda-processor_release_nuget
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: ${{ !cancelled() && !failure() }}
+    steps:
+      - id: auto_9c3c4914
+        run: echo "All publish jobs complete"
+  cdklabs-genai-idp-bedrock-llm-processor_release:
+    name: "@cdklabs/genai-idp-bedrock-llm-processor: Release"
+    needs: release_gate
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: ${{ contains(fromJSON(needs.release_gate.outputs.packages_to_publish), '@cdklabs/genai-idp-bedrock-llm-processor') }}
+    steps:
+      - id: auto_083bbf71
+        run: echo "Releasing @cdklabs/genai-idp-bedrock-llm-processor..."
   cdklabs-genai-idp-bedrock-llm-processor_release_github:
     name: "@cdklabs/genai-idp-bedrock-llm-processor: Publish to GitHub Releases"
     needs:
-      - release
       - cdklabs-genai-idp-bedrock-llm-processor_release_npm
       - cdklabs-genai-idp-bedrock-llm-processor_release_pypi
       - cdklabs-genai-idp-bedrock-llm-processor_release_nuget
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-bedrock-llm-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
+          package-manager-cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
+        if: ${{ !inputs.dry_run }}
         env:
+          RELEASE_TAG_FILE: dist/releasetag.txt
+          CHANGELOG_FILE: dist/changelog.md
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: errout=$(mktemp); gh release create $(cat dist/releasetag.txt) -R $GITHUB_REPOSITORY -F dist/changelog.md -t $(cat dist/releasetag.txt) --target $GITHUB_SHA 2> $errout && true; exitcode=$?; if [ $exitcode -ne 0 ] && ! grep -q "Release.tag_name already exists" $errout; then cat $errout; exit $exitcode; fi
+        run: |-
+          tag=$(cat "$RELEASE_TAG_FILE") &&
+          gh release view "$tag" -R "$GITHUB_REPOSITORY" 2>/dev/null ||
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" -F "$CHANGELOG_FILE" -t "$tag" --target "$GITHUB_SHA"
   cdklabs-genai-idp-bedrock-llm-processor_release_npm:
     name: "@cdklabs/genai-idp-bedrock-llm-processor: Publish to npm"
-    needs: release
+    needs:
+      - cdklabs-genai-idp-bedrock-llm-processor_release
+      - cdklabs-genai-idp_release_done
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-bedrock-llm-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
+          package-manager-cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           NPM_DIST_TAG: latest
           NPM_REGISTRY: registry.npmjs.org
           NPM_CONFIG_PROVENANCE: "true"
           NPM_TRUSTED_PUBLISHER: "true"
-        run: npx -p publib@latest publib-npm
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-npm'
   cdklabs-genai-idp-bedrock-llm-processor_release_pypi:
     name: "@cdklabs/genai-idp-bedrock-llm-processor: Publish to PyPI"
-    needs: release
+    needs:
+      - cdklabs-genai-idp-bedrock-llm-processor_release
+      - cdklabs-genai-idp_release_done
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-bedrock-llm-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
-      - uses: actions/setup-python@v6
+          package-manager-cache: false
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           PYPI_TRUSTED_PUBLISHER: "true"
-        run: npx -p publib@latest publib-pypi
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-pypi'
   cdklabs-genai-idp-bedrock-llm-processor_release_nuget:
     name: "@cdklabs/genai-idp-bedrock-llm-processor: Publish to NuGet Gallery"
-    needs: release
+    needs:
+      - cdklabs-genai-idp-bedrock-llm-processor_release
+      - cdklabs-genai-idp_release_done
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-bedrock-llm-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-bedrock-llm-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
-      - uses: actions/setup-dotnet@v5
+          package-manager-cache: false
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: 6.x
+          cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-bedrock-llm-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           NUGET_TRUSTED_PUBLISHER: "true"
           NUGET_USERNAME: ${{ secrets.NUGET_USERNAME }}
-        run: npx -p publib@latest publib-nuget
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-nuget'
+  cdklabs-genai-idp-bedrock-llm-processor_release_done:
+    name: "@cdklabs/genai-idp-bedrock-llm-processor: Release complete"
+    needs:
+      - cdklabs-genai-idp-bedrock-llm-processor_release_github
+      - cdklabs-genai-idp-bedrock-llm-processor_release_npm
+      - cdklabs-genai-idp-bedrock-llm-processor_release_pypi
+      - cdklabs-genai-idp-bedrock-llm-processor_release_nuget
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: ${{ !cancelled() && !failure() }}
+    steps:
+      - id: auto_9c3c4914
+        run: echo "All publish jobs complete"
+  cdklabs-genai-idp-sagemaker-udop-processor_release:
+    name: "@cdklabs/genai-idp-sagemaker-udop-processor: Release"
+    needs: release_gate
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: ${{ contains(fromJSON(needs.release_gate.outputs.packages_to_publish), '@cdklabs/genai-idp-sagemaker-udop-processor') }}
+    steps:
+      - id: auto_b9ce1794
+        run: echo "Releasing @cdklabs/genai-idp-sagemaker-udop-processor..."
   cdklabs-genai-idp-sagemaker-udop-processor_release_github:
     name: "@cdklabs/genai-idp-sagemaker-udop-processor: Publish to GitHub Releases"
     needs:
-      - release
       - cdklabs-genai-idp-sagemaker-udop-processor_release_npm
       - cdklabs-genai-idp-sagemaker-udop-processor_release_pypi
       - cdklabs-genai-idp-sagemaker-udop-processor_release_nuget
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-sagemaker-udop-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
+          package-manager-cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
+        if: ${{ !inputs.dry_run }}
         env:
+          RELEASE_TAG_FILE: dist/releasetag.txt
+          CHANGELOG_FILE: dist/changelog.md
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: errout=$(mktemp); gh release create $(cat dist/releasetag.txt) -R $GITHUB_REPOSITORY -F dist/changelog.md -t $(cat dist/releasetag.txt) --target $GITHUB_SHA 2> $errout && true; exitcode=$?; if [ $exitcode -ne 0 ] && ! grep -q "Release.tag_name already exists" $errout; then cat $errout; exit $exitcode; fi
+        run: |-
+          tag=$(cat "$RELEASE_TAG_FILE") &&
+          gh release view "$tag" -R "$GITHUB_REPOSITORY" 2>/dev/null ||
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" -F "$CHANGELOG_FILE" -t "$tag" --target "$GITHUB_SHA"
   cdklabs-genai-idp-sagemaker-udop-processor_release_npm:
     name: "@cdklabs/genai-idp-sagemaker-udop-processor: Publish to npm"
-    needs: release
+    needs:
+      - cdklabs-genai-idp-sagemaker-udop-processor_release
+      - cdklabs-genai-idp_release_done
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-sagemaker-udop-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
+          package-manager-cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           NPM_DIST_TAG: latest
           NPM_REGISTRY: registry.npmjs.org
           NPM_CONFIG_PROVENANCE: "true"
           NPM_TRUSTED_PUBLISHER: "true"
-        run: npx -p publib@latest publib-npm
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-npm'
   cdklabs-genai-idp-sagemaker-udop-processor_release_pypi:
     name: "@cdklabs/genai-idp-sagemaker-udop-processor: Publish to PyPI"
-    needs: release
+    needs:
+      - cdklabs-genai-idp-sagemaker-udop-processor_release
+      - cdklabs-genai-idp_release_done
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-sagemaker-udop-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
-      - uses: actions/setup-python@v6
+          package-manager-cache: false
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: 3.x
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           PYPI_TRUSTED_PUBLISHER: "true"
-        run: npx -p publib@latest publib-pypi
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-pypi'
   cdklabs-genai-idp-sagemaker-udop-processor_release_nuget:
     name: "@cdklabs/genai-idp-sagemaker-udop-processor: Publish to NuGet Gallery"
-    needs: release
+    needs:
+      - cdklabs-genai-idp-sagemaker-udop-processor_release
+      - cdklabs-genai-idp_release_done
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     environment: release
-    if: ${{ needs.release.outputs.latest_commit == github.sha && needs.release.outputs.publish-cdklabs-genai-idp-sagemaker-udop-processor == 'true' }}
+    if: ${{ !cancelled() && !failure() && needs.cdklabs-genai-idp-sagemaker-udop-processor_release.result == 'success' }}
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: lts/*
-      - uses: actions/setup-dotnet@v5
+          package-manager-cache: false
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: 6.x
+          cache: false
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        id: download_build_artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
           path: dist
+          name: cdklabs-genai-idp-sagemaker-udop-processor_build-artifact
       - name: Restore build artifact permissions
+        id: restore_build_artifact_permissions
         run: cd dist && setfacl --restore=permissions-backup.acl
         continue-on-error: true
       - name: Release
+        id: release
         env:
           NUGET_TRUSTED_PUBLISHER: "true"
           NUGET_USERNAME: ${{ secrets.NUGET_USERNAME }}
-        run: npx -p publib@latest publib-nuget
+          PUBLIB_DRYRUN: ${{ inputs.dry_run }}
+        run: npx '-p' 'publib@latest' 'publib-nuget'
+  cdklabs-genai-idp-sagemaker-udop-processor_release_done:
+    name: "@cdklabs/genai-idp-sagemaker-udop-processor: Release complete"
+    needs:
+      - cdklabs-genai-idp-sagemaker-udop-processor_release_github
+      - cdklabs-genai-idp-sagemaker-udop-processor_release_npm
+      - cdklabs-genai-idp-sagemaker-udop-processor_release_pypi
+      - cdklabs-genai-idp-sagemaker-udop-processor_release_nuget
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: ${{ !cancelled() && !failure() }}
+    steps:
+      - id: auto_9c3c4914
+        run: echo "All publish jobs complete"

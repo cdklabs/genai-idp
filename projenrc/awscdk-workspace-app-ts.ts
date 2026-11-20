@@ -42,26 +42,26 @@ class SampleCode extends Component {
         }
 
         const srcCode = `${srcImports.join("\n")}
-  
+
   export class MyStack extends Stack {
     constructor(scope: Construct, id: string, props: StackProps = {}) {
       super(scope, id, props);
-  
+
       // define resources here...
     }
   }
-  
+
   // for development, use account/region from cdk cli
   const devEnv = {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION,
   };
-  
+
   const app = new App();
-  
+
   new MyStack(app, '${this.project.name}-dev', { env: devEnv });
   // new MyStack(app, '${this.project.name}-prod', { env: prodEnv });
-  
+
   app.synth();`;
 
         fs.mkdirSync(srcdir, { recursive: true });
@@ -90,11 +90,11 @@ class SampleCode extends Component {
         );
         const testCode = `${testImports.join("\n")}
   import { MyStack } from '../${this.appProject.srcdir}/${appEntrypointName}';
-  
+
   test('Snapshot', () => {
     const app = new App();
     const stack = new MyStack(app, 'test');
-  
+
     const template = Template.fromStack(stack);
     expect(template.toJSON()).toMatchSnapshot();
   });`;
@@ -239,8 +239,8 @@ export class AwsCdkTypeScriptWorkspaceApp extends TypeScriptWorkspaceAppProject 
             app: `npx ts-node -P ${tsConfigFile} --prefer-ts-exts ${path.posix.join(
                 this.srcdir,
                 this.appEntrypoint
-            )}`, 
-            featureFlags: this.cdkDeps.cdkMajorVersion < 2 ? CdkFeatureFlags.V1.ALL : CdkFeatureFlags.V2.NONE,
+            )}`,
+            featureFlags: CdkFeatureFlags.V2.NONE,
             buildCommand: this.runTaskCommand(this.bundler.bundleTask),
             watchIncludes: [`${this.srcdir}/**/*.ts`, `${this.testdir}/**/*.ts`],
             watchExcludes: [
@@ -292,6 +292,7 @@ export class AwsCdkTypeScriptWorkspaceApp extends TypeScriptWorkspaceAppProject 
      * @param modules The list of modules to depend on
      */
     public addCdkDependency(...modules: string[]) {
-        return this.cdkDeps.addV1Dependencies(...modules);
+        void modules;
+        // return this.cdkDeps.addV1Dependencies(...modules);
     }
 }
