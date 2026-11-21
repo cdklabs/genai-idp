@@ -21,10 +21,10 @@
     "constructs": "^10.0.0",
     "projen": "^0.105.6",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@mrgrain/jsii-struct-builder": "^0.7.63"
+    "@mrgrain/jsii-struct-builder": "^0.7.64"
   },
   "devEngines": {
     "packageManager": {
